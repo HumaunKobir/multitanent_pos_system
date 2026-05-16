@@ -1,0 +1,17 @@
+{
+    "compilerOptions": {
+        "target": "ESNext",
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        "allowJs": true,
+        "checkJs": false,
+        "jsx": "react-jsx",
+        "baseUrl": ".",
+        "paths": {
+            "@/*": ["./resources/js/*"]
+        },
+        "types": ["vite/client"]
+    },
+    "include": ["resources/js/**/*.js", "resources/js/**/*.jsx"],
+    "exclude": ["node_modules", "vendor"]
+}

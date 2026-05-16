@@ -18,7 +18,7 @@ return new class extends Migration
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->string('phone')->nullable()->unique();
-            $table->foreignId('branch_id')->nullable()->constrained();
+            $table->foreignId('branch_id')->nullable();
             $table->string('image')->nullable();
             $table->tinyInteger('status')->default(1);
             $table->text('two_factor_secret')->nullable();

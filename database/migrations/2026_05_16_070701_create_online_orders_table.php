@@ -18,7 +18,7 @@ return new class extends Migration
             $table->string('email')->nullable();
             $table->string('phone');
             $table->text('address');
-            $table->foreignId('payment_method_id')->nullable()->constrained('payment_methods')->nullOnDelete();
+            $table->foreignId('payment_method_id')->nullable()->constrained('payment_methods');
             $table->decimal('delivery_charge', 10, 2)->default(0);
             $table->decimal('subtotal', 10, 2)->default(0);
             $table->decimal('tailor_price', 10, 2)->default(0);

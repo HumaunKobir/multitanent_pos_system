@@ -11,11 +11,15 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('variations', function (Blueprint $table) {
+        Schema::create('product_in_out_logs', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('batch_id')->constrained('batches');
             $table->foreignId('branch_id')->nullable()->constrained('branches');
-            $table->string('name');
-            $table->tinyInteger('status')->default(1);
+            $table->foreignId('product_id')->constrained('products');
+            $table->integer('quantity');
+            $table->integer('type');
+            $table->integer('stock')->default(0);
+            $table->text('remark')->nullable();
             $table->timestamps();
         });
     }
@@ -25,6 +29,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('variations');
+        Schema::dropIfExists('product_in_out_logs');
     }
 };

@@ -13,10 +13,11 @@ return new class extends Migration
     {
         Schema::create('products', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('category_id')->nullable()->constrained()->nullOnDelete();
-            $table->foreignId('brand_id')->nullable()->constrained()->nullOnDelete();
-            $table->foreignId('unit_id')->nullable()->constrained()->nullOnDelete();
-            $table->foreignId('warranty_id')->nullable()->constrained()->nullOnDelete();
+            $table->foreignId('branch_id')->nullable()->constrained('branches');
+            $table->foreignId('category_id')->nullable()->constrained('categories');
+            $table->foreignId('brand_id')->nullable()->constrained('brands');
+            $table->foreignId('unit_id')->nullable()->constrained('units');
+            $table->foreignId('warranty_id')->nullable()->constrained('warranties');
             $table->string('name');
             $table->string('bn_name')->nullable();
             $table->string('slug')->unique();

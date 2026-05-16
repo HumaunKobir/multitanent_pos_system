@@ -1,5 +1,48 @@
 <?php
 
+use App\Http\Controllers\Admin\Account\AccountController;
+use App\Http\Controllers\Admin\Account\ChartOfAccountController;
+use App\Http\Controllers\Admin\Account\ExpenseController;
+use App\Http\Controllers\Admin\Account\IncomeController;
+use App\Http\Controllers\Admin\Account\PartiesController;
+use App\Http\Controllers\Admin\Account\PaymentMethodController;
+use App\Http\Controllers\Admin\AdjustController;
+use App\Http\Controllers\Admin\BarcodeController;
+use App\Http\Controllers\Admin\BranchController;
+use App\Http\Controllers\Admin\BrandController;
+use App\Http\Controllers\Admin\CategoryController;
+use App\Http\Controllers\Admin\CollectioncategoryController;
+use App\Http\Controllers\Admin\ColorController;
+use App\Http\Controllers\Admin\ContactListController;
+use App\Http\Controllers\Admin\CustomerController;
+use App\Http\Controllers\Admin\DueCollectionController;
+use App\Http\Controllers\Admin\GroupController;
+use App\Http\Controllers\Admin\Inventory\DamageController;
+use App\Http\Controllers\Admin\Inventory\InitialStockController;
+use App\Http\Controllers\Admin\Inventory\ProductController;
+use App\Http\Controllers\Admin\Inventory\ProductExchangeController;
+use App\Http\Controllers\Admin\Inventory\PurchaseController;
+use App\Http\Controllers\Admin\Inventory\PurchaseReturnController;
+use App\Http\Controllers\Admin\Inventory\SaleReturnController;
+use App\Http\Controllers\Admin\Inventory\SellController;
+use App\Http\Controllers\Admin\Inventory\SupplierController;
+use App\Http\Controllers\Admin\MemberShipCardController;
+use App\Http\Controllers\Admin\OnlineOrderController;
+use App\Http\Controllers\Admin\PaymentController;
+use App\Http\Controllers\Admin\ProductSectionController;
+use App\Http\Controllers\Admin\Report\ReportController;
+use App\Http\Controllers\Admin\SitesettingController;
+use App\Http\Controllers\Admin\SizeController;
+use App\Http\Controllers\Admin\SliderController;
+use App\Http\Controllers\Admin\TailormeasurementController;
+use App\Http\Controllers\Admin\UnitController;
+use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\VariationController;
+use App\Http\Controllers\Admin\WarrantyController;
+use App\Http\Controllers\Api\BranchController as ApiBranchController;
+use App\Http\Controllers\Api\CustomerController as ApiCustomerController;
+use App\Http\Controllers\Api\ProductController as ApiProductController;
+use App\Http\Controllers\Api\SupplierController as ApiSupplierController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\Customer\Auth\CustomerLoginController;
@@ -8,21 +51,12 @@ use App\Http\Controllers\Customer\CustomerDashboardController;
 use App\Http\Controllers\HomeController;
 use Illuminate\Support\Facades\Route;
 
-// ─── Admin ───────────────────────────────────────────────────────────────────
-Route::middleware(['auth', 'verified'])->group(function () {
-    Route::inertia('dashboard', 'dashboard')->name('dashboard');
-
-    Route::prefix('admin')->name('admin.')->group(function () {
-        Route::inertia('/', 'admin/dashboard')->name('dashboard');
-    });
-});
-
-// ─── Frontend public ─────────────────────────────────────────────────────────
+// ── PUBLIC FRONTEND ───────────────────────────────────────────────────────────
 Route::get('/', [HomeController::class, 'index'])->name('home');
+Route::get('/products', [HomeController::class, 'products'])->name('products');
+Route::get('/products/{product:slug}', [HomeController::class, 'show'])->name('product.show');
+Route::get('/collection/{collection:slug}', [HomeController::class, 'collectionProducts'])->name('collection.products');
 Route::get('/search', [HomeController::class, 'search'])->name('search');
-Route::get('/product/{slug}', [HomeController::class, 'show'])->name('product.show');
-Route::get('/collection/{name}', [HomeController::class, 'collectionProducts'])->name('collection.products');
-Route::get('/category/{id}/products', [HomeController::class, 'categoryProducts'])->name('category.products');
 
 // Static pages
 Route::get('/about', [HomeController::class, 'staticPage'])->defaults('page', 'about')->name('about');
@@ -45,9 +79,9 @@ Route::delete('/cart', [CartController::class, 'clear'])->name('cart.clear');
 // Checkout
 Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout');
 Route::post('/checkout', [CheckoutController::class, 'store'])->name('checkout.store');
-Route::get('/order/{id}/success', [CheckoutController::class, 'success'])->name('order.success');
+Route::get('/checkout/success/{order}', [CheckoutController::class, 'success'])->name('checkout.success');
 
-// ─── Customer auth ────────────────────────────────────────────────────────────
+// ── CUSTOMER AUTH ─────────────────────────────────────────────────────────────
 Route::prefix('customer')->name('customer.')->group(function () {
     Route::middleware('guest:customer')->group(function () {
         Route::get('login', [CustomerLoginController::class, 'showLoginForm'])->name('login');
@@ -56,13 +90,10 @@ Route::prefix('customer')->name('customer.')->group(function () {
         Route::post('register', [CustomerRegisterController::class, 'register']);
     });
 
-    Route::post('logout', [CustomerLoginController::class, 'logout'])->name('logout');
-
     Route::middleware('auth:customer')->group(function () {
-        Route::get('dashboard', [CustomerDashboardController::class, 'dashboard'])->name('dashboard');
+        Route::post('logout', [CustomerLoginController::class, 'logout'])->name('logout');
+        Route::get('profile', [CustomerDashboardController::class, 'dashboard'])->name('profile');
         Route::get('orders', [CustomerDashboardController::class, 'orders'])->name('orders');
         Route::get('orders/{id}', [CustomerDashboardController::class, 'orderDetails'])->name('order.details');
     });
 });
-
-require __DIR__.'/settings.php';

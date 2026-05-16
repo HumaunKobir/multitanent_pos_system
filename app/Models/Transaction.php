@@ -5,34 +5,38 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Transaction extends Model
 {
-    protected $fillable = [
-        'branch_id',
-        'transactionable_type', 'transactionable_id',
-        'reference_type', 'reference_id',
-        'type', 'amount', 'balance', 'note', 'date',
-    ];
+    use SoftDeletes;
+
+    protected $fillable = ['source_type', 'source_id', 'performed_by_type', 'performed_by_id', 'date', 'amount', 'debit_account_id', 'credit_account_id', 'debit_decrease', 'credit_decrease', 'description', 'approved_at'];
 
     protected $casts = [
-        'amount' => 'decimal:2',
-        'balance' => 'decimal:2',
         'date' => 'date',
+        'approved_at' => 'datetime',
+        'debit_decrease' => 'boolean',
+        'credit_decrease' => 'boolean',
     ];
 
-    public function transactionable(): MorphTo
+    public function source(): MorphTo
     {
         return $this->morphTo();
     }
 
-    public function reference(): MorphTo
+    public function performedBy(): MorphTo
     {
         return $this->morphTo();
     }
 
-    public function branch(): BelongsTo
+    public function debitAccount(): BelongsTo
     {
-        return $this->belongsTo(Branch::class);
+        return $this->belongsTo(ChartOfAccount::class, 'debit_account_id');
+    }
+
+    public function creditAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'credit_account_id');
     }
 }

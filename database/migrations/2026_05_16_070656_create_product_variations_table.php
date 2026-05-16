@@ -13,14 +13,15 @@ return new class extends Migration
     {
         Schema::create('product_variations', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('product_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('branch_id')->nullable()->constrained('branches');
+            $table->foreignId('product_id')->nullable()->constrained('products')->cascadeOnDelete();
             $table->string('sku')->nullable();
             $table->string('sku_code')->nullable();
             $table->decimal('price', 10, 2)->default(0);
             $table->decimal('purchase_price', 10, 2)->default(0);
             $table->integer('stock')->default(0);
             $table->json('variation_data')->nullable();
-            $table->tinyInteger('status')->default(1);
+            $table->tinyInteger('status')->default(\App\Enums\CommonStatus::Active->value);
             $table->timestamps();
         });
     }

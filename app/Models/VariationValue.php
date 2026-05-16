@@ -2,12 +2,17 @@
 
 namespace App\Models;
 
+use App\Enums\CommonStatus;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class VariationValue extends Model
 {
     protected $fillable = ['variation_id', 'value', 'status'];
+
+    protected $casts = [
+        'status' => CommonStatus::class,
+    ];
 
     public function variation(): BelongsTo
     {

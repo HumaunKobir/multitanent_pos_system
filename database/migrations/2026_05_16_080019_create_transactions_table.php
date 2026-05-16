@@ -10,19 +10,16 @@ return new class extends Migration
     {
         Schema::create('transactions', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('branch_id')->nullable();
-            // polymorphic: Account / Supplier / Customer
-            $table->nullableMorphs('transactionable');
-            // polymorphic: Purchase / Sell / Expense / Income / etc.
-            $table->nullableMorphs('reference');
-            $table->tinyInteger('type');
-            $table->decimal('amount', 14, 2);
-            $table->decimal('balance', 14, 2)->default(0);
-            $table->text('note')->nullable();
-            $table->date('date');
+            $table->morphs('source');
+            $table->nullableMorphs('performed_by');
+            $table->date('date')->index();
+            $table->decimal('amount', 15, 2);
+            $table->foreignId('debit_account_id')->nullable()->constrained('chart_of_accounts');
+            $table->foreignId('credit_account_id')->nullable()->constrained('chart_of_accounts');
+            $table->string('description')->nullable();
+            $table->timestamp('approved_at')->nullable();
+            $table->softDeletes();
             $table->timestamps();
-
-            $table->foreign('branch_id')->references('id')->on('branches')->nullOnDelete();
         });
     }
 

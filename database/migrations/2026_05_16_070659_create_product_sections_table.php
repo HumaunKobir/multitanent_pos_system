@@ -13,6 +13,7 @@ return new class extends Migration
     {
         Schema::create('product_sections', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('branch_id')->nullable()->constrained('branches');
             $table->string('name');
             $table->text('description')->nullable();
             $table->string('button_text')->nullable();

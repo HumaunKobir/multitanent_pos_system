@@ -14,7 +14,6 @@ import {
     SidebarMenuItem,
     SidebarSeparator,
 } from '@/components/ui/sidebar';
-import { dashboard as adminDashboard } from '@/routes/admin';
 import { dashboard } from '@/routes';
 import { cn } from '@/lib/utils';
 
@@ -26,7 +25,7 @@ const mainNavItems = [
     },
     {
         title: 'Admin',
-        href: adminDashboard.url(),
+        href: '/dashboard',
         icon: Shield,
         activeMatch: 'prefix',
     },

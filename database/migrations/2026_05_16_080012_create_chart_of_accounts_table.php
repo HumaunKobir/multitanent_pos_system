@@ -10,13 +10,18 @@ return new class extends Migration
     {
         Schema::create('chart_of_accounts', function (Blueprint $table) {
             $table->id();
-            // 0=Assets, 1=Liabilities, 2=Income, 4=Expense
-            $table->tinyInteger('gl_account')->default(0);
-            // 0=Out, 1=In
-            $table->tinyInteger('head_type')->default(0);
+            $table->nullableMorphs('source');
+            $table->foreignId('parent_id')->nullable()->constrained('chart_of_accounts')->nullOnDelete();
+            $table->string('code');
             $table->string('name');
-            $table->tinyInteger('status')->default(1);
+            $table->unsignedTinyInteger('type')->index();
+            $table->decimal('current_balance', 15, 2)->default(0);
+            $table->text('description')->nullable();
+            $table->tinyInteger('status')->default(\App\Enums\CommonStatus::Active);
+            $table->boolean('is_system')->default(false);
+            $table->softDeletes();
             $table->timestamps();
+
         });
     }
 

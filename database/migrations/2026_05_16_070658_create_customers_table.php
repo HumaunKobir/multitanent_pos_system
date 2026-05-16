@@ -13,14 +13,21 @@ return new class extends Migration
     {
         Schema::create('customers', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('branch_id')->nullable()->constrained('branches');
+            $table->foreignId('group_id')->nullable()->constrained('groups');
+            $table->foreignId('member_ship_id')->nullable()->constrained('member_ship_cards');
             $table->string('name');
-            $table->string('email')->nullable()->unique();
-            $table->string('phone')->nullable()->unique();
-            $table->text('address')->nullable();
+            $table->string('phone')->unique();
+            $table->string('email')->nullable();
             $table->string('password')->nullable();
-            $table->decimal('balance', 12, 2)->default(0);
-            $table->tinyInteger('status')->default(1);
+            $table->string('address')->nullable();
+            $table->decimal('balance', 15,2)->default(0);
+            $table->decimal('balance_in', 15,2)->default(0);
+            $table->decimal('balance_out', 15,2)->default(0);
+            $table->boolean('is_membership', )->default(0);
+            $table->decimal('point',15,2)->default(0);
             $table->boolean('is_default')->default(false);
+            $table->tinyInteger('status')->default(\App\Enums\CommonStatus::Active);
             $table->rememberToken();
             $table->timestamps();
         });

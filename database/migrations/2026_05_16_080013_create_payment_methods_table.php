@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::create('payment_methods', function (Blueprint $table) {
             $table->id();
             $table->string('name');
-            $table->tinyInteger('status')->default(1);
+            $table->tinyInteger('status')->default(\App\Enums\CommonStatus::Active);
             $table->timestamps();
         });
     }

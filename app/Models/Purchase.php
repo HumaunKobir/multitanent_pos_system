@@ -2,55 +2,77 @@
 
 namespace App\Models;
 
+use App\Enums\PurchaseReceivedPayment;
+use App\Enums\PurchaseType;
+use App\Models\PurchaseProduct;
+use App\Traits\HasBranch;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class Purchase extends Model
 {
+    use  HasBranch;
+
     protected $fillable = [
-        'branch_id', 'supplier_id', 'date',
-        'gross_amount', 'discount', 'vat', 'paid_amount', 'due_amount',
-        'type', 'serial', 'comment', 'parent_id',
+        'branch_id',
+        'supplier_id',
+        'date',
+        'gross_amount',
+        'discount',
+        'vat',
+        'paid_amount',
+        'due_amount',
+        'purchase_type',
+        'comment',
+        'payment_type',
+        'serial',
     ];
 
     protected $casts = [
-        'date' => 'date',
-        'gross_amount' => 'decimal:2',
-        'discount' => 'decimal:2',
-        'vat' => 'decimal:2',
-        'paid_amount' => 'decimal:2',
-        'due_amount' => 'decimal:2',
+        'purchase_type' => PurchaseType::class,
+        'payment_type' => PurchaseReceivedPayment::class
     ];
 
-    public function supplier(): BelongsTo
+
+    public function getNetAmountAttribute()
     {
-        return $this->belongsTo(Supplier::class);
+        return $this->gross_amount + $this->vat - $this->discount;
     }
 
-    public function branch(): BelongsTo
+    public function branch()
     {
-        return $this->belongsTo(Branch::class);
+        return $this->hasOne(Branch::class, 'id', 'branch_id');
     }
 
-    public function parent(): BelongsTo
+    public function supplier()
     {
-        return $this->belongsTo(Purchase::class, 'parent_id');
+        return $this->hasOne(Supplier::class, 'id', 'supplier_id');
     }
 
-    public function returns(): HasMany
+    public function purchaseProducts()
     {
-        return $this->hasMany(Purchase::class, 'parent_id');
+        return $this->hasMany(PurchaseProduct::class, 'purchase_id');
     }
 
-    public function products(): HasMany
+    public function scopePurchase($q)
     {
-        return $this->hasMany(PurchaseProduct::class);
+        return $q->where('purchase_type',PurchaseType::Purchase);
+    }
+    public function scopeDamage($q)
+    {
+        return $q->where('purchase_type',PurchaseType::Damage);
     }
 
-    public function transactions(): MorphMany
+    public function scopePurchaseReturn($q)
     {
-        return $this->morphMany(Transaction::class, 'reference');
+        return $q->where('purchase_type',PurchaseType::Purchase_Return);
     }
+
+    public function scopeInitialStock($q)
+    {
+        return $q->where('purchase_type',PurchaseType::InitialStock);
+    }
+
+
+
 }

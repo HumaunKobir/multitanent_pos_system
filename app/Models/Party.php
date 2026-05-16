@@ -14,14 +14,4 @@ class Party extends Model
     {
         return $this->belongsTo(Branch::class);
     }
-
-    public function expenses(): HasMany
-    {
-        return $this->hasMany(Expense::class, 'parti_id');
-    }
-
-    public function incomes(): HasMany
-    {
-        return $this->hasMany(Income::class, 'parti_id');
-    }
 }

@@ -10,10 +10,10 @@ return new class extends Migration
     {
         Schema::create('groups', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('branch_id')->nullable()->constrained('branches');
             $table->string('name');
             $table->text('description')->nullable();
-            $table->unsignedBigInteger('branch_id')->nullable();
-            $table->tinyInteger('status')->default(1);
+            $table->tinyInteger('status')->default(\App\Enums\CommonStatus::Active);
             $table->timestamps();
         });
     }

@@ -13,9 +13,9 @@ return new class extends Migration
     {
         Schema::create('variation_values', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('variation_id')->constrained()->cascadeOnDelete();
+            $table->foreignId('variation_id')->constrained('variations')->cascadeOnDelete();
             $table->string('value');
-            $table->tinyInteger('status')->default(1);
+            $table->tinyInteger('status')->default(\App\Enums\CommonStatus::Active);
             $table->timestamps();
         });
     }

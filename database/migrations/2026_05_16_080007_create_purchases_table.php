@@ -10,23 +10,19 @@ return new class extends Migration
     {
         Schema::create('purchases', function (Blueprint $table) {
             $table->id();
-            $table->unsignedBigInteger('branch_id')->nullable();
-            $table->foreignId('supplier_id')->constrained()->restrictOnDelete();
+            $table->foreignId('branch_id')->nullable()->constrained('branches');
+            $table->foreignId('supplier_id')->nullable()->constrained('suppliers')->restrictOnDelete();
             $table->date('date');
             $table->decimal('gross_amount', 12, 2)->default(0);
             $table->decimal('discount', 12, 2)->default(0);
             $table->decimal('vat', 12, 2)->default(0);
             $table->decimal('paid_amount', 12, 2)->default(0);
             $table->decimal('due_amount', 12, 2)->default(0);
-            // 1=Purchase, 2=Damage, 5=Purchase_Return, 6=InitialStock
-            $table->tinyInteger('type')->default(1);
+            $table->tinyInteger('type')->default(\App\Enums\PurchaseType::Purchase->value);
+            $table->tinyInteger('payment_type')->default(\App\Enums\PurchaseReceivedPayment::Cash->value);
             $table->string('serial')->nullable();
             $table->text('comment')->nullable();
-            $table->unsignedBigInteger('parent_id')->nullable();
             $table->timestamps();
-
-            $table->foreign('branch_id')->references('id')->on('branches')->nullOnDelete();
-            $table->foreign('parent_id')->references('id')->on('purchases')->nullOnDelete();
         });
     }
 

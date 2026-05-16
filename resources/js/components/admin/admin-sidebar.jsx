@@ -1,69 +1,137 @@
 import { Link } from '@inertiajs/react';
 import {
+    BarChart2,
+    Building2,
     ChevronDown,
-    ClipboardList,
+    Globe,
     LayoutDashboard,
-    Package,
-    Settings,
-    ShoppingBag,
-    Tag,
-    Users,
-    Image,
-    Layers,
-    Palette,
-    Ruler,
-    BookOpen,
     LogOut,
+    Package,
+    PhoneCall,
+    Send,
+    Settings,
+    Shield,
+    ShoppingBag,
+    ShoppingCart,
+    Truck,
+    UserCog,
+    Users,
+    Wallet,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn } from '@/lib/utils';
-import { dashboard as adminDashboard } from '@/routes/admin';
+import { dashboard } from '@/routes';
 
-/** @type {import('./admin-sidebar').NavSection[]} */
+const mk = (title, href) => ({ title, href });
+
 const navSections = [
     {
-        title: 'ড্যাশবোর্ড',
+        title: 'Dashboard',
         icon: LayoutDashboard,
-        href: adminDashboard.url(),
+        href: dashboard.url(),
         single: true,
     },
     {
-        title: 'পণ্য ব্যবস্থাপনা',
+        title: 'Sales',
+        icon: ShoppingCart,
+        children: [
+            mk('Sale', '#'),
+            mk('Sale Return', '#'),
+            mk('Product Exchange', '#'),
+        ],
+    },
+    {
+        title: 'Purchases',
         icon: Package,
         children: [
-            { title: 'সব পণ্য', href: '/admin/products', icon: ShoppingBag },
-            { title: 'পণ্য যোগ করুন', href: '/admin/products/create', icon: Package },
-            { title: 'ক্যাটাগরি', href: '/admin/categories', icon: Layers },
-            { title: 'ব্র্যান্ড', href: '/admin/brands', icon: Tag },
-            { title: 'রঙ', href: '/admin/colors', icon: Palette },
-            { title: 'সাইজ', href: '/admin/sizes', icon: Ruler },
+            mk('Purchase', '#'),
+            mk('Purchase Return', '#'),
+            mk('Damage', '#'),
+            mk('Initial Stock', '#'),
         ],
     },
     {
-        title: 'অর্ডার',
-        icon: ClipboardList,
+        title: 'Suppliers',
+        icon: Truck,
         children: [
-            { title: 'সব অর্ডার', href: '/admin/orders', icon: ClipboardList },
+            mk('Supplier', '#'),
+            mk('Supplier Payment', '#'),
         ],
     },
     {
-        title: 'কাস্টমার',
+        title: 'Customers',
         icon: Users,
-        href: '/admin/customers',
-        single: true,
+        children: [
+            mk('Group', '#'),
+            mk('Customer', '#'),
+            mk('Due Collection', '#'),
+        ],
+    },
+    { title: 'Branch', icon: Building2, href: '#', single: true },
+    { title: 'User', icon: UserCog, href: '#', single: true },
+    { title: 'Online Order', icon: Globe, href: '#', single: true },
+    { title: 'Pathao', icon: Send, href: '#', single: true },
+    { title: 'Contact List', icon: PhoneCall, href: '#', single: true },
+    {
+        title: 'Products',
+        icon: ShoppingBag,
+        children: [
+            mk('All Products', '/admin/products'),
+            mk('Add Product', '/admin/products/create'),
+        ],
     },
     {
-        title: 'সাইট কনফিগ',
+        title: 'Settings',
         icon: Settings,
         children: [
-            { title: 'সাইট সেটিংস', href: '/admin/settings', icon: Settings },
-            { title: 'স্লাইডার', href: '/admin/sliders', icon: Image },
-            { title: 'কালেকশন ট্যাগ', href: '/admin/collections', icon: BookOpen },
-            { title: 'প্রোডাক্ট সেকশন', href: '/admin/product-sections', icon: Layers },
+            mk('Category', '#'),
+            mk('Brand', '#'),
+            mk('Unit', '#'),
+            mk('Size', '#'),
+            mk('Color', '#'),
+            mk('Tailor Measurement', '#'),
+            mk('Site Settings', '#'),
+            mk('Collection Category', '#'),
+            mk('Product Section', '#'),
+            mk('Slider', '#'),
+            mk('Warranty', '#'),
+            mk('Membership Card', '#'),
+            mk('Barcode', '#'),
+            mk('Adjust', '#'),
         ],
     },
+    {
+        title: 'Accounts',
+        icon: Wallet,
+        children: [
+            mk('Accounts', '#'),
+            mk('Chart of Accounts', '#'),
+            mk('Payment Methods', '#'),
+            mk('Parties', '#'),
+            mk('Expense', '#'),
+            mk('Income', '#'),
+        ],
+    },
+    {
+        title: 'Reports',
+        icon: BarChart2,
+        children: [
+            mk('Customer Ledger', '#'),
+            mk('Customer Wise Sale', '#'),
+            mk('Supplier Ledger', '#'),
+            mk('Product Stock Summary', '#'),
+            mk('Product Ledger', '#'),
+            mk('Cash Flow', '#'),
+            mk('Daily Cash Flow Summary', '#'),
+            mk('Daily Transactions', '#'),
+            mk('Date Wise Stock', '#'),
+            mk('Customer Due Collection', '#'),
+            mk('Daily Summary', '#'),
+        ],
+    },
+    { title: 'Access Management', icon: Shield, href: '/laratrust', single: true },
 ];
 
 const navSelectedClass =
@@ -79,6 +147,16 @@ function navLinkClass(active) {
     );
 }
 
+function childLinkClass(active) {
+    return cn(
+        'block border-l-2 py-1.5 pl-3 pr-2 text-[0.8rem] leading-snug tracking-tight transition-[border-color,color,font-weight]',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60',
+        active
+            ? 'border-indigo-500 font-semibold text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
+            : 'border-border/50 font-medium text-sidebar-foreground/75 hover:border-indigo-400/60 hover:text-sidebar-foreground',
+    );
+}
+
 export function AdminSidebar() {
     const { currentUrl, isCurrentUrl } = useCurrentUrl();
 
@@ -88,7 +166,9 @@ export function AdminSidebar() {
             .map((s) => s.title),
     );
     if (defaultOpen.size === 0) {
-        navSections.forEach((s) => { if (!s.single) { defaultOpen.add(s.title); } });
+        navSections.forEach((s) => {
+            if (!s.single) defaultOpen.add(s.title);
+        });
     }
 
     const [expanded, setExpanded] = useState(() => defaultOpen);
@@ -98,7 +178,7 @@ export function AdminSidebar() {
             const next = new Set(prev);
             let changed = false;
             for (const s of navSections) {
-                if (s.single) { continue; }
+                if (s.single) continue;
                 const hasActive = s.children?.some((c) => isCurrentUrl(c.href));
                 if (hasActive && !next.has(s.title)) {
                     next.add(s.title);
@@ -127,11 +207,14 @@ export function AdminSidebar() {
                 <p className="font-mono text-[0.65rem] font-medium uppercase tracking-[0.28em] text-muted-foreground">
                     Coolness Point
                 </p>
-                <p className="mt-1 font-semibold tracking-tight text-foreground">সুপার অ্যাডমিন</p>
+                <p className="mt-1 font-semibold tracking-tight text-foreground">Admin Panel</p>
             </div>
 
             {/* Navigation */}
-            <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3" aria-label="Admin navigation">
+            <nav
+                className="flex flex-1 flex-col gap-1 overflow-y-auto p-3"
+                aria-label="Admin navigation"
+            >
                 <ul className="flex flex-col gap-0.5">
                     {navSections.map((section) => {
                         const SectionIcon = section.icon;
@@ -147,7 +230,12 @@ export function AdminSidebar() {
                                         aria-current={active ? 'page' : undefined}
                                     >
                                         <SectionIcon
-                                            className={cn('size-4 shrink-0', active ? 'text-white' : 'text-muted-foreground group-hover:text-foreground')}
+                                            className={cn(
+                                                'size-4 shrink-0',
+                                                active
+                                                    ? 'text-white'
+                                                    : 'text-muted-foreground group-hover:text-foreground',
+                                            )}
                                             strokeWidth={active ? 2.25 : 2}
                                             aria-hidden
                                         />
@@ -175,7 +263,10 @@ export function AdminSidebar() {
                                     onClick={() => toggle(section.title)}
                                 >
                                     <SectionIcon
-                                        className={cn('size-4 shrink-0', sectionActive ? 'text-primary' : 'text-muted-foreground')}
+                                        className={cn(
+                                            'size-4 shrink-0',
+                                            sectionActive ? 'text-primary' : 'text-muted-foreground',
+                                        )}
                                         strokeWidth={2}
                                         aria-hidden
                                     />
@@ -192,28 +283,19 @@ export function AdminSidebar() {
 
                                 <ul
                                     id={submenuId}
-                                    className={cn('mt-0.5 ml-3 space-y-0.5 border-l-2 border-border pl-2', !isOpen && 'hidden')}
+                                    className={cn('mt-0.5 ml-6 space-y-px', !isOpen && 'hidden')}
                                 >
                                     {section.children?.map((child) => {
                                         const active = isCurrentUrl(child.href);
-                                        const ChildIcon = child.icon;
                                         return (
-                                            <li key={child.href}>
+                                            <li key={child.title}>
                                                 <Link
                                                     href={child.href}
                                                     prefetch
-                                                    className={navLinkClass(active)}
+                                                    className={childLinkClass(active)}
                                                     aria-current={active ? 'page' : undefined}
                                                 >
-                                                    <ChildIcon
-                                                        className={cn(
-                                                            'size-4 shrink-0',
-                                                            active ? 'text-white' : 'text-muted-foreground group-hover:text-foreground',
-                                                        )}
-                                                        strokeWidth={active ? 2.25 : 2}
-                                                        aria-hidden
-                                                    />
-                                                    <span className="min-w-0 truncate">{child.title}</span>
+                                                    {child.title}
                                                 </Link>
                                             </li>
                                         );
@@ -234,7 +316,7 @@ export function AdminSidebar() {
                     className="flex w-full items-center gap-2 border border-dashed border-sidebar-border px-3 py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:bg-sidebar-accent/40 hover:text-sidebar-foreground"
                 >
                     <LogOut className="size-3.5 shrink-0" aria-hidden />
-                    লগআউট
+                    Logout
                 </Link>
             </div>
         </aside>

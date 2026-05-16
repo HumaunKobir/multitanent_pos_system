@@ -10,15 +10,16 @@ return new class extends Migration
     {
         Schema::create('suppliers', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('branch_id')->nullable()->constrained('branches');
             $table->string('name');
             $table->string('phone');
             $table->string('company_name')->nullable();
             $table->text('address')->nullable();
-            $table->unsignedBigInteger('branch_id')->nullable();
+            $table->decimal('balance', 14, 2)->default(0);
+            $table->decimal('balance_in', 14, 2)->default(0);
+            $table->decimal('balance_out', 14, 2)->default(0);
             $table->tinyInteger('status')->default(1);
             $table->timestamps();
-
-            $table->foreign('branch_id')->references('id')->on('branches')->nullOnDelete();
         });
     }
 

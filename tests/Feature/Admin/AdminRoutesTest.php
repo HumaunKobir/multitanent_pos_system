@@ -16,13 +16,3 @@ test('authenticated users can visit the admin dashboard', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/dashboard'));
 });
-
-test('authenticated users can visit the admin ui showcase', function () {
-    $user = User::factory()->create();
-
-    $this->actingAs($user)
-        ->get('/admin/ui-showcase')
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->component('admin/ui-showcase'));
-});

@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\ConfigDictionary;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -40,8 +41,16 @@ class HandleInertiaRequests extends Middleware
             'name' => config('app.name'),
             'auth' => [
                 'user' => $request->user(),
+                'customer' => $request->user('customer'),
             ],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            'cart' => $request->session()->get('cart', []),
+            'siteName' => ConfigDictionary::get('website_name', config('app.name')),
+            'topNotice' => ConfigDictionary::get('topnotice1'),
+            'flash' => [
+                'success' => $request->session()->get('success'),
+                'error' => $request->session()->get('error'),
+            ],
         ];
     }
 }

@@ -64,7 +64,7 @@ return [
                 ['title' => 'Tailor Measurement', 'href' => '/setting/tailormeasurement'],
                 ['title' => 'Color', 'href' => '/setting/color'],
                 ['title' => 'Warranty', 'href' => '/setting/warranty'],
-                ['title' => 'Product'],
+                ['title' => 'Product', 'href' => '/product'],
                 ['title' => 'Barcode'],
                 ['title' => 'Product Section'],
                 ['title' => 'Slider'],

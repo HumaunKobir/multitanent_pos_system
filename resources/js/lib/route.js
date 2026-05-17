@@ -50,6 +50,14 @@ const routes = {
     'user.store': '/user',
     'user.update': '/user/:user',
     'user.destroy': '/user/:user',
+    'product.index': '/product',
+    'product.create': '/product/create',
+    'product.store': '/product',
+    'product.edit': '/product/:product/edit',
+    'product.update': '/product/:product',
+    'product.destroy': '/product/:product',
+    'variation.store': '/variation',
+    'variation.destroy': '/variation/:variation',
 };
 
 const methods = {
@@ -98,6 +106,11 @@ const methods = {
     'user.store': 'post',
     'user.update': 'patch',
     'user.destroy': 'delete',
+    'product.store': 'post',
+    'product.update': 'patch',
+    'product.destroy': 'delete',
+    'variation.store': 'post',
+    'variation.destroy': 'delete',
 };
 
 const aliases = {

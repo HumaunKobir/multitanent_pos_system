@@ -289,10 +289,13 @@ export default function ProductEdit({ product, categories, brands, units, warran
         description: product.description ?? '',
         bn_description: product.bn_description ?? '',
         delivery_info: product.delivery_info ?? '',
+        bn_delivery_info: product.bn_delivery_info ?? '',
         youtube_link: product.youtube_link ?? '',
         image: null,
+        chest_size_image: null,
         photos: [],
         _existing_image: product.image ?? null,
+        _existing_chest_image: product.chest_size_image ?? null,
     });
 
     function handleSubmit(e) {
@@ -330,16 +333,9 @@ export default function ProductEdit({ product, categories, brands, units, warran
                             tailors={tailors}
                             branches={branches}
                             isEditing
+                            processing={form.processing}
+                            cancelHref={route('product.index')}
                         />
-
-                        <div className="mt-6 flex justify-end gap-3">
-                            <Button variant="outline" type="button" asChild>
-                                <Link href={route('product.index')}>Cancel</Link>
-                            </Button>
-                            <Button type="submit" disabled={form.processing}>
-                                {form.processing ? 'Saving...' : 'Update Product'}
-                            </Button>
-                        </div>
                     </form>
 
                     <PhotosSection product={product} />

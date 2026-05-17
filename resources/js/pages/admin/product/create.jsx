@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { route } from '@/lib/route';
 import ProductForm from './partials/product-form';
 
-export default function ProductCreate({ categories, brands, units, warranties, colors, sizes, tailors, branches }) {
+export default function ProductCreate({ categories, brands, units, warranties, colors, sizes, tailors, branches, variationNames = [] }) {
     const form = useForm({
         branch_id: null,
         category_id: '',
@@ -28,9 +28,12 @@ export default function ProductCreate({ categories, brands, units, warranties, c
         description: '',
         bn_description: '',
         delivery_info: '',
+        bn_delivery_info: '',
         youtube_link: '',
         image: null,
+        chest_size_image: null,
         photos: [],
+        combinations: [],
     });
 
     function handleSubmit(e) {
@@ -63,16 +66,10 @@ export default function ProductCreate({ categories, brands, units, warranties, c
                         sizes={sizes}
                         tailors={tailors}
                         branches={branches}
+                        variationNames={variationNames}
+                        processing={form.processing}
+                        cancelHref={route('product.index')}
                     />
-
-                    <div className="mt-6 flex justify-end gap-3">
-                        <Button variant="outline" type="button" asChild>
-                            <Link href={route('product.index')}>Cancel</Link>
-                        </Button>
-                        <Button type="submit" disabled={form.processing}>
-                            {form.processing ? 'Saving...' : 'Save Product'}
-                        </Button>
-                    </div>
                 </form>
             </div>
         </>

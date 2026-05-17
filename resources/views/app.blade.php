@@ -36,6 +36,8 @@
 
         @fonts
 
+        <script src="//cdn.ckeditor.com/4.16.2/standard/ckeditor.js"></script>
+        <script>window.CKEDITOR_SUPPRESS_VERSION_NOTIFICATION = true;</script>
         @viteReactRefresh
         @vite(['resources/css/app.css', 'resources/js/app.jsx', "resources/js/pages/{$page['component']}.jsx"])
         <x-inertia::head>

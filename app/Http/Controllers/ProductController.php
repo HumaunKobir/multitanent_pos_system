@@ -8,9 +8,11 @@ use App\Models\Category;
 use App\Models\Color;
 use App\Models\Product;
 use App\Models\ProductPhoto;
+use App\Models\ProductVariation;
 use App\Models\Size;
 use App\Models\Tailormeasurement;
 use App\Models\Unit;
+use App\Models\Variation;
 use App\Models\Warranty;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -50,6 +52,8 @@ class ProductController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $hasVariations = ! empty($request->input('combinations'));
+
         $data = $request->validate([
             'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')],
             'category_id' => ['required', Rule::exists('categories', 'id')],
@@ -57,9 +61,9 @@ class ProductController extends Controller
             'unit_id' => ['required', Rule::exists('units', 'id')],
             'warranty_id' => ['nullable', Rule::exists('warranties', 'id')],
             'name' => ['required', 'string', 'max:255', 'unique:products,name'],
-            'code' => ['required', 'string', 'max:100', 'unique:products,code'],
-            'purchase_price' => ['required', 'numeric', 'min:0'],
-            'sale_price' => ['required', 'numeric', 'min:0'],
+            'code' => $hasVariations ? ['nullable', 'string', 'max:100'] : ['required', 'string', 'max:100', 'unique:products,code'],
+            'purchase_price' => $hasVariations ? ['nullable', 'numeric', 'min:0'] : ['required', 'numeric', 'min:0'],
+            'sale_price' => $hasVariations ? ['nullable', 'numeric', 'min:0'] : ['required', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric'],
             'type' => ['required', 'in:stitch,notstitch'],
             'tailor_option' => ['required', 'in:yes,no'],
@@ -73,15 +77,30 @@ class ProductController extends Controller
             'description' => ['nullable', 'string'],
             'bn_description' => ['nullable', 'string'],
             'delivery_info' => ['nullable', 'string'],
+            'bn_delivery_info' => ['nullable', 'string'],
             'youtube_link' => ['nullable', 'string', 'max:255'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
+            'chest_size_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
             'photos' => ['nullable', 'array'],
             'photos.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
+            'combinations' => ['nullable', 'array'],
+            'combinations.*.variant' => ['required_with:combinations.*', 'string', 'max:255'],
+            'combinations.*.sale_price' => ['required_with:combinations.*', 'numeric', 'min:0'],
+            'combinations.*.purchase_price' => ['required_with:combinations.*', 'numeric', 'min:0'],
+            'combinations.*.sku' => ['required_with:combinations.*', 'string', 'max:255'],
+            'combinations.*.stock' => ['required_with:combinations.*', 'integer', 'min:0'],
         ]);
 
-        DB::transaction(function () use ($request, $data) {
+        $combinations = $data['combinations'] ?? [];
+        unset($data['combinations']);
+
+        DB::transaction(function () use ($request, $data, $combinations) {
             if ($request->hasFile('image')) {
                 $data['image'] = $request->file('image')->store('products', 'public');
+            }
+
+            if ($request->hasFile('chest_size_image')) {
+                $data['chest_size_image'] = $request->file('chest_size_image')->store('products', 'public');
             }
 
             $data['visible'] = $data['visible'] ?? 'yes';
@@ -96,6 +115,18 @@ class ProductController extends Controller
                     $path = $photo->store('products/photos', 'public');
                     ProductPhoto::create(['product_id' => $product->id, 'image' => $path]);
                 }
+            }
+
+            foreach ($combinations as $combo) {
+                ProductVariation::create([
+                    'product_id' => $product->id,
+                    'branch_id' => $product->branch_id,
+                    'sku' => $combo['sku'],
+                    'price' => $combo['sale_price'],
+                    'purchase_price' => $combo['purchase_price'],
+                    'stock' => (int) $combo['stock'],
+                    'variation_data' => ['label' => $combo['variant']],
+                ]);
             }
         });
 
@@ -138,8 +169,10 @@ class ProductController extends Controller
             'description' => ['nullable', 'string'],
             'bn_description' => ['nullable', 'string'],
             'delivery_info' => ['nullable', 'string'],
+            'bn_delivery_info' => ['nullable', 'string'],
             'youtube_link' => ['nullable', 'string', 'max:255'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
+            'chest_size_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
             'photos' => ['nullable', 'array'],
             'photos.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
         ]);
@@ -152,6 +185,15 @@ class ProductController extends Controller
                 $data['image'] = $request->file('image')->store('products', 'public');
             } else {
                 unset($data['image']);
+            }
+
+            if ($request->hasFile('chest_size_image')) {
+                if ($product->chest_size_image) {
+                    Storage::disk('public')->delete($product->chest_size_image);
+                }
+                $data['chest_size_image'] = $request->file('chest_size_image')->store('products', 'public');
+            } else {
+                unset($data['chest_size_image']);
             }
 
             $data['visible'] = $data['visible'] ?? 'yes';
@@ -183,6 +225,10 @@ class ProductController extends Controller
             Storage::disk('public')->delete($product->image);
         }
 
+        if ($product->chest_size_image) {
+            Storage::disk('public')->delete($product->chest_size_image);
+        }
+
         $product->delete();
 
         return redirect()->route('product.index')
@@ -201,6 +247,7 @@ class ProductController extends Controller
             'sizes' => Size::active()->pluck('name', 'id'),
             'tailors' => Tailormeasurement::active()->pluck('name', 'id'),
             'branches' => Branch::active()->orderBy('name')->pluck('name', 'id'),
+            'variationNames' => Variation::where('status', 1)->pluck('name'),
         ];
     }
 }

@@ -1,6 +1,6 @@
 import { PanelSidebar } from '@/components/admin/panel-sidebar';
 
-export default function AdminLayout({ children }) {
+export default function BranchLayout({ children }) {
     return (
         <div className="flex min-h-screen w-full bg-background">
             <PanelSidebar />

@@ -2,20 +2,20 @@
 
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\Setting\BrandController;
-use App\Http\Controllers\UserController;
 use App\Http\Controllers\Setting\CategoryController;
 use App\Http\Controllers\Setting\ColorController;
 use App\Http\Controllers\Setting\SizeController;
 use App\Http\Controllers\Setting\TailorMeasurementController;
 use App\Http\Controllers\Setting\UnitController;
 use App\Http\Controllers\Setting\WarrantyController;
+use App\Http\Controllers\UserController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(function () {
+Route::middleware(['auth', 'verified', 'superadmin'])->prefix('admin')->name('admin.')->group(function () {
     Route::inertia('/', 'admin/dashboard')->name('dashboard');
 });
 
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', 'superadmin'])->group(function () {
     Route::resource('branch', BranchController::class)->except(['create', 'edit', 'show']);
     Route::resource('user', UserController::class)->except(['create', 'edit', 'show']);
 });

@@ -1,5 +1,7 @@
 <?php
 
+use App\Http\Middleware\EnsureBranchUser;
+use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
 use Illuminate\Auth\AuthenticationException;
@@ -21,9 +23,17 @@ return Application::configure(basePath: dirname(__DIR__))
 
             Route::middleware('web')
                 ->group(base_path('routes/admin.php'));
+
+            Route::middleware('web')
+                ->group(base_path('routes/branch-panel.php'));
         },
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->alias([
+            'superadmin' => EnsureSuperAdmin::class,
+            'branch.user' => EnsureBranchUser::class,
+        ]);
+
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
 
         $middleware->web(append: [

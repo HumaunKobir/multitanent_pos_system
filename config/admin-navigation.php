@@ -19,7 +19,7 @@ return [
         [
             'title' => 'Dashboard',
             'icon' => 'layout-dashboard',
-            'href' => '/dashboard',
+            'href' => '/admin',
             'single' => true,
         ],
         [
@@ -27,12 +27,14 @@ return [
             'icon' => 'building-2',
             'href' => '/branch',
             'single' => true,
+            'admin_only' => true,
         ],
         [
             'title' => 'User',
             'icon' => 'user-cog',
             'href' => '/user',
             'single' => true,
+            'admin_only' => true,
         ],
         [
             'title' => 'Online Order',
@@ -48,6 +50,7 @@ return [
             'title' => 'Contact List',
             'icon' => 'phone-call',
             'single' => true,
+            'admin_only' => true,
         ],
         [
             'title' => 'Settings',

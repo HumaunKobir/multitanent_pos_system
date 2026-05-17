@@ -47,6 +47,7 @@ class HandleInertiaRequests extends Middleware
             'adminNavigation' => $request->user()
                 ? app(AdminNavigation::class)->build($request->user())
                 : [],
+            'panelType' => $request->user()?->isBranchUser() ? 'branch' : 'admin',
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'cart' => $request->session()->get('cart', []),
             'siteName' => ConfigDictionary::get('website_name', config('app.name')),

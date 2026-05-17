@@ -20,7 +20,11 @@ class AdminNavigation
         $sections = [];
 
         foreach (config('admin-navigation.sections', []) as $section) {
-            $sections[] = $this->formatSection($section);
+            if ($user->isBranchUser() && ($section['admin_only'] ?? false)) {
+                continue;
+            }
+
+            $sections[] = $this->formatSection($section, $user);
         }
 
         return $sections;
@@ -30,7 +34,7 @@ class AdminNavigation
      * @param  array<string, mixed>  $section
      * @return array<string, mixed>
      */
-    protected function formatSection(array $section): array
+    protected function formatSection(array $section, User $user): array
     {
         if (isset($section['children'])) {
             return [
@@ -50,8 +54,19 @@ class AdminNavigation
         return [
             'title' => $section['title'],
             'icon' => $section['icon'],
-            'href' => $section['href'] ?? null,
+            'href' => $this->resolveHref($section, $user),
             'single' => (bool) ($section['single'] ?? false),
         ];
+    }
+
+    protected function resolveHref(array $section, User $user): ?string
+    {
+        if ($section['title'] === 'Dashboard') {
+            return $user->isBranchUser()
+                ? '/branch-panel'
+                : '/admin';
+        }
+
+        return $section['href'] ?? null;
     }
 }

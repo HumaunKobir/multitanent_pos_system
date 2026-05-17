@@ -29,6 +29,16 @@ class User extends Authenticatable
         ];
     }
 
+    public function isSuperAdmin(): bool
+    {
+        return $this->branch_id === null;
+    }
+
+    public function isBranchUser(): bool
+    {
+        return $this->branch_id !== null;
+    }
+
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);

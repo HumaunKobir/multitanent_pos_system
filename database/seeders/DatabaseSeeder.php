@@ -2,7 +2,8 @@
 
 namespace Database\Seeders;
 
-use App\Models\ConfigDictionary;
+use App\Enums\CommonStatus;
+use App\Models\Branch;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 
@@ -10,21 +11,29 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
-        User::factory()->create([
+        User::query()->create([
             'name' => 'Super Admin',
             'email' => 'superadmin@coolness.com',
+            'phone' => '01700000001',
             'password' => bcrypt('123456789'),
+            'branch_id' => null,
+            'status' => 1,
         ]);
 
-        // Site settings
-        ConfigDictionary::setMany([
-            'website_name' => 'Coolness Point',
-            'phone' => '01XXXXXXXXX',
-            'email' => 'info@coolnesspoint.com',
+        $branch = Branch::query()->create([
+            'name' => 'Main Branch',
+            'phone' => '01700000000',
             'address' => 'ঢাকা, বাংলাদেশ',
-            'topnotice1' => 'বিনামূল্যে ডেলিভারি ৳১৫০০+ অর্ডারে!',
-            'about_us' => '<p>Coolness Point একটি প্রিমিয়াম ফ্যাশন ব্র্যান্ড।</p>',
+            'status' => CommonStatus::Active,
         ]);
 
+        User::query()->create([
+            'name' => 'Branch Admin',
+            'email' => 'branchadmin@coolness.com',
+            'phone' => '01700000002',
+            'password' => bcrypt('123456789'),
+            'branch_id' => $branch->id,
+            'status' => 1,
+        ]);
     }
 }

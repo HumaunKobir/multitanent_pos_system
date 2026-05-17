@@ -25,11 +25,13 @@ return [
         [
             'title' => 'Branch',
             'icon' => 'building-2',
+            'href' => '/branch',
             'single' => true,
         ],
         [
             'title' => 'User',
             'icon' => 'user-cog',
+            'href' => '/user',
             'single' => true,
         ],
         [

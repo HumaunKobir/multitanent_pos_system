@@ -41,6 +41,14 @@ const routes = {
     'setting.warranty.store': '/setting/warranty',
     'setting.warranty.update': '/setting/warranty/:warranty',
     'setting.warranty.destroy': '/setting/warranty/:warranty',
+    'branch.index': '/branch',
+    'branch.store': '/branch',
+    'branch.update': '/branch/:branch',
+    'branch.destroy': '/branch/:branch',
+    'user.index': '/user',
+    'user.store': '/user',
+    'user.update': '/user/:user',
+    'user.destroy': '/user/:user',
 };
 
 const methods = {
@@ -83,6 +91,12 @@ const methods = {
     'setting.warranty.store': 'post',
     'setting.warranty.update': 'patch',
     'setting.warranty.destroy': 'delete',
+    'branch.store': 'post',
+    'branch.update': 'patch',
+    'branch.destroy': 'delete',
+    'user.store': 'post',
+    'user.update': 'patch',
+    'user.destroy': 'delete',
 };
 
 const aliases = {
@@ -169,6 +183,17 @@ export function routeRequest(name, params) {
 
 export function settingRoutes(resource) {
     const prefix = `setting.${resource}`;
+
+    return {
+        index: (query) => route(`${prefix}.index`, query ? { query } : undefined),
+        store: route(`${prefix}.store`),
+        update: (id) => route(`${prefix}.update`, { [resource]: id }),
+        destroy: (id) => route(`${prefix}.destroy`, { [resource]: id }),
+    };
+}
+
+export function resourceRoutes(resource) {
+    const prefix = resource;
 
     return {
         index: (query) => route(`${prefix}.index`, query ? { query } : undefined),

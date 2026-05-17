@@ -22,9 +22,11 @@ import { useEffect, useState } from 'react';
 
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn } from '@/lib/utils';
-import { dashboard } from '@/routes';
+import { dashboard } from '@/routes/admin';
+import { logout } from '@/routes';
 
 const mk = (title, href) => ({ title, href });
+const mkPlaceholder = (title) => ({ title, href: null });
 
 const navSections = [
     {
@@ -37,43 +39,43 @@ const navSections = [
         title: 'Sales',
         icon: ShoppingCart,
         children: [
-            mk('Sale', '#'),
-            mk('Sale Return', '#'),
-            mk('Product Exchange', '#'),
+            mkPlaceholder('Sale'),
+            mkPlaceholder('Sale Return'),
+            mkPlaceholder('Product Exchange'),
         ],
     },
     {
         title: 'Purchases',
         icon: Package,
         children: [
-            mk('Purchase', '#'),
-            mk('Purchase Return', '#'),
-            mk('Damage', '#'),
-            mk('Initial Stock', '#'),
+            mkPlaceholder('Purchase'),
+            mkPlaceholder('Purchase Return'),
+            mkPlaceholder('Damage'),
+            mkPlaceholder('Initial Stock'),
         ],
     },
     {
         title: 'Suppliers',
         icon: Truck,
         children: [
-            mk('Supplier', '#'),
-            mk('Supplier Payment', '#'),
+            mkPlaceholder('Supplier'),
+            mkPlaceholder('Supplier Payment'),
         ],
     },
     {
         title: 'Customers',
         icon: Users,
         children: [
-            mk('Group', '#'),
-            mk('Customer', '#'),
-            mk('Due Collection', '#'),
+            mkPlaceholder('Group'),
+            mkPlaceholder('Customer'),
+            mkPlaceholder('Due Collection'),
         ],
     },
-    { title: 'Branch', icon: Building2, href: '#', single: true },
-    { title: 'User', icon: UserCog, href: '#', single: true },
-    { title: 'Online Order', icon: Globe, href: '#', single: true },
-    { title: 'Pathao', icon: Send, href: '#', single: true },
-    { title: 'Contact List', icon: PhoneCall, href: '#', single: true },
+    { title: 'Branch', icon: Building2, href: null, single: true },
+    { title: 'User', icon: UserCog, href: null, single: true },
+    { title: 'Online Order', icon: Globe, href: null, single: true },
+    { title: 'Pathao', icon: Send, href: null, single: true },
+    { title: 'Contact List', icon: PhoneCall, href: null, single: true },
     {
         title: 'Products',
         icon: ShoppingBag,
@@ -86,49 +88,49 @@ const navSections = [
         title: 'Settings',
         icon: Settings,
         children: [
-            mk('Category', '#'),
-            mk('Brand', '#'),
-            mk('Unit', '#'),
-            mk('Size', '#'),
-            mk('Color', '#'),
-            mk('Tailor Measurement', '#'),
-            mk('Site Settings', '#'),
-            mk('Collection Category', '#'),
-            mk('Product Section', '#'),
-            mk('Slider', '#'),
-            mk('Warranty', '#'),
-            mk('Membership Card', '#'),
-            mk('Barcode', '#'),
-            mk('Adjust', '#'),
+            mkPlaceholder('Category'),
+            mkPlaceholder('Brand'),
+            mkPlaceholder('Unit'),
+            mkPlaceholder('Size'),
+            mkPlaceholder('Color'),
+            mkPlaceholder('Tailor Measurement'),
+            mkPlaceholder('Site Settings'),
+            mkPlaceholder('Collection Category'),
+            mkPlaceholder('Product Section'),
+            mkPlaceholder('Slider'),
+            mkPlaceholder('Warranty'),
+            mkPlaceholder('Membership Card'),
+            mkPlaceholder('Barcode'),
+            mkPlaceholder('Adjust'),
         ],
     },
     {
         title: 'Accounts',
         icon: Wallet,
         children: [
-            mk('Accounts', '#'),
-            mk('Chart of Accounts', '#'),
-            mk('Payment Methods', '#'),
-            mk('Parties', '#'),
-            mk('Expense', '#'),
-            mk('Income', '#'),
+            mkPlaceholder('Accounts'),
+            mkPlaceholder('Chart of Accounts'),
+            mkPlaceholder('Payment Methods'),
+            mkPlaceholder('Parties'),
+            mkPlaceholder('Expense'),
+            mkPlaceholder('Income'),
         ],
     },
     {
         title: 'Reports',
         icon: BarChart2,
         children: [
-            mk('Customer Ledger', '#'),
-            mk('Customer Wise Sale', '#'),
-            mk('Supplier Ledger', '#'),
-            mk('Product Stock Summary', '#'),
-            mk('Product Ledger', '#'),
-            mk('Cash Flow', '#'),
-            mk('Daily Cash Flow Summary', '#'),
-            mk('Daily Transactions', '#'),
-            mk('Date Wise Stock', '#'),
-            mk('Customer Due Collection', '#'),
-            mk('Daily Summary', '#'),
+            mkPlaceholder('Customer Ledger'),
+            mkPlaceholder('Customer Wise Sale'),
+            mkPlaceholder('Supplier Ledger'),
+            mkPlaceholder('Product Stock Summary'),
+            mkPlaceholder('Product Ledger'),
+            mkPlaceholder('Cash Flow'),
+            mkPlaceholder('Daily Cash Flow Summary'),
+            mkPlaceholder('Daily Transactions'),
+            mkPlaceholder('Date Wise Stock'),
+            mkPlaceholder('Customer Due Collection'),
+            mkPlaceholder('Daily Summary'),
         ],
     },
     { title: 'Access Management', icon: Shield, href: '/laratrust', single: true },
@@ -147,31 +149,54 @@ function navLinkClass(active) {
     );
 }
 
-function childLinkClass(active) {
+function childLinkClass(active, disabled = false) {
     return cn(
         'block border-l-2 py-1.5 pl-3 pr-2 text-[0.8rem] leading-snug tracking-tight transition-[border-color,color,font-weight]',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60',
-        active
-            ? 'border-indigo-500 font-semibold text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
-            : 'border-border/50 font-medium text-sidebar-foreground/75 hover:border-indigo-400/60 hover:text-sidebar-foreground',
+        disabled
+            ? 'cursor-not-allowed border-border/40 font-medium text-sidebar-foreground/45'
+            : active
+              ? 'border-indigo-500 font-semibold text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
+              : 'border-border/50 font-medium text-sidebar-foreground/75 hover:border-indigo-400/60 hover:text-sidebar-foreground',
+    );
+}
+
+function NavItem({ href, className, children, active }) {
+    if (!href) {
+        return (
+            <span className={className} aria-disabled="true">
+                {children}
+            </span>
+        );
+    }
+
+    return (
+        <Link href={href} prefetch className={className} aria-current={active ? 'page' : undefined}>
+            {children}
+        </Link>
     );
 }
 
 export function AdminSidebar() {
     const { currentUrl, isCurrentUrl } = useCurrentUrl();
 
-    const defaultOpen = new Set(
-        navSections
-            .filter((s) => !s.single && s.children?.some((c) => isCurrentUrl(c.href)))
-            .map((s) => s.title),
-    );
-    if (defaultOpen.size === 0) {
-        navSections.forEach((s) => {
-            if (!s.single) defaultOpen.add(s.title);
-        });
-    }
+    const [expanded, setExpanded] = useState(() => {
+        const open = new Set(
+            navSections
+                .filter((s) => !s.single && s.children?.some((c) => c.href && isCurrentUrl(c.href)))
+                .map((s) => s.title),
+        );
 
-    const [expanded, setExpanded] = useState(() => defaultOpen);
+        if (open.size === 0) {
+            navSections.forEach((s) => {
+                if (!s.single) {
+                    open.add(s.title);
+                }
+            });
+        }
+
+        return open;
+    });
 
     useEffect(() => {
         setExpanded((prev) => {
@@ -179,7 +204,7 @@ export function AdminSidebar() {
             let changed = false;
             for (const s of navSections) {
                 if (s.single) continue;
-                const hasActive = s.children?.some((c) => isCurrentUrl(c.href));
+                const hasActive = s.children?.some((c) => c.href && isCurrentUrl(c.href));
                 if (hasActive && !next.has(s.title)) {
                     next.add(s.title);
                     changed = true;
@@ -220,15 +245,10 @@ export function AdminSidebar() {
                         const SectionIcon = section.icon;
 
                         if (section.single) {
-                            const active = isCurrentUrl(section.href);
+                            const active = section.href ? isCurrentUrl(section.href) : false;
                             return (
                                 <li key={section.title}>
-                                    <Link
-                                        href={section.href}
-                                        prefetch
-                                        className={navLinkClass(active)}
-                                        aria-current={active ? 'page' : undefined}
-                                    >
+                                    <NavItem href={section.href} className={navLinkClass(active)} active={active}>
                                         <SectionIcon
                                             className={cn(
                                                 'size-4 shrink-0',
@@ -240,13 +260,13 @@ export function AdminSidebar() {
                                             aria-hidden
                                         />
                                         <span className="min-w-0 truncate">{section.title}</span>
-                                    </Link>
+                                    </NavItem>
                                 </li>
                             );
                         }
 
                         const isOpen = expanded.has(section.title);
-                        const sectionActive = section.children?.some((c) => isCurrentUrl(c.href));
+                        const sectionActive = section.children?.some((c) => c.href && isCurrentUrl(c.href));
                         const submenuId = `admin-submenu-${section.title.replace(/\s+/g, '-')}`;
 
                         return (
@@ -286,17 +306,17 @@ export function AdminSidebar() {
                                     className={cn('mt-0.5 ml-6 space-y-px', !isOpen && 'hidden')}
                                 >
                                     {section.children?.map((child) => {
-                                        const active = isCurrentUrl(child.href);
+                                        const active = child.href ? isCurrentUrl(child.href) : false;
+                                        const disabled = !child.href;
                                         return (
                                             <li key={child.title}>
-                                                <Link
+                                                <NavItem
                                                     href={child.href}
-                                                    prefetch
-                                                    className={childLinkClass(active)}
-                                                    aria-current={active ? 'page' : undefined}
+                                                    className={childLinkClass(active, disabled)}
+                                                    active={active}
                                                 >
                                                     {child.title}
-                                                </Link>
+                                                </NavItem>
                                             </li>
                                         );
                                     })}
@@ -310,7 +330,7 @@ export function AdminSidebar() {
             {/* Footer */}
             <div className="border-t border-sidebar-border p-3">
                 <Link
-                    href="/logout"
+                    href={logout.url()}
                     method="post"
                     as="button"
                     className="flex w-full items-center gap-2 border border-dashed border-sidebar-border px-3 py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:bg-sidebar-accent/40 hover:text-sidebar-foreground"

@@ -1,48 +1,5 @@
 <?php
 
-use App\Http\Controllers\Admin\Account\AccountController;
-use App\Http\Controllers\Admin\Account\ChartOfAccountController;
-use App\Http\Controllers\Admin\Account\ExpenseController;
-use App\Http\Controllers\Admin\Account\IncomeController;
-use App\Http\Controllers\Admin\Account\PartiesController;
-use App\Http\Controllers\Admin\Account\PaymentMethodController;
-use App\Http\Controllers\Admin\AdjustController;
-use App\Http\Controllers\Admin\BarcodeController;
-use App\Http\Controllers\Admin\BranchController;
-use App\Http\Controllers\Admin\BrandController;
-use App\Http\Controllers\Admin\CategoryController;
-use App\Http\Controllers\Admin\CollectioncategoryController;
-use App\Http\Controllers\Admin\ColorController;
-use App\Http\Controllers\Admin\ContactListController;
-use App\Http\Controllers\Admin\CustomerController;
-use App\Http\Controllers\Admin\DueCollectionController;
-use App\Http\Controllers\Admin\GroupController;
-use App\Http\Controllers\Admin\Inventory\DamageController;
-use App\Http\Controllers\Admin\Inventory\InitialStockController;
-use App\Http\Controllers\Admin\Inventory\ProductController;
-use App\Http\Controllers\Admin\Inventory\ProductExchangeController;
-use App\Http\Controllers\Admin\Inventory\PurchaseController;
-use App\Http\Controllers\Admin\Inventory\PurchaseReturnController;
-use App\Http\Controllers\Admin\Inventory\SaleReturnController;
-use App\Http\Controllers\Admin\Inventory\SellController;
-use App\Http\Controllers\Admin\Inventory\SupplierController;
-use App\Http\Controllers\Admin\MemberShipCardController;
-use App\Http\Controllers\Admin\OnlineOrderController;
-use App\Http\Controllers\Admin\PaymentController;
-use App\Http\Controllers\Admin\ProductSectionController;
-use App\Http\Controllers\Admin\Report\ReportController;
-use App\Http\Controllers\Admin\SitesettingController;
-use App\Http\Controllers\Admin\SizeController;
-use App\Http\Controllers\Admin\SliderController;
-use App\Http\Controllers\Admin\TailormeasurementController;
-use App\Http\Controllers\Admin\UnitController;
-use App\Http\Controllers\Admin\UserController;
-use App\Http\Controllers\Admin\VariationController;
-use App\Http\Controllers\Admin\WarrantyController;
-use App\Http\Controllers\Api\BranchController as ApiBranchController;
-use App\Http\Controllers\Api\CustomerController as ApiCustomerController;
-use App\Http\Controllers\Api\ProductController as ApiProductController;
-use App\Http\Controllers\Api\SupplierController as ApiSupplierController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\Customer\Auth\CustomerLoginController;
@@ -96,4 +53,8 @@ Route::prefix('customer')->name('customer.')->group(function () {
         Route::get('orders', [CustomerDashboardController::class, 'orders'])->name('orders');
         Route::get('orders/{id}', [CustomerDashboardController::class, 'orderDetails'])->name('order.details');
     });
+});
+
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::inertia('dashboard', 'dashboard')->name('dashboard');
 });

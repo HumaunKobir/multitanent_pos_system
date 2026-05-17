@@ -1,7 +1,6 @@
 import { Link, usePage } from '@inertiajs/react';
 import { ShoppingCart, Search, User, Menu, X, ChevronDown } from 'lucide-react';
 import { useState } from 'react';
-import { route } from '@/wayfinder';
 
 export default function FrontendLayout({ children }) {
     const { cart = {}, auth } = usePage().props;

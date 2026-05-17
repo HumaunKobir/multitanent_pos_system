@@ -56,5 +56,5 @@ Route::prefix('customer')->name('customer.')->group(function () {
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::inertia('dashboard', 'dashboard')->name('dashboard');
+    Route::inertia('dashboard', 'admin/dashboard')->name('dashboard');
 });

@@ -14,5 +14,6 @@ test('authenticated users can visit the admin dashboard', function () {
         ->get('/admin')
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->component('admin/dashboard'));
+            ->component('admin/dashboard')
+            ->has('adminNavigation'));
 });

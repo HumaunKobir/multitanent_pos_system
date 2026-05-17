@@ -1,4 +1,4 @@
-import { Link } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import {
     BarChart2,
     Building2,
@@ -11,9 +11,7 @@ import {
     Send,
     Settings,
     Shield,
-    ShoppingBag,
     ShoppingCart,
-    Truck,
     UserCog,
     Users,
     Wallet,
@@ -22,119 +20,23 @@ import { useEffect, useState } from 'react';
 
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn } from '@/lib/utils';
-import { dashboard } from '@/routes/admin';
 import { logout } from '@/routes';
 
-const mk = (title, href) => ({ title, href });
-const mkPlaceholder = (title) => ({ title, href: null });
-
-const navSections = [
-    {
-        title: 'Dashboard',
-        icon: LayoutDashboard,
-        href: dashboard.url(),
-        single: true,
-    },
-    {
-        title: 'Sales',
-        icon: ShoppingCart,
-        children: [
-            mkPlaceholder('Sale'),
-            mkPlaceholder('Sale Return'),
-            mkPlaceholder('Product Exchange'),
-        ],
-    },
-    {
-        title: 'Purchases',
-        icon: Package,
-        children: [
-            mkPlaceholder('Purchase'),
-            mkPlaceholder('Purchase Return'),
-            mkPlaceholder('Damage'),
-            mkPlaceholder('Initial Stock'),
-        ],
-    },
-    {
-        title: 'Suppliers',
-        icon: Truck,
-        children: [
-            mkPlaceholder('Supplier'),
-            mkPlaceholder('Supplier Payment'),
-        ],
-    },
-    {
-        title: 'Customers',
-        icon: Users,
-        children: [
-            mkPlaceholder('Group'),
-            mkPlaceholder('Customer'),
-            mkPlaceholder('Due Collection'),
-        ],
-    },
-    { title: 'Branch', icon: Building2, href: null, single: true },
-    { title: 'User', icon: UserCog, href: null, single: true },
-    { title: 'Online Order', icon: Globe, href: null, single: true },
-    { title: 'Pathao', icon: Send, href: null, single: true },
-    { title: 'Contact List', icon: PhoneCall, href: null, single: true },
-    {
-        title: 'Products',
-        icon: ShoppingBag,
-        children: [
-            mk('All Products', '/admin/products'),
-            mk('Add Product', '/admin/products/create'),
-        ],
-    },
-    {
-        title: 'Settings',
-        icon: Settings,
-        children: [
-            mkPlaceholder('Category'),
-            mkPlaceholder('Brand'),
-            mkPlaceholder('Unit'),
-            mkPlaceholder('Size'),
-            mkPlaceholder('Color'),
-            mkPlaceholder('Tailor Measurement'),
-            mkPlaceholder('Site Settings'),
-            mkPlaceholder('Collection Category'),
-            mkPlaceholder('Product Section'),
-            mkPlaceholder('Slider'),
-            mkPlaceholder('Warranty'),
-            mkPlaceholder('Membership Card'),
-            mkPlaceholder('Barcode'),
-            mkPlaceholder('Adjust'),
-        ],
-    },
-    {
-        title: 'Accounts',
-        icon: Wallet,
-        children: [
-            mkPlaceholder('Accounts'),
-            mkPlaceholder('Chart of Accounts'),
-            mkPlaceholder('Payment Methods'),
-            mkPlaceholder('Parties'),
-            mkPlaceholder('Expense'),
-            mkPlaceholder('Income'),
-        ],
-    },
-    {
-        title: 'Reports',
-        icon: BarChart2,
-        children: [
-            mkPlaceholder('Customer Ledger'),
-            mkPlaceholder('Customer Wise Sale'),
-            mkPlaceholder('Supplier Ledger'),
-            mkPlaceholder('Product Stock Summary'),
-            mkPlaceholder('Product Ledger'),
-            mkPlaceholder('Cash Flow'),
-            mkPlaceholder('Daily Cash Flow Summary'),
-            mkPlaceholder('Daily Transactions'),
-            mkPlaceholder('Date Wise Stock'),
-            mkPlaceholder('Customer Due Collection'),
-            mkPlaceholder('Daily Summary'),
-        ],
-    },
-    { title: 'Access Management', icon: Shield, href: '/laratrust', single: true },
-];
+const iconMap = {
+    'layout-dashboard': LayoutDashboard,
+    'shopping-cart': ShoppingCart,
+    package: Package,
+    users: Users,
+    'building-2': Building2,
+    'user-cog': UserCog,
+    globe: Globe,
+    send: Send,
+    'phone-call': PhoneCall,
+    settings: Settings,
+    wallet: Wallet,
+    'bar-chart-2': BarChart2,
+    shield: Shield,
+};
 
 const navSelectedClass =
     'border-indigo-500/90 bg-indigo-600 font-semibold text-white shadow-[0_6px_22px_-6px_rgba(79,70,229,0.55),0_2px_8px_-2px_rgba(67,56,202,0.35)] dark:border-indigo-400/70 dark:bg-indigo-700';
@@ -178,31 +80,22 @@ function NavItem({ href, className, children, active }) {
 }
 
 export function AdminSidebar() {
+    const { adminNavigation = [] } = usePage().props;
     const { currentUrl, isCurrentUrl } = useCurrentUrl();
 
     const [expanded, setExpanded] = useState(() => {
-        const open = new Set(
-            navSections
+        return new Set(
+            adminNavigation
                 .filter((s) => !s.single && s.children?.some((c) => c.href && isCurrentUrl(c.href)))
                 .map((s) => s.title),
         );
-
-        if (open.size === 0) {
-            navSections.forEach((s) => {
-                if (!s.single) {
-                    open.add(s.title);
-                }
-            });
-        }
-
-        return open;
     });
 
     useEffect(() => {
         setExpanded((prev) => {
             const next = new Set(prev);
             let changed = false;
-            for (const s of navSections) {
+            for (const s of adminNavigation) {
                 if (s.single) continue;
                 const hasActive = s.children?.some((c) => c.href && isCurrentUrl(c.href));
                 if (hasActive && !next.has(s.title)) {
@@ -212,7 +105,7 @@ export function AdminSidebar() {
             }
             return changed ? next : prev;
         });
-    }, [currentUrl]);
+    }, [currentUrl, adminNavigation]);
 
     const toggle = (title) =>
         setExpanded((prev) => {
@@ -223,7 +116,6 @@ export function AdminSidebar() {
 
     return (
         <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
-            {/* Header */}
             <div className="relative border-b border-sidebar-border bg-linear-to-b from-muted/40 to-transparent px-4 py-5">
                 <div
                     className="pointer-events-none absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/40 to-transparent"
@@ -235,14 +127,13 @@ export function AdminSidebar() {
                 <p className="mt-1 font-semibold tracking-tight text-foreground">Admin Panel</p>
             </div>
 
-            {/* Navigation */}
             <nav
                 className="flex flex-1 flex-col gap-1 overflow-y-auto p-3"
                 aria-label="Admin navigation"
             >
                 <ul className="flex flex-col gap-0.5">
-                    {navSections.map((section) => {
-                        const SectionIcon = section.icon;
+                    {adminNavigation.map((section) => {
+                        const SectionIcon = iconMap[section.icon] ?? LayoutDashboard;
 
                         if (section.single) {
                             const active = section.href ? isCurrentUrl(section.href) : false;
@@ -327,7 +218,6 @@ export function AdminSidebar() {
                 </ul>
             </nav>
 
-            {/* Footer */}
             <div className="border-t border-sidebar-border p-3">
                 <Link
                     href={logout.url()}

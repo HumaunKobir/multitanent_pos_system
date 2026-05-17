@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Models\ConfigDictionary;
+use App\Support\AdminNavigation;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -43,6 +44,9 @@ class HandleInertiaRequests extends Middleware
                 'user' => $request->user(),
                 'customer' => $request->user('customer'),
             ],
+            'adminNavigation' => $request->user()
+                ? app(AdminNavigation::class)->build($request->user())
+                : [],
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'cart' => $request->session()->get('cart', []),
             'siteName' => ConfigDictionary::get('website_name', config('app.name')),

@@ -9,10 +9,12 @@ trait HasBranch
 {
     public function scopeOwnBranch(Builder $query): Builder
     {
-        if (Auth::user()->hasRole('admin')) {
+        $branchId = Auth::user()?->branch_id;
+
+        if ($branchId === null) {
             return $query;
         }
 
-        return $query->where('branch_id', Auth::user()->branch_id);
+        return $query->where('branch_id', $branchId);
     }
 }

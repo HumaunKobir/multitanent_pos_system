@@ -27,7 +27,8 @@ export default function CategoryIndex({ categories, filters }) {
     }
 
     function handleDelete() {
-        router.delete(CategoryController.destroy.url(deleting.id), {
+        if (!deleting) return;
+        router.delete(CategoryController.destroy.url(deleting?.id), {
             onSuccess: () => setDeleting(null),
         });
     }

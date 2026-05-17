@@ -1,0 +1,179 @@
+const routes = {
+    home: '/',
+    dashboard: '/dashboard',
+    'admin.dashboard': '/admin',
+    login: '/login',
+    register: '/register',
+    logout: '/logout',
+    'password.request': '/forgot-password',
+    'password.reset': '/reset-password/:token',
+    'password.update': '/reset-password',
+    'password.confirm': '/user/confirm-password',
+    'two-factor.login': '/two-factor-challenge',
+    'profile.edit': '/settings/profile',
+    'security.edit': '/settings/security',
+    'appearance.edit': '/settings/appearance',
+    'setting.category.index': '/setting/category',
+    'setting.category.store': '/setting/category',
+    'setting.category.update': '/setting/category/:category',
+    'setting.category.destroy': '/setting/category/:category',
+    'setting.brand.index': '/setting/brand',
+    'setting.brand.store': '/setting/brand',
+    'setting.brand.update': '/setting/brand/:brand',
+    'setting.brand.destroy': '/setting/brand/:brand',
+    'setting.unit.index': '/setting/unit',
+    'setting.unit.store': '/setting/unit',
+    'setting.unit.update': '/setting/unit/:unit',
+    'setting.unit.destroy': '/setting/unit/:unit',
+    'setting.size.index': '/setting/size',
+    'setting.size.store': '/setting/size',
+    'setting.size.update': '/setting/size/:size',
+    'setting.size.destroy': '/setting/size/:size',
+    'setting.color.index': '/setting/color',
+    'setting.color.store': '/setting/color',
+    'setting.color.update': '/setting/color/:color',
+    'setting.color.destroy': '/setting/color/:color',
+    'setting.tailormeasurement.index': '/setting/tailormeasurement',
+    'setting.tailormeasurement.store': '/setting/tailormeasurement',
+    'setting.tailormeasurement.update': '/setting/tailormeasurement/:tailormeasurement',
+    'setting.tailormeasurement.destroy': '/setting/tailormeasurement/:tailormeasurement',
+    'setting.warranty.index': '/setting/warranty',
+    'setting.warranty.store': '/setting/warranty',
+    'setting.warranty.update': '/setting/warranty/:warranty',
+    'setting.warranty.destroy': '/setting/warranty/:warranty',
+};
+
+const methods = {
+    'login.store': 'post',
+    'register.store': 'post',
+    logout: 'post',
+    'password.email': 'post',
+    'password.update': 'post',
+    'password.confirm.store': 'post',
+    'profile.update': 'patch',
+    'profile.destroy': 'delete',
+    'user-password.update': 'put',
+    'verification.send': 'post',
+    'two-factor.login.store': 'post',
+    'two-factor.enable': 'post',
+    'two-factor.disable': 'delete',
+    'two-factor.confirm': 'post',
+    'two-factor.qr-code': 'get',
+    'two-factor.recovery-codes': 'get',
+    'two-factor.secret-key': 'get',
+    'two-factor.regenerate-recovery-codes': 'post',
+    'setting.category.store': 'post',
+    'setting.category.update': 'patch',
+    'setting.category.destroy': 'delete',
+    'setting.brand.store': 'post',
+    'setting.brand.update': 'patch',
+    'setting.brand.destroy': 'delete',
+    'setting.unit.store': 'post',
+    'setting.unit.update': 'patch',
+    'setting.unit.destroy': 'delete',
+    'setting.size.store': 'post',
+    'setting.size.update': 'patch',
+    'setting.size.destroy': 'delete',
+    'setting.color.store': 'post',
+    'setting.color.update': 'patch',
+    'setting.color.destroy': 'delete',
+    'setting.tailormeasurement.store': 'post',
+    'setting.tailormeasurement.update': 'patch',
+    'setting.tailormeasurement.destroy': 'delete',
+    'setting.warranty.store': 'post',
+    'setting.warranty.update': 'patch',
+    'setting.warranty.destroy': 'delete',
+};
+
+const aliases = {
+    'login.store': 'login',
+    'register.store': 'register',
+    'password.email': 'password.request',
+    'password.confirm.store': 'password.confirm',
+    'two-factor.login.store': 'two-factor.login',
+};
+
+function buildQuery(query) {
+    if (!query || Object.keys(query).length === 0) {
+        return '';
+    }
+
+    const params = new URLSearchParams();
+
+    for (const [key, value] of Object.entries(query)) {
+        if (value !== undefined && value !== null && value !== '') {
+            params.set(key, String(value));
+        }
+    }
+
+    const queryString = params.toString();
+
+    return queryString ? `?${queryString}` : '';
+}
+
+function resolveParams(template, params) {
+    let path = template;
+
+    if (params === undefined || params === null) {
+        return path;
+    }
+
+    if (typeof params !== 'object') {
+        const placeholder = path.match(/:([A-Za-z0-9_]+)/);
+
+        if (placeholder) {
+            path = path.replace(`:${placeholder[1]}`, String(params));
+        }
+
+        return path;
+    }
+
+    if (params.query) {
+        return path + buildQuery(params.query);
+    }
+
+    for (const [key, value] of Object.entries(params)) {
+        if (key === 'query') {
+            continue;
+        }
+
+        path = path.replace(`:${key}`, String(value));
+    }
+
+    return path;
+}
+
+export function route(name, params) {
+    const template = routes[aliases[name] ?? name];
+
+    if (!template) {
+        throw new Error(`Unknown route: ${name}`);
+    }
+
+    return resolveParams(template, params);
+}
+
+export function routeForm(name, params) {
+    return {
+        action: route(name, params),
+        method: methods[name] ?? 'get',
+    };
+}
+
+export function routeRequest(name, params) {
+    return {
+        url: route(name, params),
+        method: methods[name] ?? 'get',
+    };
+}
+
+export function settingRoutes(resource) {
+    const prefix = `setting.${resource}`;
+
+    return {
+        index: (query) => route(`${prefix}.index`, query ? { query } : undefined),
+        store: route(`${prefix}.store`),
+        update: (id) => route(`${prefix}.update`, { [resource]: id }),
+        destroy: (id) => route(`${prefix}.destroy`, { [resource]: id }),
+    };
+}

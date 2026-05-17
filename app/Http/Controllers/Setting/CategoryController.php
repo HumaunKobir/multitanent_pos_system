@@ -26,10 +26,6 @@ class CategoryController extends Controller
         ]);
     }
 
-    public function create(): Response
-    {
-        return Inertia::render('admin/setting/category/form');
-    }
 
     public function store(Request $request): RedirectResponse
     {
@@ -49,12 +45,6 @@ class CategoryController extends Controller
             ->with('success', 'Category created successfully.');
     }
 
-    public function edit(Category $category): Response
-    {
-        return Inertia::render('admin/setting/category/form', [
-            'category' => $category,
-        ]);
-    }
 
     public function update(Request $request, Category $category): RedirectResponse
     {

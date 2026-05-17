@@ -1,6 +1,6 @@
 import { useHttp } from '@inertiajs/react';
 import { useCallback, useState } from 'react';
-import { qrCode, recoveryCodes, secretKey } from '@/routes/two-factor';
+import { routeRequest } from '@/lib/route';
 export const OTP_MAX_LENGTH = 6;
 export const useTwoFactorAuth = () => {
     const { submit } = useHttp();
@@ -25,7 +25,7 @@ export const useTwoFactorAuth = () => {
     }, []);
     const fetchQrCode = useCallback(async () => {
         try {
-            const { svg } = (await submit(qrCode()));
+            const { svg } = await submit(routeRequest('two-factor.qr-code'));
             setQrCodeSvg(svg);
         } catch {
             setErrors((prev) => [...prev, 'Failed to fetch QR code']);
@@ -34,7 +34,7 @@ export const useTwoFactorAuth = () => {
     }, [submit]);
     const fetchSetupKey = useCallback(async () => {
         try {
-            const { secretKey: key } = (await submit(secretKey()));
+            const { secretKey: key } = await submit(routeRequest('two-factor.secret-key'));
             setManualSetupKey(key);
         } catch {
             setErrors((prev) => [...prev, 'Failed to fetch a setup key']);
@@ -44,7 +44,7 @@ export const useTwoFactorAuth = () => {
     const fetchRecoveryCodes = useCallback(async () => {
         try {
             setErrors([]);
-            const codes = (await submit(recoveryCodes()));
+            const codes = await submit(routeRequest('two-factor.recovery-codes'));
             setRecoveryCodesList(codes);
         } catch {
             setErrors((prev) => [...prev, 'Failed to fetch recovery codes']);

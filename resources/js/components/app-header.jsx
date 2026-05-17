@@ -12,19 +12,18 @@ import { UserMenuContent } from '@/components/user-menu-content';
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { useInitials } from '@/hooks/use-initials';
 import { cn } from '@/lib/utils';
-import { dashboard } from '@/routes';
-import { dashboard as adminDashboard } from '@/routes/admin';
+import { route } from '@/lib/route';
 
 const mainNavItems = [
     {
         title: 'Dashboard',
-        href: dashboard.url(),
+        href: route('dashboard'),
         icon: LayoutGrid,
         activeMatch: 'exact',
     },
     {
         title: 'Admin',
-        href: adminDashboard.url(),
+        href: route('admin.dashboard'),
         icon: Shield,
         activeMatch: 'prefix',
     },
@@ -95,7 +94,7 @@ export function AppHeader({ breadcrumbs = [] }) {
                         </Sheet>
                     </div>
 
-                    <Link href={dashboard.url()} prefetch className="flex shrink-0 items-center gap-2">
+                    <Link href={route('dashboard')} prefetch className="flex shrink-0 items-center gap-2">
                         <AppLogo />
                     </Link>
 

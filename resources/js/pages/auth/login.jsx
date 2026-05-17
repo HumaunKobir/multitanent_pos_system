@@ -8,9 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Spinner } from '@/components/ui/spinner';
-import { register } from '@/routes';
-import { store } from '@/routes/login';
-import { request } from '@/routes/password';
+import { route, routeForm } from '@/lib/route';
 
 export default function Login({ status, canResetPassword, canRegister }) {
     useEffect(() => {
@@ -29,7 +27,7 @@ export default function Login({ status, canResetPassword, canRegister }) {
             ) : null}
 
             <Form
-                {...store.form()}
+                {...routeForm('login.store')}
                 resetOnSuccess={['password']}
                 className="flex flex-col gap-6"
             >
@@ -44,7 +42,7 @@ export default function Login({ status, canResetPassword, canRegister }) {
                         {canRegister ? (
                             <div className="text-center text-sm text-muted-foreground">
                                 Don&apos;t have an account?{' '}
-                                <TextLink href={register()} tabIndex={5}>
+                                <TextLink href={route('register')} tabIndex={5}>
                                     Sign up
                                 </TextLink>
                             </div>
@@ -78,7 +76,7 @@ function LoginFormFields({ errors, processing, canResetPassword }) {
                 <div className="flex items-center">
                     <Label htmlFor="password">Password</Label>
                     {canResetPassword ? (
-                        <TextLink href={request()} className="ml-auto text-sm" tabIndex={5}>
+                        <TextLink href={route('password.request')} className="ml-auto text-sm" tabIndex={5}>
                             Forgot password?
                         </TextLink>
                     ) : null}

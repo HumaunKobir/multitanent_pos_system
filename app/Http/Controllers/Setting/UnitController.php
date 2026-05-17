@@ -25,10 +25,6 @@ class UnitController extends Controller
         ]);
     }
 
-    public function create(): Response
-    {
-        return Inertia::render('admin/setting/unit/form');
-    }
 
     public function store(Request $request): RedirectResponse
     {
@@ -43,12 +39,6 @@ class UnitController extends Controller
             ->with('success', 'Unit created successfully.');
     }
 
-    public function edit(Unit $unit): Response
-    {
-        return Inertia::render('admin/setting/unit/form', [
-            'unit' => $unit,
-        ]);
-    }
 
     public function update(Request $request, Unit $unit): RedirectResponse
     {

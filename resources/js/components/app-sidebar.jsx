@@ -14,19 +14,18 @@ import {
     SidebarMenuItem,
     SidebarSeparator,
 } from '@/components/ui/sidebar';
-import { dashboard } from '@/routes';
-import { dashboard as adminDashboard } from '@/routes/admin';
+import { route } from '@/lib/route';
 import { cn } from '@/lib/utils';
 
 const mainNavItems = [
     {
         title: 'Dashboard',
-        href: dashboard.url(),
+        href: route('dashboard'),
         icon: LayoutGrid,
     },
     {
         title: 'Admin',
-        href: adminDashboard.url(),
+        href: route('admin.dashboard'),
         icon: Shield,
         activeMatch: 'prefix',
     },
@@ -46,7 +45,7 @@ export function AppSidebar() {
                                 'hover:border-border/80 hover:bg-sidebar-accent/50',
                             )}
                         >
-                            <Link href={dashboard.url()} prefetch className="flex items-center gap-0">
+                            <Link href={route('dashboard')} prefetch className="flex items-center gap-0">
                                 <AppLogo />
                             </Link>
                         </SidebarMenuButton>

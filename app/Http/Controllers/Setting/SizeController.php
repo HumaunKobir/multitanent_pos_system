@@ -25,10 +25,6 @@ class SizeController extends Controller
         ]);
     }
 
-    public function create(): Response
-    {
-        return Inertia::render('admin/setting/size/form');
-    }
 
     public function store(Request $request): RedirectResponse
     {
@@ -43,12 +39,6 @@ class SizeController extends Controller
             ->with('success', 'Size created successfully.');
     }
 
-    public function edit(Size $size): Response
-    {
-        return Inertia::render('admin/setting/size/form', [
-            'size' => $size,
-        ]);
-    }
 
     public function update(Request $request, Size $size): RedirectResponse
     {

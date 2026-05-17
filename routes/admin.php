@@ -14,11 +14,11 @@ Route::middleware(['auth', 'verified'])->prefix('admin')->name('admin.')->group(
 });
 
 Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->group(function () {
-    Route::resource('category', CategoryController::class);
-    Route::resource('brand', BrandController::class);
-    Route::resource('unit', UnitController::class);
-    Route::resource('size', SizeController::class);
-    Route::resource('color', ColorController::class);
-    Route::resource('tailormeasurement', TailorMeasurementController::class);
-    Route::resource('warranty', WarrantyController::class);
+    Route::resource('category', CategoryController::class)->except(['create', 'edit']);
+    Route::resource('brand', BrandController::class)->except(['create', 'edit']);
+    Route::resource('unit', UnitController::class)->except(['create', 'edit']);
+    Route::resource('size', SizeController::class)->except(['create', 'edit']);
+    Route::resource('color', ColorController::class)->except(['create', 'edit']);
+    Route::resource('tailormeasurement', TailorMeasurementController::class)->except(['create', 'edit']);
+    Route::resource('warranty', WarrantyController::class)->except(['create', 'edit']);
 });

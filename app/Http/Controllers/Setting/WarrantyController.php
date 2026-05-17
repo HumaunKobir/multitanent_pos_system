@@ -25,10 +25,6 @@ class WarrantyController extends Controller
         ]);
     }
 
-    public function create(): Response
-    {
-        return Inertia::render('admin/setting/warranty/form');
-    }
 
     public function store(Request $request): RedirectResponse
     {
@@ -44,12 +40,6 @@ class WarrantyController extends Controller
             ->with('success', 'Warranty created successfully.');
     }
 
-    public function edit(Warranty $warranty): Response
-    {
-        return Inertia::render('admin/setting/warranty/form', [
-            'warranty' => $warranty,
-        ]);
-    }
 
     public function update(Request $request, Warranty $warranty): RedirectResponse
     {

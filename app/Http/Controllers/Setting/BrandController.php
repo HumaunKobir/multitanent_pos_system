@@ -26,10 +26,6 @@ class BrandController extends Controller
         ]);
     }
 
-    public function create(): Response
-    {
-        return Inertia::render('admin/setting/brand/form');
-    }
 
     public function store(Request $request): RedirectResponse
     {
@@ -49,12 +45,6 @@ class BrandController extends Controller
             ->with('success', 'Brand created successfully.');
     }
 
-    public function edit(Brand $brand): Response
-    {
-        return Inertia::render('admin/setting/brand/form', [
-            'brand' => $brand,
-        ]);
-    }
 
     public function update(Request $request, Brand $brand): RedirectResponse
     {

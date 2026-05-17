@@ -1,4 +1,3 @@
-import CategoryController from '@/actions/App/Http/Controllers/Setting/CategoryController';
 import { DataTable } from '@/components/ui/data-table';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { Head, Link, router, usePage } from '@inertiajs/react';
@@ -9,12 +8,18 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { settingRoutes } from '@/lib/route';
+import SettingFormDialog from '../form-dialog';
+
+const routes = settingRoutes('category');
 
 export default function CategoryIndex({ categories, filters }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const [search, setSearch] = useState(filters.search ?? '');
     const [deleting, setDeleting] = useState(null);
+    const [editing, setEditing] = useState(null);
+    const [formOpen, setFormOpen] = useState(false);
 
     useEffect(() => {
         if (flash.success) toast.success(flash.success);
@@ -23,14 +28,24 @@ export default function CategoryIndex({ categories, filters }) {
 
     function handleSearch(e) {
         e.preventDefault();
-        router.get(CategoryController.index.url(), { search }, { preserveState: true, replace: true });
+        router.get(routes.index({ search }), { preserveState: true, replace: true });
     }
 
     function handleDelete() {
         if (!deleting) return;
-        router.delete(CategoryController.destroy.url(deleting?.id), {
+        router.delete(routes.destroy(deleting?.id), {
             onSuccess: () => setDeleting(null),
         });
+    }
+
+    function openCreate() {
+        setEditing(null);
+        setFormOpen(true);
+    }
+
+    function openEdit(row) {
+        setEditing(row);
+        setFormOpen(true);
     }
 
     const columns = [
@@ -66,9 +81,9 @@ export default function CategoryIndex({ categories, filters }) {
             render: (row) => (
                 <div className="flex justify-end gap-2">
                     <Button size="sm" variant="outline" asChild>
-                        <Link href={CategoryController.edit.url(row.id)}>
+                        <button type="button" onClick={() => openEdit(row)}>
                             <Pencil className="size-3.5" />
-                        </Link>
+                        </button>
                     </Button>
                     <Button size="sm" variant="destructive" onClick={() => setDeleting(row)}>
                         <Trash2 className="size-3.5" />
@@ -86,10 +101,10 @@ export default function CategoryIndex({ categories, filters }) {
                 <div className="mb-5 flex items-center justify-between">
                     <h1 className="text-xl font-semibold">Categories</h1>
                     <Button asChild>
-                        <Link href={CategoryController.create.url()}>
+                        <button type="button" onClick={openCreate}>
                             <Plus className="size-4" />
                             Add New
-                        </Link>
+                        </button>
                     </Button>
                 </div>
 
@@ -144,6 +159,19 @@ export default function CategoryIndex({ categories, filters }) {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <SettingFormDialog
+                open={formOpen}
+                onOpenChange={setFormOpen}
+                title="Category"
+                item={editing}
+                routes={routes}
+                fields={[
+                    { name: 'name', label: 'Name', placeholder: 'Category name' },
+                    { name: 'image', label: 'Image', type: 'file', accept: 'image/jpeg,image/png,image/webp' },
+                    { name: 'status', label: 'Status', type: 'select', defaultValue: '1' },
+                ]}
+            />
         </>
     );
 }

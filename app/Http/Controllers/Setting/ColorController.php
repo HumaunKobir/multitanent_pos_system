@@ -25,10 +25,6 @@ class ColorController extends Controller
         ]);
     }
 
-    public function create(): Response
-    {
-        return Inertia::render('admin/setting/color/form');
-    }
 
     public function store(Request $request): RedirectResponse
     {
@@ -44,12 +40,6 @@ class ColorController extends Controller
             ->with('success', 'Color created successfully.');
     }
 
-    public function edit(Color $color): Response
-    {
-        return Inertia::render('admin/setting/color/form', [
-            'color' => $color,
-        ]);
-    }
 
     public function update(Request $request, Color $color): RedirectResponse
     {

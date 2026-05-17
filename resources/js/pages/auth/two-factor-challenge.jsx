@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { OTP_MAX_LENGTH } from '@/hooks/use-two-factor-auth';
-import { store } from '@/routes/two-factor/login';
+import { routeForm } from '@/lib/route';
 
 export default function TwoFactorChallenge() {
     const [showRecoveryInput, setShowRecoveryInput] = useState(false);
@@ -47,7 +47,7 @@ export default function TwoFactorChallenge() {
             <Head title="Two-factor authentication" />
             <div className="space-y-6">
                 <Form
-                    {...store.form()}
+                    {...routeForm('two-factor.login.store')}
                     className="space-y-4"
                     resetOnError
                     resetOnSuccess={!showRecoveryInput}

@@ -25,10 +25,6 @@ class TailorMeasurementController extends Controller
         ]);
     }
 
-    public function create(): Response
-    {
-        return Inertia::render('admin/setting/tailormeasurement/form');
-    }
 
     public function store(Request $request): RedirectResponse
     {
@@ -43,12 +39,6 @@ class TailorMeasurementController extends Controller
             ->with('success', 'Tailor measurement created successfully.');
     }
 
-    public function edit(Tailormeasurement $tailormeasurement): Response
-    {
-        return Inertia::render('admin/setting/tailormeasurement/form', [
-            'measurement' => $tailormeasurement,
-        ]);
-    }
 
     public function update(Request $request, Tailormeasurement $tailormeasurement): RedirectResponse
     {

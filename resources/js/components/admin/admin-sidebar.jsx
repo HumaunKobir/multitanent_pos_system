@@ -20,7 +20,7 @@ import { useEffect, useState } from 'react';
 
 import { useCurrentUrl } from '@/hooks/use-current-url';
 import { cn } from '@/lib/utils';
-import { logout } from '@/routes';
+import { route } from '@/lib/route';
 
 const iconMap = {
     'layout-dashboard': LayoutDashboard,
@@ -220,7 +220,7 @@ export function AdminSidebar() {
 
             <div className="border-t border-sidebar-border p-3">
                 <Link
-                    href={logout.url()}
+                    href={route('logout')}
                     method="post"
                     as="button"
                     className="flex w-full items-center gap-2 border border-dashed border-sidebar-border px-3 py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:bg-sidebar-accent/40 hover:text-sidebar-foreground"

@@ -56,11 +56,17 @@ export default function SettingFormDialog({ open, onOpenChange, title, item, rou
                             {field.type === 'select' ? (
                                 <Select value={form.data[field.name]} onValueChange={(value) => form.setData(field.name, value)}>
                                     <SelectTrigger id={field.name} className="mt-1 w-full" aria-invalid={!!form.errors[field.name]}>
-                                        <SelectValue />
+                                        <SelectValue placeholder={field.placeholder} />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="1">Active</SelectItem>
-                                        <SelectItem value="0">InActive</SelectItem>
+                                        {(field.options ?? [
+                                            { value: '1', label: 'Active' },
+                                            { value: '0', label: 'InActive' },
+                                        ]).map((option) => (
+                                            <SelectItem key={option.value} value={String(option.value)}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
                                     </SelectContent>
                                 </Select>
                             ) : field.type === 'color' ? (

@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Branch;
+use App\Enums\CommonStatus;
 use App\Models\Brand;
 use App\Models\Category;
+use App\Models\Tag;
 use App\Models\Color;
 use App\Models\Product;
 use App\Models\ProductPhoto;
@@ -248,6 +250,19 @@ class ProductController extends Controller
             'tailors' => Tailormeasurement::active()->pluck('name', 'id'),
             'branches' => Branch::active()->orderBy('name')->pluck('name', 'id'),
             'variationNames' => Variation::where('status', 1)->pluck('name'),
+            'tagOptions' => Tag::query()
+                ->selectableForProduct()
+                ->with('parent:id,name')
+                ->get(['id', 'name', 'parent_id'])
+                ->sortBy(fn (Tag $tag): string => ($tag->parent?->name ?? $tag->name).' '.$tag->name)
+                ->values()
+                ->map(fn (Tag $tag): array => [
+                    'value' => $tag->name,
+                    'label' => $tag->parent_id && $tag->parent
+                        ? "{$tag->parent->name} › {$tag->name}"
+                        : $tag->name,
+                ])
+                ->all(),
         ];
     }
 }

@@ -1,3 +1,4 @@
+import { SmartMultiSelect } from '@/components/smart-multi-select';
 import { SmartSelect } from '@/components/smart-select';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -432,7 +433,7 @@ function VariationBuilder({ productCode, variationNames = [], onChange, onEnable
     );
 }
 
-export default function ProductForm({ form, categories, brands, units, warranties, colors, sizes, tailors, branches, variationNames = [], isEditing = false, processing = false, cancelHref = '' }) {
+export default function ProductForm({ form, categories, brands, units, warranties, colors, sizes, tailors, branches, variationNames = [], tagOptions = [], isEditing = false, processing = false, cancelHref = '' }) {
     const { auth } = usePage().props;
     const isAdmin = !auth.user?.branch_id;
 
@@ -453,15 +454,6 @@ export default function ProductForm({ form, categories, brands, units, warrantie
             form.setData('sale_price', '');
             form.setData('code', '');
         }
-    }
-
-    const [tagInput, setTagInput] = useState((form.data.tags || []).join(', '));
-
-    useEffect(() => { setTagInput((form.data.tags || []).join(', ')); }, []);
-
-    function handleTagInput(e) {
-        setTagInput(e.target.value);
-        form.setData('tags', e.target.value.split(',').map((t) => t.trim()).filter(Boolean));
     }
 
     return (
@@ -537,16 +529,13 @@ export default function ProductForm({ form, categories, brands, units, warrantie
 
                         <div className="col-span-2">
                             <Field label="Tags" error={form.errors.tags}>
-                                <Input className="h-8 text-xs" value={tagInput} onChange={handleTagInput} placeholder="tag1, tag2, tag3" />
-                                {(form.data.tags || []).length > 0 && (
-                                    <div className="mt-1.5 flex flex-wrap gap-1">
-                                        {form.data.tags.map((tag, i) => (
-                                            <span key={i} className="bg-blue-600 px-2 py-0.5 text-[11px] leading-4 text-white shadow shadow-blue-500/50">
-                                                {tag}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
+                                <SmartMultiSelect
+                                    options={tagOptions}
+                                    value={form.data.tags || []}
+                                    onValueChange={(tags) => form.setData('tags', tags)}
+                                    placeholder="Search tags…"
+                                    triggerClassName="min-h-8"
+                                />
                             </Field>
                         </div>
                     </div>

@@ -60,15 +60,14 @@ function navLinkClass(active) {
 }
 
 function childLinkClass(active, disabled = false) {
-    return cn(
-        'block border-l-2 py-1.5 pl-3 pr-2 text-[0.8rem] leading-snug tracking-tight transition-[border-color,color,font-weight]',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60',
-        disabled
-            ? 'cursor-not-allowed border-border/40 font-medium text-sidebar-foreground/45'
-            : active
-              ? 'border-indigo-500 font-semibold text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
-              : 'border-border/50 font-medium text-sidebar-foreground/75 hover:border-indigo-400/60 hover:text-sidebar-foreground',
-    );
+    if (disabled) {
+        return cn(
+            'block border border-transparent px-2.5 py-2 text-[0.8125rem] leading-tight tracking-tight',
+            'cursor-not-allowed font-medium text-sidebar-foreground/45',
+        );
+    }
+
+    return navLinkClass(active);
 }
 
 function NavItem({ href, className, children, active }) {
@@ -198,7 +197,7 @@ export function PanelSidebar() {
                                     />
                                 </button>
 
-                                <ul id={submenuId} className={cn('mt-0.5 ml-6 space-y-px', !isOpen && 'hidden')}>
+                                <ul id={submenuId} className={cn('mt-0.5 flex flex-col gap-0.5', !isOpen && 'hidden')}>
                                     {section.children?.map((child) => {
                                         const active = child.href ? isCurrentUrl(child.href) : false;
                                         const disabled = !child.href;

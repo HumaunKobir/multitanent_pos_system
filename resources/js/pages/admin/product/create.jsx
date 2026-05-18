@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { route } from '@/lib/route';
 import ProductForm from './partials/product-form';
 
-export default function ProductCreate({ categories, brands, units, warranties, colors, sizes, tailors, branches, variationNames = [] }) {
+export default function ProductCreate({ categories, brands, units, warranties, colors, sizes, tailors, branches, variationNames = [], tagOptions = [] }) {
     const form = useForm({
         branch_id: null,
         category_id: '',
@@ -67,6 +67,7 @@ export default function ProductCreate({ categories, brands, units, warranties, c
                         tailors={tailors}
                         branches={branches}
                         variationNames={variationNames}
+                        tagOptions={tagOptions}
                         processing={form.processing}
                         cancelHref={route('product.index')}
                     />

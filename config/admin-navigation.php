@@ -99,7 +99,7 @@ return [
             'icon' => 'settings',
             'children' => [
                 ['title' => 'Category', 'href' => '/setting/category'],
-                ['title' => 'Tag'],
+                ['title' => 'Tag', 'href' => '/setting/tag'],
                 ['title' => 'Brand', 'href' => '/setting/brand'],
                 ['title' => 'Unit', 'href' => '/setting/unit'],
                 ['title' => 'Size', 'href' => '/setting/size'],

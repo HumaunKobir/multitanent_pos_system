@@ -265,7 +265,7 @@ function PhotosSection({ product }) {
     );
 }
 
-export default function ProductEdit({ product, categories, brands, units, warranties, colors, sizes, tailors, branches }) {
+export default function ProductEdit({ product, categories, brands, units, warranties, colors, sizes, tailors, branches, variationNames = [], tagOptions = [] }) {
     const form = useForm({
         branch_id: product.branch_id ?? null,
         category_id: String(product.category_id ?? ''),
@@ -332,6 +332,8 @@ export default function ProductEdit({ product, categories, brands, units, warran
                             sizes={sizes}
                             tailors={tailors}
                             branches={branches}
+                            variationNames={variationNames}
+                            tagOptions={tagOptions}
                             isEditing
                             processing={form.processing}
                             cancelHref={route('product.index')}

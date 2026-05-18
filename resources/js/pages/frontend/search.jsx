@@ -1,7 +1,7 @@
 import { Head, router } from '@inertiajs/react';
 import { useState } from 'react';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
-import { ProductCard } from './home';
+import { ProductCard } from '@/components/frontend/product-card';
 import { Link } from '@inertiajs/react';
 
 export default function Search({ query, products }) {

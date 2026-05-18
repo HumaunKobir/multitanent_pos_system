@@ -2,7 +2,7 @@ import { Head, Link, router } from '@inertiajs/react';
 import { useState } from 'react';
 import { SlidersHorizontal, X } from 'lucide-react';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
-import { ProductCard } from './home';
+import { ProductCard } from '@/components/frontend/product-card';
 
 export default function CollectionProducts({ collectionName, products, filters, allBrands, allColors, allSizes }) {
     return (

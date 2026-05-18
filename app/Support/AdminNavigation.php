@@ -24,6 +24,10 @@ class AdminNavigation
                 continue;
             }
 
+            if (! $user->isBranchUser() && ($section['branch_only'] ?? false)) {
+                continue;
+            }
+
             $sections[] = $this->formatSection($section, $user);
         }
 

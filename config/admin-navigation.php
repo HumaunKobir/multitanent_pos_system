@@ -12,6 +12,8 @@ return [
     | - href: route path
     | - single: true for top-level links without children
     | - icon: icon key used by admin-sidebar.jsx
+    | - admin_only: visible only in the admin panel (superadmin)
+    | - branch_only: visible only in the branch panel
     |
     */
 
@@ -21,6 +23,46 @@ return [
             'icon' => 'layout-dashboard',
             'href' => '/admin',
             'single' => true,
+        ],
+        [
+            'title' => 'Sales',
+            'icon' => 'circle-dollar-sign',
+            'branch_only' => true,
+            'children' => [
+                ['title' => 'Sale', 'href' => '/inventory/sell'],
+                ['title' => 'Sale Return', 'href' => '/inventory/sale-return'],
+                ['title' => 'Product Exchange', 'href' => '/inventory/product-exchange'],
+            ],
+        ],
+        [
+            'title' => 'Purchases',
+            'icon' => 'hand-coins',
+            'branch_only' => true,
+            'children' => [
+                ['title' => 'Purchase', 'href' => '/inventory/purchase'],
+                ['title' => 'Purchase Return', 'href' => '/inventory/purchase-return'],
+                ['title' => 'Damage', 'href' => '/inventory/damage'],
+                ['title' => 'Initial Stock', 'href' => '/inventory/initial-stock'],
+            ],
+        ],
+        [
+            'title' => 'Suppliers',
+            'icon' => 'user',
+            'branch_only' => true,
+            'children' => [
+                ['title' => 'Supplier', 'href' => '/party/supplier'],
+                ['title' => 'Supplier Payment', 'href' => '/party/supplier-payment'],
+            ],
+        ],
+        [
+            'title' => 'Customers',
+            'icon' => 'users-round',
+            'branch_only' => true,
+            'children' => [
+                ['title' => 'Group', 'href' => '/party/group'],
+                ['title' => 'Customer', 'href' => '/party/customer'],
+                ['title' => 'Due Collection', 'href' => '/party/customer-due-collection'],
+            ],
         ],
         [
             'title' => 'Branch',

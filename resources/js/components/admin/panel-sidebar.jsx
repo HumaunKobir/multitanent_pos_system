@@ -3,7 +3,9 @@ import {
     BarChart2,
     Building2,
     ChevronDown,
+    CircleDollarSign,
     Globe,
+    HandCoins,
     LayoutDashboard,
     LogOut,
     Package,
@@ -12,8 +14,10 @@ import {
     Settings,
     Shield,
     ShoppingCart,
+    User,
     UserCog,
     Users,
+    UsersRound,
     Wallet,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -24,6 +28,10 @@ import { route } from '@/lib/route';
 
 const iconMap = {
     'layout-dashboard': LayoutDashboard,
+    'circle-dollar-sign': CircleDollarSign,
+    'hand-coins': HandCoins,
+    user: User,
+    'users-round': UsersRound,
     'shopping-cart': ShoppingCart,
     package: Package,
     users: Users,

@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Tag } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -79,12 +80,15 @@ export default function TagFormDialog({ open, onOpenChange, item, routes, parent
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>{isEditing ? 'Edit Tag' : 'Create Tag'}</DialogTitle>
-                </DialogHeader>
+            <DialogContent className="p-0">
+                <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
+                    <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
+                        <Tag className="size-3.5 text-white" />
+                    </div>
+                    <h2 className="text-sm font-semibold text-white">{isEditing ? 'Edit Tag' : 'Create Tag'}</h2>
+                </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-4 p-5">
                     <FormField label="Parent Id" name="parent_id" error={form.errors.parent_id}>
                         <Select value={form.data.parent_id} onValueChange={(value) => form.setData('parent_id', value)}>
                             <SelectTrigger id="parent_id" className="mt-1 w-full" aria-invalid={!!form.errors.parent_id}>

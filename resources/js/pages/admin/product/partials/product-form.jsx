@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Link, usePage } from '@inertiajs/react';
-import { ImagePlus, Plus, Trash2, X } from 'lucide-react';
+import { AlignLeft, DollarSign, GitBranch, ImagePlus, Images, Info, Ruler, Settings, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 function CKEditorField({ id, value, onChange }) {
@@ -50,11 +50,16 @@ function CKEditorField({ id, value, onChange }) {
     return <textarea id={id} ref={textareaRef} defaultValue={value} className="hidden" />;
 }
 
-function Card({ title, children }) {
+function Card({ title, icon: Icon, children }) {
     return (
-        <div className="border bg-card">
-            <div className="border-b bg-muted/40 px-4 py-2.5">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">{title}</h2>
+        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
+            <div className="flex items-center gap-2.5 bg-blue-950 px-4 py-2.5">
+                {Icon && (
+                    <div className="flex size-6 items-center justify-center rounded bg-white/15">
+                        <Icon className="size-3.5 text-white" />
+                    </div>
+                )}
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-white">{title}</h2>
             </div>
             <div className="p-4">{children}</div>
         </div>
@@ -461,7 +466,7 @@ export default function ProductForm({ form, categories, brands, units, warrantie
             <div className="space-y-4 lg:col-span-2">
 
                 {/* Basic Info */}
-                <Card title="Basic Information">
+                <Card title="Basic Information" icon={Info}>
                     <div className="grid grid-cols-3 gap-3">
                         {isAdmin && (
                             <Field label="Branch" error={form.errors.branch_id}>
@@ -517,7 +522,7 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                 </Card>
 
                 {/* Extra Options */}
-                <Card title="Options">
+                <Card title="Options" icon={Settings}>
                     <div className="grid grid-cols-3 gap-3">
                         <Field label="YouTube Link" error={form.errors.youtube_link}>
                             <Input className="h-8 text-xs" value={form.data.youtube_link} onChange={(e) => form.setData('youtube_link', e.target.value)} placeholder="https://youtube.com/..." />
@@ -547,7 +552,7 @@ export default function ProductForm({ form, categories, brands, units, warrantie
 
                 {/* Variations (create only) */}
                 {!isEditing && (
-                    <Card title="Variations">
+                    <Card title="Variations" icon={GitBranch}>
                         <VariationBuilder
                             productCode={form.data.code}
                             variationNames={variationNames}
@@ -558,14 +563,14 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                 )}
 
                 {/* Price */}
-                <Card title="Price">
+                <Card title="Price" icon={DollarSign}>
                     <div className="grid grid-cols-3 gap-3">
                         <Field label="Purchase Price" required={!hasVariations} error={form.errors.purchase_price}>
-                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.purchase_price} onChange={(e) => form.setData('purchase_price', e.target.value)} placeholder={hasVariations ? 'Set per variant' : '0.00'} disabled={hasVariations} />
+                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.purchase_price} onChange={(e) => form.setData('purchase_price', e.target.value)} placeholder="0.00" disabled={hasVariations} />
                         </Field>
 
                         <Field label="Sale Price" required={!hasVariations} error={form.errors.sale_price}>
-                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.sale_price} onChange={(e) => form.setData('sale_price', e.target.value)} placeholder={hasVariations ? 'Set per variant' : '0.00'} disabled={hasVariations} />
+                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.sale_price} onChange={(e) => form.setData('sale_price', e.target.value)} placeholder="0.00" disabled={hasVariations} />
                         </Field>
 
                         <Field label="Discount Price" error={form.errors.discount_price}>
@@ -579,7 +584,7 @@ export default function ProductForm({ form, categories, brands, units, warrantie
             {/* ── RIGHT (sticky) ── */}
             <div className="space-y-4 lg:sticky lg:top-4 lg:self-start">
 
-                <Card title="Product Image">
+                <Card title="Product Image" icon={ImagePlus}>
                     <ImageUploadBox
                         existingPath={isEditing ? form.data._existing_image : null}
                         onChange={(file) => form.setData('image', file)}
@@ -587,7 +592,7 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                     {form.errors.image && <p className="mt-1 text-xs text-destructive">{form.errors.image}</p>}
                 </Card>
 
-                <Card title="Chest Size Image">
+                <Card title="Chest Size Image" icon={Ruler}>
                     <ImageUploadBox
                         existingPath={isEditing ? form.data._existing_chest_image : null}
                         onChange={(file) => form.setData('chest_size_image', file)}
@@ -595,12 +600,12 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                     {form.errors.chest_size_image && <p className="mt-1 text-xs text-destructive">{form.errors.chest_size_image}</p>}
                 </Card>
 
-                <Card title="Gallery Photos">
+                <Card title="Gallery Photos" icon={Images}>
                     <ImageUploadBox onChange={(files) => form.setData('photos', files)} multiple />
                     {form.errors.photos && <p className="mt-1 text-xs text-destructive">{form.errors.photos}</p>}
                 </Card>
 
-                <Card title="Status & Settings">
+                <Card title="Status & Settings" icon={Settings}>
                     <div className="space-y-3">
                         <Field label="Status" error={form.errors.status}>
                             <Select value={String(form.data.status ?? '1')} onValueChange={(v) => form.setData('status', v)}>
@@ -628,7 +633,7 @@ export default function ProductForm({ form, categories, brands, units, warrantie
 
             {/* ── CONTENT (full width) ── */}
             <div className="lg:col-span-3">
-                <Card title="Content">
+                <Card title="Content" icon={AlignLeft}>
                     <div className="space-y-3">
                         <Field label="Description" error={form.errors.description}>
                             <CKEditorField id="ck_description" value={form.data.description} onChange={(v) => form.setData('description', v)} />

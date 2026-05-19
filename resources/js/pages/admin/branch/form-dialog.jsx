@@ -1,9 +1,10 @@
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from '@inertiajs/react';
+import { Building2 } from 'lucide-react';
 import { useEffect } from 'react';
 
 function resolveStatus(status) {
@@ -62,12 +63,15 @@ export default function BranchFormDialog({ open, onOpenChange, item, routes }) {
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>{isEditing ? 'Edit Branch' : 'Create Branch'}</DialogTitle>
-                </DialogHeader>
+            <DialogContent className="p-0">
+                <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
+                    <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
+                        <Building2 className="size-3.5 text-white" />
+                    </div>
+                    <h2 className="text-sm font-semibold text-white">{isEditing ? 'Edit Branch' : 'Create Branch'}</h2>
+                </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="space-y-4 p-5">
                     <FormField label="Name" name="name" error={form.errors.name}>
                         <Input
                             id="name"
@@ -97,7 +101,7 @@ export default function BranchFormDialog({ open, onOpenChange, item, routes }) {
                             onChange={(e) => form.setData('address', e.target.value)}
                             placeholder="Branch address"
                             rows={3}
-                            className="mt-1 flex min-h-[80px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
+                            className="mt-1 flex min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-xs placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring focus-visible:outline-none disabled:cursor-not-allowed disabled:opacity-50"
                             aria-invalid={!!form.errors.address}
                         />
                     </FormField>

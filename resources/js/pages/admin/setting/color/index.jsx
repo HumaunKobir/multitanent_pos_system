@@ -1,12 +1,12 @@
 import { DataTable } from '@/components/ui/data-table';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Palette, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogClose, DialogContent, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { settingRoutes } from '@/lib/route';
 import SettingFormDialog from '../form-dialog';
@@ -103,12 +103,20 @@ export default function ColorIndex({ colors, filters }) {
         <>
             <Head title="Colors" />
 
-            <div className="p-6">
-                <div className="mb-5 flex items-center justify-between">
-                    <h1 className="text-xl font-semibold">Colors</h1>
-                    <Button asChild>
+            <div className="px-2 py-1">
+                <div className="mb-3 flex items-center justify-between rounded-lg bg-blue-950 px-5 py-3">
+                    <div className="flex items-center gap-3">
+                        <div className="flex size-8 items-center justify-center rounded-md bg-white/15">
+                            <Palette className="size-4 text-white" />
+                        </div>
+                        <div>
+                            <h1 className="text-base font-semibold text-white">Colors</h1>
+                            <p className="text-xs text-white/60">Manage your product colors.</p>
+                        </div>
+                    </div>
+                    <Button size="sm" asChild className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md">
                         <button type="button" onClick={openCreate}>
-                            <Plus className="size-4" />
+                            <Plus className="size-3.5" />
                             Add New
                         </button>
                     </Button>
@@ -148,21 +156,26 @@ export default function ColorIndex({ colors, filters }) {
             </div>
 
             <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Delete Color</DialogTitle>
-                    </DialogHeader>
-                    <p className="text-sm text-muted-foreground">
-                        Are you sure you want to delete <strong>{deleting?.name}</strong>? This action cannot be undone.
-                    </p>
-                    <DialogFooter>
-                        <DialogClose asChild>
-                            <Button variant="outline">Cancel</Button>
-                        </DialogClose>
-                        <Button variant="destructive" onClick={handleDelete}>
-                            Delete
-                        </Button>
-                    </DialogFooter>
+                <DialogContent className="p-0">
+                    <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
+                        <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
+                            <Trash2 className="size-3.5 text-white" />
+                        </div>
+                        <h2 className="text-sm font-semibold text-white">Delete Color</h2>
+                    </div>
+                    <div className="px-5 pb-5 pt-4">
+                        <p className="text-sm text-muted-foreground">
+                            Are you sure you want to delete <strong>{deleting?.name}</strong>? This action cannot be undone.
+                        </p>
+                        <DialogFooter className="mt-4">
+                            <DialogClose asChild>
+                                <Button variant="outline">Cancel</Button>
+                            </DialogClose>
+                            <Button variant="destructive" onClick={handleDelete}>
+                                Delete
+                            </Button>
+                        </DialogFooter>
+                    </div>
                 </DialogContent>
             </Dialog>
 

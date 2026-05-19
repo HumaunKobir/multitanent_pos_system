@@ -1,9 +1,10 @@
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from '@inertiajs/react';
+import { UserRound } from 'lucide-react';
 import { useEffect } from 'react';
 
 function FormField({ label, name, error, children }) {
@@ -73,12 +74,15 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
-                <DialogHeader>
-                    <DialogTitle>{isEditing ? 'Edit User' : 'Create User'}</DialogTitle>
-                </DialogHeader>
+            <DialogContent className="p-0 sm:max-w-lg">
+                <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
+                    <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
+                        <UserRound className="size-3.5 text-white" />
+                    </div>
+                    <h2 className="text-sm font-semibold text-white">{isEditing ? 'Edit User' : 'Create User'}</h2>
+                </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="max-h-[75vh] space-y-4 overflow-y-auto p-5">
                     <FormField label="Branch" name="branch_id" error={form.errors.branch_id}>
                         <Select
                             value={form.data.branch_id === '' ? '__all__' : form.data.branch_id}

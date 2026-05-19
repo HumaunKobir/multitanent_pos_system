@@ -1,5 +1,6 @@
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Settings } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -44,12 +45,15 @@ export default function SettingFormDialog({ open, onOpenChange, title, item, rou
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>{isEditing ? `Edit ${title}` : `Create ${title}`}</DialogTitle>
-                </DialogHeader>
+            <DialogContent className="p-0">
+                <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
+                    <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
+                        <Settings className="size-3.5 text-white" />
+                    </div>
+                    <h2 className="text-sm font-semibold text-white">{isEditing ? `Edit ${title}` : `Create ${title}`}</h2>
+                </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4" encType="multipart/form-data">
+                <form onSubmit={handleSubmit} className="space-y-4 p-5" encType="multipart/form-data">
                     {fields.map((field) => (
                         <div key={field.name}>
                             <Label htmlFor={field.name}>{field.label}</Label>

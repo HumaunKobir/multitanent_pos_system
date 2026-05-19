@@ -1,10 +1,10 @@
 import { Button } from '@/components/ui/button';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from '@inertiajs/react';
-import { Plus, Trash2 } from 'lucide-react';
+import { LayoutDashboard, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 
 const emptyImageRow = () => ({
@@ -146,12 +146,15 @@ export default function ProductSectionFormDialog({
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-                <DialogHeader>
-                    <DialogTitle>{isEditing ? 'Edit Product Section' : 'Create Product Section'}</DialogTitle>
-                </DialogHeader>
+            <DialogContent className="max-w-2xl p-0">
+                <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
+                    <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
+                        <LayoutDashboard className="size-3.5 text-white" />
+                    </div>
+                    <h2 className="text-sm font-semibold text-white">{isEditing ? 'Edit Product Section' : 'Create Product Section'}</h2>
+                </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form onSubmit={handleSubmit} className="max-h-[80vh] space-y-4 overflow-y-auto p-5">
                     <div>
                         <Label htmlFor="name">Section Name *</Label>
                         <Input

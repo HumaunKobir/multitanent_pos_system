@@ -1,6 +1,6 @@
 import { Button } from '@/components/ui/button';
 import { Head, Link, useForm } from '@inertiajs/react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, PackagePlus } from 'lucide-react';
 import { route } from '@/lib/route';
 import ProductForm from './partials/product-form';
 
@@ -39,14 +39,23 @@ export default function ProductCreate({ categories, brands, units, warranties, c
         <>
             <Head title="Add Product" />
 
-            <div className="p-6">
-                <div className="mb-6 flex items-center gap-3">
-                    <Button variant="outline" size="sm" asChild>
+            <div className="px-2 py-1">
+                <div className="mb-3 flex items-center justify-between rounded-lg bg-blue-950 px-5 py-3">
+                    <div className="flex items-center gap-3">
+                        <div className="flex size-8 items-center justify-center rounded-md bg-white/15">
+                            <PackagePlus className="size-4 text-white" />
+                        </div>
+                        <div>
+                            <h1 className="text-base font-semibold text-white">Add Product</h1>
+                            <p className="text-xs text-white/60">Create a new product for your inventory.</p>
+                        </div>
+                    </div>
+                    <Button size="sm" asChild className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md">
                         <Link href={route('product.index')}>
-                            <ArrowLeft className="size-4" />
+                            <ArrowLeft className="size-3.5" />
+                            Back
                         </Link>
                     </Button>
-                    <h1 className="text-xl font-semibold">Add Product</h1>
                 </div>
 
                 <form onSubmit={handleSubmit} encType="multipart/form-data">

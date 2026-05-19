@@ -5,7 +5,9 @@ use App\Http\Controllers\ProductController;
 use App\Http\Controllers\Setting\BrandController;
 use App\Http\Controllers\Setting\CategoryController;
 use App\Http\Controllers\Setting\ColorController;
+use App\Http\Controllers\Setting\ProductSectionController;
 use App\Http\Controllers\Setting\SizeController;
+use App\Http\Controllers\Setting\SliderController;
 use App\Http\Controllers\Setting\TagController;
 use App\Http\Controllers\Setting\TailorMeasurementController;
 use App\Http\Controllers\Setting\UnitController;
@@ -38,4 +40,8 @@ Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->gr
     Route::resource('color', ColorController::class)->except(['create', 'edit']);
     Route::resource('tailormeasurement', TailorMeasurementController::class)->except(['create', 'edit']);
     Route::resource('warranty', WarrantyController::class)->except(['create', 'edit']);
+    Route::resource('slider', SliderController::class)->except(['create', 'edit', 'show']);
+    Route::resource('productsection', ProductSectionController::class)->except(['create', 'edit', 'show']);
+    Route::post('productsection/update-order', [ProductSectionController::class, 'updateOrder'])
+        ->name('productsection.update-order');
 });

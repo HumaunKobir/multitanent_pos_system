@@ -46,6 +46,15 @@ const routes = {
     'setting.warranty.store': '/setting/warranty',
     'setting.warranty.update': '/setting/warranty/:warranty',
     'setting.warranty.destroy': '/setting/warranty/:warranty',
+    'setting.slider.index': '/setting/slider',
+    'setting.slider.store': '/setting/slider',
+    'setting.slider.update': '/setting/slider/:slider',
+    'setting.slider.destroy': '/setting/slider/:slider',
+    'setting.productsection.index': '/setting/productsection',
+    'setting.productsection.store': '/setting/productsection',
+    'setting.productsection.update': '/setting/productsection/:productsection',
+    'setting.productsection.destroy': '/setting/productsection/:productsection',
+    'setting.productsection.update-order': '/setting/productsection/update-order',
     'branch.index': '/branch',
     'branch.store': '/branch',
     'branch.update': '/branch/:branch',
@@ -107,6 +116,13 @@ const methods = {
     'setting.warranty.store': 'post',
     'setting.warranty.update': 'patch',
     'setting.warranty.destroy': 'delete',
+    'setting.slider.store': 'post',
+    'setting.slider.update': 'patch',
+    'setting.slider.destroy': 'delete',
+    'setting.productsection.store': 'post',
+    'setting.productsection.update': 'patch',
+    'setting.productsection.destroy': 'delete',
+    'setting.productsection.update-order': 'post',
     'branch.store': 'post',
     'branch.update': 'patch',
     'branch.destroy': 'delete',
@@ -205,12 +221,18 @@ export function routeRequest(name, params) {
 export function settingRoutes(resource) {
     const prefix = `setting.${resource}`;
 
-    return {
+    const routes = {
         index: (query) => route(`${prefix}.index`, query ? { query } : undefined),
         store: route(`${prefix}.store`),
         update: (id) => route(`${prefix}.update`, { [resource]: id }),
         destroy: (id) => route(`${prefix}.destroy`, { [resource]: id }),
     };
+
+    if (resource === 'productsection') {
+        routes.updateOrder = () => route(`${prefix}.update-order`);
+    }
+
+    return routes;
 }
 
 export function resourceRoutes(resource) {

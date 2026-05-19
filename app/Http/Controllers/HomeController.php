@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Enums\BlockType;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Collectioncategory;
@@ -14,6 +15,7 @@ use App\Models\Size;
 use App\Models\Slider;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -21,7 +23,16 @@ class HomeController extends Controller
 {
     public function index(): Response
     {
-        $sliders = Slider::active()->orderBy('id', 'desc')->get();
+        $sliders = Slider::active()
+            ->orderBy('id', 'desc')
+            ->get()
+            ->map(fn (Slider $slider): array => [
+                'id' => $slider->id,
+                'name' => $slider->name,
+                'image' => $slider->image
+                    ? Storage::disk('public')->url($slider->image)
+                    : null,
+            ]);
         $collections = Collectioncategory::active()->get();
         $productSections = ProductSection::active()
             ->orderBy('serial')
@@ -33,10 +44,10 @@ class HomeController extends Controller
                     'description' => $section->description,
                     'button_text' => $section->button_text,
                     'block_per_line' => $section->block_per_line,
-                    'layout_type' => $section->layout_type,
-                    'block_type' => $section->block_type,
-                    'images' => $section->images ?? [],
-                    'products' => $section->block_type === 2
+                    'layout_type' => $section->layout_type?->value,
+                    'block_type' => $section->block_type?->value,
+                    'images' => $section->product_images,
+                    'products' => $section->block_type === BlockType::Item
                         ? $section->product_items->map(fn (Product $p) => $this->formatProduct($p))->values()
                         : [],
                 ];

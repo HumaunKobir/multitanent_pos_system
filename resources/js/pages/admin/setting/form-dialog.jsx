@@ -53,7 +53,7 @@ export default function SettingFormDialog({ open, onOpenChange, title, item, rou
                     <h2 className="text-sm font-semibold text-white">{isEditing ? `Edit ${title}` : `Create ${title}`}</h2>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4 p-5" encType="multipart/form-data">
+                <form onSubmit={handleSubmit} className="space-y-4 p-4" encType="multipart/form-data">
                     {fields.map((field) => (
                         <div key={field.name}>
                             <Label htmlFor={field.name}>{field.label}</Label>
@@ -121,7 +121,7 @@ export default function SettingFormDialog({ open, onOpenChange, title, item, rou
                         </div>
                     ))}
 
-                    <div className="flex justify-end gap-3 pt-2">
+                    <div className="flex justify-end gap-3 border-t pt-4">
                         <Button type="button" variant="outline" size="sm" className="border-red-500 text-red-500 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-red-500 hover:text-white hover:shadow-md hover:shadow-red-500/30" onClick={() => onOpenChange(false)}>
                             Cancel
                         </Button>

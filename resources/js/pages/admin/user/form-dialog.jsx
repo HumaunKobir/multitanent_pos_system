@@ -82,7 +82,7 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                     <h2 className="text-sm font-semibold text-white">{isEditing ? 'Edit User' : 'Create User'}</h2>
                 </div>
 
-                <form onSubmit={handleSubmit} className="max-h-[75vh] space-y-4 overflow-y-auto p-5">
+                <form onSubmit={handleSubmit} className="max-h-[75vh] space-y-4 overflow-y-auto p-4">
                     <FormField label="Branch" name="branch_id" error={form.errors.branch_id}>
                         <Select
                             value={form.data.branch_id === '' ? '__all__' : form.data.branch_id}
@@ -172,7 +172,7 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                         </Select>
                     </FormField>
 
-                    <div className="flex justify-end gap-3 pt-2">
+                    <div className="flex justify-end gap-3 border-t pt-4">
                         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                             Cancel
                         </Button>

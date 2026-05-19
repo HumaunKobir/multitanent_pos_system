@@ -47,14 +47,14 @@ const iconMap = {
 };
 
 const navSelectedClass =
-    'border-indigo-500/90 bg-indigo-600 font-semibold text-white shadow-[0_6px_22px_-6px_rgba(79,70,229,0.55),0_2px_8px_-2px_rgba(67,56,202,0.35)] dark:border-indigo-400/70 dark:bg-indigo-700';
+    'border-blue-900/90 bg-blue-950 font-semibold text-white shadow-[0_4px_14px_-4px_rgba(23,37,84,0.5)] dark:border-blue-800/70 dark:bg-blue-950';
 
 function navLinkClass(active) {
     return cn(
         'group flex items-center gap-2.5 border px-2.5 py-2 text-[0.8125rem] leading-tight tracking-tight transition-[border-color,background-color,color,font-weight,box-shadow]',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-sidebar',
         active
-            ? cn(navSelectedClass, 'hover:bg-indigo-500 dark:hover:bg-indigo-600')
+            ? cn(navSelectedClass, 'hover:bg-blue-900 dark:hover:bg-blue-900')
             : 'border-transparent font-medium text-sidebar-foreground/90 shadow-none hover:border-border/80 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground',
     );
 }
@@ -191,7 +191,7 @@ export function PanelSidebar() {
                                         className={cn(
                                             'size-4 shrink-0 text-muted-foreground transition-transform duration-200',
                                             isOpen && 'rotate-180',
-                                            sectionActive && 'text-indigo-600 dark:text-indigo-400',
+                                            sectionActive && 'text-blue-950 dark:text-blue-400',
                                         )}
                                         aria-hidden
                                     />

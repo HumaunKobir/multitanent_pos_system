@@ -71,7 +71,7 @@ export default function BranchFormDialog({ open, onOpenChange, item, routes }) {
                     <h2 className="text-sm font-semibold text-white">{isEditing ? 'Edit Branch' : 'Create Branch'}</h2>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4 p-5">
+                <form onSubmit={handleSubmit} className="space-y-4 p-4">
                     <FormField label="Name" name="name" error={form.errors.name}>
                         <Input
                             id="name"
@@ -120,7 +120,7 @@ export default function BranchFormDialog({ open, onOpenChange, item, routes }) {
                         </FormField>
                     )}
 
-                    <div className="flex justify-end gap-3 pt-2">
+                    <div className="flex justify-end gap-3 border-t pt-4">
                         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                             Cancel
                         </Button>

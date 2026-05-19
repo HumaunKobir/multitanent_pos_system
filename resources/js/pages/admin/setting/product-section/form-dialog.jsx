@@ -154,7 +154,7 @@ export default function ProductSectionFormDialog({
                     <h2 className="text-sm font-semibold text-white">{isEditing ? 'Edit Product Section' : 'Create Product Section'}</h2>
                 </div>
 
-                <form onSubmit={handleSubmit} className="max-h-[80vh] space-y-4 overflow-y-auto p-5">
+                <form onSubmit={handleSubmit} className="max-h-[80vh] space-y-4 overflow-y-auto p-4">
                     <div>
                         <Label htmlFor="name">Section Name *</Label>
                         <Input
@@ -326,7 +326,7 @@ export default function ProductSectionFormDialog({
                         </div>
                     )}
 
-                    <div className="flex justify-end gap-3 pt-2">
+                    <div className="flex justify-end gap-3 border-t pt-4">
                         <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
                             Cancel
                         </Button>

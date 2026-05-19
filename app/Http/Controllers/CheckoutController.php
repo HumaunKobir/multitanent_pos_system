@@ -43,13 +43,9 @@ class CheckoutController extends Controller
         ]);
 
         $subtotal = 0;
-        $tailorTotal = 0;
 
         foreach ($cart as $item) {
             $subtotal += $item['price'] * $item['quantity'];
-            if ($item['tailor_service'] ?? false) {
-                $tailorTotal += $item['tailor_price'] * $item['quantity'];
-            }
         }
 
         $cityId = $validated['city_id'] ?? null;
@@ -64,8 +60,7 @@ class CheckoutController extends Controller
             'payment_method' => $validated['payment_method'],
             'delivery_charge' => $deliveryCharge,
             'subtotal' => $subtotal,
-            'tailor_price' => $tailorTotal,
-            'total' => $subtotal + $deliveryCharge + $tailorTotal,
+            'total' => $subtotal + $deliveryCharge,
             'city_id' => $cityId,
             'zone_id' => $validated['zone_id'] ?? null,
             'area_id' => $validated['area_id'] ?? null,
@@ -83,9 +78,6 @@ class CheckoutController extends Controller
                 'price' => $item['price'],
                 'quantity' => $item['quantity'],
                 'total_price' => $item['price'] * $item['quantity'],
-                'tailor_service' => $item['tailor_service'] ?? false,
-                'tailor_price' => $item['tailor_price'] ?? 0,
-                'tailormeasurement' => $item['tailormeasurement'] ?? null,
             ]);
         }
 

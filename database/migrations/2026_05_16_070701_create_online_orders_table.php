@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\OrderStatus;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -21,11 +22,10 @@ return new class extends Migration
             $table->foreignId('payment_method_id')->nullable()->constrained('payment_methods');
             $table->decimal('delivery_charge', 10, 2)->default(0);
             $table->decimal('subtotal', 10, 2)->default(0);
-            $table->decimal('tailor_price', 10, 2)->default(0);
             $table->decimal('total', 10, 2)->default(0);
             $table->string('payment_status')->default('Pending')->comment('Pending | Paid');
             $table->string('courier')->nullable();
-            $table->tinyInteger('status')->default(\App\Enums\OrderStatus::Pending);
+            $table->tinyInteger('status')->default(OrderStatus::Pending);
             $table->timestamps();
         });
     }

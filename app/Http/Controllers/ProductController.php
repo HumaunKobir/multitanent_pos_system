@@ -3,16 +3,14 @@
 namespace App\Http\Controllers;
 
 use App\Models\Branch;
-use App\Enums\CommonStatus;
 use App\Models\Brand;
 use App\Models\Category;
-use App\Models\Tag;
 use App\Models\Color;
 use App\Models\Product;
 use App\Models\ProductPhoto;
 use App\Models\ProductVariation;
 use App\Models\Size;
-use App\Models\Tailormeasurement;
+use App\Models\Tag;
 use App\Models\Unit;
 use App\Models\Variation;
 use App\Models\Warranty;
@@ -67,19 +65,13 @@ class ProductController extends Controller
             'purchase_price' => $hasVariations ? ['nullable', 'numeric', 'min:0'] : ['required', 'numeric', 'min:0'],
             'sale_price' => $hasVariations ? ['nullable', 'numeric', 'min:0'] : ['required', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric'],
-            'type' => ['required', 'in:stitch,notstitch'],
-            'tailor_option' => ['required', 'in:yes,no'],
-            'tailor_price' => ['required', 'numeric', 'min:0'],
             'colors' => ['nullable', 'array'],
             'sizes' => ['nullable', 'array'],
-            'tailormeasurement' => ['nullable', 'array'],
             'tags' => ['nullable', 'array'],
             'visible' => ['nullable', 'in:yes,no'],
             'status' => ['nullable', 'in:0,1'],
             'description' => ['nullable', 'string'],
-            'bn_description' => ['nullable', 'string'],
             'delivery_info' => ['nullable', 'string'],
-            'bn_delivery_info' => ['nullable', 'string'],
             'youtube_link' => ['nullable', 'string', 'max:255'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
             'chest_size_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
@@ -108,7 +100,6 @@ class ProductController extends Controller
             $data['visible'] = $data['visible'] ?? 'yes';
             $data['status'] = (int) ($data['status'] ?? 1);
             $data['discount_price'] = $data['discount_price'] ?? 0;
-            $data['tailor_price'] = $data['tailor_price'] ?? 0;
 
             $product = Product::create($data);
 
@@ -159,19 +150,13 @@ class ProductController extends Controller
             'purchase_price' => ['required', 'numeric', 'min:0'],
             'sale_price' => ['required', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric'],
-            'type' => ['required', 'in:stitch,notstitch'],
-            'tailor_option' => ['required', 'in:yes,no'],
-            'tailor_price' => ['required', 'numeric', 'min:0'],
             'colors' => ['nullable', 'array'],
             'sizes' => ['nullable', 'array'],
-            'tailormeasurement' => ['nullable', 'array'],
             'tags' => ['nullable', 'array'],
             'visible' => ['nullable', 'in:yes,no'],
             'status' => ['nullable', 'in:0,1'],
             'description' => ['nullable', 'string'],
-            'bn_description' => ['nullable', 'string'],
             'delivery_info' => ['nullable', 'string'],
-            'bn_delivery_info' => ['nullable', 'string'],
             'youtube_link' => ['nullable', 'string', 'max:255'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
             'chest_size_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
@@ -201,7 +186,6 @@ class ProductController extends Controller
             $data['visible'] = $data['visible'] ?? 'yes';
             $data['status'] = (int) ($data['status'] ?? 1);
             $data['discount_price'] = $data['discount_price'] ?? 0;
-            $data['tailor_price'] = $data['tailor_price'] ?? 0;
 
             $product->update($data);
 
@@ -247,7 +231,6 @@ class ProductController extends Controller
             'warranties' => Warranty::active()->pluck('name', 'id'),
             'colors' => Color::active()->get(['id', 'name', 'code']),
             'sizes' => Size::active()->pluck('name', 'id'),
-            'tailors' => Tailormeasurement::active()->pluck('name', 'id'),
             'branches' => Branch::active()->orderBy('name')->pluck('name', 'id'),
             'variationNames' => Variation::where('status', 1)->pluck('name'),
             'tagOptions' => Tag::query()

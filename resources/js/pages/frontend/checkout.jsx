@@ -4,10 +4,6 @@ import FrontendLayout from '@/layouts/frontend/frontend-layout';
 export default function Checkout({ cart, customer }) {
     const items = cart || [];
     const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const tailorTotal = items.reduce(
-        (sum, item) => sum + (item.tailor_service ? item.tailor_price * item.quantity : 0),
-        0,
-    );
 
     const { data, setData, post, processing, errors } = useForm({
         name: customer?.name ?? '',
@@ -21,7 +17,7 @@ export default function Checkout({ cart, customer }) {
     });
 
     const deliveryCharge = data.city_id == '1' ? 60 : 120;
-    const total = subtotal + tailorTotal + deliveryCharge;
+    const total = subtotal + deliveryCharge;
 
     const submit = (e) => {
         e.preventDefault();
@@ -157,12 +153,6 @@ export default function Checkout({ cart, customer }) {
                                 <span>সাবটোটাল</span>
                                 <span>৳{subtotal.toFixed(0)}</span>
                             </div>
-                            {tailorTotal > 0 && (
-                                <div className="flex justify-between text-gray-600">
-                                    <span>টেইলর চার্জ</span>
-                                    <span>৳{tailorTotal.toFixed(0)}</span>
-                                </div>
-                            )}
                             <div className="flex justify-between text-gray-600">
                                 <span>ডেলিভারি</span>
                                 <span>৳{deliveryCharge}</span>

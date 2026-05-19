@@ -49,9 +49,6 @@ export default function OrderDetails({ order }) {
                                 <div className="flex-1 min-w-0">
                                     <p className="text-sm font-medium text-gray-900 line-clamp-2">{item.name}</p>
                                     {item.sku && <p className="text-xs text-gray-500">SKU: {item.sku}</p>}
-                                    {item.tailor_service && (
-                                        <p className="text-xs text-indigo-600">+ টেইলর সার্ভিস</p>
-                                    )}
                                 </div>
                                 <div className="text-right text-sm">
                                     <p className="text-gray-500">× {item.quantity}</p>
@@ -66,12 +63,6 @@ export default function OrderDetails({ order }) {
                             <span>সাবটোটাল</span>
                             <span>৳{Number(order.subtotal).toFixed(0)}</span>
                         </div>
-                        {Number(order.tailor_price) > 0 && (
-                            <div className="flex justify-between text-gray-600">
-                                <span>টেইলর চার্জ</span>
-                                <span>৳{Number(order.tailor_price).toFixed(0)}</span>
-                            </div>
-                        )}
                         <div className="flex justify-between text-gray-600">
                             <span>ডেলিভারি চার্জ</span>
                             <span>৳{Number(order.delivery_charge).toFixed(0)}</span>

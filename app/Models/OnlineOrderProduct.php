@@ -9,15 +9,12 @@ class OnlineOrderProduct extends Model
 {
     protected $fillable = [
         'online_order_id', 'product_id', 'variation_id', 'name', 'sku',
-        'price', 'quantity', 'total_price', 'tailor_service', 'tailor_price', 'tailormeasurement',
+        'price', 'quantity', 'total_price',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'total_price' => 'decimal:2',
-        'tailor_price' => 'decimal:2',
-        'tailor_service' => 'boolean',
-        'tailormeasurement' => 'array',
     ];
 
     public function order(): BelongsTo

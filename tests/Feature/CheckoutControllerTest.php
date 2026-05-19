@@ -18,9 +18,6 @@ function cartWithProduct(): array
             'quantity' => 1,
             'variation_id' => null,
             'sku' => null,
-            'tailor_service' => false,
-            'tailor_price' => 0.0,
-            'tailormeasurement' => null,
         ],
     ];
 }
@@ -112,7 +109,6 @@ test('order success page loads', function () {
         'payment_method' => 'cod',
         'delivery_charge' => 60,
         'subtotal' => 1000,
-        'tailor_price' => 0,
         'total' => 1060,
         'status' => 1,
         'payment_status' => 'pending',

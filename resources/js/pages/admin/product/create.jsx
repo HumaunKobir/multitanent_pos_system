@@ -4,7 +4,7 @@ import { ArrowLeft } from 'lucide-react';
 import { route } from '@/lib/route';
 import ProductForm from './partials/product-form';
 
-export default function ProductCreate({ categories, brands, units, warranties, colors, sizes, tailors, branches, variationNames = [], tagOptions = [] }) {
+export default function ProductCreate({ categories, brands, units, warranties, colors, sizes, branches, variationNames = [], tagOptions = [] }) {
     const form = useForm({
         branch_id: null,
         category_id: '',
@@ -16,19 +16,13 @@ export default function ProductCreate({ categories, brands, units, warranties, c
         purchase_price: '',
         sale_price: '',
         discount_price: '',
-        type: 'notstitch',
-        tailor_option: 'no',
-        tailor_price: '0',
         colors: [],
         sizes: [],
-        tailormeasurement: [],
         tags: [],
         visible: 'yes',
         status: '1',
         description: '',
-        bn_description: '',
         delivery_info: '',
-        bn_delivery_info: '',
         youtube_link: '',
         image: null,
         chest_size_image: null,
@@ -64,7 +58,6 @@ export default function ProductCreate({ categories, brands, units, warranties, c
                         warranties={warranties}
                         colors={colors}
                         sizes={sizes}
-                        tailors={tailors}
                         branches={branches}
                         variationNames={variationNames}
                         tagOptions={tagOptions}

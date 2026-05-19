@@ -25,9 +25,6 @@ class CartController extends Controller
             'product_id' => 'required|exists:products,id',
             'quantity' => 'required|integer|min:1',
             'variation_id' => 'nullable|exists:product_variations,id',
-            'tailor_service' => 'nullable|boolean',
-            'tailor_price' => 'nullable|numeric|min:0',
-            'tailormeasurement' => 'nullable|array',
         ]);
 
         $product = Product::findOrFail($validated['product_id']);
@@ -54,9 +51,6 @@ class CartController extends Controller
                 'quantity' => $validated['quantity'],
                 'variation_id' => $validated['variation_id'] ?? null,
                 'sku' => $sku,
-                'tailor_service' => $validated['tailor_service'] ?? false,
-                'tailor_price' => (float) ($validated['tailor_price'] ?? 0),
-                'tailormeasurement' => $validated['tailormeasurement'] ?? null,
             ];
         }
 

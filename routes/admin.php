@@ -9,7 +9,6 @@ use App\Http\Controllers\Setting\ProductSectionController;
 use App\Http\Controllers\Setting\SizeController;
 use App\Http\Controllers\Setting\SliderController;
 use App\Http\Controllers\Setting\TagController;
-use App\Http\Controllers\Setting\TailorMeasurementController;
 use App\Http\Controllers\Setting\UnitController;
 use App\Http\Controllers\Setting\WarrantyController;
 use App\Http\Controllers\UserController;
@@ -38,7 +37,6 @@ Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->gr
     Route::resource('unit', UnitController::class)->except(['create', 'edit']);
     Route::resource('size', SizeController::class)->except(['create', 'edit']);
     Route::resource('color', ColorController::class)->except(['create', 'edit']);
-    Route::resource('tailormeasurement', TailorMeasurementController::class)->except(['create', 'edit']);
     Route::resource('warranty', WarrantyController::class)->except(['create', 'edit']);
     Route::resource('slider', SliderController::class)->except(['create', 'edit', 'show']);
     Route::resource('productsection', ProductSectionController::class)->except(['create', 'edit', 'show']);

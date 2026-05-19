@@ -265,7 +265,7 @@ function PhotosSection({ product }) {
     );
 }
 
-export default function ProductEdit({ product, categories, brands, units, warranties, colors, sizes, tailors, branches, variationNames = [], tagOptions = [] }) {
+export default function ProductEdit({ product, categories, brands, units, warranties, colors, sizes, branches, variationNames = [], tagOptions = [] }) {
     const form = useForm({
         branch_id: product.branch_id ?? null,
         category_id: String(product.category_id ?? ''),
@@ -277,19 +277,13 @@ export default function ProductEdit({ product, categories, brands, units, warran
         purchase_price: product.purchase_price ?? '',
         sale_price: product.sale_price ?? '',
         discount_price: product.discount_price ?? '',
-        type: product.type ?? 'notstitch',
-        tailor_option: product.tailor_option ?? 'no',
-        tailor_price: product.tailor_price ?? '0',
         colors: (product.colors ?? []).map(Number),
         sizes: (product.sizes ?? []).map(Number),
-        tailormeasurement: (product.tailormeasurement ?? []).map(Number),
         tags: product.tags ?? [],
         visible: product.visible ?? 'yes',
         status: String(product.status ?? '1'),
         description: product.description ?? '',
-        bn_description: product.bn_description ?? '',
         delivery_info: product.delivery_info ?? '',
-        bn_delivery_info: product.bn_delivery_info ?? '',
         youtube_link: product.youtube_link ?? '',
         image: null,
         chest_size_image: null,
@@ -330,7 +324,6 @@ export default function ProductEdit({ product, categories, brands, units, warran
                             warranties={warranties}
                             colors={colors}
                             sizes={sizes}
-                            tailors={tailors}
                             branches={branches}
                             variationNames={variationNames}
                             tagOptions={tagOptions}

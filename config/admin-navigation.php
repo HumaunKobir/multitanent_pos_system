@@ -37,7 +37,6 @@ return [
         [
             'title' => 'Purchases',
             'icon' => 'hand-coins',
-            'branch_only' => true,
             'children' => [
                 ['title' => 'Purchase', 'href' => '/inventory/purchase'],
                 ['title' => 'Purchase Return', 'href' => '/inventory/purchase-return'],
@@ -79,16 +78,6 @@ return [
             'admin_only' => true,
         ],
         [
-            'title' => 'Online Order',
-            'icon' => 'globe',
-            'single' => true,
-        ],
-        [
-            'title' => 'Steadfast Courier Order',
-            'icon' => 'send',
-            'single' => true,
-        ],
-        [
             'title' => 'Contact List',
             'icon' => 'phone-call',
             'single' => true,
@@ -103,7 +92,6 @@ return [
                 ['title' => 'Brand', 'href' => '/setting/brand'],
                 ['title' => 'Unit', 'href' => '/setting/unit'],
                 ['title' => 'Size', 'href' => '/setting/size'],
-                ['title' => 'Tailor Measurement', 'href' => '/setting/tailormeasurement'],
                 ['title' => 'Color', 'href' => '/setting/color'],
                 ['title' => 'Warranty', 'href' => '/setting/warranty'],
                 ['title' => 'Product', 'href' => '/product'],

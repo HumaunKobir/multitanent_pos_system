@@ -433,7 +433,7 @@ function VariationBuilder({ productCode, variationNames = [], onChange, onEnable
     );
 }
 
-export default function ProductForm({ form, categories, brands, units, warranties, colors, sizes, tailors, branches, variationNames = [], tagOptions = [], isEditing = false, processing = false, cancelHref = '' }) {
+export default function ProductForm({ form, categories, brands, units, warranties, colors, sizes, branches, variationNames = [], tagOptions = [], isEditing = false, processing = false, cancelHref = '' }) {
     const { auth } = usePage().props;
     const isAdmin = !auth.user?.branch_id;
 
@@ -442,7 +442,6 @@ export default function ProductForm({ form, categories, brands, units, warrantie
     const unitOptions     = Object.entries(units     || {}).map(([value, label]) => ({ value, label }));
     const warrantyOptions = Object.entries(warranties|| {}).map(([value, label]) => ({ value, label }));
     const sizeOptions     = Object.entries(sizes     || {}).map(([value, label]) => ({ value, label }));
-    const tailorOptions   = Object.entries(tailors   || {}).map(([value, label]) => ({ value, label }));
     const branchOptions   = Object.entries(branches  || {}).map(([value, label]) => ({ value, label }));
 
     const [hasVariations, setHasVariations] = useState(false);
@@ -514,60 +513,12 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                         <Field label="Product Code" required={!hasVariations} error={form.errors.code}>
                             <Input className="h-8 text-xs" value={form.data.code} onChange={(e) => form.setData('code', e.target.value)} placeholder={hasVariations ? 'Set per variant' : 'SKU / barcode'} disabled={hasVariations} />
                         </Field>
-
-                        <Field label="Purchase Price" required={!hasVariations} error={form.errors.purchase_price}>
-                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.purchase_price} onChange={(e) => form.setData('purchase_price', e.target.value)} placeholder={hasVariations ? 'Set per variant' : '0.00'} disabled={hasVariations} />
-                        </Field>
-
-                        <Field label="Sale Price" required={!hasVariations} error={form.errors.sale_price}>
-                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.sale_price} onChange={(e) => form.setData('sale_price', e.target.value)} placeholder={hasVariations ? 'Set per variant' : '0.00'} disabled={hasVariations} />
-                        </Field>
-
-                        <Field label="Discount Price" error={form.errors.discount_price}>
-                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.discount_price} onChange={(e) => form.setData('discount_price', e.target.value)} placeholder="0.00" />
-                        </Field>
-
-                        <div className="col-span-2">
-                            <Field label="Tags" error={form.errors.tags}>
-                                <SmartMultiSelect
-                                    options={tagOptions}
-                                    value={form.data.tags || []}
-                                    onValueChange={(tags) => form.setData('tags', tags)}
-                                    placeholder="Search tags…"
-                                    triggerClassName="min-h-8"
-                                />
-                            </Field>
-                        </div>
                     </div>
                 </Card>
 
-                {/* Type & Tailor */}
-                <Card title="Type & Tailor">
+                {/* Extra Options */}
+                <Card title="Options">
                     <div className="grid grid-cols-3 gap-3">
-                        <Field label="Product Type" required error={form.errors.type}>
-                            <Select value={form.data.type} onValueChange={(v) => form.setData('type', v)}>
-                                <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="notstitch">Not Stitch</SelectItem>
-                                    <SelectItem value="stitch">Stitch</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </Field>
-
-                        <Field label="Tailor Option" required error={form.errors.tailor_option}>
-                            <Select value={form.data.tailor_option} onValueChange={(v) => form.setData('tailor_option', v)}>
-                                <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="yes">Yes</SelectItem>
-                                    <SelectItem value="no">No</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </Field>
-
-                        <Field label="Tailor Price" required error={form.errors.tailor_price}>
-                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.tailor_price} onChange={(e) => form.setData('tailor_price', e.target.value)} placeholder="0.00" />
-                        </Field>
-
                         <Field label="YouTube Link" error={form.errors.youtube_link}>
                             <Input className="h-8 text-xs" value={form.data.youtube_link} onChange={(e) => form.setData('youtube_link', e.target.value)} placeholder="https://youtube.com/..." />
                         </Field>
@@ -580,6 +531,16 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                                     <SelectItem value="no">No</SelectItem>
                                 </SelectContent>
                             </Select>
+                        </Field>
+
+                        <Field label="Tags" error={form.errors.tags}>
+                            <SmartMultiSelect
+                                options={tagOptions}
+                                value={form.data.tags || []}
+                                onValueChange={(tags) => form.setData('tags', tags)}
+                                placeholder="Search tags…"
+                                triggerClassName="min-h-8"
+                            />
                         </Field>
                     </div>
                 </Card>
@@ -595,6 +556,23 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                         />
                     </Card>
                 )}
+
+                {/* Price */}
+                <Card title="Price">
+                    <div className="grid grid-cols-3 gap-3">
+                        <Field label="Purchase Price" required={!hasVariations} error={form.errors.purchase_price}>
+                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.purchase_price} onChange={(e) => form.setData('purchase_price', e.target.value)} placeholder={hasVariations ? 'Set per variant' : '0.00'} disabled={hasVariations} />
+                        </Field>
+
+                        <Field label="Sale Price" required={!hasVariations} error={form.errors.sale_price}>
+                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.sale_price} onChange={(e) => form.setData('sale_price', e.target.value)} placeholder={hasVariations ? 'Set per variant' : '0.00'} disabled={hasVariations} />
+                        </Field>
+
+                        <Field label="Discount Price" error={form.errors.discount_price}>
+                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.discount_price} onChange={(e) => form.setData('discount_price', e.target.value)} placeholder="0.00" />
+                        </Field>
+                    </div>
+                </Card>
 
             </div>
 
@@ -652,17 +630,11 @@ export default function ProductForm({ form, categories, brands, units, warrantie
             <div className="lg:col-span-3">
                 <Card title="Content">
                     <div className="space-y-3">
-                        <Field label="Description (EN)" error={form.errors.description}>
+                        <Field label="Description" error={form.errors.description}>
                             <CKEditorField id="ck_description" value={form.data.description} onChange={(v) => form.setData('description', v)} />
                         </Field>
-                        <Field label="Description (BN)" error={form.errors.bn_description}>
-                            <CKEditorField id="ck_bn_description" value={form.data.bn_description} onChange={(v) => form.setData('bn_description', v)} />
-                        </Field>
-                        <Field label="Delivery Info (EN)" error={form.errors.delivery_info}>
+                        <Field label="Delivery Info" error={form.errors.delivery_info}>
                             <CKEditorField id="ck_delivery_info" value={form.data.delivery_info} onChange={(v) => form.setData('delivery_info', v)} />
-                        </Field>
-                        <Field label="Delivery Info (BN)" error={form.errors.bn_delivery_info}>
-                            <CKEditorField id="ck_bn_delivery_info" value={form.data.bn_delivery_info} onChange={(v) => form.setData('bn_delivery_info', v)} />
                         </Field>
                     </div>
                 </Card>

@@ -5,10 +5,6 @@ import FrontendLayout from '@/layouts/frontend/frontend-layout';
 export default function Cart({ cart }) {
     const items = Object.entries(cart || {}).map(([key, item]) => ({ ...item, cartKey: key }));
     const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const tailorTotal = items.reduce(
-        (sum, item) => sum + (item.tailor_service ? item.tailor_price * item.quantity : 0),
-        0,
-    );
 
     const updateQty = (cartKey, qty) => {
         router.patch(`/cart/${cartKey}`, { quantity: qty }, { preserveScroll: true });
@@ -58,11 +54,6 @@ export default function Cart({ cart }) {
                                         {item.sku && (
                                             <p className="mt-0.5 text-xs text-gray-500">SKU: {item.sku}</p>
                                         )}
-                                        {item.tailor_service && (
-                                            <p className="mt-0.5 text-xs text-indigo-600">
-                                                + টেইলর সার্ভিস ৳{item.tailor_price}
-                                            </p>
-                                        )}
                                         <div className="mt-2 flex items-center justify-between">
                                             <div className="flex items-center gap-2">
                                                 <button
@@ -108,12 +99,6 @@ export default function Cart({ cart }) {
                                     <span>সাবটোটাল</span>
                                     <span>৳{subtotal.toFixed(0)}</span>
                                 </div>
-                                {tailorTotal > 0 && (
-                                    <div className="flex justify-between text-gray-600">
-                                        <span>টেইলর চার্জ</span>
-                                        <span>৳{tailorTotal.toFixed(0)}</span>
-                                    </div>
-                                )}
                                 <div className="flex justify-between text-gray-600">
                                     <span>ডেলিভারি</span>
                                     <span className="text-gray-400">চেকআউটে নির্ধারিত</span>
@@ -121,7 +106,7 @@ export default function Cart({ cart }) {
                                 <div className="border-t border-gray-200 pt-2">
                                     <div className="flex justify-between font-semibold text-gray-900">
                                         <span>মোট</span>
-                                        <span>৳{(subtotal + tailorTotal).toFixed(0)}+</span>
+                                        <span>৳{subtotal.toFixed(0)}+</span>
                                     </div>
                                 </div>
                             </div>

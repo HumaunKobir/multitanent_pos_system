@@ -6,8 +6,6 @@ import FrontendLayout from '@/layouts/frontend/frontend-layout';
 export default function SingleProduct({ product }) {
     const [selectedPhoto, setSelectedPhoto] = useState(0);
     const [selectedVariation, setSelectedVariation] = useState(null);
-    const [tailorService, setTailorService] = useState(false);
-    const [measurements, setMeasurements] = useState({});
 
     const photos = [product.image, ...(product.photos || [])].filter(Boolean);
 
@@ -24,9 +22,6 @@ export default function SingleProduct({ product }) {
                 product_id: product.id,
                 quantity: 1,
                 variation_id: selectedVariation?.id ?? null,
-                tailor_service: tailorService,
-                tailor_price: tailorService ? product.tailor_price : 0,
-                tailormeasurement: tailorService ? measurements : null,
             },
             {
                 preserveScroll: true,
@@ -168,47 +163,6 @@ export default function SingleProduct({ product }) {
                                         </span>
                                     ))}
                                 </div>
-                            </div>
-                        )}
-
-                        {/* Tailor service */}
-                        {product.tailor_option === 'yes' && (
-                            <div className="rounded border border-gray-200 p-4">
-                                <label className="flex cursor-pointer items-center gap-3">
-                                    <input
-                                        type="checkbox"
-                                        checked={tailorService}
-                                        onChange={(e) => setTailorService(e.target.checked)}
-                                        className="size-4"
-                                    />
-                                    <span className="text-sm font-medium text-gray-800">
-                                        টেইলর সার্ভিস (+৳{product.tailor_price})
-                                    </span>
-                                </label>
-
-                                {tailorService && product.tailormeasurement?.length > 0 && (
-                                    <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                                        {product.tailormeasurement.map((m) => (
-                                            <div key={m}>
-                                                <label className="mb-1 block text-xs text-gray-600">
-                                                    {m}
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    value={measurements[m] ?? ''}
-                                                    onChange={(e) =>
-                                                        setMeasurements((prev) => ({
-                                                            ...prev,
-                                                            [m]: e.target.value,
-                                                        }))
-                                                    }
-                                                    className="w-full border border-gray-300 px-2 py-1.5 text-sm focus:border-black focus:outline-none"
-                                                    placeholder={`${m} ইঞ্চি`}
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
                             </div>
                         )}
 

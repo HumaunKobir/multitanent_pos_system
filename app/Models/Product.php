@@ -17,24 +17,20 @@ class Product extends Model
     protected $fillable = [
         'branch_id', 'category_id', 'brand_id', 'unit_id', 'warranty_id',
         'name', 'bn_name', 'slug', 'code',
-        'purchase_price', 'sale_price', 'discount_price', 'wholesale_price', 'wholesale_title',
-        'type', 'tailor_option', 'tailor_price',
-        'colors', 'sizes', 'tailormeasurement', 'tags',
+        'purchase_price', 'sale_price', 'discount_price',
+        'colors', 'sizes', 'tags',
         'image', 'chest_size_image', 'youtube_link',
-        'description', 'bn_description', 'delivery_info', 'bn_delivery_info',
+        'description', 'delivery_info',
         'visible', 'availabe_area', 'status',
     ];
 
     protected $casts = [
         'colors' => 'array',
         'sizes' => 'array',
-        'tailormeasurement' => 'array',
         'tags' => 'array',
         'purchase_price' => 'decimal:2',
         'sale_price' => 'decimal:2',
         'discount_price' => 'decimal:2',
-        'wholesale_price' => 'decimal:2',
-        'tailor_price' => 'decimal:2',
     ];
 
     public function getRouteKeyName(): string

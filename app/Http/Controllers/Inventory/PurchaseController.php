@@ -164,6 +164,65 @@ class PurchaseController extends Controller
         ]);
     }
 
+    public function destroy(Purchase $purchase): RedirectResponse
+    {
+        $branchId = Auth::user()?->branch_id;
+
+        if ($branchId !== null && $purchase->branch_id !== $branchId) {
+            abort(404);
+        }
+
+        $purchase->load(['purchaseProducts']);
+
+        try {
+            DB::transaction(function () use ($purchase) {
+                foreach ($purchase->purchaseProducts as $purchaseProduct) {
+                    $batches = $purchaseProduct->batches ?? [];
+
+                    $totalLineQuantity = 0;
+
+                    foreach ($batches as $batchId => $quantity) {
+                        $qty = (float) $quantity;
+                        $totalLineQuantity += $qty;
+
+                        $batch = Batch::whereKey($batchId)->lockForUpdate()->first();
+
+                        if (! $batch) {
+                            throw new \RuntimeException('Batch not found.');
+                        }
+
+                        if ((float) $batch->available < $qty) {
+                            throw new \RuntimeException('This purchase cannot be deleted because some stock has already been used.');
+                        }
+
+                        $batch->decrement('available', $qty);
+                        $batch->refresh();
+                        $batch->inStock(-$qty);
+                    }
+
+                    if ($purchaseProduct->variation_id) {
+                        ProductVariation::whereKey($purchaseProduct->variation_id)
+                            ->decrement('stock', (int) $totalLineQuantity);
+                    }
+                }
+
+                $netAmount = (float) $purchase->gross_amount + (float) $purchase->vat - (float) $purchase->discount;
+                $dueChange = $netAmount - (float) $purchase->paid_amount;
+
+                if ($purchase->supplier_id !== null) {
+                    Supplier::whereKey($purchase->supplier_id)->increment('balance', -$dueChange);
+                }
+
+                $purchase->delete();
+            });
+        } catch (\Throwable $e) {
+            return back()->with('error', $e instanceof \RuntimeException ? $e->getMessage() : 'Unable to delete purchase.');
+        }
+
+        return redirect()->route('inventory.purchase.index')
+            ->with('success', 'Purchase deleted successfully.');
+    }
+
     private function createOrUpdateBatch(
         ?int $branchId,
         int $productId,

@@ -35,7 +35,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 });
 
 Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')->group(function () {
-    Route::resource('purchase', PurchaseController::class)->except(['edit', 'update', 'destroy']);
+    Route::resource('purchase', PurchaseController::class)->except(['edit', 'update']);
 });
 
 Route::middleware(['auth', 'verified'])->prefix('party')->name('party.')->group(function () {

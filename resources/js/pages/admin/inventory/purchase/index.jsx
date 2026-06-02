@@ -1,12 +1,13 @@
 import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Eye, HandCoins, Plus, Search } from 'lucide-react';
+import { Eye, HandCoins, Plus, Search, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 
 function formatBdDate(date) {
@@ -46,6 +47,7 @@ export default function PurchaseIndex({ purchases, filters }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const [search, setSearch] = useState(filters.search ?? '');
+    const [deleting, setDeleting] = useState(null);
 
     useEffect(() => {
         if (flash.success) toast.success(flash.success);
@@ -55,6 +57,14 @@ export default function PurchaseIndex({ purchases, filters }) {
     function handleSearch(e) {
         e.preventDefault();
         router.get(route('inventory.purchase.index'), { search: search || undefined }, { preserveState: true, replace: true });
+    }
+
+    function handleDelete() {
+        if (!deleting) return;
+        router.delete(route('inventory.purchase.destroy', deleting.id), {
+            onSuccess: () => setDeleting(null),
+            preserveScroll: true,
+        });
     }
 
     const columns = [
@@ -122,6 +132,9 @@ export default function PurchaseIndex({ purchases, filters }) {
                             <Eye className="size-3.5" />
                         </Link>
                     </Button>
+                    <Button size="sm" variant="destructive" onClick={() => setDeleting(row)}>
+                        <Trash2 className="size-3.5" />
+                    </Button>
                 </div>
             ),
         },
@@ -167,6 +180,27 @@ export default function PurchaseIndex({ purchases, filters }) {
                 </form>
 
                 <DataTable columns={columns} rows={purchases.data} rowKey="id" emptyMessage="No purchases found." />
+
+                <Dialog open={!!deleting} onOpenChange={(open) => (!open ? setDeleting(null) : null)}>
+                    <DialogContent className="max-w-sm">
+                        <DialogHeader>
+                            <DialogTitle>Delete purchase?</DialogTitle>
+                            <DialogDescription>
+                                This will permanently delete the purchase and roll back stock changes if possible.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <DialogFooter className="mt-4 gap-2">
+                            <DialogClose asChild>
+                                <Button type="button" variant="outline" size="sm">
+                                    Cancel
+                                </Button>
+                            </DialogClose>
+                            <Button type="button" variant="destructive" size="sm" onClick={handleDelete}>
+                                Delete
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
 
                 {purchases.links?.length > 3 && (
                     <div className="mt-4 flex flex-wrap gap-1">

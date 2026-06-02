@@ -57,7 +57,6 @@ return [
             'icon' => 'users-round',
             'branch_only' => true,
             'children' => [
-                ['title' => 'Group', 'href' => '/party/group'],
                 ['title' => 'Customer', 'href' => '/party/customer'],
                 ['title' => 'Due Collection', 'href' => '/party/customer-due-collection'],
             ],
@@ -90,8 +89,6 @@ return [
                 ['title' => 'Tag', 'href' => '/setting/tag'],
                 ['title' => 'Brand', 'href' => '/setting/brand'],
                 ['title' => 'Unit', 'href' => '/setting/unit'],
-                ['title' => 'Size', 'href' => '/setting/size'],
-                ['title' => 'Color', 'href' => '/setting/color'],
                 ['title' => 'Warranty', 'href' => '/setting/warranty'],
                 ['title' => 'Product', 'href' => '/product'],
                 ['title' => 'Barcode'],

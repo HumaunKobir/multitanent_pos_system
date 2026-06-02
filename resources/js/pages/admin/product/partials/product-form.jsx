@@ -451,11 +451,17 @@ export default function ProductForm({ form, categories, brands, units, warrantie
 
     const [hasVariations, setHasVariations] = useState(false);
 
+    const combinations = form.data.combinations || [];
+    const allCombosHavePrices =
+        hasVariations &&
+        combinations.length > 0 &&
+        combinations.every((c) => String(c.sale_price ?? '').trim() !== '' && String(c.purchase_price ?? '').trim() !== '');
+
+    const priceFieldsDisabled = allCombosHavePrices;
+
     function handleVariationsToggle(val) {
         setHasVariations(val);
         if (val) {
-            form.setData('purchase_price', '');
-            form.setData('sale_price', '');
             form.setData('code', '');
         }
     }
@@ -565,18 +571,28 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                 {/* Price */}
                 <Card title="Price" icon={DollarSign}>
                     <div className="grid grid-cols-3 gap-3">
-                        <Field label="Purchase Price" required={!hasVariations} error={form.errors.purchase_price}>
-                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.purchase_price} onChange={(e) => form.setData('purchase_price', e.target.value)} placeholder="0.00" disabled={hasVariations} />
+                        <Field label="Purchase Price" required={!priceFieldsDisabled} error={form.errors.purchase_price}>
+                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.purchase_price} onChange={(e) => form.setData('purchase_price', e.target.value)} placeholder="0.00" disabled={priceFieldsDisabled} />
                         </Field>
 
-                        <Field label="Sale Price" required={!hasVariations} error={form.errors.sale_price}>
-                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.sale_price} onChange={(e) => form.setData('sale_price', e.target.value)} placeholder="0.00" disabled={hasVariations} />
+                        <Field label="Sale Price" required={!priceFieldsDisabled} error={form.errors.sale_price}>
+                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.sale_price} onChange={(e) => form.setData('sale_price', e.target.value)} placeholder="0.00" disabled={priceFieldsDisabled} />
                         </Field>
 
                         <Field label="Discount Price" error={form.errors.discount_price}>
                             <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.discount_price} onChange={(e) => form.setData('discount_price', e.target.value)} placeholder="0.00" />
                         </Field>
                     </div>
+                    {hasVariations && !allCombosHavePrices && combinations.length > 0 && (
+                        <p className="mt-2 text-xs text-amber-600">
+                            Some combinations are missing prices — this purchase &amp; sale price will be applied to those.
+                        </p>
+                    )}
+                    {allCombosHavePrices && (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                            All combinations have their own prices — these fields are not required.
+                        </p>
+                    )}
                 </Card>
 
             </div>

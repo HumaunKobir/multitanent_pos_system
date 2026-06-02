@@ -52,7 +52,14 @@ class ProductController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $hasVariations = ! empty($request->input('combinations'));
+        $rawCombinations = $request->input('combinations', []);
+        $hasVariations = ! empty($rawCombinations);
+
+        $allCombosHavePrices = $hasVariations && collect($rawCombinations)
+            ->every(fn ($c) => isset($c['sale_price']) && (string) $c['sale_price'] !== ''
+                && isset($c['purchase_price']) && (string) $c['purchase_price'] !== '');
+
+        $priceRequired = ! $hasVariations || ! $allCombosHavePrices;
 
         $data = $request->validate([
             'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')],
@@ -62,8 +69,8 @@ class ProductController extends Controller
             'warranty_id' => ['nullable', Rule::exists('warranties', 'id')],
             'name' => ['required', 'string', 'max:255', 'unique:products,name'],
             'code' => $hasVariations ? ['nullable', 'string', 'max:100'] : ['required', 'string', 'max:100', 'unique:products,code'],
-            'purchase_price' => $hasVariations ? ['nullable', 'numeric', 'min:0'] : ['required', 'numeric', 'min:0'],
-            'sale_price' => $hasVariations ? ['nullable', 'numeric', 'min:0'] : ['required', 'numeric', 'min:0'],
+            'purchase_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
+            'sale_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric'],
             'colors' => ['nullable', 'array'],
             'sizes' => ['nullable', 'array'],
@@ -78,17 +85,26 @@ class ProductController extends Controller
             'photos' => ['nullable', 'array'],
             'photos.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
             'combinations' => ['nullable', 'array'],
-            'combinations.*.variant' => ['required_with:combinations.*', 'string', 'max:255'],
-            'combinations.*.sale_price' => ['required_with:combinations.*', 'numeric', 'min:0'],
-            'combinations.*.purchase_price' => ['required_with:combinations.*', 'numeric', 'min:0'],
-            'combinations.*.sku' => ['required_with:combinations.*', 'string', 'max:255'],
-            'combinations.*.stock' => ['required_with:combinations.*', 'integer', 'min:0'],
+            'combinations.*.variant' => ['required_with:combinations', 'string', 'max:255'],
+            'combinations.*.sale_price' => ['nullable', 'numeric', 'min:0'],
+            'combinations.*.purchase_price' => ['nullable', 'numeric', 'min:0'],
+            'combinations.*.sku' => ['required_with:combinations', 'string', 'max:255'],
+            'combinations.*.stock' => ['required_with:combinations', 'integer', 'min:0'],
         ]);
 
         $combinations = $data['combinations'] ?? [];
         unset($data['combinations']);
 
-        DB::transaction(function () use ($request, $data, $combinations) {
+        $mainPurchasePrice = $data['purchase_price'] ?? 0;
+        $mainSalePrice = $data['sale_price'] ?? 0;
+
+        // For variation products, don't persist main prices on the product row
+        if ($hasVariations) {
+            $data['purchase_price'] = 0;
+            $data['sale_price'] = 0;
+        }
+
+        DB::transaction(function () use ($request, $data, $combinations, $mainPurchasePrice, $mainSalePrice) {
             if ($request->hasFile('image')) {
                 $data['image'] = $request->file('image')->store('products', 'public');
             }
@@ -111,12 +127,21 @@ class ProductController extends Controller
             }
 
             foreach ($combinations as $combo) {
+                // Use per-combo price if provided, otherwise fall back to main prices
+                $salePrice = (isset($combo['sale_price']) && (string) $combo['sale_price'] !== '')
+                    ? $combo['sale_price']
+                    : $mainSalePrice;
+
+                $purchasePrice = (isset($combo['purchase_price']) && (string) $combo['purchase_price'] !== '')
+                    ? $combo['purchase_price']
+                    : $mainPurchasePrice;
+
                 ProductVariation::create([
                     'product_id' => $product->id,
                     'branch_id' => $product->branch_id,
                     'sku' => $combo['sku'],
-                    'price' => $combo['sale_price'],
-                    'purchase_price' => $combo['purchase_price'],
+                    'price' => $salePrice,
+                    'purchase_price' => $purchasePrice,
                     'stock' => (int) $combo['stock'],
                     'variation_data' => ['label' => $combo['variant']],
                 ]);

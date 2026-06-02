@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
+use App\Models\Customer;
 use App\Models\ProductVariation;
 use App\Models\Sell;
 use Illuminate\Http\RedirectResponse;
@@ -35,8 +36,15 @@ class SellController extends Controller
 
     public function create(): Response
     {
+        $branchId = Auth::user()?->branch_id;
+
+        $defaultCustomer = Customer::where('is_default', true)
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->first(['id', 'name', 'phone']);
+
         return Inertia::render('admin/inventory/sell/create', [
             'today' => now()->format('Y-m-d'),
+            'defaultCustomer' => $defaultCustomer,
         ]);
     }
 

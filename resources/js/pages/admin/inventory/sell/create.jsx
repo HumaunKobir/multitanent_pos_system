@@ -37,12 +37,12 @@ function Field({ label, required, error, children }) {
     );
 }
 
-function CustomerSearch({ value, onChange, error }) {
+function CustomerSearch({ value, onChange, error, initialCustomer }) {
     const [open, setOpen] = useState(false);
     const [q, setQ] = useState('');
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [selected, setSelected] = useState(null);
+    const [selected, setSelected] = useState(initialCustomer ?? null);
     const ref = useRef(null);
     const timerRef = useRef(null);
     const apiUrl = route('api.customers');
@@ -303,9 +303,9 @@ function ProductSearchBox({ onAdd }) {
     );
 }
 
-export default function SellCreate({ today }) {
+export default function SellCreate({ today, defaultCustomer }) {
     const form = useForm({
-        customer_id: '',
+        customer_id: defaultCustomer ? String(defaultCustomer.id) : '',
         date: today,
         discount: '0',
         vat: '0',
@@ -389,6 +389,7 @@ export default function SellCreate({ today }) {
                                     value={form.data.customer_id}
                                     onChange={(v) => form.setData('customer_id', v)}
                                     error={form.errors.customer_id}
+                                    initialCustomer={defaultCustomer}
                                 />
                                 <p className="mt-0.5 text-[10px] text-muted-foreground">Leave blank for walk-in customer.</p>
                             </Field>

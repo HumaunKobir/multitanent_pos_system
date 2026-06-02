@@ -89,6 +89,10 @@ const routes = {
     'party.supplier.store': '/party/supplier',
     'party.supplier.update': '/party/supplier/:supplier',
     'party.supplier.destroy': '/party/supplier/:supplier',
+    'party.customer.index': '/party/customer',
+    'party.customer.store': '/party/customer',
+    'party.customer.update': '/party/customer/:customer',
+    'party.customer.destroy': '/party/customer/:customer',
     'api.suppliers': '/api/suppliers',
     'api.products.purchase': '/api/products/for-purchase',
     'api.products.sell': '/api/products/for-sell',
@@ -165,6 +169,9 @@ const methods = {
     'party.supplier.store': 'post',
     'party.supplier.update': 'patch',
     'party.supplier.destroy': 'delete',
+    'party.customer.store': 'post',
+    'party.customer.update': 'patch',
+    'party.customer.destroy': 'delete',
 };
 
 const aliases = {

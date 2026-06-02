@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\CustomerSearchController;
 use App\Http\Controllers\Api\ProductSearchController;
 use App\Http\Controllers\Api\SupplierController as SupplierApiController;
 use App\Http\Controllers\BranchController;
+use App\Http\Controllers\Customer\CustomerController;
 use App\Http\Controllers\Inventory\PurchaseController;
 use App\Http\Controllers\Inventory\SellController;
 use App\Http\Controllers\Inventory\SupplierController;
@@ -43,6 +44,7 @@ Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')
 
 Route::middleware(['auth', 'verified'])->prefix('party')->name('party.')->group(function () {
     Route::resource('supplier', SupplierController::class)->except(['create', 'edit', 'show']);
+    Route::resource('customer', CustomerController::class)->except(['create', 'edit', 'show']);
 });
 
 Route::middleware(['auth', 'verified'])->prefix('api')->name('api.')->group(function () {

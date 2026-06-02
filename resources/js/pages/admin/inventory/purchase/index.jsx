@@ -1,7 +1,7 @@
 import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Eye, HandCoins, Plus, Search, Trash2 } from 'lucide-react';
+import { Edit, Eye, HandCoins, Plus, Search, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -135,6 +135,11 @@ export default function PurchaseIndex({ purchases, filters }) {
                     <Button size="sm" variant="outline" asChild>
                         <Link href={route('inventory.purchase.show', row.id)}>
                             <Eye className="size-3.5" />
+                        </Link>
+                    </Button>
+                    <Button size="sm" variant="outline" asChild>
+                        <Link href={route('inventory.purchase.edit', row.id)}>
+                            <Edit className="size-3.5" />
                         </Link>
                     </Button>
                     <Button size="sm" variant="destructive" onClick={() => setDeleting(row)}>

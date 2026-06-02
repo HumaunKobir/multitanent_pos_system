@@ -1,7 +1,7 @@
 import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { ArrowLeft, HandCoins, Printer, Trash2 } from 'lucide-react';
+import { ArrowLeft, Edit, HandCoins, Printer, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -50,6 +50,16 @@ export default function PurchaseShow({ purchase }) {
                         >
                             <Printer className="size-3.5" />
                             Print
+                        </Button>
+                        <Button
+                            size="sm"
+                            asChild
+                            className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
+                        >
+                            <Link href={route('inventory.purchase.edit', purchase.id)}>
+                                <Edit className="size-3.5" />
+                                Edit
+                            </Link>
                         </Button>
                         <Button
                             size="sm"

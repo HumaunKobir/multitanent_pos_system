@@ -53,7 +53,7 @@ export default function SettingFormDialog({ open, onOpenChange, title, item, rou
                     <h2 className="text-sm font-semibold text-white">{isEditing ? `Edit ${title}` : `Create ${title}`}</h2>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4 p-4" encType="multipart/form-data">
+                <form onSubmit={handleSubmit} className="space-y-1.5 px-3 py-2" encType="multipart/form-data">
                     {fields.map((field) => (
                         <div key={field.name}>
                             <Label htmlFor={field.name}>{field.label}</Label>

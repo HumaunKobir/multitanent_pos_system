@@ -195,9 +195,9 @@ export default function ProductSectionIndex({
                     </p>
                     <DialogFooter>
                         <DialogClose asChild>
-                            <Button variant="outline">Cancel</Button>
+                            <Button variant="outline" size="sm" className="border-red-500 text-red-500 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-red-500 hover:text-white hover:shadow-md hover:shadow-red-500/30">Cancel</Button>
                         </DialogClose>
-                        <Button variant="destructive" onClick={handleDelete}>
+                        <Button size="sm" className="bg-red-600 text-white shadow-sm shadow-red-500/30 transition-all duration-150 hover:bg-red-600 hover:-translate-y-0.5 hover:shadow-md hover:shadow-red-500/50" onClick={handleDelete}>
                             Delete
                         </Button>
                     </DialogFooter>

@@ -88,7 +88,7 @@ export default function TagFormDialog({ open, onOpenChange, item, routes, parent
                     <h2 className="text-sm font-semibold text-white">{isEditing ? 'Edit Tag' : 'Create Tag'}</h2>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4 p-4">
+                <form onSubmit={handleSubmit} className="space-y-1.5 px-3 py-2">
                     <FormField label="Parent Id" name="parent_id" error={form.errors.parent_id}>
                         <Select value={form.data.parent_id} onValueChange={(value) => form.setData('parent_id', value)}>
                             <SelectTrigger id="parent_id" className="mt-1 w-full" aria-invalid={!!form.errors.parent_id}>

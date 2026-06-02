@@ -36,9 +36,12 @@ class SupplierController extends Controller
             'phone' => ['required', 'string', 'max:30'],
             'company_name' => ['nullable', 'string', 'max:255'],
             'address' => ['nullable', 'string', 'max:500'],
+            'opening_balance' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $data['branch_id'] = auth()->user()?->branch_id;
+        $data['balance'] = $data['opening_balance'] ?? 0;
+        unset($data['opening_balance']);
 
         Supplier::create($data);
 

@@ -10,6 +10,7 @@ use App\Models\Purchase;
 use App\Models\Supplier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -62,7 +63,7 @@ class PurchaseController extends Controller
             'items.*.serial' => ['nullable', 'string'],
         ]);
 
-        $branchId = auth()->user()?->branch_id;
+        $branchId = Auth::user()?->branch_id;
 
         DB::transaction(function () use ($data, $branchId) {
             $grossAmount = 0;
@@ -141,15 +142,9 @@ class PurchaseController extends Controller
                 $purchase->purchaseProducts()->create($lineItem);
             }
 
-            // Update supplier balance: negative means we owe them
-            $supplier = Supplier::find($data['supplier_id']);
-            $supplier->increment('balance', $netAmount);
-            $supplier->increment('balance_in', $netAmount);
-
-            if ((float) $data['paid_amount'] > 0) {
-                $supplier->decrement('balance', (float) $data['paid_amount']);
-                $supplier->increment('balance_out', (float) $data['paid_amount']);
-            }
+            // Update supplier due balance
+            $dueChange = $netAmount - (float) $data['paid_amount'];
+            Supplier::whereKey($data['supplier_id'])->increment('balance', $dueChange);
         });
 
         return redirect()->route('inventory.purchase.index')

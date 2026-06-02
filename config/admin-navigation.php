@@ -47,7 +47,6 @@ return [
         [
             'title' => 'Suppliers',
             'icon' => 'user',
-            'branch_only' => true,
             'children' => [
                 ['title' => 'Supplier', 'href' => '/party/supplier'],
                 ['title' => 'Supplier Payment', 'href' => '/party/supplier-payment'],

@@ -4,66 +4,101 @@ import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
-import { Dialog, DialogClose, DialogContent, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-function SupplierForm({ form, onSubmit, onCancel }) {
+function FormField({ label, required, name, error, children }) {
     return (
-        <form onSubmit={onSubmit} className="space-y-3">
+        <div>
+            <Label htmlFor={name}>
+                {label}
+                {required && <span className="ml-0.5 text-red-500">*</span>}
+            </Label>
+            {children}
+            {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+        </div>
+    );
+}
+
+function SupplierForm({ form, onSubmit, onCancel, isEditing }) {
+    return (
+        <form onSubmit={onSubmit} className="space-y-1.5 px-3 py-2">
             <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                    <Label htmlFor="name">Name *</Label>
+                <FormField label="Name" required name="name" error={form.errors.name}>
                     <Input
                         id="name"
                         value={form.data.name}
                         onChange={(e) => form.setData('name', e.target.value)}
                         placeholder="Supplier name"
+                        className="mt-1"
+                        aria-invalid={!!form.errors.name}
                     />
-                    {form.errors.name && <p className="text-xs text-destructive">{form.errors.name}</p>}
-                </div>
-                <div className="space-y-1.5">
-                    <Label htmlFor="phone">Phone *</Label>
+                </FormField>
+                <FormField label="Phone" required name="phone" error={form.errors.phone}>
                     <Input
                         id="phone"
                         value={form.data.phone}
                         onChange={(e) => form.setData('phone', e.target.value)}
                         placeholder="01XXXXXXXXX"
+                        className="mt-1"
+                        aria-invalid={!!form.errors.phone}
                     />
-                    {form.errors.phone && <p className="text-xs text-destructive">{form.errors.phone}</p>}
-                </div>
+                </FormField>
             </div>
-            <div className="space-y-1.5">
-                <Label htmlFor="company_name">Company Name</Label>
+            <FormField label="Company Name" name="company_name" error={form.errors.company_name}>
                 <Input
                     id="company_name"
                     value={form.data.company_name}
                     onChange={(e) => form.setData('company_name', e.target.value)}
-                    placeholder="Company name (optional)"
+                    placeholder="Company name"
+                    className="mt-1"
                 />
-            </div>
-            <div className="space-y-1.5">
-                <Label htmlFor="address">Address</Label>
+            </FormField>
+            <FormField label="Address" name="address" error={form.errors.address}>
                 <Input
                     id="address"
                     value={form.data.address}
                     onChange={(e) => form.setData('address', e.target.value)}
-                    placeholder="Address (optional)"
+                    placeholder="Address"
+                    className="mt-1"
                 />
-            </div>
-            <DialogFooter className="pt-2">
-                <DialogClose asChild>
-                    <Button type="button" variant="outline" onClick={onCancel}>
-                        Cancel
-                    </Button>
-                </DialogClose>
-                <Button type="submit" disabled={form.processing}>
-                    {form.processing ? 'Saving…' : 'Save'}
+            </FormField>
+            {!isEditing && (
+                <FormField label="Opening Balance" name="opening_balance" error={form.errors.opening_balance}>
+                    <Input
+                        id="opening_balance"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={form.data.opening_balance}
+                        onChange={(e) => form.setData('opening_balance', e.target.value)}
+                        placeholder="0.00"
+                        className="mt-1"
+                    />
+                </FormField>
+            )}
+            <div className="flex justify-end gap-3 border-t pt-4">
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="border-red-500 text-red-500 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-red-500 hover:text-white hover:shadow-md hover:shadow-red-500/30"
+                    onClick={onCancel}
+                >
+                    Cancel
                 </Button>
-            </DialogFooter>
+                <Button
+                    type="submit"
+                    size="sm"
+                    disabled={form.processing}
+                    className="bg-emerald-600 text-white shadow-sm shadow-emerald-500/30 transition-all duration-150 hover:bg-emerald-600 hover:-translate-y-0.5 hover:shadow-md hover:shadow-emerald-500/50"
+                >
+                    {form.processing ? 'Saving…' : isEditing ? 'Update' : 'Create'}
+                </Button>
+            </div>
         </form>
     );
 }
@@ -76,7 +111,7 @@ export default function SupplierIndex({ suppliers, filters }) {
     const [editing, setEditing] = useState(null);
     const [deleting, setDeleting] = useState(null);
 
-    const createForm = useForm({ name: '', phone: '', company_name: '', address: '' });
+    const createForm = useForm({ name: '', phone: '', company_name: '', address: '', opening_balance: '' });
     const editForm = useForm({ name: '', phone: '', company_name: '', address: '' });
 
     useEffect(() => {
@@ -103,6 +138,7 @@ export default function SupplierIndex({ suppliers, filters }) {
 
     function handleUpdate(e) {
         e.preventDefault();
+        if (!editing) return;
         editForm.patch(route('party.supplier.update', editing.id), {
             onSuccess: () => setEditing(null),
         });
@@ -125,11 +161,7 @@ export default function SupplierIndex({ suppliers, filters }) {
         )},
         { id: 'company', header: 'Company', render: (row) => row.company_name ?? '—' },
         { id: 'address', header: 'Address', render: (row) => row.address ?? '—' },
-        { id: 'balance', header: 'Due Balance', render: (row) => (
-            <Badge className={parseFloat(row.balance) > 0 ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}>
-                ৳{parseFloat(row.balance).toFixed(2)}
-            </Badge>
-        )},
+        { id: 'balance', header: 'Balance', render: (row) => `৳${parseFloat(row.balance).toFixed(2)}` },
         { id: 'actions', header: 'Actions', align: 'right', render: (row) => (
             <div className="flex justify-end gap-2">
                 <Button size="sm" variant="outline" onClick={() => openEdit(row)}>
@@ -208,9 +240,7 @@ export default function SupplierIndex({ suppliers, filters }) {
                         </div>
                         <h2 className="text-sm font-semibold text-white">Add Supplier</h2>
                     </div>
-                    <div className="px-5 pb-5 pt-4">
-                        <SupplierForm form={createForm} onSubmit={handleCreate} onCancel={() => setCreating(false)} />
-                    </div>
+                    <SupplierForm form={createForm} onSubmit={handleCreate} onCancel={() => setCreating(false)} isEditing={false} />
                 </DialogContent>
             </Dialog>
 
@@ -223,9 +253,7 @@ export default function SupplierIndex({ suppliers, filters }) {
                         </div>
                         <h2 className="text-sm font-semibold text-white">Edit Supplier</h2>
                     </div>
-                    <div className="px-5 pb-5 pt-4">
-                        <SupplierForm form={editForm} onSubmit={handleUpdate} onCancel={() => setEditing(null)} />
-                    </div>
+                    <SupplierForm form={editForm} onSubmit={handleUpdate} onCancel={() => setEditing(null)} isEditing={true} />
                 </DialogContent>
             </Dialog>
 
@@ -242,14 +270,24 @@ export default function SupplierIndex({ suppliers, filters }) {
                         <p className="text-sm text-muted-foreground">
                             Are you sure you want to delete <strong>{deleting?.name}</strong>?
                         </p>
-                        <DialogFooter className="mt-4">
+                        <div className="mt-4 flex justify-end gap-3 border-t pt-4">
                             <DialogClose asChild>
-                                <Button variant="outline">Cancel</Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="border-red-500 text-red-500 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-red-500 hover:text-white hover:shadow-md hover:shadow-red-500/30"
+                                >
+                                    Cancel
+                                </Button>
                             </DialogClose>
-                            <Button variant="destructive" onClick={handleDelete}>
+                            <Button
+                                size="sm"
+                                className="bg-red-600 text-white shadow-sm shadow-red-500/30 transition-all duration-150 hover:bg-red-700 hover:-translate-y-0.5 hover:shadow-md hover:shadow-red-500/50"
+                                onClick={handleDelete}
+                            >
                                 Delete
                             </Button>
-                        </DialogFooter>
+                        </div>
                     </div>
                 </DialogContent>
             </Dialog>

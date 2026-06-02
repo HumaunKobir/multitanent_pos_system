@@ -96,12 +96,8 @@ export default function ProductIndex({ products, filters, categories }) {
             id: 'stock',
             header: 'Stock',
             render: (row) => {
-                const stock = row.variations_sum_stock ?? 0;
-                return (
-                    <Badge className={stock > 0 ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-red-600 text-white hover:bg-red-700'}>
-                        {stock}
-                    </Badge>
-                );
+                const stock = parseFloat(row.variations_sum_stock ?? row.batches_sum_available ?? 0) || 0;
+                return <span className="font-medium">{stock}</span>;
             },
         },
         {

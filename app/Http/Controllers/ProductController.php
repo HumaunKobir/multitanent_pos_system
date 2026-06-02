@@ -29,6 +29,7 @@ class ProductController extends Controller
         $products = Product::ownBranch()
             ->with(['category', 'brand'])
             ->withSum('variations', 'stock')
+            ->withSum('batches', 'available')
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('name', 'like', "%{$s}%")
                     ->orWhere('code', 'like', "%{$s}%");

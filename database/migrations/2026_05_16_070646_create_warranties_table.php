@@ -14,6 +14,7 @@ return new class extends Migration
         Schema::create('warranties', function (Blueprint $table) {
             $table->id();
             $table->string('name');
+            $table->string('duration')->nullable();
             $table->tinyInteger('status')->default(1);
             $table->timestamps();
         });

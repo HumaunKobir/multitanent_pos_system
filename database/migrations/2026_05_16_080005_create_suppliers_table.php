@@ -16,9 +16,7 @@ return new class extends Migration
             $table->string('company_name')->nullable();
             $table->text('address')->nullable();
             $table->decimal('balance', 14, 2)->default(0);
-            $table->decimal('balance_in', 14, 2)->default(0);
-            $table->decimal('balance_out', 14, 2)->default(0);
-            $table->tinyInteger('status')->default(1);
+            $table->tinyInteger('status')->default(\App\Enums\CommonStatus::Active);
             $table->timestamps();
         });
     }

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\CommonStatus;
 use App\Traits\HasAccount;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -19,14 +20,10 @@ class Supplier extends Model
         'branch_id',
         'status',
         'balance',
-        'balance_in',
-        'balance_out',
     ];
 
     protected $casts = [
-        'balance' => 'decimal:2',
-        'balance_in' => 'decimal:2',
-        'balance_out' => 'decimal:2',
+        'status' => CommonStatus::class
     ];
 
     public function branch(): BelongsTo

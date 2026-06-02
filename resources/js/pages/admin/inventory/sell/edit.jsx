@@ -189,12 +189,72 @@ function ProductSearchBox({ onAdd }) {
         timerRef.current = setTimeout(() => fetchProducts(val), 350);
     }
 
+    async function triggerBarcodeSearch(term) {
+        clearTimeout(timerRef.current);
+        setLoading(true);
+        try {
+            const res = await fetch(`${apiUrl}?search=${encodeURIComponent(term)}`, {
+                credentials: 'include',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            if (!res.ok) return;
+            const json = await res.json();
+            const data = Array.isArray(json) ? json : [];
+            const exact = data.find((p) => p.code === term);
+            const match = exact ?? (data.length === 1 ? data[0] : null);
+            if (match) {
+                selectProduct(match);
+            } else {
+                setQuery(term);
+                setResults(data);
+                setOpen(true);
+            }
+        } catch {
+            setResults([]);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    async function handleKeyDown(e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        const term = query.trim();
+        if (term) triggerBarcodeSearch(term);
+    }
+
+    const triggerRef = useRef(null);
+    triggerRef.current = triggerBarcodeSearch;
+    const globalBufRef = useRef('');
+    const globalLastKeyRef = useRef(0);
+
     useEffect(() => {
         function handleClick(e) {
             if (ref.current && !ref.current.contains(e.target)) setOpen(false);
         }
         document.addEventListener('mousedown', handleClick);
         return () => document.removeEventListener('mousedown', handleClick);
+    }, []);
+
+    useEffect(() => {
+        function onGlobalKey(e) {
+            const tag = document.activeElement?.tagName ?? '';
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
+
+            const now = Date.now();
+            if (now - globalLastKeyRef.current > 100) globalBufRef.current = '';
+            globalLastKeyRef.current = now;
+
+            if (e.key === 'Enter') {
+                const term = globalBufRef.current.trim();
+                globalBufRef.current = '';
+                if (term) triggerRef.current(term);
+            } else if (e.key.length === 1) {
+                globalBufRef.current += e.key;
+            }
+        }
+        document.addEventListener('keydown', onGlobalKey);
+        return () => document.removeEventListener('keydown', onGlobalKey);
     }, []);
 
     function selectProduct(product) {
@@ -232,6 +292,7 @@ function ProductSearchBox({ onAdd }) {
                     value={query}
                     onChange={handleChange}
                     onFocus={handleFocus}
+                    onKeyDown={handleKeyDown}
                     placeholder="Click or search product by name / code…"
                     className="h-8 pl-8 text-xs"
                 />

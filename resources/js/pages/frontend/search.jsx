@@ -3,22 +3,31 @@ import { useState } from 'react';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 import { ProductCard } from '@/components/frontend/product-card';
 import { Link } from '@inertiajs/react';
+import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 
 export default function Search({ query, products }) {
-    const [searchQuery, setSearchQuery] = useState(query);
+    const [searchQuery, setSearchQuery] = useState(query ?? '');
 
-    const handleSearch = (e) => {
-        e.preventDefault();
-        if (searchQuery.trim()) {
-            router.get('/search', { q: searchQuery });
-        }
-    };
+    useDebouncedEffect(
+        () => {
+            const q = searchQuery.trim();
+            if (!q) {
+                router.get('/search', {}, { preserveState: true, replace: true });
+                return;
+            }
+
+            router.get('/search', { q }, { preserveState: true, replace: true });
+        },
+        [searchQuery],
+        350,
+        { skipFirstRun: true },
+    );
 
     return (
         <FrontendLayout>
             <Head title={`"${query}" খোঁজার ফলাফল`} />
             <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-                <form onSubmit={handleSearch} className="mb-8 flex gap-2">
+                <div className="mb-8 flex gap-2">
                     <input
                         type="text"
                         value={searchQuery}
@@ -26,13 +35,7 @@ export default function Search({ query, products }) {
                         placeholder="পণ্য খুঁজুন..."
                         className="flex-1 border border-gray-300 px-4 py-2.5 text-sm focus:border-black focus:outline-none"
                     />
-                    <button
-                        type="submit"
-                        className="bg-black px-6 py-2.5 text-sm text-white hover:bg-gray-800"
-                    >
-                        খুঁজুন
-                    </button>
-                </form>
+                </div>
 
                 {query && (
                     <h1 className="mb-4 text-lg font-semibold text-gray-900">

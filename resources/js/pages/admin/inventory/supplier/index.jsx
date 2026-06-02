@@ -9,6 +9,7 @@ import { DataTable } from '@/components/ui/data-table';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 
 function FormField({ label, required, name, error, children }) {
     return (
@@ -119,10 +120,14 @@ export default function SupplierIndex({ suppliers, filters }) {
         if (flash.error) toast.error(flash.error);
     }, [flash.success, flash.error]);
 
-    function handleSearch(e) {
-        e.preventDefault();
-        router.get(route('party.supplier.index'), { search: search || undefined }, { preserveState: true, replace: true });
-    }
+    useDebouncedEffect(
+        () => {
+            router.get(route('party.supplier.index'), { search: search || undefined }, { preserveState: true, replace: true });
+        },
+        [search],
+        350,
+        { skipFirstRun: true },
+    );
 
     function openEdit(supplier) {
         editForm.setData({ name: supplier.name, phone: supplier.phone, company_name: supplier.company_name ?? '', address: supplier.address ?? '' });
@@ -199,17 +204,14 @@ export default function SupplierIndex({ suppliers, filters }) {
                     </Button>
                 </div>
 
-                <form onSubmit={handleSearch} className="mb-4 flex gap-2">
+                <div className="mb-4 flex gap-2">
                     <Input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder="Search by name or phone…"
                         className="max-w-xs"
                     />
-                    <Button type="submit" variant="outline" size="sm">
-                        <Search className="size-4" />
-                    </Button>
-                </form>
+                </div>
 
                 <DataTable columns={columns} rows={suppliers.data} rowKey="id" emptyMessage="No suppliers found." />
 

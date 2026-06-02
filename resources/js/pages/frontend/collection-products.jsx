@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { SlidersHorizontal, X } from 'lucide-react';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 import { ProductCard } from '@/components/frontend/product-card';
+import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 
 export default function CollectionProducts({ collectionName, products, filters, allBrands, allColors, allSizes }) {
     return (
@@ -25,14 +26,18 @@ export function ProductListing({ title, products, filters, allBrands, allColors,
     const [showFilters, setShowFilters] = useState(false);
     const [localFilters, setLocalFilters] = useState(filters || {});
 
-    const applyFilters = () => {
-        const params = Object.fromEntries(Object.entries(localFilters).filter(([, v]) => v && v.length));
-        router.get(baseUrl, params, { preserveScroll: true });
-    };
+    useDebouncedEffect(
+        () => {
+            const params = Object.fromEntries(Object.entries(localFilters).filter(([, v]) => v && v.length));
+            router.get(baseUrl, params, { preserveScroll: true, replace: true });
+        },
+        [localFilters, baseUrl],
+        350,
+        { skipFirstRun: true },
+    );
 
     const clearFilters = () => {
         setLocalFilters({});
-        router.get(baseUrl, {});
     };
 
     const sortOptions = [
@@ -149,12 +154,6 @@ export function ProductListing({ title, products, filters, allBrands, allColors,
                         </div>
                     </div>
                     <div className="mt-4 flex gap-2">
-                        <button
-                            onClick={applyFilters}
-                            className="bg-black px-4 py-2 text-sm text-white hover:bg-gray-800"
-                        >
-                            প্রয়োগ করুন
-                        </button>
                         <button
                             onClick={clearFilters}
                             className="flex items-center gap-1 border border-gray-300 px-4 py-2 text-sm hover:border-black"

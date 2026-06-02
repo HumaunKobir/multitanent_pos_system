@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { route } from '@/lib/route';
 
 export default function ProductIndex({ products, filters, categories }) {
@@ -23,14 +24,18 @@ export default function ProductIndex({ products, filters, categories }) {
         if (flash.error) toast.error(flash.error);
     }, [flash.success, flash.error]);
 
-    function handleSearch(e) {
-        e.preventDefault();
-        router.get(
-            route('product.index'),
-            { search: search || undefined, category_id: categoryId === '__all' ? undefined : categoryId },
-            { preserveState: true, replace: true },
-        );
-    }
+    useDebouncedEffect(
+        () => {
+            router.get(
+                route('product.index'),
+                { search: search || undefined, category_id: categoryId === '__all' ? undefined : categoryId },
+                { preserveState: true, replace: true },
+            );
+        },
+        [search, categoryId],
+        350,
+        { skipFirstRun: true },
+    );
 
     function handleDelete() {
         if (!deleting) return;
@@ -150,7 +155,7 @@ export default function ProductIndex({ products, filters, categories }) {
                     </Button>
                 </div>
 
-                <form onSubmit={handleSearch} className="mb-4 flex flex-wrap gap-2">
+                <div className="mb-4 flex flex-wrap gap-2">
                     <Input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
@@ -170,10 +175,7 @@ export default function ProductIndex({ products, filters, categories }) {
                             ))}
                         </SelectContent>
                     </Select>
-                    <Button type="submit" variant="outline" size="sm">
-                        <Search className="size-4" />
-                    </Button>
-                </form>
+                </div>
 
                 <DataTable columns={columns} rows={products.data} rowKey="id" emptyMessage="No products found." />
 

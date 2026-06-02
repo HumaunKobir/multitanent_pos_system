@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { resourceRoutes } from '@/lib/route';
+import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import BranchFormDialog from './form-dialog';
 
 const routes = resourceRoutes('branch');
@@ -34,10 +35,14 @@ export default function BranchIndex({ branches, filters }) {
         if (flash.error) toast.error(flash.error);
     }, [flash.success, flash.error]);
 
-    function handleSearch(e) {
-        e.preventDefault();
-        router.get(routes.index({ search }), { preserveState: true, replace: true });
-    }
+    useDebouncedEffect(
+        () => {
+            router.get(routes.index({ search: search || undefined }), { preserveState: true, replace: true });
+        },
+        [search],
+        350,
+        { skipFirstRun: true },
+    );
 
     function openCreate() {
         setEditing(null);
@@ -112,17 +117,14 @@ export default function BranchIndex({ branches, filters }) {
                     </Button>
                 </div>
 
-                <form onSubmit={handleSearch} className="mb-4 flex gap-2">
+                <div className="mb-4 flex gap-2">
                     <Input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder="Search by name..."
                         className="max-w-xs"
                     />
-                    <Button type="submit" variant="outline" size="sm">
-                        <Search className="size-4" />
-                    </Button>
-                </form>
+                </div>
 
                 <DataTable columns={columns} rows={branches.data} rowKey="id" emptyMessage="No branches found." />
 

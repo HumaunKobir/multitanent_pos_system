@@ -144,21 +144,34 @@ class SellController extends Controller
         $sell->load([
             'customer:id,name,phone',
             'products.product:id,name,code,sale_price,discount_price',
-            'products.variation:id,variation_data,price',
+            'products.variation:id,variation_data,price,stock',
         ]);
 
-        $items = $sell->products->map(fn ($sp) => [
-            'product_id' => $sp->product_id,
-            'product_name' => $sp->product?->name,
-            'product_code' => $sp->product?->code,
-            'variation_id' => $sp->variation_id,
-            'variation_label' => $sp->variation?->variation_data['label'] ?? null,
-            'unit_price' => (float) $sp->unit_price,
-            'sell_price' => $sp->variation_id
-                ? (float) ($sp->variation?->price ?? $sp->unit_price)
-                : (float) ($sp->product?->sale_price ?? $sp->unit_price),
-            'quantity' => (float) $sp->quantity,
-        ])->values();
+        $branchId = Auth::user()?->branch_id;
+
+        $items = $sell->products->map(function ($sp) use ($branchId) {
+            if ($sp->variation_id) {
+                $availableStock = (float) ($sp->variation?->stock ?? 0);
+            } else {
+                $availableStock = (float) Batch::where('product_id', $sp->product_id)
+                    ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+                    ->sum('available');
+            }
+
+            return [
+                'product_id' => $sp->product_id,
+                'product_name' => $sp->product?->name,
+                'product_code' => $sp->product?->code,
+                'variation_id' => $sp->variation_id,
+                'variation_label' => $sp->variation?->variation_data['label'] ?? null,
+                'unit_price' => (float) $sp->unit_price,
+                'sell_price' => $sp->variation_id
+                    ? (float) ($sp->variation?->price ?? $sp->unit_price)
+                    : (float) ($sp->product?->sale_price ?? $sp->unit_price),
+                'quantity' => (float) $sp->quantity,
+                'available_stock' => $availableStock,
+            ];
+        })->values();
 
         $grossAmount = (float) $sell->gross_amount;
         $vatPercent = $grossAmount > 0 ? ((float) $sell->vat / $grossAmount) * 100 : 0;

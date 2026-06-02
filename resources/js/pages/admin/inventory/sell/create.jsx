@@ -424,8 +424,11 @@ export default function SellCreate({ today, defaultCustomer }) {
                                     </thead>
                                     <tbody className="divide-y divide-border">
                                         {items.map((item, i) => {
-                                            const subTotal = parseFloat(item.quantity || 0) * parseFloat(item.unit_price || 0);
-                                            const overStock = parseFloat(item.quantity || 0) > parseFloat(item.available_stock || 0);
+                                            const qty = parseFloat(item.quantity || 0);
+                                            const stock = parseFloat(item.available_stock ?? 0);
+                                            const remaining = stock - qty;
+                                            const overStock = qty > stock;
+                                            const subTotal = qty * parseFloat(item.unit_price || 0);
                                             return (
                                                 <tr key={i} className="hover:bg-muted/20">
                                                     <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
@@ -454,8 +457,8 @@ export default function SellCreate({ today, defaultCustomer }) {
                                                             className={`${inputCls} w-full text-right ${overStock ? 'border-destructive' : ''}`}
                                                         />
                                                     </td>
-                                                    <td className={`px-3 py-2 text-right ${overStock ? 'text-destructive' : 'text-muted-foreground'}`}>
-                                                        {parseFloat(item.available_stock ?? 0)}
+                                                    <td className={`px-3 py-2 text-right font-medium ${overStock ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                                        {remaining}
                                                     </td>
                                                     <td className="px-3 py-2 text-right font-semibold">
                                                         ৳{subTotal.toFixed(2)}

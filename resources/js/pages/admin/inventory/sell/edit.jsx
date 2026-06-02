@@ -312,12 +312,7 @@ export default function SellEdit({ sell }) {
         items: sell.items ?? [],
     });
 
-    const [items, setItems] = useState(
-        (sell.items ?? []).map((it) => ({
-            ...it,
-            available_stock: null,
-        })),
-    );
+    const [items, setItems] = useState(sell.items ?? []);
 
     const grossAmount = items.reduce((sum, it) => sum + parseFloat(it.quantity || 0) * parseFloat(it.unit_price || 0), 0);
     const vatAmount = grossAmount * (parseFloat(form.data.vat || 0) / 100);
@@ -420,13 +415,18 @@ export default function SellEdit({ sell }) {
                                             <th className="whitespace-nowrap px-3 py-2 text-left font-semibold">Product</th>
                                             <th className="whitespace-nowrap px-2 py-2 text-right font-semibold">Unit Price</th>
                                             <th className="whitespace-nowrap px-2 py-2 text-right font-semibold">Qty</th>
+                                            <th className="whitespace-nowrap px-2 py-2 text-right font-semibold">Stock</th>
                                             <th className="whitespace-nowrap px-3 py-2 text-right font-semibold">Sub Total</th>
                                             <th className="px-2 py-2"></th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
                                         {items.map((item, i) => {
-                                            const subTotal = parseFloat(item.quantity || 0) * parseFloat(item.unit_price || 0);
+                                            const qty = parseFloat(item.quantity || 0);
+                                            const stock = parseFloat(item.available_stock ?? 0);
+                                            const remaining = stock - qty;
+                                            const overStock = item.available_stock !== null && item.available_stock !== undefined && qty > stock;
+                                            const subTotal = qty * parseFloat(item.unit_price || 0);
                                             return (
                                                 <tr key={i} className="hover:bg-muted/20">
                                                     <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
@@ -452,8 +452,11 @@ export default function SellEdit({ sell }) {
                                                             min="1"
                                                             value={item.quantity}
                                                             onChange={(e) => updateItem(i, 'quantity', e.target.value)}
-                                                            className={`${inputCls} w-full text-right`}
+                                                            className={`${inputCls} w-full text-right ${overStock ? 'border-destructive' : ''}`}
                                                         />
+                                                    </td>
+                                                    <td className={`px-3 py-2 text-right font-medium ${overStock ? 'text-destructive' : 'text-muted-foreground'}`}>
+                                                        {item.available_stock !== null && item.available_stock !== undefined ? remaining : '—'}
                                                     </td>
                                                     <td className="px-3 py-2 text-right font-semibold">
                                                         ৳{subTotal.toFixed(2)}

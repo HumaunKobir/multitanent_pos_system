@@ -159,14 +159,11 @@ export function SmartMultiSelect({
                         </div>
 
                         <ComboboxOptions
-                            portal={false}
-                            modal={false}
+                            anchor="bottom start"
                             transition
                             className={cn(
-                                'absolute top-full right-0 left-0 z-50 mt-1 max-h-60 min-w-0 overflow-auto border border-border bg-popover py-1 text-popover-foreground shadow-md',
-                                'w-full max-w-full',
+                                'z-50 w-(--input-width) [--anchor-gap:4px] max-h-60 overflow-auto border border-border bg-popover py-1 text-popover-foreground shadow-md',
                                 'transition duration-100 ease-out data-closed:opacity-0 data-leave:data-closed:opacity-0',
-                                !open && 'pointer-events-none',
                             )}
                         >
                             {filtered.length === 0 ? (

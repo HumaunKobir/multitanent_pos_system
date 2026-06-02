@@ -15,18 +15,28 @@ class Product extends Model
     use HasBranch, HasFactory;
 
     protected $fillable = [
-        'branch_id', 'category_id', 'brand_id', 'unit_id', 'warranty_id',
-        'name', 'bn_name', 'slug', 'code',
-        'purchase_price', 'sale_price', 'discount_price',
-        'colors', 'sizes', 'tags',
-        'image', 'chest_size_image', 'youtube_link',
-        'description', 'delivery_info',
-        'visible', 'availabe_area', 'status',
+        'branch_id',
+        'category_id',
+        'brand_id',
+        'unit_id',
+        'warranty_id',
+        'name',
+        'slug',
+        'code',
+        'purchase_price',
+        'sale_price',
+        'discount_price',
+        'colors',
+        'tags',
+        'image',
+        'youtube_link',
+        'description',
+        'delivery_info',
+        'visible',
+        'status',
     ];
 
     protected $casts = [
-        'colors' => 'array',
-        'sizes' => 'array',
         'tags' => 'array',
         'purchase_price' => 'decimal:2',
         'sale_price' => 'decimal:2',
@@ -120,8 +130,8 @@ class Product extends Model
     public static function generateUniqueSlug(string $name): string
     {
         $slug = Str::slug($name);
-        $count = static::where('slug', 'like', $slug.'%')->count();
+        $count = static::where('slug', 'like', $slug . '%')->count();
 
-        return $count > 0 ? $slug.'-'.($count + 1) : $slug;
+        return $count > 0 ? $slug . '-' . ($count + 1) : $slug;
     }
 }

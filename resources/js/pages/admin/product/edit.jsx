@@ -286,10 +286,8 @@ export default function ProductEdit({ product, categories, brands, units, warran
         delivery_info: product.delivery_info ?? '',
         youtube_link: product.youtube_link ?? '',
         image: null,
-        chest_size_image: null,
         photos: [],
         _existing_image: product.image ?? null,
-        _existing_chest_image: product.chest_size_image ?? null,
     });
 
     function handleSubmit(e) {

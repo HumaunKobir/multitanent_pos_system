@@ -19,7 +19,6 @@ return new class extends Migration
             $table->foreignId('unit_id')->nullable()->constrained('units');
             $table->foreignId('warranty_id')->nullable()->constrained('warranties');
             $table->string('name');
-            $table->string('bn_name')->nullable();
             $table->string('slug')->unique();
             $table->string('code')->nullable()->unique();
             $table->decimal('purchase_price', 10, 2)->default(0);
@@ -29,12 +28,10 @@ return new class extends Migration
             $table->json('sizes')->nullable();
             $table->json('tags')->nullable();
             $table->string('image')->nullable();
-            $table->string('chest_size_image')->nullable();
             $table->string('youtube_link')->nullable();
             $table->text('description')->nullable();
             $table->text('delivery_info')->nullable();
             $table->string('visible')->default('yes'); // yes | no
-            $table->string('availabe_area')->nullable();
             $table->tinyInteger('status')->default(1);
             $table->timestamps();
         });

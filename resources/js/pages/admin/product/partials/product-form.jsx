@@ -1,12 +1,11 @@
 import { SmartMultiSelect } from '@/components/smart-multi-select';
 import { SmartSelect } from '@/components/smart-select';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Link, usePage } from '@inertiajs/react';
-import { AlignLeft, DollarSign, GitBranch, ImagePlus, Images, Info, Ruler, Settings, Plus, Trash2, X } from 'lucide-react';
+import { AlignLeft, DollarSign, GitBranch, ImagePlus, Images, Info, Settings, Plus, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 function CKEditorField({ id, value, onChange }) {
@@ -61,7 +60,7 @@ function Card({ title, icon: Icon, children }) {
                 )}
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-white">{title}</h2>
             </div>
-            <div className="p-4">{children}</div>
+            <div className="p-2">{children}</div>
         </div>
     );
 }
@@ -118,55 +117,116 @@ function MultiToggle({ options, selected, onChange, colorMode = false }) {
     );
 }
 
-function ImageUploadBox({ label, existingPath, onChange, multiple = false }) {
+function SingleImageUpload({ existingPath, onChange }) {
     const inputRef = useRef(null);
-    const [previews, setPreviews] = useState([]);
+    const [preview, setPreview] = useState(null);
+    const [cleared, setCleared] = useState(false);
 
-    function handleFiles(files) {
-        if (!files.length) return;
-        if (multiple) {
-            setPreviews(Array.from(files).map((f) => URL.createObjectURL(f)));
-            onChange(Array.from(files));
-        } else {
-            setPreviews([URL.createObjectURL(files[0])]);
-            onChange(files[0]);
-        }
+    const displaySrc = preview ?? (!cleared && existingPath ? `/storage/${existingPath}` : null);
+
+    function handleFile(file) {
+        if (!file) return;
+        setPreview(URL.createObjectURL(file));
+        setCleared(false);
+        onChange(file);
+        if (inputRef.current) inputRef.current.value = '';
     }
 
-    const preview = previews[0];
+    function clear(e) {
+        e.stopPropagation();
+        setPreview(null);
+        setCleared(true);
+        onChange(null);
+        if (inputRef.current) inputRef.current.value = '';
+    }
 
     return (
         <div>
-            {label && <Label className="mb-1 block text-xs font-medium">{label}</Label>}
-
-            {existingPath && !preview && (
-                <div className="mb-2 border">
-                    <img src={`/storage/${existingPath}`} alt="Current" className="h-40 w-full object-cover" />
-                    <p className="border-t bg-muted/40 px-2 py-1 text-xs text-muted-foreground">Upload to replace</p>
-                </div>
-            )}
-
-            {preview && !multiple && (
-                <div className="relative mb-2 border">
-                    <img src={preview} alt="Preview" className="h-40 w-full object-cover" />
+            {displaySrc ? (
+                <div
+                    className="group relative cursor-pointer border"
+                    onClick={() => inputRef.current?.click()}
+                >
+                    <img src={displaySrc} alt="" className="h-40 w-full object-cover" />
+                    <div className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover:bg-black/20">
+                        <span className="hidden rounded bg-black/60 px-2 py-1 text-[11px] text-white group-hover:block">
+                            Click to replace
+                        </span>
+                    </div>
                     <button
                         type="button"
-                        onClick={() => { setPreviews([]); onChange(null); if (inputRef.current) inputRef.current.value = ''; }}
-                        className="absolute top-1.5 right-1.5 bg-black/60 p-0.5 text-white hover:bg-black/80"
+                        onClick={clear}
+                        className="absolute top-1.5 right-1.5 bg-red-500/90 p-0.5 text-white hover:bg-red-600"
                     >
                         <X className="size-3" />
                     </button>
                 </div>
+            ) : (
+                <button
+                    type="button"
+                    onClick={() => inputRef.current?.click()}
+                    onDrop={(e) => { e.preventDefault(); handleFile(e.dataTransfer.files[0]); }}
+                    onDragOver={(e) => e.preventDefault()}
+                    className="flex w-full flex-col items-center justify-center gap-1.5 border border-dashed border-border bg-muted/20 py-4 text-xs text-muted-foreground transition-colors hover:bg-muted/40"
+                >
+                    <ImagePlus className="size-5 opacity-40" />
+                    <span>Click or drop image</span>
+                    <span className="text-[10px] opacity-60">JPG, PNG, WebP — max 3MB</span>
+                </button>
             )}
+            <input
+                ref={inputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={(e) => handleFile(e.target.files[0])}
+            />
+        </div>
+    );
+}
 
-            {multiple && previews.length > 0 && (
+function MultiImageUpload({ onChange }) {
+    const inputRef = useRef(null);
+    const [items, setItems] = useState([]);
+
+    function handleFiles(newFiles) {
+        if (!newFiles.length) return;
+        const added = Array.from(newFiles).map((f) => ({ file: f, url: URL.createObjectURL(f) }));
+        setItems((prev) => {
+            const next = [...prev, ...added];
+            onChange(next.map((i) => i.file));
+            return next;
+        });
+        if (inputRef.current) inputRef.current.value = '';
+    }
+
+    function removeItem(index) {
+        setItems((prev) => {
+            URL.revokeObjectURL(prev[index].url);
+            const next = prev.filter((_, i) => i !== index);
+            onChange(next.map((i) => i.file));
+            return next;
+        });
+    }
+
+    return (
+        <div>
+            {items.length > 0 && (
                 <div className="mb-2 flex flex-wrap gap-1.5">
-                    {previews.map((src, i) => (
-                        <img key={i} src={src} alt="" className="h-14 w-14 border object-cover" />
+                    {items.map((item, i) => (
+                        <div key={item.url} className="relative">
+                            <img src={item.url} alt="" className="h-14 w-14 border object-cover" />
+                            <button
+                                type="button"
+                                onClick={() => removeItem(i)}
+                                className="absolute -top-1 -right-1 flex size-4 items-center justify-center bg-red-500 text-white hover:bg-red-600"
+                            >
+                                <X className="size-2.5" />
+                            </button>
+                        </div>
                     ))}
                 </div>
             )}
-
             <button
                 type="button"
                 onClick={() => inputRef.current?.click()}
@@ -175,14 +235,14 @@ function ImageUploadBox({ label, existingPath, onChange, multiple = false }) {
                 className="flex w-full flex-col items-center justify-center gap-1.5 border border-dashed border-border bg-muted/20 py-4 text-xs text-muted-foreground transition-colors hover:bg-muted/40"
             >
                 <ImagePlus className="size-5 opacity-40" />
-                <span>Click or drop {multiple ? 'photos' : 'image'}</span>
+                <span>{items.length > 0 ? 'Add more photos' : 'Click or drop photos'}</span>
                 <span className="text-[10px] opacity-60">JPG, PNG, WebP — max 3MB</span>
             </button>
             <input
                 ref={inputRef}
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
-                multiple={multiple}
+                multiple
                 className="hidden"
                 onChange={(e) => handleFiles(e.target.files)}
             />
@@ -466,6 +526,8 @@ export default function ProductForm({ form, categories, brands, units, warrantie
         }
     }
 
+    const visibleOn = form.data.visible === 'yes';
+
     return (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
             {/* ── LEFT ── */}
@@ -489,21 +551,36 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                         <Field label="Category" required error={form.errors.category_id}>
                             <Select value={String(form.data.category_id ?? '')} onValueChange={(v) => form.setData('category_id', v)}>
                                 <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
-                                <SelectContent>{categoryOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                                <SelectContent>
+                                    {categoryOptions.length === 0
+                                        ? <SelectItem value="__empty__" disabled>No Category</SelectItem>
+                                        : categoryOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)
+                                    }
+                                </SelectContent>
                             </Select>
                         </Field>
 
                         <Field label="Brand" required error={form.errors.brand_id}>
                             <Select value={String(form.data.brand_id ?? '')} onValueChange={(v) => form.setData('brand_id', v)}>
                                 <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
-                                <SelectContent>{brandOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                                <SelectContent>
+                                    {brandOptions.length === 0
+                                        ? <SelectItem value="__empty__" disabled>No Brand</SelectItem>
+                                        : brandOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)
+                                    }
+                                </SelectContent>
                             </Select>
                         </Field>
 
                         <Field label="Unit" required error={form.errors.unit_id}>
                             <Select value={String(form.data.unit_id ?? '')} onValueChange={(v) => form.setData('unit_id', v)}>
                                 <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
-                                <SelectContent>{unitOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                                <SelectContent>
+                                    {unitOptions.length === 0
+                                        ? <SelectItem value="__empty__" disabled>No Unit</SelectItem>
+                                        : unitOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)
+                                    }
+                                </SelectContent>
                             </Select>
                         </Field>
 
@@ -534,16 +611,6 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                             <Input className="h-8 text-xs" value={form.data.youtube_link} onChange={(e) => form.setData('youtube_link', e.target.value)} placeholder="https://youtube.com/..." />
                         </Field>
 
-                        <Field label="Visible on Store">
-                            <Select value={form.data.visible ?? 'yes'} onValueChange={(v) => form.setData('visible', v)}>
-                                <SelectTrigger className="h-8 w-full text-xs"><SelectValue /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="yes">Yes</SelectItem>
-                                    <SelectItem value="no">No</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </Field>
-
                         <Field label="Tags" error={form.errors.tags}>
                             <SmartMultiSelect
                                 options={tagOptions}
@@ -552,6 +619,17 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                                 placeholder="Search tags…"
                                 triggerClassName="min-h-8"
                             />
+                        </Field>
+
+                        <Field label="Visible on Store">
+                            <button
+                                type="button"
+                                onClick={() => form.setData('visible', visibleOn ? 'no' : 'yes')}
+                                className="relative mt-1"
+                            >
+                                <div className={`h-5 w-9 rounded-full transition-colors ${visibleOn ? 'bg-green-600' : 'bg-muted'}`} />
+                                <div className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${visibleOn ? 'translate-x-4' : ''}`} />
+                            </button>
                         </Field>
                     </div>
                 </Card>
@@ -601,23 +679,15 @@ export default function ProductForm({ form, categories, brands, units, warrantie
             <div className="space-y-4 lg:sticky lg:top-4 lg:self-start">
 
                 <Card title="Product Image" icon={ImagePlus}>
-                    <ImageUploadBox
+                    <SingleImageUpload
                         existingPath={isEditing ? form.data._existing_image : null}
                         onChange={(file) => form.setData('image', file)}
                     />
                     {form.errors.image && <p className="mt-1 text-xs text-destructive">{form.errors.image}</p>}
                 </Card>
 
-                <Card title="Chest Size Image" icon={Ruler}>
-                    <ImageUploadBox
-                        existingPath={isEditing ? form.data._existing_chest_image : null}
-                        onChange={(file) => form.setData('chest_size_image', file)}
-                    />
-                    {form.errors.chest_size_image && <p className="mt-1 text-xs text-destructive">{form.errors.chest_size_image}</p>}
-                </Card>
-
                 <Card title="Gallery Photos" icon={Images}>
-                    <ImageUploadBox onChange={(files) => form.setData('photos', files)} multiple />
+                    <MultiImageUpload onChange={(files) => form.setData('photos', files)} />
                     {form.errors.photos && <p className="mt-1 text-xs text-destructive">{form.errors.photos}</p>}
                 </Card>
 

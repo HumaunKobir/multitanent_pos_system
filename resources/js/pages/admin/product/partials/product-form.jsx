@@ -621,7 +621,7 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                     {form.errors.photos && <p className="mt-1 text-xs text-destructive">{form.errors.photos}</p>}
                 </Card>
 
-                <Card title="Status & Settings" icon={Settings}>
+                <Card title="Status" icon={Settings}>
                     <div className="space-y-3">
                         <Field label="Status" error={form.errors.status}>
                             <Select value={String(form.data.status ?? '1')} onValueChange={(v) => form.setData('status', v)}>

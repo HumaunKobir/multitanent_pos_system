@@ -170,7 +170,7 @@ export function PanelSidebar() {
                                 <button
                                     type="button"
                                     className={cn(
-                                        'flex w-full items-center gap-2.5 border border-transparent px-2.5 py-1.5 text-left text-[0.8125rem] font-semibold tracking-tight transition-[border-color,background-color,color]',
+                                        'flex w-full items-center gap-2.5 border border-transparent px-2.5 py-1.5 text-left text-[0.8125rem] font-medium tracking-tight transition-[border-color,background-color,color]',
                                         'hover:border-border/80 hover:bg-sidebar-accent/50',
                                         sectionActive ? 'text-foreground' : 'text-sidebar-foreground',
                                     )}

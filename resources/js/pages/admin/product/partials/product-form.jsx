@@ -498,7 +498,7 @@ function VariationBuilder({ productCode, variationNames = [], onChange, onEnable
     );
 }
 
-export default function ProductForm({ form, categories, brands, units, warranties, colors, sizes, branches, variationNames = [], tagOptions = [], isEditing = false, processing = false, cancelHref = '' }) {
+export default function ProductForm({ form, categories, brands, units, warranties, branches, variationNames = [], tagOptions = [], isEditing = false, processing = false, cancelHref = '' }) {
     const { auth } = usePage().props;
     const isAdmin = !auth.user?.branch_id;
 
@@ -506,7 +506,6 @@ export default function ProductForm({ form, categories, brands, units, warrantie
     const brandOptions    = Object.entries(brands    || {}).map(([value, label]) => ({ value, label }));
     const unitOptions     = Object.entries(units     || {}).map(([value, label]) => ({ value, label }));
     const warrantyOptions = Object.entries(warranties|| {}).map(([value, label]) => ({ value, label }));
-    const sizeOptions     = Object.entries(sizes     || {}).map(([value, label]) => ({ value, label }));
     const branchOptions   = Object.entries(branches  || {}).map(([value, label]) => ({ value, label }));
 
     const [hasVariations, setHasVariations] = useState(false);

@@ -38,25 +38,26 @@ export function SmartMultiSelect({
     className,
     triggerClassName,
 }) {
+    const values = Array.isArray(value) ? value : value ? [String(value)] : [];
     const reactId = useId();
     const listboxId = idProp ?? `smart-multi-select-${reactId}`;
     const inputId = `${listboxId}-input`;
     const inputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
     const [query, setQuery] = useState('');
 
-    const selectedSet = useMemo(() => new Set(value), [value]);
+    const selectedSet = useMemo(() => new Set(values), [values]);
 
     const selectedOptions = useMemo(() => {
         const known = options.filter((option) => selectedSet.has(option.value));
 
         const knownValues = new Set(known.map((option) => option.value));
 
-        const legacy = value
+        const legacy = values
             .filter((item) => !knownValues.has(item))
             .map((item) => ({ value: item, label: item }));
 
         return [...known, ...legacy];
-    }, [options, value, selectedSet]);
+    }, [options, values, selectedSet]);
 
     const filtered = useMemo(() => {
         const q = query.trim().toLowerCase();
@@ -76,14 +77,14 @@ export function SmartMultiSelect({
 
     function addValue(optionValue) {
         if (!selectedSet.has(optionValue)) {
-            onValueChange([...value, optionValue]);
+            onValueChange([...values, optionValue]);
         }
 
         setQuery('');
     }
 
     function removeValue(optionValue) {
-        onValueChange(value.filter((item) => item !== optionValue));
+        onValueChange(values.filter((item) => item !== optionValue));
     }
 
     return (
@@ -152,7 +153,7 @@ export function SmartMultiSelect({
                                         inputRef.current?.blur();
                                         requestAnimationFrame(() => inputRef.current?.focus());
                                     }}
-                                    placeholder={value.length === 0 ? placeholder : 'Search…'}
+                                    placeholder={values.length === 0 ? placeholder : 'Search…'}
                                     autoComplete="off"
                                 />
                             </div>

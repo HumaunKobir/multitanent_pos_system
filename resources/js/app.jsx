@@ -1,4 +1,5 @@
 import { createInertiaApp, usePage } from '@inertiajs/react';
+import { createRoot } from 'react-dom/client';
 import { AppToastRegion } from '@/components/app-toast-region';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AppToastProvider } from '@/contexts/app-toast-context';
@@ -39,14 +40,16 @@ createInertiaApp({
         }
     },
     strictMode: false,
-    withApp(app) {
-        return (
+    setup({ el, App, props }) {
+        const root = window.__inertia_root__ ?? createRoot(el);
+        window.__inertia_root__ = root;
+        root.render(
             <AppToastProvider>
                 <TooltipProvider delayDuration={0}>
-                    {app}
+                    <App {...props} />
                     <AppToastRegion />
                 </TooltipProvider>
-            </AppToastProvider>
+            </AppToastProvider>,
         );
     },
     progress: {

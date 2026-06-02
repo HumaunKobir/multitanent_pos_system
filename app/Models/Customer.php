@@ -15,10 +15,15 @@ class Customer extends Authenticatable
     use HasAccount, HasBranch, HasFactory, Notifiable;
 
     protected $fillable = [
-        'name', 'email', 'phone', 'address', 'password',
-        'branch_id', 'group_id', 'api_token',
-        'balance', 'balance_in', 'balance_out',
-        'status', 'is_default',
+        'branch_id',
+        'name',
+        'email',
+        'phone',
+        'address',
+        'password',
+        'balance',
+        'status',
+        'is_default',
     ];
 
     protected $hidden = ['password', 'remember_token', 'api_token'];
@@ -29,11 +34,6 @@ class Customer extends Authenticatable
         'balance_in' => 'decimal:2',
         'balance_out' => 'decimal:2',
     ];
-
-    public function group(): BelongsTo
-    {
-        return $this->belongsTo(Group::class);
-    }
 
     public function branch(): BelongsTo
     {

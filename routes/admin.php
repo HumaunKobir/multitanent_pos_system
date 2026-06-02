@@ -1,9 +1,11 @@
 <?php
 
+use App\Http\Controllers\Api\CustomerSearchController;
 use App\Http\Controllers\Api\ProductSearchController;
 use App\Http\Controllers\Api\SupplierController as SupplierApiController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\Inventory\PurchaseController;
+use App\Http\Controllers\Inventory\SellController;
 use App\Http\Controllers\Inventory\SupplierController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\Setting\BrandController;
@@ -36,6 +38,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')->group(function () {
     Route::resource('purchase', PurchaseController::class);
+    Route::resource('sell', SellController::class);
 });
 
 Route::middleware(['auth', 'verified'])->prefix('party')->name('party.')->group(function () {
@@ -45,6 +48,8 @@ Route::middleware(['auth', 'verified'])->prefix('party')->name('party.')->group(
 Route::middleware(['auth', 'verified'])->prefix('api')->name('api.')->group(function () {
     Route::get('suppliers', [SupplierApiController::class, 'index'])->name('suppliers');
     Route::get('products/for-purchase', [ProductSearchController::class, 'forPurchase'])->name('products.purchase');
+    Route::get('products/for-sell', [ProductSearchController::class, 'forSell'])->name('products.sell');
+    Route::get('customers', [CustomerSearchController::class, 'index'])->name('customers');
 });
 
 Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->group(function () {

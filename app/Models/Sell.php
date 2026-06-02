@@ -3,13 +3,16 @@
 namespace App\Models;
 
 use App\Enums\SaleType;
+use App\Traits\HasBranch;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 class Sell extends Model
 {
+    use HasBranch, HasFactory;
+
     protected $fillable = [
         'branch_id', 'customer_id', 'date',
         'gross_amount', 'discount', 'vat', 'paid_amount',

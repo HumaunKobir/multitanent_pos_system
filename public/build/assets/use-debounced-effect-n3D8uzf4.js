@@ -1,1 +1,0 @@
-import{h as e,p as t}from"./jsx-runtime-NkK_Fo8c.js";var n=e(t(),1);function r(e,t,r=350,i={}){let{skipFirstRun:a=!1}=i,o=(0,n.useRef)(!1);(0,n.useEffect)(()=>{if(a&&!o.current){o.current=!0;return}let t=setTimeout(()=>{e()},r);return()=>clearTimeout(t)},[...t,r])}export{r as t};

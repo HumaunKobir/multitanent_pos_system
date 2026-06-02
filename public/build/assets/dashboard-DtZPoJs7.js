@@ -1,1 +1,0 @@
-import{r as e,t}from"./jsx-runtime-NkK_Fo8c.js";import{t as n}from"./compiler-runtime-ugDSsTo_.js";var r=n(),i=t();function a(){let t=(0,r.c)(1),n;return t[0]===Symbol.for(`react.memo_cache_sentinel`)?(n=(0,i.jsx)(i.Fragment,{children:(0,i.jsx)(e,{title:`Dashboard`})}),t[0]=n):n=t[0],n}export{a as default};

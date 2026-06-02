@@ -2,19 +2,25 @@
 
 namespace App\Models;
 
+use App\Enums\ProductLogType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Batch extends Model
 {
     protected $fillable = [
-        'branch_id', 'product_id',
-        'unit_price', 'quantity', 'expiry_date',
+        'branch_id',
+        'product_id',
+        'supplier_id',
+        'serial',
+        'purchase_price',
+        'available',
+        'expiry_date',
     ];
 
     protected $casts = [
-        'unit_price' => 'decimal:2',
-        'quantity' => 'decimal:2',
+        'purchase_price' => 'decimal:2',
+        'available' => 'decimal:2',
         'expiry_date' => 'date',
     ];
 
@@ -26,5 +32,53 @@ class Batch extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
+    public function inStock(int|float $quantity): void
+    {
+        $this->stockLog(ProductLogType::Purchase, $quantity);
+    }
+
+    public function initialStock(int|float $quantity): void
+    {
+        $this->stockLog(ProductLogType::InitialStock, $quantity);
+    }
+
+    public function damageStock(int|float $quantity): void
+    {
+        $this->stockLog(ProductLogType::Damage, $quantity);
+    }
+
+    public function purchaseReturnStock(int|float $quantity): void
+    {
+        $this->stockLog(ProductLogType::Purchase_Return, $quantity);
+    }
+
+    public function outStock(int|float $quantity): void
+    {
+        $this->stockLog(ProductLogType::Sale, $quantity);
+    }
+
+    public function saleReturnStock(int|float $quantity): void
+    {
+        $this->stockLog(ProductLogType::Sale_Return, $quantity);
+    }
+
+    private function stockLog(ProductLogType $type, int|float $quantity): void
+    {
+        ProductInOutLog::create([
+            'batch_id' => $this->id,
+            'branch_id' => $this->branch_id,
+            'product_id' => $this->product_id,
+            'quantity' => $quantity,
+            'type' => $type->value,
+            'stock' => $this->available,
+            'remark' => $type->name,
+        ]);
     }
 }

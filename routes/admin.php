@@ -1,6 +1,10 @@
 <?php
 
+use App\Http\Controllers\Api\ProductSearchController;
+use App\Http\Controllers\Api\SupplierController as SupplierApiController;
 use App\Http\Controllers\BranchController;
+use App\Http\Controllers\Inventory\PurchaseController;
+use App\Http\Controllers\Inventory\SupplierController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\Setting\BrandController;
 use App\Http\Controllers\Setting\CategoryController;
@@ -28,6 +32,19 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('product', ProductController::class)->except(['show']);
     Route::post('variation', [VariationController::class, 'store'])->name('variation.store');
     Route::delete('variation/{variation}', [VariationController::class, 'destroy'])->name('variation.destroy');
+});
+
+Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')->group(function () {
+    Route::resource('purchase', PurchaseController::class)->except(['edit', 'update', 'destroy']);
+});
+
+Route::middleware(['auth', 'verified'])->prefix('party')->name('party.')->group(function () {
+    Route::resource('supplier', SupplierController::class)->except(['create', 'edit', 'show']);
+});
+
+Route::middleware(['auth', 'verified'])->prefix('api')->name('api.')->group(function () {
+    Route::get('suppliers', [SupplierApiController::class, 'index'])->name('suppliers');
+    Route::get('products/for-purchase', [ProductSearchController::class, 'forPurchase'])->name('products.purchase');
 });
 
 Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->group(function () {

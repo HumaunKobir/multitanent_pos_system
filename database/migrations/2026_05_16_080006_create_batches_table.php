@@ -12,8 +12,10 @@ return new class extends Migration
             $table->id();
             $table->foreignId('branch_id')->nullable()->constrained('branches');
             $table->foreignId('product_id')->nullable()->constrained('products')->cascadeOnDelete();
-            $table->decimal('unit_price', 10, 2)->default(0);
-            $table->decimal('quantity', 10, 2)->default(0);
+            $table->foreignId('supplier_id')->nullable()->constrained('suppliers')->nullOnDelete();
+            $table->string('serial')->nullable();
+            $table->decimal('purchase_price', 10, 2)->default(0);
+            $table->decimal('available', 10, 2)->default(0);
             $table->date('expiry_date')->nullable();
             $table->timestamps();
         });

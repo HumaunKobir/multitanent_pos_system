@@ -71,6 +71,16 @@ const routes = {
     'product.destroy': '/product/:product',
     'variation.store': '/variation',
     'variation.destroy': '/variation/:variation',
+    'inventory.purchase.index': '/inventory/purchase',
+    'inventory.purchase.create': '/inventory/purchase/create',
+    'inventory.purchase.store': '/inventory/purchase',
+    'inventory.purchase.show': '/inventory/purchase/:purchase',
+    'party.supplier.index': '/party/supplier',
+    'party.supplier.store': '/party/supplier',
+    'party.supplier.update': '/party/supplier/:supplier',
+    'party.supplier.destroy': '/party/supplier/:supplier',
+    'api.suppliers': '/api/suppliers',
+    'api.products.purchase': '/api/products/for-purchase',
 };
 
 const methods = {
@@ -134,6 +144,10 @@ const methods = {
     'product.destroy': 'delete',
     'variation.store': 'post',
     'variation.destroy': 'delete',
+    'inventory.purchase.store': 'post',
+    'party.supplier.store': 'post',
+    'party.supplier.update': 'patch',
+    'party.supplier.destroy': 'delete',
 };
 
 const aliases = {

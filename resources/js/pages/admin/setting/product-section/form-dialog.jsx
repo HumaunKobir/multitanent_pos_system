@@ -154,7 +154,7 @@ export default function ProductSectionFormDialog({
                     <h2 className="text-sm font-semibold text-white">{isEditing ? 'Edit Product Section' : 'Create Product Section'}</h2>
                 </div>
 
-                <form onSubmit={handleSubmit} className="max-h-[80vh] space-y-3 overflow-y-auto p-4">
+                <form onSubmit={handleSubmit} className="max-h-[80vh] space-y-1.5 overflow-y-auto px-3 py-2">
                     <div>
                         <Label htmlFor="name">Section Name *</Label>
                         <Input
@@ -283,7 +283,7 @@ export default function ProductSectionFormDialog({
                             </div>
 
                             {form.data.image_rows.map((row, index) => (
-                                <div key={index} className="space-y-3 rounded border p-3">
+                                <div key={index} className="space-y-1.5 rounded-none border p-3">
                                     <div className="flex items-center justify-between">
                                         <span className="text-sm font-medium">Image #{index + 1}</span>
                                         {form.data.image_rows.length > 1 && (

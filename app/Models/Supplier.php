@@ -12,9 +12,15 @@ class Supplier extends Model
     use HasAccount;
 
     protected $fillable = [
-        'name', 'phone', 'company_name', 'address',
-        'branch_id', 'status',
-        'balance', 'balance_in', 'balance_out',
+        'name',
+        'phone',
+        'company_name',
+        'address',
+        'branch_id',
+        'status',
+        'balance',
+        'balance_in',
+        'balance_out',
     ];
 
     protected $casts = [

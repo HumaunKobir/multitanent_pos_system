@@ -3,14 +3,14 @@
 namespace App\Models;
 
 use App\Enums\CommonStatus;
-use App\Traits\HasAccount;
+use App\Traits\HasBranch;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Supplier extends Model
 {
-    use HasAccount;
+    use HasBranch;
 
     protected $fillable = [
         'name',
@@ -23,7 +23,8 @@ class Supplier extends Model
     ];
 
     protected $casts = [
-        'status' => CommonStatus::class
+        'balance' => 'decimal:2',
+        'status' => CommonStatus::class,
     ];
 
     public function branch(): BelongsTo

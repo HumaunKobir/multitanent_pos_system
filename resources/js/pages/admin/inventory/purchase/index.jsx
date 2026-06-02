@@ -9,6 +9,39 @@ import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { Input } from '@/components/ui/input';
 
+function formatBdDate(date) {
+    if (!date || typeof date !== 'string') return '—';
+
+    // We may receive `YYYY-MM-DD` or ISO (`YYYY-MM-DDTHH:mm:ss...Z`) from Laravel.
+    // Parse manually to avoid timezone shifts.
+    const normalized = date.includes('T') ? date.slice(0, 10) : date;
+    const parts = normalized.split('-');
+    if (parts.length !== 3) return date;
+
+    const [y, m, d] = parts.map((p) => Number(p));
+    if (!y || !m || !d) return date;
+
+    const utcMidnight = new Date(Date.UTC(y, m - 1, d));
+
+    const dtf = new Intl.DateTimeFormat('en-GB', {
+        timeZone: 'Asia/Dhaka',
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+    });
+
+    const dateParts = dtf.formatToParts(utcMidnight);
+    const day = dateParts.find((p) => p.type === 'day')?.value;
+    const month = dateParts.find((p) => p.type === 'month')?.value;
+    const year = dateParts.find((p) => p.type === 'year')?.value;
+
+    if (!day || !month || !year) {
+        return dtf.format(utcMidnight);
+    }
+
+    return `${day} ${month}, ${year}`;
+}
+
 export default function PurchaseIndex({ purchases, filters }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
@@ -35,16 +68,23 @@ export default function PurchaseIndex({ purchases, filters }) {
                 </span>
             ),
         },
-        { id: 'date', header: 'Date', render: (row) => row.date },
+        { id: 'date', header: 'Date', render: (row) => formatBdDate(row.date) },
         {
             id: 'supplier',
             header: 'Supplier',
             render: (row) => row.supplier?.name ?? '—',
         },
         {
-            id: 'gross',
-            header: 'Gross',
-            render: (row) => <span className="font-medium">৳{parseFloat(row.gross_amount).toFixed(2)}</span>,
+            id: 'total',
+            header: 'Total Amount',
+            render: (row) => {
+                const gross = parseFloat(row.gross_amount ?? 0);
+                const vat = parseFloat(row.vat ?? 0);
+                const discount = parseFloat(row.discount ?? 0);
+                const total = gross + vat - discount;
+
+                return <span className="font-medium">৳{total.toFixed(2)}</span>;
+            },
         },
         {
             id: 'paid',
@@ -57,9 +97,18 @@ export default function PurchaseIndex({ purchases, filters }) {
             id: 'due',
             header: 'Due',
             render: (row) => (
-                <Badge className={parseFloat(row.due_amount) > 0 ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}>
+                <span className={parseFloat(row.due_amount) > 0 ? 'font-semibold text-destructive' : 'font-semibold text-green-700 dark:text-green-400'}>
                     ৳{parseFloat(row.due_amount).toFixed(2)}
-                </Badge>
+                </span>
+            ),
+        },
+        {
+            id: 'note',
+            header: 'Note',
+            render: (row) => (
+                <span className="block max-w-64 truncate text-muted-foreground" title={row.comment ?? ''}>
+                    {row.comment ?? '—'}
+                </span>
             ),
         },
         {

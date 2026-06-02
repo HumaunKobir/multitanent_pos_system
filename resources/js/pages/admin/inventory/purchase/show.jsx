@@ -1,6 +1,6 @@
 import { route } from '@/lib/route';
 import { Head, Link } from '@inertiajs/react';
-import { ArrowLeft, Printer } from 'lucide-react';
+import { ArrowLeft, HandCoins, Printer } from 'lucide-react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -15,25 +15,28 @@ export default function PurchaseShow({ purchase }) {
 
             <div className="px-2 py-1">
                 <div className="mb-3 flex items-center justify-between rounded-lg bg-blue-950 px-5 py-3">
-                    <div>
-                        <h1 className="text-base font-semibold text-white">Purchase Invoice</h1>
-                        <p className="font-mono text-xs text-white/60">{invoiceNumber}</p>
+                    <div className="flex items-center gap-3">
+                        <div className="flex size-8 items-center justify-center rounded-md bg-white/15">
+                            <HandCoins className="size-4 text-white" />
+                        </div>
+                        <div>
+                            <h1 className="text-base font-semibold text-white">Purchase Invoice</h1>
+                            <p className="font-mono text-xs text-white/60">{invoiceNumber}</p>
+                        </div>
                     </div>
                     <div className="flex gap-2">
                         <Button
                             size="sm"
-                            variant="ghost"
                             onClick={() => window.print()}
-                            className="border border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                            className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
                         >
                             <Printer className="size-3.5" />
                             Print
                         </Button>
                         <Button
                             size="sm"
-                            variant="ghost"
                             asChild
-                            className="border border-white/30 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                            className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
                         >
                             <Link href={route('inventory.purchase.index')}>
                                 <ArrowLeft className="size-3.5" />

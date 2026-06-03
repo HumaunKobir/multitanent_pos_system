@@ -1,5 +1,7 @@
+import { formatQty } from '@/components/inventory/inventory-form';
+import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Save, Search, Trash2, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
@@ -330,6 +332,8 @@ function ProductSearchBox({ onAdd }) {
 }
 
 export default function PurchaseEdit({ purchase, suppliers: initialSuppliers }) {
+    const { flash } = usePage().props;
+    const toast = useAppToast();
     const form = useForm({
         supplier_id: purchase.supplier_id ? String(purchase.supplier_id) : '',
         date: purchase.date ?? '',
@@ -342,6 +346,11 @@ export default function PurchaseEdit({ purchase, suppliers: initialSuppliers }) 
 
     const [items, setItems] = useState(purchase.items ?? []);
     const [suppliers, setSuppliers] = useState(initialSuppliers);
+
+    useEffect(() => {
+        if (flash?.success) toast.success(flash.success);
+        if (flash?.error) toast.error(flash.error);
+    }, [flash?.success, flash?.error]);
 
     const grossAmount = items.reduce((sum, it) => sum + parseFloat(it.quantity || 0) * parseFloat(it.unit_price || 0), 0);
     const vatAmount = grossAmount * (parseFloat(form.data.vat || 0) / 100);
@@ -373,9 +382,22 @@ export default function PurchaseEdit({ purchase, suppliers: initialSuppliers }) 
 
     function handleSubmit(e) {
         e.preventDefault();
-        form.setData('items', items);
-        form.transform((data) => ({ ...data, items }));
-        form.put(route('inventory.purchase.update', purchase.id));
+
+        const lineItems = items.filter((it) => parseFloat(it.quantity || 0) >= 1);
+        if (lineItems.length === 0) {
+            toast.error('Add at least one line with quantity 1 or more.');
+            return;
+        }
+
+        form.setData('items', lineItems);
+        form.transform((data) => ({ ...data, items: lineItems }));
+        form.put(route('inventory.purchase.update', purchase.id), {
+            preserveScroll: true,
+            onError: (errors) => {
+                const first = Object.values(errors)[0];
+                if (first) toast.error(Array.isArray(first) ? first[0] : first);
+            },
+        });
     }
 
     const inputCls = 'h-7 rounded-md border-border/60 text-xs px-2 focus:border-primary';
@@ -484,8 +506,9 @@ export default function PurchaseEdit({ purchase, suppliers: initialSuppliers }) 
                                                         <Input
                                                             type="number"
                                                             min="1"
+                                                            step="1"
                                                             value={item.quantity}
-                                                            onChange={(e) => updateItem(i, 'quantity', e.target.value)}
+                                                            onChange={(e) => updateItem(i, 'quantity', formatQty(e.target.value))}
                                                             className={`${inputCls} w-full text-right`}
                                                         />
                                                     </td>
@@ -493,8 +516,9 @@ export default function PurchaseEdit({ purchase, suppliers: initialSuppliers }) 
                                                         <Input
                                                             type="number"
                                                             min="0"
+                                                            step="1"
                                                             value={item.free_quantity}
-                                                            onChange={(e) => updateItem(i, 'free_quantity', e.target.value)}
+                                                            onChange={(e) => updateItem(i, 'free_quantity', formatQty(e.target.value))}
                                                             className={`${inputCls} w-full text-right`}
                                                         />
                                                     </td>

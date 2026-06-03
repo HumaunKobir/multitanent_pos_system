@@ -51,7 +51,7 @@ class Purchase extends Model
 
     public function getInvoiceNumberAttribute(): string
     {
-        return 'INVP'.str_pad($this->id, 8, '0', STR_PAD_LEFT);
+        return 'INVP'.str_pad((string) $this->id, 8, '0', STR_PAD_LEFT);
     }
 
     public function branch(): HasOne
@@ -69,29 +69,14 @@ class Purchase extends Model
         return $this->hasMany(PurchaseProduct::class, 'purchase_id');
     }
 
-    public function parentPurchase(): BelongsTo
+    public function purchaseReturns(): HasMany
     {
-        return $this->belongsTo(Purchase::class, 'parent_purchase_id');
-    }
-
-    public function purchaseReturn(): HasOne
-    {
-        return $this->hasOne(Purchase::class, 'parent_purchase_id');
+        return $this->hasMany(PurchaseReturn::class);
     }
 
     public function scopePurchase(Builder $q): Builder
     {
         return $q->where('purchase_type', PurchaseType::Purchase);
-    }
-
-    public function scopeDamage(Builder $q): Builder
-    {
-        return $q->where('purchase_type', PurchaseType::Damage);
-    }
-
-    public function scopePurchaseReturn(Builder $q): Builder
-    {
-        return $q->where('purchase_type', PurchaseType::Purchase_Return);
     }
 
     public function scopeInitialStock(Builder $q): Builder

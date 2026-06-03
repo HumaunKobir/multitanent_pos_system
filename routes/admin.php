@@ -7,10 +7,16 @@ use App\Http\Controllers\Account\IncomeVoucherController;
 use App\Http\Controllers\Account\JournalVoucherController;
 use App\Http\Controllers\Api\CustomerSearchController;
 use App\Http\Controllers\Api\ProductSearchController;
+use App\Http\Controllers\Api\PurchaseLookupController;
+use App\Http\Controllers\Api\SaleLookupController;
 use App\Http\Controllers\Api\SupplierController as SupplierApiController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\Customer\CustomerController;
+use App\Http\Controllers\Inventory\DamageController;
+use App\Http\Controllers\Inventory\ProductExchangeController;
 use App\Http\Controllers\Inventory\PurchaseController;
+use App\Http\Controllers\Inventory\PurchaseReturnController;
+use App\Http\Controllers\Inventory\SaleReturnController;
 use App\Http\Controllers\Inventory\SellController;
 use App\Http\Controllers\Inventory\SupplierController;
 use App\Http\Controllers\ProductController;
@@ -44,7 +50,11 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')->group(function () {
     Route::resource('purchase', PurchaseController::class);
+    Route::resource('purchase-return', PurchaseReturnController::class);
+    Route::resource('damage', DamageController::class);
     Route::resource('sell', SellController::class);
+    Route::resource('sale-return', SaleReturnController::class);
+    Route::resource('product-exchange', ProductExchangeController::class);
 });
 
 Route::middleware(['auth', 'verified'])->prefix('party')->name('party.')->group(function () {
@@ -57,6 +67,8 @@ Route::middleware(['auth', 'verified'])->prefix('api')->name('api.')->group(func
     Route::post('suppliers', [SupplierApiController::class, 'store'])->name('suppliers.store');
     Route::get('products/for-purchase', [ProductSearchController::class, 'forPurchase'])->name('products.purchase');
     Route::get('products/for-sell', [ProductSearchController::class, 'forSell'])->name('products.sell');
+    Route::get('purchases/lookup', PurchaseLookupController::class)->name('purchases.lookup');
+    Route::get('sales/lookup', SaleLookupController::class)->name('sales.lookup');
     Route::get('customers', [CustomerSearchController::class, 'index'])->name('customers');
     Route::post('customers', [CustomerSearchController::class, 'store'])->name('customers.store');
 });

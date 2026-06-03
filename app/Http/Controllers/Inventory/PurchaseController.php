@@ -7,6 +7,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\ProductVariation;
 use App\Models\Purchase;
+use App\Models\PurchaseReturn;
 use App\Models\Supplier;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -57,8 +58,8 @@ class PurchaseController extends Controller
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
-            'items.*.quantity' => ['required', 'numeric', 'min:1'],
-            'items.*.free_quantity' => ['required', 'numeric', 'min:0'],
+            'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.free_quantity' => ['required', 'integer', 'min:0'],
             'items.*.expiry_date' => ['nullable', 'date'],
             'items.*.serial' => ['nullable', 'string'],
         ]);
@@ -170,12 +171,18 @@ class PurchaseController extends Controller
         ]);
     }
 
-    public function edit(Purchase $purchase): Response
+    public function edit(Purchase $purchase): Response|RedirectResponse
     {
         $branchId = Auth::user()?->branch_id;
 
         if ($branchId !== null && $purchase->branch_id !== $branchId) {
             abort(404);
+        }
+
+        if (PurchaseReturn::where('purchase_id', $purchase->id)->exists()) {
+            return redirect()
+                ->route('inventory.purchase.show', $purchase)
+                ->with('error', 'This purchase cannot be edited because it has returns.');
         }
 
         $purchase->load([
@@ -264,6 +271,10 @@ class PurchaseController extends Controller
             abort(404);
         }
 
+        if (PurchaseReturn::where('purchase_id', $purchase->id)->exists()) {
+            return back()->with('error', 'This purchase cannot be edited because it has returns.');
+        }
+
         $data = $request->validate([
             'supplier_id' => ['required', 'exists:suppliers,id'],
             'date' => ['required', 'date'],
@@ -275,8 +286,8 @@ class PurchaseController extends Controller
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
-            'items.*.quantity' => ['required', 'numeric', 'min:1'],
-            'items.*.free_quantity' => ['required', 'numeric', 'min:0'],
+            'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.free_quantity' => ['required', 'integer', 'min:0'],
             'items.*.expiry_date' => ['nullable', 'date'],
             'items.*.serial' => ['nullable', 'string'],
         ]);
@@ -409,7 +420,13 @@ class PurchaseController extends Controller
                 Supplier::whereKey($data['supplier_id'])->increment('balance', $newDueChange);
             });
         } catch (\Throwable $e) {
-            return back()->with('error', $e instanceof \RuntimeException ? $e->getMessage() : 'Unable to update purchase.');
+            return back()
+                ->withErrors([
+                    'items' => $e instanceof \RuntimeException
+                        ? $e->getMessage()
+                        : 'Unable to update purchase.',
+                ])
+                ->withInput();
         }
 
         return redirect()

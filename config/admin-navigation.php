@@ -41,7 +41,6 @@ return [
                 ['title' => 'Purchase', 'href' => '/inventory/purchase'],
                 ['title' => 'Purchase Return', 'href' => '/inventory/purchase-return'],
                 ['title' => 'Damage', 'href' => '/inventory/damage'],
-                ['title' => 'Initial Stock', 'href' => '/inventory/initial-stock'],
             ],
         ],
         [

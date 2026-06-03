@@ -14,4 +14,5 @@ enum ProductLogType: int
     case Damage = 11;
     case Purchase_Return = 12;
     case InitialStock = 13;
+    case Exchange = 14;
 }

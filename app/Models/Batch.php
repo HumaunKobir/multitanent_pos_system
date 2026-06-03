@@ -72,6 +72,11 @@ class Batch extends Model
         $this->stockLog(ProductLogType::Sale_Return, $quantity);
     }
 
+    public function exchangeStock(int|float $quantity): void
+    {
+        $this->stockLog(ProductLogType::Exchange, $quantity);
+    }
+
     private function stockLog(ProductLogType $type, int|float $quantity): void
     {
         ProductInOutLog::create([

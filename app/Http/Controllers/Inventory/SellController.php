@@ -2,10 +2,13 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\Enums\SaleType;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Customer;
+use App\Models\ProductExchange;
 use App\Models\ProductVariation;
+use App\Models\SaleReturn;
 use App\Models\Sell;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,6 +22,7 @@ class SellController extends Controller
     public function index(Request $request): Response
     {
         $sells = Sell::query()->ownBranch()
+            ->sale()
             ->with('customer:id,name,phone')
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('id', 'like', "%{$s}%")
@@ -61,7 +65,7 @@ class SellController extends Controller
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
-            'items.*.quantity' => ['required', 'numeric', 'min:1'],
+            'items.*.quantity' => ['required', 'integer', 'min:1'],
         ]);
 
         $branchId = Auth::user()?->branch_id;
@@ -110,6 +114,7 @@ class SellController extends Controller
                 'discount' => $data['discount'],
                 'vat' => $vatAmount,
                 'paid_amount' => $data['paid_amount'],
+                'type' => SaleType::Sale,
                 'comment' => $data['comment'] ?? null,
             ]);
 
@@ -137,9 +142,21 @@ class SellController extends Controller
         ]);
     }
 
-    public function edit(Sell $sell): Response
+    public function edit(Sell $sell): Response|RedirectResponse
     {
         $this->authorizeBranch($sell);
+
+        if (SaleReturn::where('sell_id', $sell->id)->exists()) {
+            return redirect()
+                ->route('inventory.sell.show', $sell)
+                ->with('error', 'This sale cannot be edited because it has returns.');
+        }
+
+        if (ProductExchange::where('sell_id', $sell->id)->exists()) {
+            return redirect()
+                ->route('inventory.sell.show', $sell)
+                ->with('error', 'This sale cannot be edited because it has been exchanged.');
+        }
 
         $sell->load([
             'customer:id,name,phone',
@@ -197,6 +214,14 @@ class SellController extends Controller
     {
         $this->authorizeBranch($sell);
 
+        if (SaleReturn::where('sell_id', $sell->id)->exists()) {
+            return back()->with('error', 'This sale cannot be edited because it has returns.');
+        }
+
+        if (ProductExchange::where('sell_id', $sell->id)->exists()) {
+            return back()->with('error', 'This sale cannot be edited because it has been exchanged.');
+        }
+
         $data = $request->validate([
             'customer_id' => ['nullable', 'exists:customers,id'],
             'date' => ['required', 'date'],
@@ -208,7 +233,7 @@ class SellController extends Controller
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
-            'items.*.quantity' => ['required', 'numeric', 'min:1'],
+            'items.*.quantity' => ['required', 'integer', 'min:1'],
         ]);
 
         $branchId = Auth::user()?->branch_id;
@@ -288,7 +313,13 @@ class SellController extends Controller
                 }
             });
         } catch (\Throwable $e) {
-            return back()->with('error', $e instanceof \RuntimeException ? $e->getMessage() : 'Unable to update sale.');
+            return back()
+                ->withErrors([
+                    'items' => $e instanceof \RuntimeException
+                        ? $e->getMessage()
+                        : 'Unable to update sale.',
+                ])
+                ->withInput();
         }
 
         return redirect()->route('inventory.sell.index')

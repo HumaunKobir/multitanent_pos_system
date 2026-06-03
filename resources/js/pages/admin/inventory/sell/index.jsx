@@ -1,4 +1,5 @@
 import { useAppToast } from '@/contexts/app-toast-context';
+import { formatBdDate } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Edit, Eye, Plus, Search, ShoppingCart, Trash2 } from 'lucide-react';
@@ -9,27 +10,6 @@ import { DataTable } from '@/components/ui/data-table';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
-
-function formatBdDate(date) {
-    if (!date || typeof date !== 'string') return '—';
-    const normalized = date.includes('T') ? date.slice(0, 10) : date;
-    const parts = normalized.split('-');
-    if (parts.length !== 3) return date;
-    const [y, m, d] = parts.map((p) => Number(p));
-    if (!y || !m || !d) return date;
-    const utcMidnight = new Date(Date.UTC(y, m - 1, d));
-    const dtf = new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Asia/Dhaka',
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-    });
-    const dateParts = dtf.formatToParts(utcMidnight);
-    const day = dateParts.find((p) => p.type === 'day')?.value;
-    const month = dateParts.find((p) => p.type === 'month')?.value;
-    const year = dateParts.find((p) => p.type === 'year')?.value;
-    return day && month && year ? `${day} ${month}, ${year}` : dtf.format(utcMidnight);
-}
 
 export default function SellIndex({ sells, filters }) {
     const { flash } = usePage().props;

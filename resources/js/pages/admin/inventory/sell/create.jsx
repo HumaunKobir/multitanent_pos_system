@@ -1,3 +1,4 @@
+import { formatQty } from '@/components/inventory/inventory-form';
 import { route } from '@/lib/route';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Search, ShoppingCart, Trash2, User } from 'lucide-react';
@@ -578,8 +579,9 @@ export default function SellCreate({ today, defaultCustomer }) {
                                                         <Input
                                                             type="number"
                                                             min="1"
+                                                            step="1"
                                                             value={item.quantity}
-                                                            onChange={(e) => updateItem(i, 'quantity', e.target.value)}
+                                                            onChange={(e) => updateItem(i, 'quantity', formatQty(e.target.value))}
                                                             className={`${inputCls} w-full text-right ${overStock ? 'border-destructive' : ''}`}
                                                         />
                                                     </td>

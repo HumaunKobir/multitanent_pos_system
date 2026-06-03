@@ -1,3 +1,4 @@
+import { formatQty } from '@/components/inventory/inventory-form';
 import { route } from '@/lib/route';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Search, Trash2, User } from 'lucide-react';
@@ -557,8 +558,9 @@ export default function PurchaseCreate({ suppliers: initialSuppliers, today }) {
                                                         <Input
                                                             type="number"
                                                             min="1"
+                                                            step="1"
                                                             value={item.quantity}
-                                                            onChange={(e) => updateItem(i, 'quantity', e.target.value)}
+                                                            onChange={(e) => updateItem(i, 'quantity', formatQty(e.target.value))}
                                                             className={`${inputCls} w-full text-right`}
                                                         />
                                                     </td>
@@ -566,8 +568,9 @@ export default function PurchaseCreate({ suppliers: initialSuppliers, today }) {
                                                         <Input
                                                             type="number"
                                                             min="0"
+                                                            step="1"
                                                             value={item.free_quantity}
-                                                            onChange={(e) => updateItem(i, 'free_quantity', e.target.value)}
+                                                            onChange={(e) => updateItem(i, 'free_quantity', formatQty(e.target.value))}
                                                             className={`${inputCls} w-full text-right`}
                                                         />
                                                     </td>

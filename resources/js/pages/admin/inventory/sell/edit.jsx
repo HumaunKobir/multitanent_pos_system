@@ -1,5 +1,7 @@
+import { formatQty } from '@/components/inventory/inventory-form';
+import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Save, Search, ShoppingCart, Trash2, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
@@ -428,6 +430,8 @@ function ProductSearchBox({ onAdd }) {
 }
 
 export default function SellEdit({ sell }) {
+    const { flash } = usePage().props;
+    const toast = useAppToast();
     const form = useForm({
         customer_id: sell.customer_id ? String(sell.customer_id) : '',
         date: sell.date ?? '',
@@ -472,8 +476,21 @@ export default function SellEdit({ sell }) {
 
     function handleSubmit(e) {
         e.preventDefault();
-        form.transform((data) => ({ ...data, items }));
-        form.put(route('inventory.sell.update', sell.id));
+
+        const lineItems = items.filter((it) => parseFloat(it.quantity || 0) >= 1);
+        if (lineItems.length === 0) {
+            toast.error('Add at least one line with quantity 1 or more.');
+            return;
+        }
+
+        form.transform((data) => ({ ...data, items: lineItems }));
+        form.put(route('inventory.sell.update', sell.id), {
+            preserveScroll: true,
+            onError: (errors) => {
+                const first = Object.values(errors)[0];
+                if (first) toast.error(Array.isArray(first) ? first[0] : first);
+            },
+        });
     }
 
     const inputCls = 'h-7 rounded-md border-border/60 text-xs px-2 focus:border-primary';
@@ -548,7 +565,7 @@ export default function SellEdit({ sell }) {
                                     </thead>
                                     <tbody className="divide-y divide-border">
                                         {items.map((item, i) => {
-                                            const qty = parseFloat(item.quantity || 0);
+                                            const qty = parseInt(item.quantity || 0, 10);
                                             const stock = parseFloat(item.available_stock ?? 0);
                                             const remaining = stock - qty;
                                             const overStock = item.available_stock !== null && item.available_stock !== undefined && qty > stock;
@@ -576,8 +593,9 @@ export default function SellEdit({ sell }) {
                                                         <Input
                                                             type="number"
                                                             min="1"
+                                                            step="1"
                                                             value={item.quantity}
-                                                            onChange={(e) => updateItem(i, 'quantity', e.target.value)}
+                                                            onChange={(e) => updateItem(i, 'quantity', formatQty(e.target.value))}
                                                             className={`${inputCls} w-full text-right ${overStock ? 'border-destructive' : ''}`}
                                                         />
                                                     </td>

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Setting;
 
 use App\Http\Controllers\Controller;
 use App\Models\Unit;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -25,20 +26,22 @@ class UnitController extends Controller
         ]);
     }
 
-
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:191'],
             'status' => ['required', 'in:0,1'],
         ]);
 
-        Unit::create($data);
+        $unit = Unit::create($data);
+
+        if ($request->wantsJson()) {
+            return response()->json(['value' => (string) $unit->id, 'label' => $unit->name], 201);
+        }
 
         return redirect()->route('setting.unit.index')
             ->with('success', 'Unit created successfully.');
     }
-
 
     public function update(Request $request, Unit $unit): RedirectResponse
     {

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Setting;
 
 use App\Http\Controllers\Controller;
 use App\Models\Warranty;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -25,8 +26,7 @@ class WarrantyController extends Controller
         ]);
     }
 
-
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:191'],
@@ -34,12 +34,15 @@ class WarrantyController extends Controller
             'status' => ['required', 'in:0,1'],
         ]);
 
-        Warranty::create($data);
+        $warranty = Warranty::create($data);
+
+        if ($request->wantsJson()) {
+            return response()->json(['value' => (string) $warranty->id, 'label' => $warranty->name], 201);
+        }
 
         return redirect()->route('setting.warranty.index')
             ->with('success', 'Warranty created successfully.');
     }
-
 
     public function update(Request $request, Warranty $warranty): RedirectResponse
     {

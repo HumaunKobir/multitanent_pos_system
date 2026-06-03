@@ -1,9 +1,10 @@
 import { route } from '@/lib/route';
 import { Head, Link, useForm } from '@inertiajs/react';
-import { ArrowLeft, CalendarDays, HandCoins, MessageSquare, Package, Plus, Search, ShoppingCart, Trash2, User } from 'lucide-react';
+import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Search, ShoppingCart, Trash2, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -43,6 +44,10 @@ function CustomerSearch({ value, onChange, error, initialCustomer }) {
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
     const [selected, setSelected] = useState(initialCustomer ?? null);
+    const [modalOpen, setModalOpen] = useState(false);
+    const [modalData, setModalData] = useState({ name: '', phone: '', email: '', address: '' });
+    const [modalErrors, setModalErrors] = useState({});
+    const [modalProcessing, setModalProcessing] = useState(false);
     const ref = useRef(null);
     const timerRef = useRef(null);
     const apiUrl = route('api.customers');
@@ -95,56 +100,141 @@ function CustomerSearch({ value, onChange, error, initialCustomer }) {
         onChange('');
     }
 
-    return (
-        <div ref={ref} className="relative">
-            {selected ? (
-                <div
-                    className={`flex min-h-8 items-center justify-between rounded-md border bg-background px-3 py-1.5 text-xs shadow-xs ${error ? 'border-destructive' : 'border-input'}`}
-                >
-                    <span>
-                        {selected.name}{' '}
-                        {selected.phone && <span className="text-muted-foreground">({selected.phone})</span>}
-                    </span>
-                    <button type="button" onClick={clear} className="ml-2 text-muted-foreground hover:text-foreground">
-                        ✕
-                    </button>
-                </div>
-            ) : (
-                <div className="relative">
-                    <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                        value={q}
-                        onChange={handleChange}
-                        onFocus={handleFocus}
-                        placeholder="Search customer by name or phone…"
-                        className={`h-8 pl-8 text-xs ${error ? 'border-destructive' : ''}`}
-                    />
-                </div>
-            )}
+    function openModal() {
+        setModalData({ name: q.trim(), phone: '', email: '', address: '' });
+        setModalErrors({});
+        setOpen(false);
+        setModalOpen(true);
+    }
 
-            {open && !selected && (
-                <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md">
-                    {loading ? (
-                        <p className="px-3 py-2 text-xs text-muted-foreground">Loading…</p>
-                    ) : results.length === 0 ? (
-                        <p className="px-3 py-2 text-xs text-muted-foreground">No customers found.</p>
-                    ) : (
-                        <ul className="max-h-52 overflow-auto">
-                            {results.map((c) => (
-                                <li
-                                    key={c.id}
-                                    className="cursor-pointer px-3 py-2 text-xs hover:bg-accent"
-                                    onClick={() => selectCustomer(c)}
-                                >
-                                    {c.name}{' '}
-                                    {c.phone && <span className="text-muted-foreground">{c.phone}</span>}
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                </div>
-            )}
-        </div>
+    function setField(field, val) {
+        setModalData((prev) => ({ ...prev, [field]: val }));
+        setModalErrors((prev) => ({ ...prev, [field]: undefined }));
+    }
+
+    async function handleCreate(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        setModalProcessing(true);
+        setModalErrors({});
+        try {
+            const xsrf = decodeURIComponent(document.cookie.split('; ').find((r) => r.startsWith('XSRF-TOKEN='))?.split('=')[1] ?? '');
+            const res = await fetch(route('api.customers.store'), {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest', 'X-XSRF-TOKEN': xsrf },
+                body: JSON.stringify(modalData),
+            });
+            const json = await res.json();
+            if (!res.ok) { setModalErrors(json.errors ?? {}); return; }
+            selectCustomer(json);
+            setModalOpen(false);
+        } finally {
+            setModalProcessing(false);
+        }
+    }
+
+    return (
+        <>
+            <div ref={ref} className="relative">
+                {selected ? (
+                    <div
+                        className={`flex min-h-8 cursor-pointer items-center justify-between rounded-md border bg-background px-3 py-1.5 text-xs shadow-xs transition-colors hover:border-primary/60 ${error ? 'border-destructive' : 'border-input'}`}
+                        onClick={() => { setOpen((p) => !p); if (results.length === 0) fetchCustomers(''); }}
+                    >
+                        <span>
+                            {selected.name}{' '}
+                            {selected.phone && <span className="text-muted-foreground">({selected.phone})</span>}
+                        </span>
+                        <button type="button" onClick={(e) => { e.stopPropagation(); clear(); }} className="ml-2 text-muted-foreground hover:text-foreground">✕</button>
+                    </div>
+                ) : (
+                    <div className="relative">
+                        <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            value={q}
+                            onChange={handleChange}
+                            onFocus={handleFocus}
+                            placeholder="Search customer by name or phone…"
+                            className={`h-8 pl-8 text-xs ${error ? 'border-destructive' : ''}`}
+                        />
+                    </div>
+                )}
+
+                {open && (
+                    <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md">
+                        {selected && (
+                            <div className="p-2">
+                                <Input autoFocus placeholder="Search customer…" value={q} onChange={(e) => { setQ(e.target.value); handleChange(e); }} className="h-7 text-xs" />
+                            </div>
+                        )}
+                        {loading ? (
+                            <p className="px-3 py-2 text-xs text-muted-foreground">Loading…</p>
+                        ) : (
+                            <ul className="max-h-52 overflow-auto">
+                                {results.map((c) => (
+                                    <li
+                                        key={c.id}
+                                        className="flex cursor-pointer items-center justify-between px-3 py-2 text-xs hover:bg-accent"
+                                        onClick={() => selectCustomer(c)}
+                                    >
+                                        <span>{c.name}{' '}{c.phone && <span className="text-muted-foreground">{c.phone}</span>}</span>
+                                        {String(c.id) === String(value) && <Check className="size-3.5 shrink-0 text-primary" />}
+                                    </li>
+                                ))}
+                                {q.trim() && (
+                                    <li
+                                        className="flex cursor-pointer items-center gap-1.5 border-t border-border px-3 py-2 text-xs font-medium text-primary hover:bg-accent"
+                                        onClick={openModal}
+                                    >
+                                        <Plus className="size-3.5" />
+                                        Add &ldquo;{q.trim()}&rdquo;
+                                    </li>
+                                )}
+                                {!q.trim() && results.length === 0 && (
+                                    <li className="px-3 py-2 text-xs text-muted-foreground">No customers found.</li>
+                                )}
+                            </ul>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            <Dialog open={modalOpen} onOpenChange={(o) => !o && setModalOpen(false)}>
+                <DialogContent className="p-0 sm:max-w-lg">
+                    <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
+                        <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
+                            <User className="size-3.5 text-white" />
+                        </div>
+                        <h2 className="text-sm font-semibold text-white">Add Customer</h2>
+                    </div>
+                    <form onSubmit={handleCreate} className="space-y-1.5 px-3 py-2">
+                        <div className="grid grid-cols-2 gap-3">
+                            <Field label="Name" required error={modalErrors.name}>
+                                <Input value={modalData.name} onChange={(e) => setField('name', e.target.value)} placeholder="Customer name" className="mt-1" />
+                            </Field>
+                            <Field label="Phone" required error={modalErrors.phone}>
+                                <Input value={modalData.phone} onChange={(e) => setField('phone', e.target.value)} placeholder="01XXXXXXXXX" className="mt-1" />
+                            </Field>
+                        </div>
+                        <Field label="Email" error={modalErrors.email}>
+                            <Input type="email" value={modalData.email} onChange={(e) => setField('email', e.target.value)} placeholder="Email (optional)" className="mt-1" />
+                        </Field>
+                        <Field label="Address" error={modalErrors.address}>
+                            <Input value={modalData.address} onChange={(e) => setField('address', e.target.value)} placeholder="Address (optional)" className="mt-1" />
+                        </Field>
+                        <div className="flex justify-end gap-3 border-t pt-4">
+                            <Button type="button" variant="outline" size="sm" className="border-red-500 text-red-500 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-red-500 hover:text-white hover:shadow-md hover:shadow-red-500/30" onClick={() => setModalOpen(false)}>
+                                Cancel
+                            </Button>
+                            <Button type="submit" size="sm" disabled={modalProcessing} className="bg-emerald-600 text-white shadow-sm shadow-emerald-500/30 transition-all duration-150 hover:-translate-y-0.5 hover:bg-emerald-600 hover:shadow-md hover:shadow-emerald-500/50">
+                                {modalProcessing ? 'Saving…' : 'Create'}
+                            </Button>
+                        </div>
+                    </form>
+                </DialogContent>
+            </Dialog>
+        </>
     );
 }
 

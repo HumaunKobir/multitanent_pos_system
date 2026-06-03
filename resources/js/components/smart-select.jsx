@@ -4,6 +4,7 @@ import {
     ComboboxOption,
     ComboboxOptions,
 } from '@headlessui/react';
+import { useAppToast } from '@/contexts/app-toast-context';
 import { Check, Plus } from 'lucide-react';
 import { useCallback, useId, useMemo, useRef, useState } from 'react';
 
@@ -70,6 +71,7 @@ export function SmartSelect({
     className,
     triggerClassName,
 }) {
+    const toast = useAppToast();
     const reactId = useId();
     const listboxId = idProp ?? `smart-select-${reactId}`;
     const inputId = `${listboxId}-input`;
@@ -80,6 +82,7 @@ export function SmartSelect({
     const [modalSku, setModalSku] = useState('');
     const [modalNotes, setModalNotes] = useState('');
     const [pendingQuery, setPendingQuery] = useState('');
+    const [instantLoading, setInstantLoading] = useState(false);
 
     const selected = useMemo(() => options.find((o) => o.value === value) ?? null, [options, value]);
 
@@ -176,6 +179,22 @@ export function SmartSelect({
                     return;
                 }
 
+                if (createMode === 'instant' && onModalCreate) {
+                    setInstantLoading(true);
+                    try {
+                        const next = await onModalCreate({ label: q, sku: '', notes: '' });
+                        onOptionsChange?.([...options, next]);
+                        onValueChange(next.value);
+                        setQuery('');
+                        toast.success(`"${next.label}" created.`);
+                    } catch {
+                        toast.error('Failed to create. Try again.');
+                    } finally {
+                        setInstantLoading(false);
+                    }
+                    return;
+                }
+
                 if (!onOptionsChange) {
                     return;
                 }
@@ -188,7 +207,7 @@ export function SmartSelect({
             onValueChange(opt.value);
             setQuery('');
         },
-        [commitNewOption, createMode, onOptionsChange, onValueChange],
+        [commitNewOption, createMode, onModalCreate, onOptionsChange, onValueChange, options, toast],
     );
 
     const handleModalSave = useCallback(async () => {
@@ -281,7 +300,9 @@ export function SmartSelect({
                                                     {opt.isCreate ? (
                                                         <Plus className="size-4 shrink-0 text-primary" aria-hidden />
                                                     ) : null}
-                                                    <span className="min-w-0 flex-1 truncate">{opt.label}</span>
+                                                    <span className="min-w-0 flex-1 truncate">
+                                                        {opt.isCreate && instantLoading ? 'Creating…' : opt.label}
+                                                    </span>
                                                 </div>
                                                 <span className="flex size-5 shrink-0 items-center justify-center text-primary">
                                                     {opt.isCreate || selected ? (

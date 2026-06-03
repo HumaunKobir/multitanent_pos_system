@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Setting;
 
 use App\Http\Controllers\Controller;
 use App\Models\Category;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -26,8 +27,7 @@ class CategoryController extends Controller
         ]);
     }
 
-
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:191'],
@@ -39,12 +39,15 @@ class CategoryController extends Controller
             $data['image'] = $request->file('image')->store('categories', 'public');
         }
 
-        Category::create($data);
+        $category = Category::create($data);
+
+        if ($request->wantsJson()) {
+            return response()->json(['value' => (string) $category->id, 'label' => $category->name], 201);
+        }
 
         return redirect()->route('setting.category.index')
             ->with('success', 'Category created successfully.');
     }
-
 
     public function update(Request $request, Category $category): RedirectResponse
     {

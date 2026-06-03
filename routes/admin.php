@@ -49,9 +49,11 @@ Route::middleware(['auth', 'verified'])->prefix('party')->name('party.')->group(
 
 Route::middleware(['auth', 'verified'])->prefix('api')->name('api.')->group(function () {
     Route::get('suppliers', [SupplierApiController::class, 'index'])->name('suppliers');
+    Route::post('suppliers', [SupplierApiController::class, 'store'])->name('suppliers.store');
     Route::get('products/for-purchase', [ProductSearchController::class, 'forPurchase'])->name('products.purchase');
     Route::get('products/for-sell', [ProductSearchController::class, 'forSell'])->name('products.sell');
     Route::get('customers', [CustomerSearchController::class, 'index'])->name('customers');
+    Route::post('customers', [CustomerSearchController::class, 'store'])->name('customers.store');
 });
 
 Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->group(function () {

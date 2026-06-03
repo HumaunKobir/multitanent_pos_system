@@ -9,6 +9,25 @@ use Illuminate\Http\Request;
 
 class SupplierController extends Controller
 {
+    public function store(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'name' => ['required', 'string', 'max:255'],
+            'phone' => ['required', 'string', 'max:30'],
+            'company_name' => ['nullable', 'string', 'max:255'],
+            'address' => ['nullable', 'string', 'max:500'],
+            'opening_balance' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $data['branch_id'] = auth()->user()?->branch_id;
+        $data['balance'] = $data['opening_balance'] ?? 0;
+        unset($data['opening_balance']);
+
+        $supplier = Supplier::create($data);
+
+        return response()->json($supplier->only(['id', 'name', 'phone', 'balance']), 201);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $suppliers = Supplier::ownBranch()

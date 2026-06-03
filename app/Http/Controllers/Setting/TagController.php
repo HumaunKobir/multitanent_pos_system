@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Setting;
 use App\Enums\CommonStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Tag;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -46,7 +47,7 @@ class TagController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|JsonResponse
     {
         $data = $this->validatedData($request);
 
@@ -54,7 +55,11 @@ class TagController extends Controller
             $data['image'] = $request->file('image')->store('tags', 'public');
         }
 
-        Tag::create($data);
+        $tag = Tag::create($data);
+
+        if ($request->wantsJson()) {
+            return response()->json(['value' => (string) $tag->id, 'label' => $tag->name], 201);
+        }
 
         return redirect()->route('setting.tag.index')
             ->with('success', 'Tag created successfully.');

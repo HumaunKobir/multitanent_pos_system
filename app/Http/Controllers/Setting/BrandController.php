@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Setting;
 
 use App\Http\Controllers\Controller;
 use App\Models\Brand;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
@@ -26,8 +27,7 @@ class BrandController extends Controller
         ]);
     }
 
-
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|JsonResponse
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:191'],
@@ -39,12 +39,15 @@ class BrandController extends Controller
             $data['image'] = $request->file('image')->store('brands', 'public');
         }
 
-        Brand::create($data);
+        $brand = Brand::create($data);
+
+        if ($request->wantsJson()) {
+            return response()->json(['value' => (string) $brand->id, 'label' => $brand->name], 201);
+        }
 
         return redirect()->route('setting.brand.index')
             ->with('success', 'Brand created successfully.');
     }
-
 
     public function update(Request $request, Brand $brand): RedirectResponse
     {

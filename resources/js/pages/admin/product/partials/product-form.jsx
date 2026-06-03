@@ -4,9 +4,32 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAppToast } from '@/contexts/app-toast-context';
+import { route } from '@/lib/route';
 import { Link, usePage } from '@inertiajs/react';
-import { AlignLeft, DollarSign, GitBranch, ImagePlus, Images, Info, Settings, Plus, Trash2, X } from 'lucide-react';
+import { AlignLeft, DollarSign, GitBranch, ImagePlus, Images, Info, Plus, Settings, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+
+function getXsrf() {
+    return decodeURIComponent(document.cookie.split('; ').find((r) => r.startsWith('XSRF-TOKEN='))?.split('=')[1] ?? '');
+}
+
+async function quickCreate(routeName, name) {
+    const res = await fetch(route(routeName), {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-XSRF-TOKEN': getXsrf(),
+        },
+        body: JSON.stringify({ name, status: 1 }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.message ?? 'Failed to create');
+    return { value: String(json.value), label: json.label };
+}
 
 function CKEditorField({ id, value, onChange }) {
     const textareaRef = useRef(null);
@@ -502,12 +525,15 @@ export default function ProductForm({ form, categories, brands, units, warrantie
     const { auth } = usePage().props;
     const isAdmin = !auth.user?.branch_id;
 
-    const categoryOptions = Object.entries(categories || {}).map(([value, label]) => ({ value, label }));
-    const brandOptions    = Object.entries(brands    || {}).map(([value, label]) => ({ value, label }));
-    const unitOptions     = Object.entries(units     || {}).map(([value, label]) => ({ value, label }));
-    const warrantyOptions = Object.entries(warranties|| {}).map(([value, label]) => ({ value, label }));
-    const branchOptions   = Object.entries(branches  || {}).map(([value, label]) => ({ value, label }));
+    const branchOptions = Object.entries(branches || {}).map(([value, label]) => ({ value, label }));
 
+    const [localCategoryOptions, setLocalCategoryOptions] = useState(() => Object.entries(categories || {}).map(([value, label]) => ({ value, label })));
+    const [localBrandOptions, setLocalBrandOptions] = useState(() => Object.entries(brands || {}).map(([value, label]) => ({ value, label })));
+    const [localUnitOptions, setLocalUnitOptions] = useState(() => Object.entries(units || {}).map(([value, label]) => ({ value, label })));
+    const [localWarrantyOptions, setLocalWarrantyOptions] = useState(() => Object.entries(warranties || {}).map(([value, label]) => ({ value, label })));
+    const [localTagOptions, setLocalTagOptions] = useState(() => tagOptions);
+
+    const toast = useAppToast();
     const [hasVariations, setHasVariations] = useState(false);
 
     const combinations = form.data.combinations || [];
@@ -548,49 +574,63 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                         )}
 
                         <Field label="Category" required error={form.errors.category_id}>
-                            <Select value={String(form.data.category_id ?? '')} onValueChange={(v) => form.setData('category_id', v)}>
-                                <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
-                                <SelectContent>
-                                    {categoryOptions.length === 0
-                                        ? <SelectItem value="__empty__" disabled>No Category</SelectItem>
-                                        : categoryOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)
-                                    }
-                                </SelectContent>
-                            </Select>
+                            <SmartSelect
+                                options={localCategoryOptions}
+                                value={form.data.category_id ? String(form.data.category_id) : null}
+                                onValueChange={(v) => form.setData('category_id', v ?? '')}
+                                onOptionsChange={setLocalCategoryOptions}
+                                placeholder="Select or search…"
+                                triggerClassName="h-8 text-xs"
+                                creatable
+                                createMode="instant"
+                                createRowLabel={(q) => `Add "${q}"`}
+                                onModalCreate={({ label }) => quickCreate('setting.category.store', label)}
+                            />
                         </Field>
 
                         <Field label="Brand" required error={form.errors.brand_id}>
-                            <Select value={String(form.data.brand_id ?? '')} onValueChange={(v) => form.setData('brand_id', v)}>
-                                <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
-                                <SelectContent>
-                                    {brandOptions.length === 0
-                                        ? <SelectItem value="__empty__" disabled>No Brand</SelectItem>
-                                        : brandOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)
-                                    }
-                                </SelectContent>
-                            </Select>
+                            <SmartSelect
+                                options={localBrandOptions}
+                                value={form.data.brand_id ? String(form.data.brand_id) : null}
+                                onValueChange={(v) => form.setData('brand_id', v ?? '')}
+                                onOptionsChange={setLocalBrandOptions}
+                                placeholder="Select or search…"
+                                triggerClassName="h-8 text-xs"
+                                creatable
+                                createMode="instant"
+                                createRowLabel={(q) => `Add "${q}"`}
+                                onModalCreate={({ label }) => quickCreate('setting.brand.store', label)}
+                            />
                         </Field>
 
                         <Field label="Unit" required error={form.errors.unit_id}>
-                            <Select value={String(form.data.unit_id ?? '')} onValueChange={(v) => form.setData('unit_id', v)}>
-                                <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="Select" /></SelectTrigger>
-                                <SelectContent>
-                                    {unitOptions.length === 0
-                                        ? <SelectItem value="__empty__" disabled>No Unit</SelectItem>
-                                        : unitOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)
-                                    }
-                                </SelectContent>
-                            </Select>
+                            <SmartSelect
+                                options={localUnitOptions}
+                                value={form.data.unit_id ? String(form.data.unit_id) : null}
+                                onValueChange={(v) => form.setData('unit_id', v ?? '')}
+                                onOptionsChange={setLocalUnitOptions}
+                                placeholder="Select or search…"
+                                triggerClassName="h-8 text-xs"
+                                creatable
+                                createMode="instant"
+                                createRowLabel={(q) => `Add "${q}"`}
+                                onModalCreate={({ label }) => quickCreate('setting.unit.store', label)}
+                            />
                         </Field>
 
                         <Field label="Warranty" error={form.errors.warranty_id}>
-                            <Select value={form.data.warranty_id ? String(form.data.warranty_id) : '__none'} onValueChange={(v) => form.setData('warranty_id', v === '__none' ? null : v)}>
-                                <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="No warranty" /></SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="__none">No warranty</SelectItem>
-                                    {warrantyOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                                </SelectContent>
-                            </Select>
+                            <SmartSelect
+                                options={localWarrantyOptions}
+                                value={form.data.warranty_id ? String(form.data.warranty_id) : null}
+                                onValueChange={(v) => form.setData('warranty_id', v ?? null)}
+                                onOptionsChange={setLocalWarrantyOptions}
+                                placeholder="No warranty"
+                                triggerClassName="h-8 text-xs"
+                                creatable
+                                createMode="instant"
+                                createRowLabel={(q) => `Add "${q}"`}
+                                onModalCreate={({ label }) => quickCreate('setting.warranty.store', label)}
+                            />
                         </Field>
 
                         <Field label="Product Name" required error={form.errors.name}>
@@ -619,11 +659,22 @@ export default function ProductForm({ form, categories, brands, units, warrantie
 
                         <Field label="Tags" error={form.errors.tags}>
                             <SmartMultiSelect
-                                options={tagOptions}
+                                options={localTagOptions}
                                 value={form.data.tags || []}
                                 onValueChange={(tags) => form.setData('tags', tags)}
                                 placeholder="Search tags…"
                                 triggerClassName="min-h-8"
+                                creatable
+                                onCreateOption={async (name) => {
+                                    try {
+                                        const opt = await quickCreate('setting.tag.store', name);
+                                        setLocalTagOptions((prev) => [...prev, opt]);
+                                        form.setData('tags', [...(form.data.tags || []), opt.value]);
+                                        toast.success(`"${opt.label}" created.`);
+                                    } catch {
+                                        toast.error('Failed to create tag. Try again.');
+                                    }
+                                }}
                             />
                         </Field>
 

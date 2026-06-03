@@ -4,7 +4,7 @@ import {
     ComboboxOption,
     ComboboxOptions,
 } from '@headlessui/react';
-import { X } from 'lucide-react';
+import { Plus, X } from 'lucide-react';
 import { useId, useMemo, useRef, useState } from 'react';
 
 import { Label as FieldLabel } from '@/components/ui/label';
@@ -23,6 +23,8 @@ import { cn } from '@/lib/utils';
  *   onValueChange: (values: string[]) => void;
  *   placeholder?: string;
  *   disabled?: boolean;
+ *   creatable?: boolean;
+ *   onCreateOption?: (query: string) => Promise<void>;
  *   className?: string;
  *   triggerClassName?: string;
  * }} props
@@ -35,6 +37,8 @@ export function SmartMultiSelect({
     onValueChange,
     placeholder = 'Search and select…',
     disabled = false,
+    creatable = false,
+    onCreateOption,
     className,
     triggerClassName,
 }) {
@@ -98,9 +102,12 @@ export function SmartMultiSelect({
             <Combobox
                 value={null}
                 onChange={(option) => {
-                    if (option?.value) {
-                        addValue(option.value);
+                    if (!option?.value) return;
+                    if (option.isCreate) {
+                        if (onCreateOption) void onCreateOption(option.createQuery);
+                        return;
                     }
+                    addValue(option.value);
                 }}
                 onClose={() => setQuery('')}
                 disabled={disabled}
@@ -167,25 +174,39 @@ export function SmartMultiSelect({
                                 'transition duration-100 ease-out data-closed:opacity-0 data-leave:data-closed:opacity-0',
                             )}
                         >
-                            {filtered.length === 0 ? (
-                                <p className="px-3 py-2 text-xs text-muted-foreground">
-                                    {query.trim() ? 'No matches.' : 'All tags selected.'}
-                                </p>
-                            ) : (
-                                filtered.map((option) => (
-                                    <ComboboxOption
-                                        key={option.value}
-                                        value={option}
-                                        className={({ focus }) =>
-                                            cn(
-                                                'flex w-full min-w-0 cursor-pointer border-l-2 border-transparent py-2 pr-3 pl-2 text-sm',
-                                                focus && 'border-primary bg-accent/80 text-accent-foreground',
-                                            )
-                                        }
-                                    >
-                                        <span className="min-w-0 flex-1 truncate">{option.label}</span>
-                                    </ComboboxOption>
-                                ))
+                            {filtered.map((option) => (
+                                <ComboboxOption
+                                    key={option.value}
+                                    value={option}
+                                    className={({ focus }) =>
+                                        cn(
+                                            'flex w-full min-w-0 cursor-pointer border-l-2 border-transparent py-2 pr-3 pl-2 text-sm',
+                                            focus && 'border-primary bg-accent/80 text-accent-foreground',
+                                        )
+                                    }
+                                >
+                                    <span className="min-w-0 flex-1 truncate">{option.label}</span>
+                                </ComboboxOption>
+                            ))}
+                            {creatable && query.trim() && filtered.length === 0 && (
+                                <ComboboxOption
+                                    value={{ value: `__create__`, label: query.trim(), isCreate: true, createQuery: query.trim() }}
+                                    className={({ focus }) =>
+                                        cn(
+                                            'flex w-full min-w-0 cursor-pointer items-center gap-1.5 border-l-2 border-transparent py-2 pr-3 pl-2 text-sm font-medium text-primary',
+                                            focus && 'border-primary bg-accent/80',
+                                        )
+                                    }
+                                >
+                                    <Plus className="size-3.5 shrink-0" />
+                                    Add &ldquo;{query.trim()}&rdquo;
+                                </ComboboxOption>
+                            )}
+                            {filtered.length === 0 && !query.trim() && (
+                                <p className="px-3 py-2 text-xs text-muted-foreground">All options selected.</p>
+                            )}
+                            {filtered.length === 0 && query.trim() && !creatable && (
+                                <p className="px-3 py-2 text-xs text-muted-foreground">No matches.</p>
                             )}
                         </ComboboxOptions>
                     </div>

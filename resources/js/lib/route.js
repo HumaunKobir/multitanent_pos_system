@@ -94,9 +94,11 @@ const routes = {
     'party.customer.update': '/party/customer/:customer',
     'party.customer.destroy': '/party/customer/:customer',
     'api.suppliers': '/api/suppliers',
+    'api.suppliers.store': '/api/suppliers',
     'api.products.purchase': '/api/products/for-purchase',
     'api.products.sell': '/api/products/for-sell',
     'api.customers': '/api/customers',
+    'api.customers.store': '/api/customers',
 };
 
 const methods = {

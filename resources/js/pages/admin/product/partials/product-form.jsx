@@ -318,7 +318,7 @@ function TagInput({ tags, onChange, placeholder = 'Type value, press Space or En
     );
 }
 
-function VariationBuilder({ productCode, variationNames = [], onChange, onEnabledChange }) {
+function VariationBuilder({ productCode, variationNames = [], onChange, onEnabledChange, errors = {} }) {
     const [enabled, setEnabled] = useState(false);
     const [varOptions, setVarOptions] = useState(() => variationNames.map((n) => ({ value: n, label: n })));
     const [rows, setRows] = useState([{ id: 1, name: '', values: [] }]);
@@ -366,7 +366,7 @@ function VariationBuilder({ productCode, variationNames = [], onChange, onEnable
             const variantText = combo.join('-');
             const skuPart = variantText.replace(/[^A-Za-z0-9]+/g, '-').toUpperCase();
             const sku = [productCode, skuPart].filter(Boolean).join('-');
-            return { variant: variantText, sale_price: '', purchase_price: '', sku, stock: '' };
+            return { variant: variantText, sale_price: '', purchase_price: '', sku, stock: 0 };
         });
 
         setCombinations(combos);
@@ -491,18 +491,25 @@ function VariationBuilder({ productCode, variationNames = [], onChange, onEnable
                                     {combinations.map((combo, idx) => (
                                         <tr key={idx} className="border-b last:border-0">
                                             <td className="p-2 text-muted-foreground">{idx + 1}</td>
-                                            <td className="p-2 font-medium">{combo.variant}</td>
+                                            <td className="p-2 font-medium">
+                                                {combo.variant}
+                                                {errors[`combinations.${idx}.variant`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.variant`]}</p>}
+                                            </td>
                                             <td className="p-2">
                                                 <Input type="number" min="0" step="0.01" className="h-7 w-24 text-xs" value={combo.sale_price} onChange={(e) => updateCombo(idx, 'sale_price', e.target.value)} />
+                                                {errors[`combinations.${idx}.sale_price`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.sale_price`]}</p>}
                                             </td>
                                             <td className="p-2">
                                                 <Input type="number" min="0" step="0.01" className="h-7 w-24 text-xs" value={combo.purchase_price} onChange={(e) => updateCombo(idx, 'purchase_price', e.target.value)} />
+                                                {errors[`combinations.${idx}.purchase_price`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.purchase_price`]}</p>}
                                             </td>
                                             <td className="p-2">
                                                 <Input className="h-7 w-32 text-xs" value={combo.sku} onChange={(e) => updateCombo(idx, 'sku', e.target.value)} />
+                                                {errors[`combinations.${idx}.sku`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.sku`]}</p>}
                                             </td>
                                             <td className="p-2">
                                                 <Input type="number" min="0" className="h-7 w-20 text-xs" value={combo.stock} onChange={(e) => updateCombo(idx, 'stock', e.target.value)} />
+                                                {errors[`combinations.${idx}.stock`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.stock`]}</p>}
                                             </td>
                                             <td className="p-2">
                                                 <button type="button" onClick={() => removeCombo(idx)} className="text-destructive hover:text-destructive/80">
@@ -699,6 +706,7 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                             variationNames={variationNames}
                             onChange={(combos) => form.setData('combinations', combos)}
                             onEnabledChange={handleVariationsToggle}
+                            errors={form.errors}
                         />
                     </Card>
                 )}

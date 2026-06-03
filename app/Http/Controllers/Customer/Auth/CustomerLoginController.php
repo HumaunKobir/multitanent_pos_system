@@ -30,7 +30,7 @@ class CustomerLoginController extends Controller
             return redirect()->intended(route('customer.dashboard'));
         }
 
-        return back()->withErrors(['email' => 'ইমেইল বা পাসওয়ার্ড ভুল।'])->onlyInput('email');
+        return back()->withErrors(['email' => 'Invalid email or password.'])->onlyInput('email');
     }
 
     public function logout(Request $request): RedirectResponse

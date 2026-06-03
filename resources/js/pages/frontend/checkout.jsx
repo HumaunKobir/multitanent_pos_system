@@ -1,4 +1,8 @@
-import { Head, useForm } from '@inertiajs/react';
+import { Head, Link, useForm } from '@inertiajs/react';
+import { ShieldCheck } from 'lucide-react';
+import { PaymentMethodCards } from '@/components/frontend/payment-method-cards';
+import { StoreButton } from '@/components/frontend/store-button';
+import { StoreInput } from '@/components/frontend/store-input';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 
 export default function Checkout({ cart, customer }) {
@@ -11,12 +15,12 @@ export default function Checkout({ cart, customer }) {
         phone: customer?.phone ?? '',
         address: '',
         payment_method: 'cod',
-        city_id: '',
+        city_id: '1',
         zone_id: '',
         area_id: '',
     });
 
-    const deliveryCharge = data.city_id == '1' ? 60 : 120;
+    const deliveryCharge = data.city_id === '1' ? 60 : 120;
     const total = subtotal + deliveryCharge;
 
     const submit = (e) => {
@@ -24,152 +28,137 @@ export default function Checkout({ cart, customer }) {
         post('/checkout');
     };
 
+    const steps = ['Contact', 'Shipping', 'Payment'];
+    const currentStep = data.address ? (data.payment_method ? 2 : 1) : 0;
+
     return (
         <FrontendLayout>
-            <Head title="চেকআউট" />
-            <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-                <h1 className="mb-6 text-2xl font-bold text-gray-900">চেকআউট</h1>
+            <Head title="Checkout" />
+            <div className="store-container py-6">
+                <h1 className="mb-2 text-xl font-bold text-store-primary sm:text-2xl">Checkout</h1>
 
-                <form onSubmit={submit} className="grid gap-8 lg:grid-cols-3">
-                    {/* Form fields */}
-                    <div className="space-y-5 lg:col-span-2">
-                        <h2 className="font-semibold text-gray-900">ডেলিভারি তথ্য</h2>
+                {!customer && (
+                    <p className="mb-4 text-sm text-store-muted">
+                        Checking out as a guest?{' '}
+                        <Link href="/customer/login" className="font-medium text-store-accent hover:underline">
+                            Log in
+                        </Link>
+                    </p>
+                )}
 
-                        <div className="grid gap-4 sm:grid-cols-2">
-                            <div>
-                                <label className="mb-1 block text-sm font-medium text-gray-700">
-                                    নাম <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
+                <div className="mb-6 flex gap-2">
+                    {steps.map((step, i) => (
+                        <div key={step} className="flex flex-1 flex-col items-center gap-1">
+                            <div
+                                className={`flex size-6 items-center justify-center rounded-full text-xs font-bold ${
+                                    i <= currentStep ? 'store-gradient text-white' : 'bg-gray-200 text-gray-500'
+                                }`}
+                            >
+                                {i + 1}
+                            </div>
+                            <span className="text-[10px] text-store-muted">{step}</span>
+                        </div>
+                    ))}
+                </div>
+
+                <form onSubmit={submit} className="grid gap-6 lg:grid-cols-3">
+                    <div className="space-y-4 lg:col-span-2">
+                        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
+                            <h2 className="mb-3 font-semibold text-store-primary">Delivery details</h2>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <StoreInput
+                                    label="Name *"
                                     value={data.name}
                                     onChange={(e) => setData('name', e.target.value)}
-                                    className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:border-black focus:outline-none"
+                                    error={errors.name}
                                     required
                                 />
-                                {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
-                            </div>
-                            <div>
-                                <label className="mb-1 block text-sm font-medium text-gray-700">
-                                    ফোন নম্বর <span className="text-red-500">*</span>
-                                </label>
-                                <input
+                                <StoreInput
+                                    label="Phone *"
                                     type="tel"
                                     value={data.phone}
                                     onChange={(e) => setData('phone', e.target.value)}
-                                    className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:border-black focus:outline-none"
+                                    error={errors.phone}
                                     required
                                 />
-                                {errors.phone && <p className="mt-1 text-xs text-red-500">{errors.phone}</p>}
+                            </div>
+                            <div className="mt-3">
+                                <StoreInput
+                                    label="Email"
+                                    type="email"
+                                    value={data.email}
+                                    onChange={(e) => setData('email', e.target.value)}
+                                    error={errors.email}
+                                />
+                            </div>
+                            <div className="mt-3">
+                                <label className="mb-1 block text-sm font-medium text-store-primary">City *</label>
+                                <select
+                                    value={data.city_id}
+                                    onChange={(e) => setData('city_id', e.target.value)}
+                                    className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-store-accent focus:outline-none"
+                                >
+                                    <option value="1">Dhaka (৳60)</option>
+                                    <option value="2">Outside Dhaka (৳120)</option>
+                                </select>
+                            </div>
+                            <div className="mt-3">
+                                <StoreInput
+                                    label="Full address *"
+                                    value={data.address}
+                                    onChange={(e) => setData('address', e.target.value)}
+                                    error={errors.address}
+                                    required
+                                />
                             </div>
                         </div>
 
-                        <div>
-                            <label className="mb-1 block text-sm font-medium text-gray-700">ইমেইল</label>
-                            <input
-                                type="email"
-                                value={data.email}
-                                onChange={(e) => setData('email', e.target.value)}
-                                className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:border-black focus:outline-none"
+                        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
+                            <PaymentMethodCards
+                                value={data.payment_method}
+                                onChange={(v) => setData('payment_method', v)}
+                                error={errors.payment_method}
                             />
-                        </div>
-
-                        <div>
-                            <label className="mb-1 block text-sm font-medium text-gray-700">
-                                সম্পূর্ণ ঠিকানা <span className="text-red-500">*</span>
-                            </label>
-                            <textarea
-                                value={data.address}
-                                onChange={(e) => setData('address', e.target.value)}
-                                rows={3}
-                                className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:border-black focus:outline-none"
-                                placeholder="বাড়ি/ফ্ল্যাট, রাস্তা, এলাকা, জেলা"
-                                required
-                            />
-                            {errors.address && <p className="mt-1 text-xs text-red-500">{errors.address}</p>}
-                        </div>
-
-                        {/* Delivery area */}
-                        <div>
-                            <label className="mb-1 block text-sm font-medium text-gray-700">
-                                ডেলিভারি এলাকা
-                            </label>
-                            <select
-                                value={data.city_id}
-                                onChange={(e) => setData('city_id', e.target.value)}
-                                className="w-full border border-gray-300 bg-white px-3 py-2.5 text-sm focus:border-black focus:outline-none"
-                            >
-                                <option value="">এলাকা বেছে নিন</option>
-                                <option value="1">ঢাকা (৳60)</option>
-                                <option value="2">ঢাকার বাইরে (৳120)</option>
-                            </select>
-                        </div>
-
-                        {/* Payment method */}
-                        <div>
-                            <h2 className="mb-3 font-semibold text-gray-900">পেমেন্ট পদ্ধতি</h2>
-                            <div className="space-y-2">
-                                {[
-                                    { value: 'cod', label: 'ক্যাশ অন ডেলিভারি (COD)' },
-                                    { value: 'sslcommerz', label: 'অনলাইন পেমেন্ট (SSLCommerz)' },
-                                    { value: 'bkash', label: 'বিকাশ' },
-                                ].map((method) => (
-                                    <label
-                                        key={method.value}
-                                        className="flex cursor-pointer items-center gap-3 border border-gray-200 p-3 hover:border-gray-400"
-                                    >
-                                        <input
-                                            type="radio"
-                                            name="payment_method"
-                                            value={method.value}
-                                            checked={data.payment_method === method.value}
-                                            onChange={(e) => setData('payment_method', e.target.value)}
-                                            className="size-4"
-                                        />
-                                        <span className="text-sm font-medium text-gray-800">{method.label}</span>
-                                    </label>
-                                ))}
-                            </div>
                         </div>
                     </div>
 
-                    {/* Order summary */}
-                    <div className="h-fit space-y-4 border border-gray-200 p-5">
-                        <h2 className="font-semibold text-gray-900">অর্ডার সারসংক্ষেপ</h2>
-
-                        <div className="divide-y divide-gray-100">
-                            {items.map((item, i) => (
-                                <div key={i} className="flex justify-between py-2 text-sm text-gray-600">
-                                    <span className="flex-1 line-clamp-1">
-                                        {item.name} × {item.quantity}
-                                    </span>
-                                    <span className="ml-2 tabular-nums">৳{(item.price * item.quantity).toFixed(0)}</span>
+                    <div>
+                        <div className="sticky top-20 rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
+                            <h2 className="mb-3 font-semibold text-store-primary">Order summary</h2>
+                            <ul className="mb-3 max-h-48 space-y-2 overflow-y-auto text-sm">
+                                {items.map((item, i) => (
+                                    <li key={i} className="flex justify-between gap-2">
+                                        <span className="line-clamp-1 text-store-muted">
+                                            {item.name} × {item.quantity}
+                                        </span>
+                                        <span className="shrink-0">৳{item.price * item.quantity}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                            <div className="space-y-1.5 border-t border-gray-100 pt-3 text-sm">
+                                <div className="flex justify-between">
+                                    <span className="text-store-muted">Subtotal</span>
+                                    <span>৳{subtotal}</span>
                                 </div>
-                            ))}
-                        </div>
+                                <div className="flex justify-between">
+                                    <span className="text-store-muted">Delivery</span>
+                                    <span>৳{deliveryCharge}</span>
+                                </div>
+                                <div className="flex justify-between font-bold">
+                                    <span>Total</span>
+                                    <span className="text-store-accent">৳{total}</span>
+                                </div>
+                            </div>
 
-                        <div className="space-y-1.5 border-t border-gray-100 pt-3 text-sm">
-                            <div className="flex justify-between text-gray-600">
-                                <span>সাবটোটাল</span>
-                                <span>৳{subtotal.toFixed(0)}</span>
+                            <div className="mt-3 flex items-center gap-2 rounded-md bg-store-warm/50 p-2 text-[11px] text-store-primary">
+                                <ShieldCheck className="size-4 shrink-0 text-store-accent" />
+                                Secure checkout · COD · SSLCommerz · bKash
                             </div>
-                            <div className="flex justify-between text-gray-600">
-                                <span>ডেলিভারি</span>
-                                <span>৳{deliveryCharge}</span>
-                            </div>
-                            <div className="flex justify-between border-t border-gray-200 pt-2 font-semibold text-gray-900">
-                                <span>মোট</span>
-                                <span>৳{total.toFixed(0)}</span>
-                            </div>
-                        </div>
 
-                        <button
-                            type="submit"
-                            disabled={processing}
-                            className="w-full bg-black py-3 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-60"
-                        >
-                            {processing ? 'প্রক্রিয়াধীন...' : 'অর্ডার নিশ্চিত করুন'}
-                        </button>
+                            <StoreButton type="submit" className="mt-4 w-full" disabled={processing}>
+                                {processing ? 'Processing...' : `Place Order — ৳${total}`}
+                            </StoreButton>
+                        </div>
                     </div>
                 </form>
             </div>

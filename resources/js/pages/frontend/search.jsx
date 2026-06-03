@@ -1,56 +1,28 @@
-import { Head, router } from '@inertiajs/react';
-import { useState } from 'react';
-import FrontendLayout from '@/layouts/frontend/frontend-layout';
+import { Head, Link } from '@inertiajs/react';
+import { ArrowLeft } from 'lucide-react';
 import { ProductCard } from '@/components/frontend/product-card';
-import { Link } from '@inertiajs/react';
-import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
+import FrontendLayout from '@/layouts/frontend/frontend-layout';
 
 export default function Search({ query, products }) {
-    const [searchQuery, setSearchQuery] = useState(query ?? '');
-
-    useDebouncedEffect(
-        () => {
-            const q = searchQuery.trim();
-            if (!q) {
-                router.get('/search', {}, { preserveState: true, replace: true });
-                return;
-            }
-
-            router.get('/search', { q }, { preserveState: true, replace: true });
-        },
-        [searchQuery],
-        350,
-        { skipFirstRun: true },
-    );
-
     return (
         <FrontendLayout>
-            <Head title={`"${query}" খোঁজার ফলাফল`} />
-            <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-                <div className="mb-8 flex gap-2">
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="পণ্য খুঁজুন..."
-                        className="flex-1 border border-gray-300 px-4 py-2.5 text-sm focus:border-black focus:outline-none"
-                    />
-                </div>
-
-                {query && (
-                    <h1 className="mb-4 text-lg font-semibold text-gray-900">
-                        "{query}" এর জন্য {products.total} টি ফলাফল
-                    </h1>
-                )}
+            <Head title={`"${query}" — Search`} />
+            <div className="store-container py-6">
+                <Link href="/" className="mb-4 inline-flex items-center gap-1 text-sm text-store-muted hover:text-store-primary">
+                    <ArrowLeft className="size-4" /> Home
+                </Link>
+                <h1 className="text-xl font-bold text-store-primary">
+                    &quot;{query}&quot; — {products.total} results
+                </h1>
 
                 {products.data?.length > 0 ? (
                     <>
-                        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
                             {products.data.map((product) => (
                                 <ProductCard key={product.id} product={product} />
                             ))}
                         </div>
-                        {products.links && (
+                        {products.links?.length > 3 && (
                             <div className="mt-8 flex flex-wrap justify-center gap-1">
                                 {products.links.map((link, i) =>
                                     link.url ? (
@@ -58,25 +30,19 @@ export default function Search({ query, products }) {
                                             key={i}
                                             href={link.url}
                                             dangerouslySetInnerHTML={{ __html: link.label }}
-                                            className={`border px-3 py-1.5 text-sm ${link.active ? 'border-black bg-black text-white' : 'border-gray-300 text-gray-700 hover:border-black'}`}
+                                            className={`rounded-md border px-3 py-1.5 text-sm ${
+                                                link.active
+                                                    ? 'border-store-accent bg-store-accent text-white'
+                                                    : 'border-gray-200 hover:border-store-accent'
+                                            }`}
                                         />
-                                    ) : (
-                                        <span
-                                            key={i}
-                                            dangerouslySetInnerHTML={{ __html: link.label }}
-                                            className="border border-gray-200 px-3 py-1.5 text-sm text-gray-400"
-                                        />
-                                    ),
+                                    ) : null,
                                 )}
                             </div>
                         )}
                     </>
                 ) : (
-                    query && (
-                        <div className="py-16 text-center text-gray-400">
-                            "{query}" এর জন্য কোনো পণ্য পাওয়া যায়নি।
-                        </div>
-                    )
+                    <p className="mt-8 text-center text-store-muted">No products found.</p>
                 )}
             </div>
         </FrontendLayout>

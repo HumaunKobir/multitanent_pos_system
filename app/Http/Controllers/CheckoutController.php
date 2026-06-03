@@ -15,7 +15,7 @@ class CheckoutController extends Controller
     {
         $cart = session('cart', []);
         if (empty($cart)) {
-            return redirect()->route('cart')->with('error', 'কার্ট খালি আছে।');
+            return redirect()->route('cart')->with('error', 'Your cart is empty.');
         }
 
         return Inertia::render('frontend/checkout', [
@@ -28,7 +28,7 @@ class CheckoutController extends Controller
     {
         $cart = session('cart', []);
         if (empty($cart)) {
-            return redirect()->route('cart')->with('error', 'কার্ট খালি আছে।');
+            return redirect()->route('cart')->with('error', 'Your cart is empty.');
         }
 
         $validated = $request->validate([
@@ -83,8 +83,8 @@ class CheckoutController extends Controller
 
         session()->forget('cart');
 
-        return redirect()->route('order.success', ['id' => $order->id])
-            ->with('success', 'অর্ডার সফলভাবে হয়েছে!');
+        return redirect()->route('checkout.success', ['order' => $order->id])
+            ->with('success', 'Order placed successfully!');
     }
 
     public function success(int $id): Response

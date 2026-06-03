@@ -74,9 +74,37 @@ class HomeController extends Controller
         ]);
     }
 
+    public function sectionProducts(int $id, Request $request): Response
+    {
+        $section = ProductSection::findOrFail($id);
+        $productIds = $section->items ?? [];
+
+        $query = Product::with(['photos'])->withCount('variations')
+            ->where('status', 1)
+            ->where('visible', 'yes')
+            ->whereIn('id', $productIds);
+
+        $query = $this->applyFilters($query, $request);
+
+        $products = $query->paginate(12)->through(fn ($p) => $this->formatProduct($p));
+
+        return Inertia::render('frontend/section-products', [
+            'section' => [
+                'id' => $section->id,
+                'name' => $section->name,
+                'description' => $section->description,
+            ],
+            'products' => $products,
+            'filters' => $request->only(['min_price', 'max_price', 'brands', 'colors', 'sizes', 'sort_by']),
+            'allBrands' => Brand::active()->pluck('name'),
+            'allColors' => Color::active()->pluck('name'),
+            'allSizes' => Size::active()->pluck('name'),
+        ]);
+    }
+
     public function collectionProducts(string $name, Request $request): Response
     {
-        $query = Product::with(['photos'])
+        $query = Product::with(['photos'])->withCount('variations')
             ->where('status', 1)
             ->where('visible', 'yes')
             ->whereJsonContains('tags', $name);
@@ -98,7 +126,7 @@ class HomeController extends Controller
     public function categoryProducts(int $id, Request $request): Response
     {
         $category = Category::findOrFail($id);
-        $query = Product::with(['photos'])
+        $query = Product::with(['photos'])->withCount('variations')
             ->where('status', 1)
             ->where('visible', 'yes')
             ->where('category_id', $id);
@@ -120,7 +148,7 @@ class HomeController extends Controller
     public function search(Request $request): Response
     {
         $query = $request->get('q', '');
-        $products = Product::with(['photos'])
+        $products = Product::with(['photos'])->withCount('variations')
             ->where('status', 1)
             ->where('visible', 'yes')
             ->where(function ($q) use ($query) {
@@ -157,7 +185,7 @@ class HomeController extends Controller
 
         Contact::create($validated);
 
-        return back()->with('success', 'আপনার বার্তা পাঠানো হয়েছে।');
+        return back()->with('success', 'Your message has been sent.');
     }
 
     public function staticPage(string $page): Response
@@ -222,6 +250,8 @@ class HomeController extends Controller
             'type' => $product->type,
             'tailor_option' => $product->tailor_option,
             'tailor_price' => (float) $product->tailor_price,
+            'has_variations' => ($product->variations_count ?? $product->variations()->count()) > 0,
+            'youtube_link' => $product->youtube_link,
         ];
 
         if ($withDetails) {

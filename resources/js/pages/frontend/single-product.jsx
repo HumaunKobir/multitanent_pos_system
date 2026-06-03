@@ -1,213 +1,169 @@
-import { Head, router, useForm } from '@inertiajs/react';
+import { Head } from '@inertiajs/react';
+import { ShoppingCart } from 'lucide-react';
 import { useState } from 'react';
-import { ShoppingCart, ChevronLeft, ChevronRight } from 'lucide-react';
+import { StoreButton } from '@/components/frontend/store-button';
+import { useAddToCart } from '@/hooks/use-add-to-cart';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 
 export default function SingleProduct({ product }) {
     const [selectedPhoto, setSelectedPhoto] = useState(0);
     const [selectedVariation, setSelectedVariation] = useState(null);
+    const [tailorService, setTailorService] = useState('standard');
+    const [adding, setAdding] = useState(false);
+    const { addToCart } = useAddToCart();
 
     const photos = [product.image, ...(product.photos || [])].filter(Boolean);
 
-    const effectivePrice = selectedVariation
+    let effectivePrice = selectedVariation
         ? selectedVariation.price
         : product.discount_price > 0
           ? product.discount_price
           : product.sale_price;
 
-    const handleAddToCart = () => {
-        router.post(
-            '/cart/add',
-            {
+    if (tailorService === 'tailor' && product.tailor_option === 'yes') {
+        effectivePrice += product.tailor_price || 0;
+    }
+
+    const handleAddToCart = async () => {
+        if (product.variations?.length && !selectedVariation) {
+            return;
+        }
+        setAdding(true);
+        try {
+            await addToCart({
                 product_id: product.id,
                 quantity: 1,
                 variation_id: selectedVariation?.id ?? null,
-            },
-            {
-                preserveScroll: true,
-                onSuccess: () => alert('কার্টে যোগ হয়েছে!'),
-            },
-        );
+                tailor_service: product.tailor_option === 'yes' ? tailorService : null,
+                tailor_price: product.tailor_option === 'yes' ? product.tailor_price : null,
+            });
+        } finally {
+            setAdding(false);
+        }
     };
 
     return (
         <FrontendLayout>
             <Head title={product.name} />
-            <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
-                <div className="grid gap-8 lg:grid-cols-2">
-                    {/* Images */}
+            <div className="store-container py-6 pb-24 lg:pb-6">
+                <div className="grid gap-6 lg:grid-cols-2 lg:gap-10">
                     <div className="space-y-3">
-                        <div className="relative overflow-hidden bg-gray-100">
+                        <div className="relative overflow-hidden rounded-lg bg-white shadow-sm">
                             <img
                                 src={photos[selectedPhoto]}
                                 alt={product.name}
                                 className="aspect-[3/4] w-full object-cover"
                             />
-                            {photos.length > 1 && (
-                                <>
-                                    <button
-                                        onClick={() => setSelectedPhoto((p) => Math.max(0, p - 1))}
-                                        className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 p-1.5 shadow"
-                                    >
-                                        <ChevronLeft className="size-4" />
-                                    </button>
-                                    <button
-                                        onClick={() =>
-                                            setSelectedPhoto((p) => Math.min(photos.length - 1, p + 1))
-                                        }
-                                        className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-white/80 p-1.5 shadow"
-                                    >
-                                        <ChevronRight className="size-4" />
-                                    </button>
-                                </>
-                            )}
                         </div>
                         {photos.length > 1 && (
                             <div className="flex gap-2 overflow-x-auto">
                                 {photos.map((photo, i) => (
                                     <button
                                         key={i}
+                                        type="button"
                                         onClick={() => setSelectedPhoto(i)}
-                                        className={`shrink-0 overflow-hidden border-2 transition-colors ${
-                                            i === selectedPhoto ? 'border-black' : 'border-transparent'
+                                        className={`shrink-0 overflow-hidden rounded-md border-2 ${
+                                            i === selectedPhoto ? 'border-store-accent' : 'border-transparent'
                                         }`}
                                     >
-                                        <img
-                                            src={photo}
-                                            alt=""
-                                            className="size-16 object-cover"
-                                        />
+                                        <img src={photo} alt="" className="size-14 object-cover sm:size-16" />
                                     </button>
                                 ))}
                             </div>
                         )}
                     </div>
 
-                    {/* Details */}
-                    <div className="space-y-5">
-                        <div>
-                            {product.category && (
-                                <p className="mb-1 text-xs uppercase tracking-wider text-gray-500">
-                                    {product.category}
-                                </p>
-                            )}
-                            <h1 className="text-2xl font-bold text-gray-900">{product.name}</h1>
-                        </div>
+                    <div className="space-y-4">
+                        {product.category && (
+                            <p className="text-xs uppercase tracking-wider text-store-muted">{product.category}</p>
+                        )}
+                        <h1 className="text-xl font-bold text-store-primary sm:text-2xl">{product.name}</h1>
 
                         <div className="flex items-center gap-3">
-                            <span className="text-2xl font-bold text-gray-900">৳{effectivePrice}</span>
+                            <span className="text-2xl font-bold text-store-accent">৳{effectivePrice}</span>
                             {product.discount_price > 0 && !selectedVariation && (
-                                <span className="text-base text-gray-400 line-through">
-                                    ৳{product.sale_price}
-                                </span>
+                                <span className="text-base text-gray-400 line-through">৳{product.sale_price}</span>
                             )}
                         </div>
 
-                        {/* Variations */}
                         {product.variations?.length > 0 && (
                             <div>
-                                <p className="mb-2 text-sm font-medium text-gray-700">ভেরিয়েশন বেছে নিন</p>
+                                <p className="mb-2 text-sm font-medium text-store-primary">Variation</p>
                                 <div className="flex flex-wrap gap-2">
                                     {product.variations.map((v) => (
                                         <button
                                             key={v.id}
-                                            onClick={() =>
-                                                setSelectedVariation(
-                                                    selectedVariation?.id === v.id ? null : v,
-                                                )
-                                            }
+                                            type="button"
+                                            onClick={() => setSelectedVariation(selectedVariation?.id === v.id ? null : v)}
                                             disabled={v.stock <= 0}
-                                            className={`border px-3 py-1.5 text-sm transition-colors ${
-                                                v.stock <= 0
-                                                    ? 'cursor-not-allowed border-gray-200 text-gray-300'
-                                                    : selectedVariation?.id === v.id
-                                                      ? 'border-black bg-black text-white'
-                                                      : 'border-gray-300 hover:border-black'
-                                            }`}
+                                            className={`rounded-md border px-3 py-1.5 text-sm transition-colors ${
+                                                selectedVariation?.id === v.id
+                                                    ? 'border-store-accent bg-store-accent text-white'
+                                                    : 'border-gray-200 hover:border-store-accent'
+                                            } ${v.stock <= 0 ? 'cursor-not-allowed opacity-40' : ''}`}
                                         >
                                             {Object.values(v.variation_data || {}).join(' / ')}
-                                            {v.stock <= 0 && ' (শেষ)'}
+                                            {v.stock <= 0 && ' (Out of stock)'}
                                         </button>
                                     ))}
                                 </div>
                             </div>
                         )}
 
-                        {/* Simple color/size chips */}
-                        {product.colors?.length > 0 && !product.variations?.length && (
+                        {product.tailor_option === 'yes' && (
                             <div>
-                                <p className="mb-2 text-sm font-medium text-gray-700">রঙ</p>
-                                <div className="flex flex-wrap gap-2">
-                                    {product.colors.map((color) => (
-                                        <span
-                                            key={color}
-                                            className="border border-gray-300 px-3 py-1 text-sm"
+                                <p className="mb-2 text-sm font-medium text-store-primary">Service</p>
+                                <div className="flex gap-2">
+                                    {['standard', 'tailor'].map((opt) => (
+                                        <button
+                                            key={opt}
+                                            type="button"
+                                            onClick={() => setTailorService(opt)}
+                                            className={`rounded-md border px-3 py-1.5 text-sm capitalize ${
+                                                tailorService === opt
+                                                    ? 'border-store-accent bg-store-accent text-white'
+                                                    : 'border-gray-200'
+                                            }`}
                                         >
-                                            {color}
-                                        </span>
+                                            {opt === 'standard' ? 'Standard' : `Tailor (+৳${product.tailor_price})`}
+                                        </button>
                                     ))}
                                 </div>
                             </div>
                         )}
 
-                        {product.sizes?.length > 0 && !product.variations?.length && (
-                            <div>
-                                <p className="mb-2 text-sm font-medium text-gray-700">সাইজ</p>
-                                <div className="flex flex-wrap gap-2">
-                                    {product.sizes.map((size) => (
-                                        <span
-                                            key={size}
-                                            className="border border-gray-300 px-3 py-1 text-sm"
-                                        >
-                                            {size}
-                                        </span>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Add to cart */}
-                        <button
-                            onClick={handleAddToCart}
-                            className="flex w-full items-center justify-center gap-2 bg-black py-3.5 text-sm font-semibold text-white transition-colors hover:bg-gray-800"
-                        >
+                        <StoreButton className="hidden w-full lg:flex" onClick={handleAddToCart} disabled={adding}>
                             <ShoppingCart className="size-4" />
-                            কার্টে যোগ করুন
-                        </button>
+                            {adding ? 'Adding...' : 'Add to Cart'}
+                        </StoreButton>
 
-                        {/* Description */}
                         {product.description && (
-                            <div className="border-t border-gray-100 pt-5">
-                                <h3 className="mb-2 text-sm font-semibold text-gray-900">বিবরণ</h3>
+                            <div className="border-t border-gray-100 pt-4">
+                                <h3 className="mb-2 text-sm font-semibold">Description</h3>
                                 <div
-                                    className="prose prose-sm max-w-none text-gray-600"
+                                    className="prose prose-sm max-w-none text-store-muted"
                                     dangerouslySetInnerHTML={{ __html: product.description }}
                                 />
                             </div>
                         )}
 
-                        {/* Delivery info */}
                         {product.delivery_info && (
-                            <div className="border-t border-gray-100 pt-5">
-                                <h3 className="mb-2 text-sm font-semibold text-gray-900">ডেলিভারি তথ্য</h3>
-                                <p className="text-sm text-gray-600">{product.delivery_info}</p>
-                            </div>
-                        )}
-
-                        {/* YouTube */}
-                        {product.youtube_link && (
-                            <div className="border-t border-gray-100 pt-5">
-                                <h3 className="mb-2 text-sm font-semibold text-gray-900">ভিডিও</h3>
-                                <div className="aspect-video">
-                                    <iframe
-                                        src={product.youtube_link.replace('watch?v=', 'embed/')}
-                                        className="size-full"
-                                        allowFullScreen
-                                    />
-                                </div>
+                            <div className="rounded-lg bg-store-warm/50 p-3 text-sm text-store-primary">
+                                {product.delivery_info}
                             </div>
                         )}
                     </div>
+                </div>
+            </div>
+
+            <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-100 bg-white p-3 shadow-lg lg:hidden">
+                <div className="flex items-center gap-3">
+                    <div className="shrink-0">
+                        <p className="text-lg font-bold text-store-accent">৳{effectivePrice}</p>
+                    </div>
+                    <StoreButton className="flex-1" onClick={handleAddToCart} disabled={adding}>
+                        {adding ? 'Adding...' : 'Add to Cart'}
+                    </StoreButton>
                 </div>
             </div>
         </FrontendLayout>

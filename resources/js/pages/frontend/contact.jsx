@@ -1,4 +1,8 @@
 import { Head, useForm, usePage } from '@inertiajs/react';
+import { Mail, MapPin, Phone } from 'lucide-react';
+import { PageHero } from '@/components/frontend/page-hero';
+import { StoreButton } from '@/components/frontend/store-button';
+import { StoreInput } from '@/components/frontend/store-input';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 
 export default function Contact({ email, phone, address }) {
@@ -18,96 +22,93 @@ export default function Contact({ email, phone, address }) {
 
     return (
         <FrontendLayout>
-            <Head title="যোগাযোগ" />
-            <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
-                <h1 className="mb-8 text-2xl font-bold text-gray-900">যোগাযোগ করুন</h1>
+            <Head title="Contact" />
+            <PageHero title="Contact Us" subtitle="We'd love to hear from you" />
 
-                <div className="grid gap-10 lg:grid-cols-2">
-                    <div>
-                        <h2 className="mb-4 font-semibold text-gray-900">যোগাযোগের তথ্য</h2>
-                        <div className="space-y-3 text-sm text-gray-600">
-                            {phone && <p>📞 {phone}</p>}
-                            {email && <p>✉️ {email}</p>}
-                            {address && <p>📍 {address}</p>}
+            <div className="store-container py-8">
+                <div className="grid gap-8 lg:grid-cols-5">
+                    <div className="space-y-4 lg:col-span-2">
+                        <div className="rounded-lg border border-gray-100 bg-white p-4 shadow-sm">
+                            <h2 className="mb-3 font-semibold text-store-primary">Contact information</h2>
+                            <ul className="space-y-3 text-sm text-store-muted">
+                                {phone && (
+                                    <li className="flex items-center gap-2">
+                                        <Phone className="size-4 text-store-accent" /> {phone}
+                                    </li>
+                                )}
+                                {email && (
+                                    <li className="flex items-center gap-2">
+                                        <Mail className="size-4 text-store-accent" /> {email}
+                                    </li>
+                                )}
+                                {address && (
+                                    <li className="flex items-start gap-2">
+                                        <MapPin className="mt-0.5 size-4 shrink-0 text-store-accent" /> {address}
+                                    </li>
+                                )}
+                            </ul>
+                        </div>
+                        <div className="overflow-hidden rounded-lg">
+                            <iframe
+                                title="Map"
+                                src="https://maps.google.com/maps?q=Dhaka,Bangladesh&output=embed"
+                                className="h-48 w-full border-0"
+                                loading="lazy"
+                            />
                         </div>
                     </div>
 
-                    <div>
+                    <div className="lg:col-span-3">
                         {flash?.success && (
-                            <div className="mb-4 border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
+                            <div className="mb-4 rounded-md border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
                                 {flash.success}
                             </div>
                         )}
 
-                        <form onSubmit={submit} className="space-y-4">
-                            <div>
-                                <label className="mb-1 block text-sm font-medium text-gray-700">
-                                    নাম <span className="text-red-500">*</span>
-                                </label>
-                                <input
-                                    type="text"
-                                    value={data.name}
-                                    onChange={(e) => setData('name', e.target.value)}
-                                    className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:border-black focus:outline-none"
-                                    required
+                        <form onSubmit={submit} className="space-y-3 rounded-lg border border-gray-100 bg-white p-5 shadow-sm">
+                            <StoreInput
+                                label="Name *"
+                                value={data.name}
+                                onChange={(e) => setData('name', e.target.value)}
+                                error={errors.name}
+                                required
+                            />
+                            <div className="grid gap-3 sm:grid-cols-2">
+                                <StoreInput
+                                    label="Email"
+                                    type="email"
+                                    value={data.email}
+                                    onChange={(e) => setData('email', e.target.value)}
+                                    error={errors.email}
                                 />
-                                {errors.name && <p className="mt-1 text-xs text-red-500">{errors.name}</p>}
-                            </div>
-
-                            <div className="grid gap-4 sm:grid-cols-2">
-                                <div>
-                                    <label className="mb-1 block text-sm font-medium text-gray-700">ইমেইল</label>
-                                    <input
-                                        type="email"
-                                        value={data.email}
-                                        onChange={(e) => setData('email', e.target.value)}
-                                        className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:border-black focus:outline-none"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="mb-1 block text-sm font-medium text-gray-700">ফোন</label>
-                                    <input
-                                        type="tel"
-                                        value={data.phone}
-                                        onChange={(e) => setData('phone', e.target.value)}
-                                        className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:border-black focus:outline-none"
-                                    />
-                                </div>
-                            </div>
-
-                            <div>
-                                <label className="mb-1 block text-sm font-medium text-gray-700">বিষয়</label>
-                                <input
-                                    type="text"
-                                    value={data.subject}
-                                    onChange={(e) => setData('subject', e.target.value)}
-                                    className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:border-black focus:outline-none"
+                                <StoreInput
+                                    label="Phone"
+                                    type="tel"
+                                    value={data.phone}
+                                    onChange={(e) => setData('phone', e.target.value)}
+                                    error={errors.phone}
                                 />
                             </div>
-
+                            <StoreInput
+                                label="Subject"
+                                value={data.subject}
+                                onChange={(e) => setData('subject', e.target.value)}
+                                error={errors.subject}
+                            />
                             <div>
-                                <label className="mb-1 block text-sm font-medium text-gray-700">
-                                    বার্তা <span className="text-red-500">*</span>
-                                </label>
+                                <label className="mb-1 block text-sm font-medium text-store-primary">Message *</label>
                                 <textarea
                                     value={data.message}
                                     onChange={(e) => setData('message', e.target.value)}
                                     rows={5}
-                                    className="w-full border border-gray-300 px-3 py-2.5 text-sm focus:border-black focus:outline-none"
+                                    className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm focus:border-store-accent focus:outline-none focus:ring-2 focus:ring-store-accent/20"
                                     required
                                 />
-                                {errors.message && (
-                                    <p className="mt-1 text-xs text-red-500">{errors.message}</p>
-                                )}
+                                {errors.message && <p className="mt-1 text-xs text-store-accent">{errors.message}</p>}
                             </div>
-
-                            <button
-                                type="submit"
-                                disabled={processing}
-                                className="bg-black px-6 py-2.5 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-60"
-                            >
-                                {processing ? 'পাঠানো হচ্ছে...' : 'বার্তা পাঠান'}
-                            </button>
+                            <StoreButton type="submit" disabled={processing}>
+                                {processing ? 'Sending...' : 'Send Message'}
+                            </StoreButton>
                         </form>
                     </div>
                 </div>

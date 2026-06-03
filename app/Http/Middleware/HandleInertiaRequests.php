@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\Category;
 use App\Models\ConfigDictionary;
 use App\Support\AdminNavigation;
 use Illuminate\Http\Request;
@@ -37,6 +38,8 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $cart = $request->session()->get('cart', []);
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
@@ -49,9 +52,30 @@ class HandleInertiaRequests extends Middleware
                 : [],
             'panelType' => $request->user()?->isBranchUser() ? 'branch' : 'admin',
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
-            'cart' => $request->session()->get('cart', []),
+            'cart' => $cart,
+            'cartCount' => collect($cart)->sum('quantity'),
+            'categories' => Category::active()
+                ->orderBy('name')
+                ->get(['id', 'name', 'image'])
+                ->map(fn ($c) => [
+                    'id' => $c->id,
+                    'name' => $c->name,
+                    'image' => $c->image,
+                ]),
+            'logo' => ConfigDictionary::get('logo'),
             'siteName' => ConfigDictionary::get('website_name', config('app.name')),
             'topNotice' => ConfigDictionary::get('topnotice1'),
+            'contact' => [
+                'phone' => ConfigDictionary::get('phone'),
+                'email' => ConfigDictionary::get('email'),
+                'address' => ConfigDictionary::get('address'),
+            ],
+            'social' => [
+                'facebook' => ConfigDictionary::get('fb_share_for_withdraw'),
+                'youtube' => ConfigDictionary::get('youtube'),
+                'twitter' => ConfigDictionary::get('twit'),
+                'linkedin' => ConfigDictionary::get('linkend'),
+            ],
             'flash' => [
                 'success' => $request->session()->get('success'),
                 'error' => $request->session()->get('error'),

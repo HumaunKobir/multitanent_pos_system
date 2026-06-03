@@ -19,17 +19,31 @@ class CartController extends Controller
         ]);
     }
 
+    public function json(): JsonResponse
+    {
+        $cart = session('cart', []);
+
+        return response()->json([
+            'cart' => $cart,
+            'cart_count' => collect($cart)->sum('quantity'),
+        ]);
+    }
+
     public function addToCart(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'product_id' => 'required|exists:products,id',
             'quantity' => 'required|integer|min:1',
             'variation_id' => 'nullable|exists:product_variations,id',
+            'tailor_service' => 'nullable|string|in:standard,tailor',
+            'tailor_price' => 'nullable|numeric|min:0',
+            'tailormeasurement' => 'nullable|array',
         ]);
 
         $product = Product::findOrFail($validated['product_id']);
         $price = $product->discount_price > 0 ? $product->discount_price : $product->sale_price;
         $sku = null;
+        $tailorSuffix = '';
 
         if (! empty($validated['variation_id'])) {
             $variation = ProductVariation::findOrFail($validated['variation_id']);
@@ -37,7 +51,12 @@ class CartController extends Controller
             $sku = $variation->sku;
         }
 
-        $cartKey = $validated['product_id'].'-'.($validated['variation_id'] ?? '0');
+        if (($validated['tailor_service'] ?? null) === 'tailor') {
+            $price += (float) ($validated['tailor_price'] ?? $product->tailor_price ?? 0);
+            $tailorSuffix = '_tailor';
+        }
+
+        $cartKey = $validated['product_id'].'-'.($validated['variation_id'] ?? '0').$tailorSuffix;
         $cart = session('cart', []);
 
         if (isset($cart[$cartKey])) {
@@ -48,21 +67,26 @@ class CartController extends Controller
                 'name' => $product->name,
                 'image' => $product->image,
                 'price' => (float) $price,
+                'base_price' => (float) ($product->discount_price > 0 ? $product->discount_price : $product->sale_price),
                 'quantity' => $validated['quantity'],
                 'variation_id' => $validated['variation_id'] ?? null,
                 'sku' => $sku,
+                'tailor_service' => $validated['tailor_service'] ?? null,
+                'tailor_price' => (float) ($validated['tailor_price'] ?? 0),
+                'tailormeasurement' => $validated['tailormeasurement'] ?? null,
             ];
         }
 
         session(['cart' => $cart]);
 
         return response()->json([
-            'message' => 'পণ্য কার্টে যোগ হয়েছে',
-            'cart_count' => count($cart),
+            'message' => 'Product added to cart',
+            'cart' => $cart,
+            'cart_count' => collect($cart)->sum('quantity'),
         ]);
     }
 
-    public function update(Request $request, string $cartKey): RedirectResponse
+    public function update(Request $request, string $cartKey): JsonResponse|RedirectResponse
     {
         $validated = $request->validate([
             'quantity' => 'required|integer|min:1',
@@ -74,14 +98,28 @@ class CartController extends Controller
             session(['cart' => $cart]);
         }
 
+        if ($request->wantsJson()) {
+            return response()->json([
+                'cart' => $cart,
+                'cart_count' => collect($cart)->sum('quantity'),
+            ]);
+        }
+
         return back();
     }
 
-    public function remove(string $cartKey): RedirectResponse
+    public function remove(Request $request, string $cartKey): JsonResponse|RedirectResponse
     {
         $cart = session('cart', []);
         unset($cart[$cartKey]);
         session(['cart' => $cart]);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'cart' => $cart,
+                'cart_count' => collect($cart)->sum('quantity'),
+            ]);
+        }
 
         return back();
     }

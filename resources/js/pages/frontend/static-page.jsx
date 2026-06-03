@@ -1,14 +1,15 @@
 import { Head } from '@inertiajs/react';
+import { PageHero } from '@/components/frontend/page-hero';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 
 const titles = {
-    about: 'আমাদের সম্পর্কে',
-    faq: 'সচরাচর জিজ্ঞাসা',
-    'size-guide': 'সাইজ গাইড',
-    'refund-policy': 'রিফান্ড পলিসি',
-    'cancellation-policy': 'বাতিল পলিসি',
-    'privacy-policy': 'প্রাইভেসি পলিসি',
-    'terms-policy': 'শর্তাবলী',
+    about: 'About Us',
+    faq: 'FAQ',
+    'size-guide': 'Size Guide',
+    'refund-policy': 'Refund Policy',
+    'cancellation-policy': 'Cancellation Policy',
+    'privacy-policy': 'Privacy Policy',
+    'terms-policy': 'Terms of Service',
 };
 
 export default function StaticPage({ page, content }) {
@@ -17,15 +18,15 @@ export default function StaticPage({ page, content }) {
     return (
         <FrontendLayout>
             <Head title={title} />
-            <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8">
-                <h1 className="mb-6 text-2xl font-bold text-gray-900">{title}</h1>
+            <PageHero title={title} />
+            <div className="store-container max-w-3xl py-8">
                 {content ? (
                     <div
-                        className="prose prose-gray max-w-none"
+                        className="prose prose-sm max-w-none text-store-primary prose-headings:text-store-primary prose-a:text-store-accent"
                         dangerouslySetInnerHTML={{ __html: content }}
                     />
                 ) : (
-                    <p className="text-gray-500">এই পেজের তথ্য এখনও যোগ করা হয়নি।</p>
+                    <p className="text-center text-store-muted">Content for this page has not been added yet.</p>
                 )}
             </div>
         </FrontendLayout>

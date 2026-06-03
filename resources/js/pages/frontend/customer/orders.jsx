@@ -1,72 +1,59 @@
-import { Head, Link } from '@inertiajs/react';
-import FrontendLayout from '@/layouts/frontend/frontend-layout';
+import { Link } from '@inertiajs/react';
+import { CustomerPortalLayout } from '@/layouts/frontend/customer-portal-layout';
 
 const statusColors = {
-    1: 'bg-yellow-100 text-yellow-700',
-    2: 'bg-blue-100 text-blue-700',
-    3: 'bg-indigo-100 text-indigo-700',
-    5: 'bg-green-100 text-green-700',
-    6: 'bg-red-100 text-red-700',
+    1: 'bg-yellow-500/20 text-yellow-300',
+    2: 'bg-blue-500/20 text-blue-300',
+    3: 'bg-indigo-500/20 text-indigo-300',
+    5: 'bg-green-500/20 text-green-300',
+    6: 'bg-red-500/20 text-red-300',
 };
 
 const statusLabels = {
-    1: 'অপেক্ষমান',
-    2: 'প্রক্রিয়াধীন',
-    3: 'শিপিং',
-    5: 'ডেলিভার হয়েছে',
-    6: 'বাতিল',
+    1: 'Pending',
+    2: 'Processing',
+    3: 'Shipping',
+    5: 'Delivered',
+    6: 'Cancelled',
 };
 
 export default function CustomerOrders({ orders }) {
     return (
-        <FrontendLayout>
-            <Head title="আমার অর্ডার" />
-            <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
-                <div className="mb-6 flex items-center justify-between">
-                    <h1 className="text-2xl font-bold text-gray-900">আমার অর্ডার</h1>
-                    <Link href="/customer/dashboard" className="text-sm text-gray-500 underline hover:text-gray-700">
-                        ← ড্যাশবোর্ড
+        <CustomerPortalLayout title="My Orders">
+            <h1 className="mb-4 text-xl font-bold text-white">My Orders</h1>
+
+            {orders.data?.length === 0 ? (
+                <div className="rounded-xl border border-white/10 bg-white/5 py-16 text-center backdrop-blur-md">
+                    <p className="text-white/60">No orders yet</p>
+                    <Link href="/" className="mt-3 inline-block text-sm text-store-accent hover:underline">
+                        Start shopping
                     </Link>
                 </div>
-
-                {orders.data?.length === 0 ? (
-                    <div className="py-16 text-center text-gray-400">
-                        <p>কোনো অর্ডার নেই।</p>
-                        <Link href="/" className="mt-3 inline-block text-sm text-gray-700 underline">
-                            শপিং শুরু করুন
-                        </Link>
-                    </div>
-                ) : (
-                    <div className="space-y-4">
-                        {orders.data?.map((order) => (
-                            <div key={order.id} className="border border-gray-200 p-4">
-                                <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <div>
-                                        <p className="font-medium text-gray-900">অর্ডার #{order.id}</p>
-                                        <p className="text-xs text-gray-500 mt-0.5">
-                                            {new Date(order.created_at).toLocaleDateString('bn-BD')}
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        <span
-                                            className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[order.status] ?? 'bg-gray-100 text-gray-600'}`}
-                                        >
-                                            {statusLabels[order.status] ?? order.status}
-                                        </span>
-                                        <span className="font-semibold text-gray-900">৳{Number(order.total).toFixed(0)}</span>
-                                        <Link
-                                            href={`/customer/orders/${order.id}`}
-                                            className="text-sm text-gray-500 underline hover:text-gray-700"
-                                        >
-                                            বিবরণ
-                                        </Link>
-                                    </div>
+            ) : (
+                <div className="space-y-3">
+                    {orders.data?.map((order) => (
+                        <div key={order.id} className="rounded-xl border border-white/10 bg-white/10 p-4 backdrop-blur-md">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div>
+                                    <p className="font-medium text-white">#{order.id}</p>
+                                    <p className="text-xs text-white/50">
+                                        {new Date(order.created_at).toLocaleDateString('en-US')}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[order.status] ?? 'bg-white/10 text-white/70'}`}>
+                                        {statusLabels[order.status] ?? order.status}
+                                    </span>
+                                    <span className="font-semibold text-white">৳{Number(order.total).toFixed(0)}</span>
+                                    <Link href={`/customer/orders/${order.id}`} className="text-xs text-store-accent hover:underline">
+                                        Details
+                                    </Link>
                                 </div>
                             </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-        </FrontendLayout>
+                        </div>
+                    ))}
+                </div>
+            )}
+        </CustomerPortalLayout>
     );
 }

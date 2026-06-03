@@ -6,13 +6,16 @@ use App\Http\Controllers\Customer\Auth\CustomerLoginController;
 use App\Http\Controllers\Customer\Auth\CustomerRegisterController;
 use App\Http\Controllers\Customer\CustomerDashboardController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\PathaoCourierController;
+use App\Http\Controllers\SubscriptionController;
 use Illuminate\Support\Facades\Route;
 
 // ── PUBLIC FRONTEND ───────────────────────────────────────────────────────────
 Route::get('/', [HomeController::class, 'index'])->name('home');
-Route::get('/products', [HomeController::class, 'products'])->name('products');
 Route::get('/products/{product:slug}', [HomeController::class, 'show'])->name('product.show');
-Route::get('/collection/{collection:slug}', [HomeController::class, 'collectionProducts'])->name('collection.products');
+Route::get('/category/{id}/products', [HomeController::class, 'categoryProducts'])->name('category.products');
+Route::get('/section/{id}/products', [HomeController::class, 'sectionProducts'])->name('section.products');
+Route::get('/collection/{name}', [HomeController::class, 'collectionProducts'])->name('collection.products')->where('name', '.*');
 Route::get('/search', [HomeController::class, 'search'])->name('search');
 
 // Static pages
@@ -25,9 +28,11 @@ Route::get('/privacy-policy', [HomeController::class, 'staticPage'])->defaults('
 Route::get('/terms-policy', [HomeController::class, 'staticPage'])->defaults('page', 'terms-policy')->name('terms-policy');
 Route::get('/contact', [HomeController::class, 'contact'])->name('contact');
 Route::post('/contact', [HomeController::class, 'contactStore'])->name('contact.store');
+Route::post('/subscribe', [SubscriptionController::class, 'store'])->name('subscribe.store');
 
 // Cart
 Route::get('/cart', [CartController::class, 'index'])->name('cart');
+Route::get('/cart/json', [CartController::class, 'json'])->name('cart.json');
 Route::post('/cart/add', [CartController::class, 'addToCart'])->name('cart.add');
 Route::patch('/cart/{cartKey}', [CartController::class, 'update'])->name('cart.update');
 Route::delete('/cart/{cartKey}', [CartController::class, 'remove'])->name('cart.remove');
@@ -37,6 +42,11 @@ Route::delete('/cart', [CartController::class, 'clear'])->name('cart.clear');
 Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout');
 Route::post('/checkout', [CheckoutController::class, 'store'])->name('checkout.store');
 Route::get('/checkout/success/{order}', [CheckoutController::class, 'success'])->name('checkout.success');
+
+// Pathao API stubs (Phase 12 — wire to Pathao package when available)
+Route::get('/pathao/cities', [PathaoCourierController::class, 'getCities'])->name('pathao.cities');
+Route::get('/pathao/zones/{cityId}', [PathaoCourierController::class, 'getZones'])->name('pathao.zones');
+Route::get('/pathao/areas/{zoneId}', [PathaoCourierController::class, 'getAreas'])->name('pathao.areas');
 
 // ── CUSTOMER AUTH ─────────────────────────────────────────────────────────────
 Route::prefix('customer')->name('customer.')->group(function () {
@@ -50,6 +60,7 @@ Route::prefix('customer')->name('customer.')->group(function () {
     Route::middleware('auth:customer')->group(function () {
         Route::post('logout', [CustomerLoginController::class, 'logout'])->name('logout');
         Route::get('profile', [CustomerDashboardController::class, 'dashboard'])->name('profile');
+        Route::get('dashboard', [CustomerDashboardController::class, 'dashboard'])->name('dashboard');
         Route::get('orders', [CustomerDashboardController::class, 'orders'])->name('orders');
         Route::get('orders/{id}', [CustomerDashboardController::class, 'orderDetails'])->name('order.details');
     });

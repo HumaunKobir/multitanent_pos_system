@@ -1,0 +1,1 @@
+import{m as e,y as t}from"./jsx-runtime-B__fF8l8.js";var n=t(e(),1);function r(e,t,r=350,i={}){let{skipFirstRun:a=!1}=i,o=(0,n.useRef)(!1);(0,n.useEffect)(()=>{if(a&&!o.current){o.current=!0;return}let t=setTimeout(()=>{e()},r);return()=>clearTimeout(t)},[...t,r])}export{r as t};

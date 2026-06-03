@@ -4,6 +4,7 @@ import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus
 import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { dateInputRightIconClassName } from '@/components/ui/date-kit';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -423,7 +424,7 @@ export default function PurchaseEdit({ purchase, suppliers: initialSuppliers }) 
                                     type="date"
                                     value={form.data.date}
                                     onChange={(e) => form.setData('date', e.target.value)}
-                                    className="h-8 text-xs"
+                                    className={`h-8 text-xs ${dateInputRightIconClassName}`}
                                 />
                             </Field>
                         </div>

@@ -99,6 +99,15 @@ const routes = {
     'api.products.sell': '/api/products/for-sell',
     'api.customers': '/api/customers',
     'api.customers.store': '/api/customers',
+    'accounts.index': '/accounts',
+    'accounts.store': '/accounts',
+    'accounts.next-code': '/accounts/next-code',
+    'accounts.update': '/accounts/:chartOfAccount',
+    'accounts.destroy': '/accounts/:chartOfAccount',
+    'accounts.journal-voucher.index': '/accounts/journal-voucher',
+    'accounts.contra-voucher.index': '/accounts/contra-voucher',
+    'accounts.income-voucher.index': '/accounts/income-voucher',
+    'accounts.expense-voucher.index': '/accounts/expense-voucher',
 };
 
 const methods = {
@@ -174,6 +183,9 @@ const methods = {
     'party.customer.store': 'post',
     'party.customer.update': 'patch',
     'party.customer.destroy': 'delete',
+    'accounts.store': 'post',
+    'accounts.update': 'patch',
+    'accounts.destroy': 'delete',
 };
 
 const aliases = {

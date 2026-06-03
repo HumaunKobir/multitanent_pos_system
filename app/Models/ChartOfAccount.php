@@ -17,6 +17,7 @@ class ChartOfAccount extends Model
     protected $fillable = [
         'parent_id',
         'code',
+        'account_number',
         'name',
         'type',
         'current_balance',
@@ -121,6 +122,15 @@ class ChartOfAccount extends Model
             AccountType::Income => 'I',
             AccountType::Expenses => 'X',
         };
+    }
+
+    public static function previewCode(AccountType $type, ?int $parentId): string
+    {
+        $prefix = self::prefixForType($type);
+
+        return $parentId
+            ? self::nextChildCode($parentId, $prefix)
+            : self::nextParentCode($prefix);
     }
 
     protected static function nextParentCode(string $prefix): string

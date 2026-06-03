@@ -102,9 +102,11 @@ return [
             'title' => 'Accounts',
             'icon' => 'wallet',
             'children' => [
-                ['title' => 'Account'],
-                ['title' => 'Chart of Account'],
-                ['title' => 'Payment Method'],
+                ['title' => 'Accounts', 'href' => '/accounts'],
+                ['title' => 'Journal Voucher', 'href' => '/accounts/journal-voucher'],
+                ['title' => 'Contra Voucher', 'href' => '/accounts/contra-voucher'],
+                ['title' => 'Income Voucher', 'href' => '/accounts/income-voucher'],
+                ['title' => 'Expense Voucher', 'href' => '/accounts/expense-voucher'],
             ],
         ],
         [

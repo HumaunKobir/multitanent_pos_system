@@ -1,5 +1,10 @@
 <?php
 
+use App\Http\Controllers\Account\AccountController;
+use App\Http\Controllers\Account\ContraVoucherController;
+use App\Http\Controllers\Account\ExpenseVoucherController;
+use App\Http\Controllers\Account\IncomeVoucherController;
+use App\Http\Controllers\Account\JournalVoucherController;
 use App\Http\Controllers\Api\CustomerSearchController;
 use App\Http\Controllers\Api\ProductSearchController;
 use App\Http\Controllers\Api\SupplierController as SupplierApiController;
@@ -54,6 +59,18 @@ Route::middleware(['auth', 'verified'])->prefix('api')->name('api.')->group(func
     Route::get('products/for-sell', [ProductSearchController::class, 'forSell'])->name('products.sell');
     Route::get('customers', [CustomerSearchController::class, 'index'])->name('customers');
     Route::post('customers', [CustomerSearchController::class, 'store'])->name('customers.store');
+});
+
+Route::middleware(['auth', 'verified'])->prefix('accounts')->name('accounts.')->group(function () {
+    Route::get('/', [AccountController::class, 'index'])->name('index');
+    Route::post('/', [AccountController::class, 'store'])->name('store');
+    Route::get('next-code', [AccountController::class, 'nextCode'])->name('next-code');
+    Route::patch('{chartOfAccount}', [AccountController::class, 'update'])->name('update');
+    Route::delete('{chartOfAccount}', [AccountController::class, 'destroy'])->name('destroy');
+    Route::get('journal-voucher', [JournalVoucherController::class, 'index'])->name('journal-voucher.index');
+    Route::get('contra-voucher', [ContraVoucherController::class, 'index'])->name('contra-voucher.index');
+    Route::get('income-voucher', [IncomeVoucherController::class, 'index'])->name('income-voucher.index');
+    Route::get('expense-voucher', [ExpenseVoucherController::class, 'index'])->name('expense-voucher.index');
 });
 
 Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->group(function () {

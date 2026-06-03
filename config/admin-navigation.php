@@ -102,10 +102,10 @@ return [
             'icon' => 'wallet',
             'children' => [
                 ['title' => 'Accounts', 'href' => '/accounts'],
-                ['title' => 'Journal Voucher', 'href' => '/accounts/journal-voucher'],
-                ['title' => 'Contra Voucher', 'href' => '/accounts/contra-voucher'],
-                ['title' => 'Income Voucher', 'href' => '/accounts/income-voucher'],
-                ['title' => 'Expense Voucher', 'href' => '/accounts/expense-voucher'],
+                ['title' => 'Journal Voucher', 'href' => '/accounts/vouchers?type=journal'],
+                ['title' => 'Contra Voucher', 'href' => '/accounts/vouchers?type=contra'],
+                ['title' => 'Income Voucher', 'href' => '/accounts/vouchers?type=income'],
+                ['title' => 'Expense Voucher', 'href' => '/accounts/vouchers?type=expense'],
             ],
         ],
         [

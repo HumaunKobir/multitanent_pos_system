@@ -134,10 +134,16 @@ const routes = {
     'accounts.next-code': '/accounts/next-code',
     'accounts.update': '/accounts/:chartOfAccount',
     'accounts.destroy': '/accounts/:chartOfAccount',
-    'accounts.journal-voucher.index': '/accounts/journal-voucher',
-    'accounts.contra-voucher.index': '/accounts/contra-voucher',
-    'accounts.income-voucher.index': '/accounts/income-voucher',
-    'accounts.expense-voucher.index': '/accounts/expense-voucher',
+    'accounts.journal-voucher.index': '/accounts/vouchers?type=journal',
+    'accounts.contra-voucher.index': '/accounts/vouchers?type=contra',
+    'accounts.income-voucher.index': '/accounts/vouchers?type=income',
+    'accounts.expense-voucher.index': '/accounts/vouchers?type=expense',
+    'accounts.vouchers.index': '/accounts/vouchers',
+    'accounts.vouchers.store': '/accounts/vouchers',
+    'accounts.vouchers.show': '/accounts/vouchers/:voucher',
+    'accounts.vouchers.update': '/accounts/vouchers/:voucher',
+    'accounts.vouchers.destroy': '/accounts/vouchers/:voucher',
+    'accounts.vouchers.next-number': '/accounts/vouchers/next-number',
 };
 
 const methods = {
@@ -228,6 +234,9 @@ const methods = {
     'accounts.store': 'post',
     'accounts.update': 'patch',
     'accounts.destroy': 'delete',
+    'accounts.vouchers.store': 'post',
+    'accounts.vouchers.update': 'put',
+    'accounts.vouchers.destroy': 'delete',
 };
 
 const aliases = {

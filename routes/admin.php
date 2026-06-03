@@ -1,10 +1,7 @@
 <?php
 
 use App\Http\Controllers\Account\AccountController;
-use App\Http\Controllers\Account\ContraVoucherController;
-use App\Http\Controllers\Account\ExpenseVoucherController;
-use App\Http\Controllers\Account\IncomeVoucherController;
-use App\Http\Controllers\Account\JournalVoucherController;
+use App\Http\Controllers\Account\VoucherController;
 use App\Http\Controllers\Api\CustomerSearchController;
 use App\Http\Controllers\Api\ProductSearchController;
 use App\Http\Controllers\Api\PurchaseLookupController;
@@ -79,10 +76,16 @@ Route::middleware(['auth', 'verified'])->prefix('accounts')->name('accounts.')->
     Route::get('next-code', [AccountController::class, 'nextCode'])->name('next-code');
     Route::patch('{chartOfAccount}', [AccountController::class, 'update'])->name('update');
     Route::delete('{chartOfAccount}', [AccountController::class, 'destroy'])->name('destroy');
-    Route::get('journal-voucher', [JournalVoucherController::class, 'index'])->name('journal-voucher.index');
-    Route::get('contra-voucher', [ContraVoucherController::class, 'index'])->name('contra-voucher.index');
-    Route::get('income-voucher', [IncomeVoucherController::class, 'index'])->name('income-voucher.index');
-    Route::get('expense-voucher', [ExpenseVoucherController::class, 'index'])->name('expense-voucher.index');
+    Route::get('vouchers/next-number', [VoucherController::class, 'nextNumber'])->name('vouchers.next-number');
+    Route::get('vouchers/{voucher}', [VoucherController::class, 'show'])->name('vouchers.show');
+    Route::get('vouchers', [VoucherController::class, 'index'])->name('vouchers.index');
+    Route::post('vouchers', [VoucherController::class, 'store'])->name('vouchers.store');
+    Route::put('vouchers/{voucher}', [VoucherController::class, 'update'])->name('vouchers.update');
+    Route::delete('vouchers/{voucher}', [VoucherController::class, 'destroy'])->name('vouchers.destroy');
+    Route::redirect('journal-voucher', '/accounts/vouchers?type=journal')->name('journal-voucher.index');
+    Route::redirect('contra-voucher', '/accounts/vouchers?type=contra')->name('contra-voucher.index');
+    Route::redirect('income-voucher', '/accounts/vouchers?type=income')->name('income-voucher.index');
+    Route::redirect('expense-voucher', '/accounts/vouchers?type=expense')->name('expense-voucher.index');
 });
 
 Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->group(function () {

@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
 
 function Card({ title, icon: Icon, children }) {
     return (
@@ -205,8 +205,6 @@ function ProductSearchBox({ onAdd }) {
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
     const [open, setOpen] = useState(false);
-    const [selectedProduct, setSelectedProduct] = useState(null);
-    const [selectedVariation, setSelectedVariation] = useState('');
     const timerRef = useRef(null);
     const ref = useRef(null);
     const apiUrl = route('api.products.purchase');
@@ -216,10 +214,7 @@ function ProductSearchBox({ onAdd }) {
         try {
             const res = await fetch(`${apiUrl}?search=${encodeURIComponent(search)}`, {
                 credentials: 'include',
-                headers: {
-                    Accept: 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             });
             if (!res.ok) return;
             const data = await res.json();
@@ -233,9 +228,7 @@ function ProductSearchBox({ onAdd }) {
 
     function handleFocus() {
         setOpen(true);
-        if (results.length === 0) {
-            fetchProducts('');
-        }
+        if (results.length === 0) fetchProducts('');
     }
 
     function handleChange(e) {
@@ -247,23 +240,10 @@ function ProductSearchBox({ onAdd }) {
     }
 
     useEffect(() => {
-        function handleClick(e) {
-            if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-        }
-
+        function handleClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
         document.addEventListener('mousedown', handleClick);
         return () => document.removeEventListener('mousedown', handleClick);
     }, []);
-
-    function selectProduct(product) {
-        setSelectedProduct(product);
-        setOpen(false);
-        setQuery('');
-        setSelectedVariation('');
-        if (!product.has_variations) {
-            addItem(product, null);
-        }
-    }
 
     function addItem(product, variation) {
         const unitPrice = variation ? parseFloat(variation.purchase_price ?? 0) : parseFloat(product.purchase_price ?? 0);
@@ -281,8 +261,6 @@ function ProductSearchBox({ onAdd }) {
             expiry_date: '',
             serial: '',
         });
-        setSelectedProduct(null);
-        setSelectedVariation('');
     }
 
     return (
@@ -305,54 +283,45 @@ function ProductSearchBox({ onAdd }) {
                     ) : results.length === 0 ? (
                         <p className="px-3 py-2 text-xs text-muted-foreground">No products found.</p>
                     ) : (
-                        <ul className="max-h-56 overflow-auto">
+                        <ul className="max-h-64 overflow-auto">
                             {results.map((p) => (
-                                <li
-                                    key={p.id}
-                                    className="cursor-pointer border-b border-border/50 px-3 py-2 text-xs hover:bg-accent last:border-0"
-                                    onClick={() => selectProduct(p)}
-                                >
-                                    <span className="font-medium">{p.name}</span>
-                                    {p.code && <span className="ml-2 text-muted-foreground">{p.code}</span>}
-                                    {p.has_variations && <span className="ml-2 text-blue-600">Has variations</span>}
+                                <li key={p.id} className="border-b border-border/50 last:border-0">
+                                    {!p.has_variations ? (
+                                        <div
+                                            className="flex cursor-pointer items-center justify-between px-3 py-2 text-xs hover:bg-accent"
+                                            onClick={() => { addItem(p, null); setOpen(false); setQuery(''); }}
+                                        >
+                                            <span>
+                                                <span className="font-medium">{p.name}</span>
+                                                {p.code && <span className="ml-2 text-muted-foreground">{p.code}</span>}
+                                            </span>
+                                            <span className="ml-4 shrink-0 text-muted-foreground">৳{parseFloat(p.purchase_price ?? 0).toFixed(2)}</span>
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <div className="flex items-center gap-1.5 bg-muted/30 px-3 py-1.5">
+                                                <span className="text-xs font-semibold">{p.name}</span>
+                                                {p.code && <span className="text-[10px] text-muted-foreground">{p.code}</span>}
+                                                <span className="ml-auto text-[10px] text-blue-600">{p.variations?.length ?? 0} variants</span>
+                                            </div>
+                                            {(p.variations ?? []).map((v) => (
+                                                <div
+                                                    key={v.id}
+                                                    className="flex cursor-pointer items-center justify-between py-1.5 pr-3 pl-7 text-xs hover:bg-accent"
+                                                    onClick={() => { addItem(p, v); }}
+                                                >
+                                                    <span className="inline-flex items-center rounded-none bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 ring-1 ring-blue-200">
+                                                        {v.label}
+                                                    </span>
+                                                    <span className="ml-4 shrink-0 text-muted-foreground">৳{parseFloat(v.purchase_price ?? 0).toFixed(2)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
                                 </li>
                             ))}
                         </ul>
                     )}
-                </div>
-            )}
-
-            {selectedProduct?.has_variations && (
-                <div className="mt-2 flex items-center gap-2 rounded-md border border-dashed border-border bg-muted/20 p-2">
-                    <span className="text-xs font-medium">{selectedProduct.name}</span>
-                    <Select value={selectedVariation} onValueChange={setSelectedVariation}>
-                        <SelectTrigger className="h-7 w-48 text-xs">
-                            <SelectValue placeholder="Select variation…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {selectedProduct.variations.map((v) => (
-                                <SelectItem key={v.id} value={String(v.id)}>
-                                    {v.label}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                    <Button
-                        size="sm"
-                        type="button"
-                        disabled={!selectedVariation}
-                        className="h-7 text-xs"
-                        onClick={() => {
-                            const v = selectedProduct.variations.find((x) => String(x.id) === selectedVariation);
-                            if (v) addItem(selectedProduct, v);
-                        }}
-                    >
-                        <Plus className="size-3.5" />
-                        Add
-                    </Button>
-                    <Button size="sm" type="button" variant="ghost" className="h-7 text-xs" onClick={() => setSelectedProduct(null)}>
-                        Cancel
-                    </Button>
                 </div>
             )}
         </div>

@@ -228,10 +228,20 @@ class HomeController extends Controller
         return back()->with('success', 'Your message has been sent.');
     }
 
+    public function about(): Response
+    {
+        $heroImage = StorageUrl::public(ConfigDictionary::get('meta_banner'))
+            ?? StorageUrl::public(ConfigDictionary::get('logo'));
+
+        return Inertia::render('frontend/about', [
+            'content' => ConfigDictionary::get('about_us', ''),
+            'heroImage' => $heroImage,
+        ]);
+    }
+
     public function staticPage(string $page): Response
     {
         $keyMap = [
-            'about' => 'about_us',
             'faq' => 'faq',
             'size-guide' => 'size_guide',
             'refund-policy' => 'refund_policy',

@@ -1,6 +1,6 @@
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { Mail, MapPin, Phone } from 'lucide-react';
-import { PageHero } from '@/components/frontend/page-hero';
+import { StorePageHeader } from '@/components/frontend/store-page-header';
 import { StoreButton } from '@/components/frontend/store-button';
 import { StoreInput } from '@/components/frontend/store-input';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
@@ -23,7 +23,11 @@ export default function Contact({ email, phone, address }) {
     return (
         <FrontendLayout>
             <Head title="Contact" />
-            <PageHero title="Contact Us" subtitle="We'd love to hear from you" />
+            <StorePageHeader
+                title="Contact Us"
+                subtitle="We'd love to hear from you"
+                breadcrumbs={[{ label: 'Contact Us' }]}
+            />
 
             <div className="store-container py-8">
                 <div className="grid gap-8 lg:grid-cols-5">

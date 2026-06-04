@@ -1,5 +1,5 @@
 import { Head } from '@inertiajs/react';
-import { PageHero } from '@/components/frontend/page-hero';
+import { StorePageHeader } from '@/components/frontend/store-page-header';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 
 const titles = {
@@ -18,7 +18,7 @@ export default function StaticPage({ page, content }) {
     return (
         <FrontendLayout>
             <Head title={title} />
-            <PageHero title={title} />
+            <StorePageHeader title={title} breadcrumbs={[{ label: title }]} />
             <div className="store-container max-w-3xl py-8">
                 {content ? (
                     <div

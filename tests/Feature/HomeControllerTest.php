@@ -145,12 +145,13 @@ test('contact form requires name and message', function () {
         ->assertSessionHasErrors(['name', 'message']);
 });
 
-test('about static page loads', function () {
+test('about page loads', function () {
     $this->get(route('about'))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
-            ->component('frontend/static-page')
-            ->where('page', 'about')
+            ->component('frontend/about')
+            ->has('content')
+            ->has('heroImage')
         );
 });
 

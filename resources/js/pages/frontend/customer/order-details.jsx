@@ -1,15 +1,11 @@
 import { Link } from '@inertiajs/react';
 import { ArrowLeft } from 'lucide-react';
 
+import {
+    getOrderStatusLabel,
+    OrderTrackingProgress,
+} from '@/components/frontend/customer-panel/order-tracking-progress';
 import { CustomerPanelLayout } from '@/layouts/frontend/customer-panel-layout';
-
-const statusLabels = {
-    1: 'Pending',
-    2: 'Processing',
-    3: 'Shipping',
-    5: 'Delivered',
-    6: 'Cancelled',
-};
 
 export default function OrderDetails({ order }) {
     return (
@@ -22,6 +18,8 @@ export default function OrderDetails({ order }) {
                 Back to orders
             </Link>
 
+            <OrderTrackingProgress status={order.status} className="mb-3" />
+
             <div className="mb-3 grid gap-3 sm:grid-cols-2">
                 <div className="rounded-xl border border-gray-200/80 bg-white p-3.5 shadow-sm">
                     <p className="mb-3 text-xs font-bold uppercase tracking-wider text-store-accent">Delivery</p>
@@ -33,9 +31,7 @@ export default function OrderDetails({ order }) {
                     <p className="mb-3 text-xs font-bold uppercase tracking-wider text-store-accent">Order info</p>
                     <p className="text-sm text-store-muted">
                         Status:{' '}
-                        <span className="font-semibold text-store-primary">
-                            {statusLabels[order.status] ?? order.status}
-                        </span>
+                        <span className="font-semibold text-store-primary">{getOrderStatusLabel(order.status)}</span>
                     </p>
                     <p className="mt-2 text-sm text-store-muted">Payment: {order.payment_status}</p>
                     <p className="mt-1 text-sm text-store-muted">Method: {order.payment_method?.toUpperCase()}</p>

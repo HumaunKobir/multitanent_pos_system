@@ -2,6 +2,7 @@
 
 use App\Enums\CustomerRegistrationType;
 use App\Models\Customer;
+use App\Models\OnlineOrder;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 
@@ -141,6 +142,54 @@ test('authenticated customer can view orders', function () {
         ->get(route('customer.orders'))
         ->assertOk()
         ->assertInertia(fn ($page) => $page->component('frontend/customer/orders'));
+});
+
+test('authenticated customer can view own order details', function () {
+    $customer = Customer::factory()->create();
+
+    $order = OnlineOrder::create([
+        'customer_id' => $customer->id,
+        'name' => $customer->name,
+        'phone' => $customer->phone,
+        'address' => 'Dhaka',
+        'delivery_charge' => 60,
+        'subtotal' => 1000,
+        'total' => 1060,
+        'status' => 2,
+        'payment_status' => 'pending',
+    ]);
+
+    $this->actingAs($customer, 'customer')
+        ->get(route('customer.order.details', $order->id))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('frontend/customer/order-details')
+            ->has('order', fn ($orderProp) => $orderProp
+                ->where('id', $order->id)
+                ->where('status', 2)
+                ->etc()
+            ));
+});
+
+test('customer cannot view another customers order details', function () {
+    $owner = Customer::factory()->create();
+    $other = Customer::factory()->create();
+
+    $order = OnlineOrder::create([
+        'customer_id' => $owner->id,
+        'name' => $owner->name,
+        'phone' => $owner->phone,
+        'address' => 'Dhaka',
+        'delivery_charge' => 60,
+        'subtotal' => 500,
+        'total' => 560,
+        'status' => 1,
+        'payment_status' => 'pending',
+    ]);
+
+    $this->actingAs($other, 'customer')
+        ->get(route('customer.order.details', $order->id))
+        ->assertNotFound();
 });
 
 test('customer can logout', function () {

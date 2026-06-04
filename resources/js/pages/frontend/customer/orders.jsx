@@ -1,6 +1,10 @@
 import { Link } from '@inertiajs/react';
 import { ChevronRight, Package } from 'lucide-react';
 
+import {
+    getOrderStatusLabel,
+    OrderTrackingProgress,
+} from '@/components/frontend/customer-panel/order-tracking-progress';
 import { CustomerPanelLayout } from '@/layouts/frontend/customer-panel-layout';
 
 const statusColors = {
@@ -9,14 +13,6 @@ const statusColors = {
     3: 'bg-indigo-100 text-indigo-800',
     5: 'bg-emerald-100 text-emerald-800',
     6: 'bg-red-100 text-red-800',
-};
-
-const statusLabels = {
-    1: 'Pending',
-    2: 'Processing',
-    3: 'Shipping',
-    5: 'Delivered',
-    6: 'Cancelled',
 };
 
 export default function CustomerOrders({ orders }) {
@@ -58,7 +54,7 @@ export default function CustomerOrders({ orders }) {
                                     <span
                                         className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusColors[order.status] ?? 'bg-store-surface text-store-muted'}`}
                                     >
-                                        {statusLabels[order.status] ?? order.status}
+                                        {getOrderStatusLabel(order.status)}
                                     </span>
                                     <span className="text-base font-bold text-store-primary">
                                         ৳{Number(order.total).toFixed(0)}
@@ -71,6 +67,9 @@ export default function CustomerOrders({ orders }) {
                                         <ChevronRight className="size-3.5" />
                                     </Link>
                                 </div>
+                            </div>
+                            <div className="mt-3 border-t border-gray-100 pt-3">
+                                <OrderTrackingProgress status={order.status} variant="compact" />
                             </div>
                         </div>
                     ))}

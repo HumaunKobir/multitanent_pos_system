@@ -220,6 +220,7 @@ test('superadmin sees full navigation', function () {
     expect($titles)->toContain('Branch');
     expect($titles)->toContain('User');
     expect($titles)->toContain('Roles');
+    expect($titles)->toContain('Contact List');
     expect($titles)->toContain('Dashboard');
 });
 

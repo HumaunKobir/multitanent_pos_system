@@ -89,6 +89,7 @@ return [
         [
             'title' => 'Contact List',
             'icon' => 'phone-call',
+            'href' => '/contact-list',
             'single' => true,
             'admin_only' => true,
             'permission' => null,

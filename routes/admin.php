@@ -9,6 +9,7 @@ use App\Http\Controllers\Api\SaleLookupController;
 use App\Http\Controllers\Api\SupplierController as SupplierApiController;
 use App\Http\Controllers\BarcodeController;
 use App\Http\Controllers\BranchController;
+use App\Http\Controllers\ContactListController;
 use App\Http\Controllers\Customer\CustomerController;
 use App\Http\Controllers\Inventory\DamageController;
 use App\Http\Controllers\Inventory\ProductExchangeController;
@@ -44,6 +45,8 @@ Route::middleware(['auth', 'verified', 'superadmin'])->group(function () {
     Route::resource('role', RoleController::class)->except(['show']);
     Route::get('role/{role}/permissions', [RoleController::class, 'editPermissions'])->name('role.permissions');
     Route::put('role/{role}/permissions', [RoleController::class, 'updatePermissions'])->name('role.permissions.update');
+    Route::get('contact-list', [ContactListController::class, 'index'])->name('contact-list.index');
+    Route::delete('contact-list/{subscriber}', [ContactListController::class, 'destroy'])->name('contact-list.destroy');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {

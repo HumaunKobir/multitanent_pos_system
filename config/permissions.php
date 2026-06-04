@@ -275,5 +275,23 @@ return [
             ],
         ],
 
+        // ── Reports ───────────────────────────────────────────────────────────
+
+        'report' => [
+            'label' => 'Reports',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.customer-ledger.view' => 'Customer Ledger Report',
+                'report.cash-flow.view' => 'Cash Flow Report',
+                'report.cash-flow-summary.view' => 'Cash Flow Summary Report',
+                'report.daily-transactions.view' => 'Daily Transactions Report',
+                'report.date-wise-stock.view' => 'Date Wise Stock Report',
+                'report.daily-summary.view' => 'Daily Summary Report',
+                'report.account-ledger.view' => 'Account Ledger Report',
+                'report.account-transactions.view' => 'A/C Transactions Report',
+                'report.balance-sheet.view' => 'Balance Sheet Report',
+            ],
+        ],
+
     ],
 ];

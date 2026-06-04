@@ -1,6 +1,7 @@
 import { useForm } from '@inertiajs/react';
 import { CustomerAuthField } from '@/components/frontend/customer-auth-field';
 import { CustomerAuthLayout } from '@/components/frontend/customer-auth-layout';
+import { CustomerAuthSubmit } from '@/components/frontend/customer-auth-submit';
 
 const fields = [
     { key: 'name', label: 'Full name', type: 'text', autoComplete: 'name', required: true },
@@ -32,6 +33,7 @@ export default function CustomerRegister() {
 
     return (
         <CustomerAuthLayout
+            variant="register"
             title="Create your account"
             subtitle="Join for free — track orders and checkout faster"
             alternatePrompt="Already have an account?"
@@ -51,13 +53,9 @@ export default function CustomerRegister() {
                         required={required}
                     />
                 ))}
-                <button
-                    type="submit"
-                    disabled={processing}
-                    className="auth-btn-gradient mt-2 w-full rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-md shadow-auth-accent/30 transition-all hover:opacity-95 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
-                >
+                <CustomerAuthSubmit disabled={processing} className="mt-2">
                     {processing ? 'Creating account…' : 'Create account'}
-                </button>
+                </CustomerAuthSubmit>
             </form>
         </CustomerAuthLayout>
     );

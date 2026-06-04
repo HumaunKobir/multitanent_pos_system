@@ -19,6 +19,7 @@ use App\Http\Controllers\Inventory\SellController;
 use App\Http\Controllers\Inventory\SupplierController;
 use App\Http\Controllers\Inventory\SupplierPaymentController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Setting\BrandController;
 use App\Http\Controllers\Setting\CategoryController;
@@ -94,6 +95,18 @@ Route::middleware(['auth', 'verified'])->prefix('accounts')->name('accounts.')->
     Route::redirect('contra-voucher', '/accounts/vouchers?type=contra')->name('contra-voucher.index');
     Route::redirect('income-voucher', '/accounts/vouchers?type=income')->name('income-voucher.index');
     Route::redirect('expense-voucher', '/accounts/vouchers?type=expense')->name('expense-voucher.index');
+});
+
+Route::middleware(['auth', 'verified'])->prefix('report')->name('report.')->group(function () {
+    Route::get('customer-ledger', [ReportController::class, 'customerLedger'])->name('customer-ledger');
+    Route::get('cash-flow', [ReportController::class, 'cashFlow'])->name('cash-flow');
+    Route::get('cash-flow-summary', [ReportController::class, 'cashFlowSummary'])->name('cash-flow-summary');
+    Route::get('daily-transactions', [ReportController::class, 'dailyTransactions'])->name('daily-transactions');
+    Route::get('date-wise-stock', [ReportController::class, 'dateWiseStock'])->name('date-wise-stock');
+    Route::get('daily-summary', [ReportController::class, 'dailySummary'])->name('daily-summary');
+    Route::get('account-ledger', [ReportController::class, 'accountLedger'])->name('account-ledger');
+    Route::get('account-transactions', [ReportController::class, 'accountTransactions'])->name('account-transactions');
+    Route::get('balance-sheet', [ReportController::class, 'balanceSheet'])->name('balance-sheet');
 });
 
 Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->group(function () {

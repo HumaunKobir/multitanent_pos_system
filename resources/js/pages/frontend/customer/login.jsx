@@ -1,6 +1,7 @@
-import { Link, useForm } from '@inertiajs/react';
+import { useForm } from '@inertiajs/react';
 import { CustomerAuthField } from '@/components/frontend/customer-auth-field';
 import { CustomerAuthLayout } from '@/components/frontend/customer-auth-layout';
+import { CustomerAuthSubmit } from '@/components/frontend/customer-auth-submit';
 
 export default function CustomerLogin() {
     const { data, setData, post, processing, errors } = useForm({
@@ -15,6 +16,7 @@ export default function CustomerLogin() {
 
     return (
         <CustomerAuthLayout
+            variant="login"
             title="Sign in"
             subtitle="Use your email or phone number to access your account"
             alternatePrompt="Don't have an account?"
@@ -40,13 +42,9 @@ export default function CustomerLogin() {
                     error={errors.password}
                     required
                 />
-                <button
-                    type="submit"
-                    disabled={processing}
-                    className="auth-btn-gradient w-full rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-md shadow-auth-accent/30 transition-all hover:opacity-95 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
-                >
+                <CustomerAuthSubmit disabled={processing}>
                     {processing ? 'Signing in…' : 'Sign in'}
-                </button>
+                </CustomerAuthSubmit>
             </form>
         </CustomerAuthLayout>
     );

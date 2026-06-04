@@ -2,14 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Barcode;
 use App\Models\Branch;
 use App\Models\Brand;
 use App\Models\Category;
-use App\Models\Color;
 use App\Models\Product;
 use App\Models\ProductPhoto;
 use App\Models\ProductVariation;
-use App\Models\Size;
 use App\Models\Tag;
 use App\Models\Unit;
 use App\Models\Variation;
@@ -125,6 +124,16 @@ class ProductController extends Controller
                 }
             }
 
+            if (empty($combinations) && $product->code) {
+                Barcode::create([
+                    'branch_id' => $product->branch_id,
+                    'product_id' => $product->id,
+                    'product_variation_id' => null,
+                    'code' => $product->code,
+                    'name' => $product->name,
+                ]);
+            }
+
             foreach ($combinations as $combo) {
                 // Use per-combo price if provided, otherwise fall back to main prices
                 $salePrice = (isset($combo['sale_price']) && (string) $combo['sale_price'] !== '')
@@ -135,7 +144,7 @@ class ProductController extends Controller
                     ? $combo['purchase_price']
                     : $mainPurchasePrice;
 
-                ProductVariation::create([
+                $variation = ProductVariation::create([
                     'product_id' => $product->id,
                     'branch_id' => $product->branch_id,
                     'sku' => $combo['sku'],
@@ -143,6 +152,14 @@ class ProductController extends Controller
                     'purchase_price' => $purchasePrice,
                     'stock' => (int) $combo['stock'],
                     'variation_data' => ['label' => $combo['variant']],
+                ]);
+
+                Barcode::create([
+                    'branch_id' => $product->branch_id,
+                    'product_id' => $product->id,
+                    'product_variation_id' => $variation->id,
+                    'code' => $combo['sku'],
+                    'name' => $product->name.' - '.$combo['variant'],
                 ]);
             }
         });

@@ -90,7 +90,7 @@ return [
                 ['title' => 'Unit', 'href' => '/setting/unit'],
                 ['title' => 'Warranty', 'href' => '/setting/warranty'],
                 ['title' => 'Product', 'href' => '/product'],
-                ['title' => 'Barcode'],
+                ['title' => 'Barcode', 'href' => '/barcode'],
                 ['title' => 'Product Section', 'href' => '/setting/productsection'],
                 ['title' => 'Slider', 'href' => '/setting/slider'],
                 ['title' => 'Membership'],

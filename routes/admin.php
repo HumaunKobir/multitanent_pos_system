@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\ProductSearchController;
 use App\Http\Controllers\Api\PurchaseLookupController;
 use App\Http\Controllers\Api\SaleLookupController;
 use App\Http\Controllers\Api\SupplierController as SupplierApiController;
+use App\Http\Controllers\BarcodeController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\Customer\CustomerController;
 use App\Http\Controllers\Inventory\DamageController;
@@ -41,6 +42,7 @@ Route::middleware(['auth', 'verified', 'superadmin'])->group(function () {
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('product', ProductController::class)->except(['show']);
+    Route::get('barcode', [BarcodeController::class, 'index'])->name('barcode.index');
     Route::post('variation', [VariationController::class, 'store'])->name('variation.store');
     Route::delete('variation/{variation}', [VariationController::class, 'destroy'])->name('variation.destroy');
 });

@@ -11,6 +11,8 @@ class BarcodeController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('barcode.view');
+
         $barcodes = Barcode::with(['product:id,name,image', 'variation:id,variation_data'])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('code', 'like', "%{$s}%")

@@ -8,6 +8,8 @@ export default function DamageShow({ damage }) {
             backRoute="inventory.damage.index"
             editRoute="inventory.damage.edit"
             destroyRoute="inventory.damage.destroy"
+            updatePermission="inventory.damage.update"
+            deletePermission="inventory.damage.delete"
             id={damage.id}
             date={damage.date}
             comment={damage.comment}

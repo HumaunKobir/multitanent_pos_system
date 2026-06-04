@@ -21,6 +21,8 @@ class SellController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('inventory.sell.view');
+
         $sells = Sell::query()->ownBranch()
             ->sale()
             ->with('customer:id,name,phone')
@@ -40,6 +42,8 @@ class SellController extends Controller
 
     public function create(): Response
     {
+        $this->authorize('inventory.sell.create');
+
         $branchId = Auth::user()?->branch_id;
 
         $defaultCustomer = Customer::where('is_default', true)
@@ -54,6 +58,8 @@ class SellController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $this->authorize('inventory.sell.create');
+
         $data = $request->validate([
             'customer_id' => ['nullable', 'exists:customers,id'],
             'date' => ['required', 'date'],
@@ -129,6 +135,7 @@ class SellController extends Controller
 
     public function show(Sell $sell): Response
     {
+        $this->authorize('inventory.sell.view');
         $this->authorizeBranch($sell);
 
         $sell->load([
@@ -144,6 +151,7 @@ class SellController extends Controller
 
     public function edit(Sell $sell): Response|RedirectResponse
     {
+        $this->authorize('inventory.sell.update');
         $this->authorizeBranch($sell);
 
         if (SaleReturn::where('sell_id', $sell->id)->exists()) {
@@ -212,6 +220,7 @@ class SellController extends Controller
 
     public function update(Request $request, Sell $sell): RedirectResponse
     {
+        $this->authorize('inventory.sell.update');
         $this->authorizeBranch($sell);
 
         if (SaleReturn::where('sell_id', $sell->id)->exists()) {
@@ -328,6 +337,7 @@ class SellController extends Controller
 
     public function destroy(Sell $sell): RedirectResponse
     {
+        $this->authorize('inventory.sell.delete');
         $this->authorizeBranch($sell);
 
         $sell->load(['products']);

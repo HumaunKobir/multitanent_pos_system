@@ -5,12 +5,15 @@ import { ArrowLeft, Edit, Printer, ShoppingCart, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
+import { Can } from '@/components/can';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { useCan } from '@/hooks/use-can';
 
 export default function SellShow({ sell }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
+    const { can } = useCan();
     const [deleting, setDeleting] = useState(false);
 
     useEffect(() => {
@@ -56,25 +59,29 @@ export default function SellShow({ sell }) {
                             <Printer className="size-3.5" />
                             Print
                         </Button>
-                        <Button
-                            size="sm"
-                            asChild
-                            className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
-                        >
-                            <Link href={route('inventory.sell.edit', sell.id)}>
-                                <Edit className="size-3.5" />
-                                Edit
-                            </Link>
-                        </Button>
-                        <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => setDeleting(true)}
-                            className="border border-red-500/50 bg-red-600/90 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-red-600 hover:shadow-md"
-                        >
-                            <Trash2 className="size-3.5" />
-                            Delete
-                        </Button>
+                        <Can permission="inventory.sell.update">
+                            <Button
+                                size="sm"
+                                asChild
+                                className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
+                            >
+                                <Link href={route('inventory.sell.edit', sell.id)}>
+                                    <Edit className="size-3.5" />
+                                    Edit
+                                </Link>
+                            </Button>
+                        </Can>
+                        <Can permission="inventory.sell.delete">
+                            <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => setDeleting(true)}
+                                className="border border-red-500/50 bg-red-600/90 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-red-600 hover:shadow-md"
+                            >
+                                <Trash2 className="size-3.5" />
+                                Delete
+                            </Button>
+                        </Can>
                         <Button
                             size="sm"
                             asChild
@@ -194,6 +201,7 @@ export default function SellShow({ sell }) {
                     )}
                 </div>
 
+                {can('inventory.sell.delete') && (
                 <Dialog open={deleting} onOpenChange={setDeleting}>
                     <DialogContent className="max-w-sm">
                         <DialogHeader>
@@ -214,6 +222,7 @@ export default function SellShow({ sell }) {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+                )}
             </div>
         </>
     );

@@ -9,12 +9,15 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AdminCreateLink, AdminRowActions } from '@/components/admin/row-actions';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
+import { useCan } from '@/hooks/use-can';
 import { route } from '@/lib/route';
 
 export default function ProductIndex({ products, filters, categories }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
+    const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [categoryId, setCategoryId] = useState(filters.category_id ?? '__all');
     const [deleting, setDeleting] = useState(null);
@@ -114,16 +117,12 @@ export default function ProductIndex({ products, filters, categories }) {
             header: 'Actions',
             align: 'right',
             render: (row) => (
-                <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" asChild>
-                        <Link href={route('product.edit', row.slug)}>
-                            <Pencil className="size-3.5" />
-                        </Link>
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => setDeleting(row)}>
-                        <Trash2 className="size-3.5" />
-                    </Button>
-                </div>
+                <AdminRowActions
+                    prefix="product"
+                    id={row.slug}
+                    editRoute="product.edit"
+                    onDelete={() => setDeleting(row)}
+                />
             ),
         },
     ];
@@ -143,12 +142,13 @@ export default function ProductIndex({ products, filters, categories }) {
                             <p className="text-xs text-white/60">Manage your product inventory.</p>
                         </div>
                     </div>
-                    <Button size="sm" asChild className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md">
-                        <Link href={route('product.create')}>
-                            <Plus className="size-3.5" />
-                            Add Product
-                        </Link>
-                    </Button>
+                    <AdminCreateLink
+                        permission="product.create"
+                        href={route('product.create')}
+                        label="Add Product"
+                        icon={Plus}
+                        className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
+                    />
                 </div>
 
                 <div className="mb-4 flex flex-wrap gap-2">
@@ -194,6 +194,7 @@ export default function ProductIndex({ products, filters, categories }) {
                 )}
             </div>
 
+            {can('product.delete') && (
             <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
                 <DialogContent className="p-0">
                     <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
@@ -217,6 +218,7 @@ export default function ProductIndex({ products, filters, categories }) {
                     </div>
                 </DialogContent>
             </Dialog>
+            )}
         </>
     );
 }

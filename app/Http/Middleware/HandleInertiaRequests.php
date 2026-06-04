@@ -40,12 +40,19 @@ class HandleInertiaRequests extends Middleware
     {
         $cart = $request->session()->get('cart', []);
 
+        $user = $request->user();
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
-                'user' => $request->user(),
+                'user' => $user,
                 'customer' => $request->user('customer'),
+                'permissions' => $user
+                    ? ($user->isSuperAdmin()
+                        ? ['*']
+                        : $user->getAllPermissions()->pluck('name')->values()->all())
+                    : [],
             ],
             'adminNavigation' => $request->user()
                 ? app(AdminNavigation::class)->build($request->user())

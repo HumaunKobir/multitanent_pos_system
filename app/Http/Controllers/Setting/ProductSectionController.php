@@ -20,6 +20,8 @@ class ProductSectionController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('setting.productsection.view');
+
         $sections = ProductSection::query()
             ->forPanel()
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
@@ -53,6 +55,8 @@ class ProductSectionController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $this->authorize('setting.productsection.create');
+
         $data = $this->validatedData($request);
 
         $maxSerial = ProductSection::query()->forPanel()->max('serial') ?? 0;
@@ -69,6 +73,8 @@ class ProductSectionController extends Controller
 
     public function update(Request $request, ProductSection $productsection): RedirectResponse
     {
+        $this->authorize('setting.productsection.update');
+
         $section = $this->resolveSection($productsection);
         $data = $this->validatedData($request, $section);
 
@@ -96,6 +102,8 @@ class ProductSectionController extends Controller
 
     public function updateOrder(Request $request): RedirectResponse
     {
+        $this->authorize('setting.productsection.update');
+
         $validated = $request->validate([
             'orders' => ['required', 'array'],
             'orders.*.id' => ['required', 'integer', Rule::exists('product_sections', 'id')],

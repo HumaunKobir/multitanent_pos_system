@@ -15,6 +15,8 @@ class CategoryController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('setting.category.view');
+
         $categories = Category::query()
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->latest()
@@ -29,6 +31,8 @@ class CategoryController extends Controller
 
     public function store(Request $request): RedirectResponse|JsonResponse
     {
+        $this->authorize('setting.category.create');
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:191'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
@@ -51,6 +55,8 @@ class CategoryController extends Controller
 
     public function update(Request $request, Category $category): RedirectResponse
     {
+        $this->authorize('setting.category.update');
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:191'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
@@ -74,6 +80,8 @@ class CategoryController extends Controller
 
     public function destroy(Category $category): RedirectResponse
     {
+        $this->authorize('setting.category.delete');
+
         if ($category->image) {
             Storage::disk('public')->delete($category->image);
         }

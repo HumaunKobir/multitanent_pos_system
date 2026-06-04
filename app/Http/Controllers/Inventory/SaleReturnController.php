@@ -25,6 +25,8 @@ class SaleReturnController extends Controller
 
     public function index(Request $request): Response
     {
+        $this->authorize('inventory.sale-return.view');
+
         $returns = SaleReturn::query()->ownBranch()
             ->with(['customer:id,name', 'sell:id'])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
@@ -43,6 +45,8 @@ class SaleReturnController extends Controller
 
     public function create(): Response
     {
+        $this->authorize('inventory.sale-return.create');
+
         return Inertia::render('admin/inventory/sale-return/create', [
             'today' => now()->format('Y-m-d'),
             'paymentAccounts' => $this->paymentAccounts(),
@@ -51,6 +55,8 @@ class SaleReturnController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $this->authorize('inventory.sale-return.create');
+
         $data = $request->validate([
             'sell_id' => ['required', 'exists:sells,id'],
             'date' => ['required', 'date'],
@@ -169,6 +175,7 @@ class SaleReturnController extends Controller
 
     public function show(SaleReturn $saleReturn): Response
     {
+        $this->authorize('inventory.sale-return.view');
         $this->authorizeBranch($saleReturn);
 
         $saleReturn->load([
@@ -185,6 +192,7 @@ class SaleReturnController extends Controller
 
     public function edit(SaleReturn $saleReturn): Response
     {
+        $this->authorize('inventory.sale-return.update');
         $this->authorizeBranch($saleReturn);
 
         $saleReturn->load(['customer', 'sell', 'products.product']);

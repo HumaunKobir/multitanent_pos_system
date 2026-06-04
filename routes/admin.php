@@ -18,6 +18,7 @@ use App\Http\Controllers\Inventory\SaleReturnController;
 use App\Http\Controllers\Inventory\SellController;
 use App\Http\Controllers\Inventory\SupplierController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Setting\BrandController;
 use App\Http\Controllers\Setting\CategoryController;
 use App\Http\Controllers\Setting\ColorController;
@@ -38,6 +39,9 @@ Route::middleware(['auth', 'verified', 'superadmin'])->prefix('admin')->name('ad
 Route::middleware(['auth', 'verified', 'superadmin'])->group(function () {
     Route::resource('branch', BranchController::class)->except(['create', 'edit', 'show']);
     Route::resource('user', UserController::class)->except(['create', 'edit', 'show']);
+    Route::resource('role', RoleController::class)->except(['show']);
+    Route::get('role/{role}/permissions', [RoleController::class, 'editPermissions'])->name('role.permissions');
+    Route::put('role/{role}/permissions', [RoleController::class, 'updatePermissions'])->name('role.permissions.update');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {

@@ -1,5 +1,6 @@
 import { formatQty } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
+import { useCan } from '@/hooks/use-can';
 import { formatBdDate } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
@@ -9,10 +10,26 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
-export default function DocShow({ title, invoice, backRoute, editRoute, destroyRoute, id, date, comment, lines = [], extra }) {
+export default function DocShow({
+    title,
+    invoice,
+    backRoute,
+    editRoute,
+    destroyRoute,
+    updatePermission,
+    deletePermission,
+    id,
+    date,
+    comment,
+    lines = [],
+    extra,
+}) {
     const { flash } = usePage().props;
     const toast = useAppToast();
+    const { can } = useCan();
     const [deleting, setDeleting] = useState(false);
+    const showEdit = editRoute && (!updatePermission || can(updatePermission));
+    const showDelete = destroyRoute && (!deletePermission || can(deletePermission));
 
     useEffect(() => {
         if (flash.success) toast.success(flash.success);
@@ -26,12 +43,14 @@ export default function DocShow({ title, invoice, backRoute, editRoute, destroyR
                 <div className="mb-3 flex justify-between rounded-lg bg-blue-950 px-5 py-3 text-white">
                     <div><h1 className="text-base font-semibold">{title}</h1><p className="font-mono text-xs text-white/60">{invoice}</p></div>
                     <div className="flex gap-2">
-                        {editRoute && (
+                        {showEdit && (
                             <Button size="sm" variant="outline" asChild className="border-white/30 text-white">
                                 <Link href={route(editRoute, id)}><Edit className="size-3.5" /></Link>
                             </Button>
                         )}
-                        <Button size="sm" variant="destructive" onClick={() => setDeleting(true)}><Trash2 className="size-3.5" /></Button>
+                        {showDelete && (
+                            <Button size="sm" variant="destructive" onClick={() => setDeleting(true)}><Trash2 className="size-3.5" /></Button>
+                        )}
                         <Button size="sm" variant="outline" asChild className="border-white/30 text-white"><Link href={route(backRoute)}><ArrowLeft className="size-3.5" />Back</Link></Button>
                     </div>
                 </div>
@@ -42,6 +61,7 @@ export default function DocShow({ title, invoice, backRoute, editRoute, destroyR
                         <tr key={i} className="border-t"><td className="p-2">{l.name}</td><td className="p-2 text-right">{formatQty(l.qty)}</td>{l.price != null && <td className="p-2 text-right">৳{parseFloat(l.price).toFixed(2)}</td>}</tr>
                     ))}</tbody>
                 </table>
+                {showDelete && (
                 <Dialog open={deleting} onOpenChange={setDeleting}>
                     <DialogContent className="max-w-sm">
                         <DialogHeader><DialogTitle>Delete?</DialogTitle><DialogDescription>This cannot be undone.</DialogDescription></DialogHeader>
@@ -51,6 +71,7 @@ export default function DocShow({ title, invoice, backRoute, editRoute, destroyR
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+                )}
             </div>
         </>
     );

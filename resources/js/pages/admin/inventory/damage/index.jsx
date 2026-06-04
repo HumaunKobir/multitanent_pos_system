@@ -9,11 +9,14 @@ import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { AdminCreateLink, AdminRowActions } from '@/components/admin/row-actions';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
+import { useCan } from '@/hooks/use-can';
 
 export default function DamageIndex({ damages = { data: [] }, filters = {} }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
+    const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [deleting, setDeleting] = useState(null);
 
@@ -58,17 +61,13 @@ export default function DamageIndex({ damages = { data: [] }, filters = {} }) {
             header: 'Actions',
             align: 'right',
             render: (row) => (
-                <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" asChild>
-                        <Link href={route('inventory.damage.show', row.id)}><Eye className="size-3.5" /></Link>
-                    </Button>
-                    <Button size="sm" variant="outline" asChild>
-                        <Link href={route('inventory.damage.edit', row.id)}><Edit className="size-3.5" /></Link>
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => setDeleting(row)}>
-                        <Trash2 className="size-3.5" />
-                    </Button>
-                </div>
+                <AdminRowActions
+                    prefix="inventory.damage"
+                    id={row.id}
+                    showRoute="inventory.damage.show"
+                    editRoute="inventory.damage.edit"
+                    onDelete={() => setDeleting(row)}
+                />
             ),
         },
     ];
@@ -87,12 +86,17 @@ export default function DamageIndex({ damages = { data: [] }, filters = {} }) {
                             <p className="text-xs text-white/60">Record damaged stock.</p>
                         </div>
                     </div>
-                    <Button size="sm" asChild className="border border-white/30 bg-white/10 text-white hover:bg-white/20">
-                        <Link href={route('inventory.damage.create')}><Plus className="size-3.5" />New Damage</Link>
-                    </Button>
+                    <AdminCreateLink
+                        permission="inventory.damage.create"
+                        href={route('inventory.damage.create')}
+                        label="New Damage"
+                        icon={Plus}
+                        className="border border-white/30 bg-white/10 text-white hover:bg-white/20"
+                    />
                 </div>
                 <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" className="mb-4 max-w-xs" />
                 <DataTable columns={columns} rows={damages.data} rowKey="id" emptyMessage="No damage records." />
+                {can('inventory.damage.delete') && (
                 <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
                     <DialogContent className="max-w-sm">
                         <DialogHeader>
@@ -105,6 +109,7 @@ export default function DamageIndex({ damages = { data: [] }, filters = {} }) {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+                )}
             </div>
         </>
     );

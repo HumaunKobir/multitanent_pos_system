@@ -9,11 +9,14 @@ import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { AdminCreateLink, AdminRowActions } from '@/components/admin/row-actions';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
+import { useCan } from '@/hooks/use-can';
 
 export default function PurchaseReturnIndex({ returns = { data: [] }, filters = {} }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
+    const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [deleting, setDeleting] = useState(null);
 
@@ -51,11 +54,13 @@ export default function PurchaseReturnIndex({ returns = { data: [] }, filters = 
             header: 'Actions',
             align: 'right',
             render: (row) => (
-                <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" asChild><Link href={route('inventory.purchase-return.show', row.id)}><Eye className="size-3.5" /></Link></Button>
-                    <Button size="sm" variant="outline" asChild><Link href={route('inventory.purchase-return.edit', row.id)}><Edit className="size-3.5" /></Link></Button>
-                    <Button size="sm" variant="destructive" onClick={() => setDeleting(row)}><Trash2 className="size-3.5" /></Button>
-                </div>
+                <AdminRowActions
+                    prefix="inventory.purchase-return"
+                    id={row.id}
+                    showRoute="inventory.purchase-return.show"
+                    editRoute="inventory.purchase-return.edit"
+                    onDelete={() => setDeleting(row)}
+                />
             ),
         },
     ];
@@ -69,12 +74,17 @@ export default function PurchaseReturnIndex({ returns = { data: [] }, filters = 
                         <div className="flex size-8 items-center justify-center rounded-md bg-white/15"><HandCoins className="size-4 text-white" /></div>
                         <div><h1 className="text-base font-semibold text-white">Purchase Returns</h1></div>
                     </div>
-                    <Button size="sm" asChild className="border border-white/30 bg-white/10 text-white hover:bg-white/20">
-                        <Link href={route('inventory.purchase-return.create')}><Plus className="size-3.5" />New Return</Link>
-                    </Button>
+                    <AdminCreateLink
+                        permission="inventory.purchase-return.create"
+                        href={route('inventory.purchase-return.create')}
+                        label="New Return"
+                        icon={Plus}
+                        className="border border-white/30 bg-white/10 text-white hover:bg-white/20"
+                    />
                 </div>
                 <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" className="mb-4 max-w-xs" />
                 <DataTable columns={columns} rows={returns.data} rowKey="id" emptyMessage="No purchase returns." />
+                {can('inventory.purchase-return.delete') && (
                 <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
                     <DialogContent className="max-w-sm">
                         <DialogHeader><DialogTitle>Delete purchase return?</DialogTitle><DialogDescription>This will reverse stock and supplier balance.</DialogDescription></DialogHeader>
@@ -84,6 +94,7 @@ export default function PurchaseReturnIndex({ returns = { data: [] }, filters = 
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+                )}
             </div>
         </>
     );

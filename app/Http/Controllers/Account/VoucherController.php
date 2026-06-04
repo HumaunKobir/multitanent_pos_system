@@ -23,6 +23,8 @@ class VoucherController extends Controller
 
     public function index(Request $request): Response
     {
+        $this->authorize('accounts.view');
+
         $typeSlug = $request->string('type')->toString() ?: 'journal';
         $type = VoucherType::fromSlug($typeSlug) ?? VoucherType::Journal;
 
@@ -56,6 +58,8 @@ class VoucherController extends Controller
 
     public function store(StoreVoucherRequest $request): RedirectResponse
     {
+        $this->authorize('accounts.create');
+
         $user = Auth::user();
         abort_unless($user, 403);
 
@@ -74,6 +78,8 @@ class VoucherController extends Controller
 
     public function show(Voucher $voucher): JsonResponse
     {
+        $this->authorize('accounts.view');
+
         $voucher->load([
             'lines.account:id,code,name',
             'party:id,name',
@@ -90,6 +96,8 @@ class VoucherController extends Controller
 
     public function update(UpdateVoucherRequest $request, Voucher $voucher): RedirectResponse
     {
+        $this->authorize('accounts.update');
+
         try {
             $this->voucherService->update($voucher, $request->validated());
         } catch (\Exception $e) {
@@ -103,6 +111,8 @@ class VoucherController extends Controller
 
     public function destroy(Voucher $voucher): RedirectResponse
     {
+        $this->authorize('accounts.delete');
+
         $type = $voucher->type->slug();
 
         try {
@@ -118,6 +128,8 @@ class VoucherController extends Controller
 
     public function nextNumber(Request $request): JsonResponse
     {
+        $this->authorize('accounts.create');
+
         $type = VoucherType::fromSlug($request->string('type')->toString() ?? '') ?? VoucherType::Journal;
 
         return response()->json([

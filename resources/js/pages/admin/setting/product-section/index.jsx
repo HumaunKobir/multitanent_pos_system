@@ -9,10 +9,14 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { settingRoutes } from '@/lib/route';
+import { AdminCreateButton, AdminInlineActions } from '@/components/admin/row-actions';
+import { Can } from '@/components/can';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
+import { useCan } from '@/hooks/use-can';
 import ProductSectionFormDialog from './form-dialog';
 
 const routes = settingRoutes('productsection');
+const PERM = 'setting.productsection';
 
 export default function ProductSectionIndex({
     sections,
@@ -23,6 +27,7 @@ export default function ProductSectionIndex({
 }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
+    const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [deleting, setDeleting] = useState(null);
     const [editing, setEditing] = useState(null);
@@ -100,14 +105,18 @@ export default function ProductSectionIndex({
             id: 'order',
             header: 'Order',
             render: (row, index) => (
-                <div className="flex gap-1">
-                    <Button type="button" size="sm" variant="outline" onClick={() => moveRow(index, -1)}>
-                        <ArrowUp className="size-3.5" />
-                    </Button>
-                    <Button type="button" size="sm" variant="outline" onClick={() => moveRow(index, 1)}>
-                        <ArrowDown className="size-3.5" />
-                    </Button>
-                </div>
+                can(`${PERM}.update`) ? (
+                    <div className="flex gap-1">
+                        <Button type="button" size="sm" variant="outline" onClick={() => moveRow(index, -1)}>
+                            <ArrowUp className="size-3.5" />
+                        </Button>
+                        <Button type="button" size="sm" variant="outline" onClick={() => moveRow(index, 1)}>
+                            <ArrowDown className="size-3.5" />
+                        </Button>
+                    </div>
+                ) : (
+                    <span className="text-muted-foreground">—</span>
+                )
             ),
         },
         {
@@ -115,16 +124,11 @@ export default function ProductSectionIndex({
             header: 'Actions',
             align: 'right',
             render: (row) => (
-                <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" asChild>
-                        <button type="button" onClick={() => { setEditing(row); setFormOpen(true); }}>
-                            <Pencil className="size-3.5" />
-                        </button>
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => setDeleting(row)}>
-                        <Trash2 className="size-3.5" />
-                    </Button>
-                </div>
+                <AdminInlineActions
+                    prefix={PERM}
+                    onEdit={() => { setEditing(row); setFormOpen(true); }}
+                    onDelete={() => setDeleting(row)}
+                />
             ),
         },
     ];
@@ -145,15 +149,18 @@ export default function ProductSectionIndex({
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <Button size="sm" variant="outline" className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md" onClick={saveOrder}>
-                            Save Order
-                        </Button>
-                        <Button size="sm" asChild className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md">
-                            <button type="button" onClick={() => { setEditing(null); setFormOpen(true); }}>
-                                <Plus className="size-3.5" />
-                                Add New
-                            </button>
-                        </Button>
+                        {can(`${PERM}.update`) && (
+                            <Button size="sm" variant="outline" className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md" onClick={saveOrder}>
+                                Save Order
+                            </Button>
+                        )}
+                        <AdminCreateButton
+                            permission={`${PERM}.create`}
+                            onClick={() => { setEditing(null); setFormOpen(true); }}
+                            label="Add New"
+                            icon={Plus}
+                            className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
+                        />
                     </div>
                 </div>
 
@@ -187,6 +194,7 @@ export default function ProductSectionIndex({
                 )}
             </div>
 
+            {can(`${PERM}.delete`) && (
             <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
                 <DialogContent>
                     <DialogHeader>
@@ -205,16 +213,19 @@ export default function ProductSectionIndex({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+            )}
 
-            <ProductSectionFormDialog
-                open={formOpen}
-                onOpenChange={setFormOpen}
-                item={editing}
-                routes={routes}
-                layoutTypeOptions={layoutTypeOptions}
-                blockTypeOptions={blockTypeOptions}
-                productOptions={productOptions}
-            />
+            <Can permission={[`${PERM}.create`, `${PERM}.update`]}>
+                <ProductSectionFormDialog
+                    open={formOpen}
+                    onOpenChange={setFormOpen}
+                    item={editing}
+                    routes={routes}
+                    layoutTypeOptions={layoutTypeOptions}
+                    blockTypeOptions={blockTypeOptions}
+                    productOptions={productOptions}
+                />
+            </Can>
         </>
     );
 }

@@ -14,6 +14,8 @@ class SliderController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('setting.slider.view');
+
         $sliders = Slider::query()
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->latest()
@@ -28,6 +30,8 @@ class SliderController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $this->authorize('setting.slider.create');
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,gif,webp', 'max:5048'],
@@ -74,6 +78,8 @@ class SliderController extends Controller
 
     public function destroy(Slider $slider): RedirectResponse
     {
+        $this->authorize('setting.slider.delete');
+
         if ($slider->image) {
             Storage::disk('public')->delete($slider->image);
         }

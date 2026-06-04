@@ -18,6 +18,8 @@ class TagController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('setting.tag.view');
+
         $tags = Tag::query()
             ->forPanel()
             ->with('parent:id,name')
@@ -49,6 +51,8 @@ class TagController extends Controller
 
     public function store(Request $request): RedirectResponse|JsonResponse
     {
+        $this->authorize('setting.tag.create');
+
         $data = $this->validatedData($request);
 
         if ($request->hasFile('image')) {
@@ -67,6 +71,8 @@ class TagController extends Controller
 
     public function update(Request $request, Tag $tag): RedirectResponse
     {
+        $this->authorize('setting.tag.update');
+
         $tag = $this->resolveTag($tag);
         $data = $this->validatedData($request, $tag);
 
@@ -87,6 +93,8 @@ class TagController extends Controller
 
     public function destroy(Tag $tag): RedirectResponse
     {
+        $this->authorize('setting.tag.delete');
+
         $tag = $this->resolveTag($tag);
 
         if ($tag->children()->exists()) {

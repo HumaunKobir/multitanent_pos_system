@@ -13,6 +13,12 @@ class SaleLookupController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
+        abort_unless(
+            $request->user()?->can('inventory.sale-return.create')
+            || $request->user()?->can('inventory.product-exchange.create'),
+            403,
+        );
+
         $request->validate([
             'invoice' => ['required', 'string'],
         ]);

@@ -121,6 +121,11 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - Every change must be programmatically tested. Write a new test or update an existing test, then run the affected tests to make sure they pass.
 - Run the minimum number of tests needed to ensure code quality and speed. Use `php artisan test --compact` with a specific filename or filter.
 
+## Database (tests)
+
+- **Never refresh or wipe the database during tests.** Do not use `RefreshDatabase`, `LazilyRefreshDatabase`, or `DatabaseMigrations`. Do not call `migrate:fresh`, `migrate:refresh`, or `db:wipe` from tests.
+- Tests run against the shared MySQL database in `phpunit.xml`. Use factories to create test data; clean up only specific records when needed.
+
 === inertia-laravel/core rules ===
 
 # Inertia
@@ -189,6 +194,7 @@ This project has domain-specific skills available in `**/skills/**`. You MUST ac
 - The `{name}` argument should not include the test suite directory. Use `php artisan make:test --pest SomeFeatureTest` instead of `php artisan make:test --pest Feature/SomeFeatureTest`.
 - Run tests: `php artisan test --compact` or filter: `php artisan test --compact --filter=testName`.
 - Do NOT delete tests without approval.
+- Never use `RefreshDatabase` / `migrate:fresh` / `db:wipe` in tests (shared DB; use factories).
 
 === inertia-react/core rules ===
 

@@ -13,6 +13,8 @@ class SupplierController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('party.supplier.view');
+
         $suppliers = Supplier::ownBranch()
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('name', 'like', "%{$s}%")
@@ -31,6 +33,8 @@ class SupplierController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $this->authorize('party.supplier.create');
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:30'],
@@ -50,6 +54,8 @@ class SupplierController extends Controller
 
     public function update(Request $request, Supplier $supplier): RedirectResponse
     {
+        $this->authorize('party.supplier.update');
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:30'],
@@ -64,6 +70,8 @@ class SupplierController extends Controller
 
     public function destroy(Supplier $supplier): RedirectResponse
     {
+        $this->authorize('party.supplier.delete');
+
         if ($supplier->purchases()->exists()) {
             return back()->with('error', 'Cannot delete supplier with purchase history.');
         }

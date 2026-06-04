@@ -8,6 +8,8 @@ export default function SaleReturnShow({ saleReturn }) {
             backRoute="inventory.sale-return.index"
             editRoute="inventory.sale-return.edit"
             destroyRoute="inventory.sale-return.destroy"
+            updatePermission="inventory.sale-return.update"
+            deletePermission="inventory.sale-return.delete"
             id={saleReturn.id}
             date={saleReturn.date}
             comment={saleReturn.comment}

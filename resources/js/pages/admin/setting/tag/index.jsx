@@ -9,10 +9,14 @@ import { cn } from '@/lib/utils';
 import { Dialog, DialogClose, DialogContent, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { settingRoutes } from '@/lib/route';
+import { AdminCreateButton } from '@/components/admin/row-actions';
+import { Can } from '@/components/can';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
+import { useCan } from '@/hooks/use-can';
 import TagFormDialog from './form-dialog';
 
 const routes = settingRoutes('tag');
+const PERM = 'setting.tag';
 
 const statusPillBase =
     'inline-flex items-center border px-2.5 py-1 text-[0.8125rem] leading-tight tracking-tight';
@@ -70,6 +74,7 @@ function statusLabel(row, statusOptions) {
 export default function TagIndex({ tags, filters, parentOptions, statusOptions, tagHierarchy }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
+    const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [deleting, setDeleting] = useState(null);
     const [editing, setEditing] = useState(null);
@@ -153,22 +158,26 @@ export default function TagIndex({ tags, filters, parentOptions, statusOptions, 
             align: 'right',
             render: (row) => (
                 <div className="flex justify-end gap-1">
-                    <button
-                        type="button"
-                        onClick={() => openEdit(row)}
-                        aria-label={`Edit ${row.name}`}
-                        className="inline-flex size-6 items-center justify-center rounded-none border border-indigo-200 bg-indigo-50 text-indigo-600 transition-all duration-200 hover:-translate-y-1 hover:border-indigo-500 hover:bg-indigo-600 hover:text-white hover:shadow-sm hover:shadow-indigo-500/35"
-                    >
-                        <Pencil className="size-2.5" strokeWidth={2.5} />
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setDeleting(row)}
-                        aria-label={`Delete ${row.name}`}
-                        className="inline-flex size-6 items-center justify-center rounded-none border border-red-200 bg-red-50 text-red-600 transition-all duration-200 hover:-translate-y-1 hover:border-red-500 hover:bg-red-600 hover:text-white hover:shadow-sm hover:shadow-red-500/35"
-                    >
-                        <Trash2 className="size-2.5" strokeWidth={2.5} />
-                    </button>
+                    {can(`${PERM}.update`) && (
+                        <button
+                            type="button"
+                            onClick={() => openEdit(row)}
+                            aria-label={`Edit ${row.name}`}
+                            className="inline-flex size-6 items-center justify-center rounded-none border border-indigo-200 bg-indigo-50 text-indigo-600 transition-all duration-200 hover:-translate-y-1 hover:border-indigo-500 hover:bg-indigo-600 hover:text-white hover:shadow-sm hover:shadow-indigo-500/35"
+                        >
+                            <Pencil className="size-2.5" strokeWidth={2.5} />
+                        </button>
+                    )}
+                    {can(`${PERM}.delete`) && (
+                        <button
+                            type="button"
+                            onClick={() => setDeleting(row)}
+                            aria-label={`Delete ${row.name}`}
+                            className="inline-flex size-6 items-center justify-center rounded-none border border-red-200 bg-red-50 text-red-600 transition-all duration-200 hover:-translate-y-1 hover:border-red-500 hover:bg-red-600 hover:text-white hover:shadow-sm hover:shadow-red-500/35"
+                        >
+                            <Trash2 className="size-2.5" strokeWidth={2.5} />
+                        </button>
+                    )}
                 </div>
             ),
         },
@@ -189,12 +198,13 @@ export default function TagIndex({ tags, filters, parentOptions, statusOptions, 
                             <p className="text-xs text-white/60">Manage your product tags.</p>
                         </div>
                     </div>
-                    <Button size="sm" asChild className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md">
-                        <button type="button" onClick={openCreate}>
-                            <Plus className="size-3.5" />
-                            Add New
-                        </button>
-                    </Button>
+                    <AdminCreateButton
+                        permission={`${PERM}.create`}
+                        onClick={openCreate}
+                        label="Add New"
+                        icon={Plus}
+                        className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
+                    />
                 </div>
 
                 <div className="mb-4 flex gap-2">
@@ -227,6 +237,7 @@ export default function TagIndex({ tags, filters, parentOptions, statusOptions, 
                 )}
             </div>
 
+            {can(`${PERM}.delete`) && (
             <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
                 <DialogContent className="p-0">
                     <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
@@ -250,15 +261,18 @@ export default function TagIndex({ tags, filters, parentOptions, statusOptions, 
                     </div>
                 </DialogContent>
             </Dialog>
+            )}
 
-            <TagFormDialog
-                open={formOpen}
-                onOpenChange={setFormOpen}
-                item={editing}
-                routes={routes}
-                parentOptions={formParentOptions}
-                statusOptions={statusOptions}
-            />
+            <Can permission={[`${PERM}.create`, `${PERM}.update`]}>
+                <TagFormDialog
+                    open={formOpen}
+                    onOpenChange={setFormOpen}
+                    item={editing}
+                    routes={routes}
+                    parentOptions={formParentOptions}
+                    statusOptions={statusOptions}
+                />
+            </Can>
         </>
     );
 }

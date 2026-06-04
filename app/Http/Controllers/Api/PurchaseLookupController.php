@@ -12,6 +12,8 @@ class PurchaseLookupController extends Controller
 {
     public function __invoke(Request $request): JsonResponse
     {
+        $this->authorize('inventory.purchase-return.create');
+
         $request->validate([
             'invoice' => ['required', 'string'],
         ]);

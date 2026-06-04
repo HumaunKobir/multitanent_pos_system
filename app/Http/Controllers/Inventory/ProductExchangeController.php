@@ -25,6 +25,8 @@ class ProductExchangeController extends Controller
 
     public function index(Request $request): Response
     {
+        $this->authorize('inventory.product-exchange.view');
+
         $exchanges = ProductExchange::query()->ownBranch()
             ->with(['customer:id,name', 'sell:id'])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
@@ -43,6 +45,8 @@ class ProductExchangeController extends Controller
 
     public function create(): Response
     {
+        $this->authorize('inventory.product-exchange.create');
+
         return Inertia::render('admin/inventory/product-exchange/create', [
             'today' => now()->format('Y-m-d'),
             'paymentAccounts' => $this->paymentAccounts(),
@@ -51,6 +55,8 @@ class ProductExchangeController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $this->authorize('inventory.product-exchange.create');
+
         $data = $request->validate([
             'sell_id' => ['required', 'exists:sells,id'],
             'date' => ['required', 'date'],
@@ -196,6 +202,7 @@ class ProductExchangeController extends Controller
 
     public function show(ProductExchange $productExchange): Response
     {
+        $this->authorize('inventory.product-exchange.view');
         $this->authorizeBranch($productExchange);
 
         $productExchange->load([
@@ -214,6 +221,7 @@ class ProductExchangeController extends Controller
 
     public function edit(ProductExchange $productExchange): Response
     {
+        $this->authorize('inventory.product-exchange.update');
         $this->authorizeBranch($productExchange);
 
         $productExchange->load([
@@ -262,6 +270,7 @@ class ProductExchangeController extends Controller
 
     public function update(Request $request, ProductExchange $productExchange): RedirectResponse
     {
+        $this->authorize('inventory.product-exchange.update');
         $this->authorizeBranch($productExchange);
 
         $data = $request->validate([
@@ -410,6 +419,7 @@ class ProductExchangeController extends Controller
 
     public function destroy(ProductExchange $productExchange): RedirectResponse
     {
+        $this->authorize('inventory.product-exchange.delete');
         $this->authorizeBranch($productExchange);
 
         $productExchange->load(['products', 'sell']);

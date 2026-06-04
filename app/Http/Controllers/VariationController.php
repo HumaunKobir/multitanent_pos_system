@@ -11,6 +11,8 @@ class VariationController extends Controller
 {
     public function store(Request $request): JsonResponse
     {
+        $this->authorize('product.create');
+
         $data = $request->validate([
             'product_id' => ['required', 'integer', 'exists:products,id'],
             'variation_data' => ['required', 'array'],
@@ -33,6 +35,8 @@ class VariationController extends Controller
 
     public function destroy(ProductVariation $variation): JsonResponse
     {
+        $this->authorize('product.update');
+
         if ($variation->stock > 0) {
             return response()->json(['error' => 'Stock আছে, delete করা যাবে না'], 422);
         }

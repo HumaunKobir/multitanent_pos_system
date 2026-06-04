@@ -17,9 +17,10 @@ function FormField({ label, name, error, children }) {
     );
 }
 
-export default function UserFormDialog({ open, onOpenChange, item, routes, branches }) {
+export default function UserFormDialog({ open, onOpenChange, item, routes, branches, roles }) {
     const isEditing = !!item?.id;
     const branchOptions = Object.entries(branches ?? {});
+    const roleOptions = Object.entries(roles ?? {});
 
     const form = useForm({
         branch_id: item?.branch_id ? String(item.branch_id) : '',
@@ -29,6 +30,7 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
         password: '',
         password_confirmation: '',
         status: String(item?.status ?? '1'),
+        role_id: item?.role_id ? String(item.role_id) : '',
     });
 
     useEffect(() => {
@@ -40,6 +42,7 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
             password: '',
             password_confirmation: '',
             status: String(item?.status ?? '1'),
+            role_id: item?.role_id ? String(item.role_id) : '',
         });
         form.clearErrors();
     }, [item]);
@@ -51,6 +54,7 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
             const next = {
                 ...data,
                 branch_id: data.branch_id === '' ? null : Number(data.branch_id),
+                role_id: data.role_id === '' ? null : Number(data.role_id),
             };
 
             if (isEditing && !data.password) {
@@ -61,9 +65,7 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
             return next;
         });
 
-        const options = {
-            onSuccess: () => onOpenChange(false),
-        };
+        const options = { onSuccess: () => onOpenChange(false) };
 
         if (isEditing) {
             form.patch(routes.update(item.id), options);
@@ -160,6 +162,25 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                         />
                     </FormField>
 
+                    <FormField label="Role" name="role_id" error={form.errors.role_id}>
+                        <Select
+                            value={form.data.role_id === '' ? '__none__' : form.data.role_id}
+                            onValueChange={(value) => form.setData('role_id', value === '__none__' ? '' : value)}
+                        >
+                            <SelectTrigger id="role_id" className="mt-1 w-full" aria-invalid={!!form.errors.role_id}>
+                                <SelectValue placeholder="Select role" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="__none__">No Role</SelectItem>
+                                {roleOptions.map(([id, name]) => (
+                                    <SelectItem key={id} value={String(id)}>
+                                        {name}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </FormField>
+
                     <FormField label="Status" name="status" error={form.errors.status}>
                         <Select value={form.data.status} onValueChange={(value) => form.setData('status', value)}>
                             <SelectTrigger id="status" className="mt-1 w-full" aria-invalid={!!form.errors.status}>
@@ -173,10 +194,21 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                     </FormField>
 
                     <div className="flex justify-end gap-3 border-t pt-4">
-                        <Button type="button" variant="outline" size="sm" className="border-red-500 text-red-500 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-red-500 hover:text-white hover:shadow-md hover:shadow-red-500/30" onClick={() => onOpenChange(false)}>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="border-red-500 text-red-500 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-red-500 hover:text-white hover:shadow-md hover:shadow-red-500/30"
+                            onClick={() => onOpenChange(false)}
+                        >
                             Cancel
                         </Button>
-                        <Button type="submit" disabled={form.processing} size="sm" className="bg-emerald-600 text-white shadow-sm shadow-emerald-500/30 transition-all duration-150 hover:bg-emerald-600 hover:-translate-y-0.5 hover:shadow-md hover:shadow-emerald-500/50">
+                        <Button
+                            type="submit"
+                            disabled={form.processing}
+                            size="sm"
+                            className="bg-emerald-600 text-white shadow-sm shadow-emerald-500/30 transition-all duration-150 hover:bg-emerald-600 hover:-translate-y-0.5 hover:shadow-md hover:shadow-emerald-500/50"
+                        >
                             {isEditing ? 'Update' : 'Create'}
                         </Button>
                     </div>

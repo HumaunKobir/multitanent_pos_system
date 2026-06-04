@@ -26,6 +26,8 @@ class PurchaseReturnController extends Controller
 
     public function index(Request $request): Response
     {
+        $this->authorize('inventory.purchase-return.view');
+
         $returns = PurchaseReturn::query()->ownBranch()
             ->with(['supplier:id,name', 'purchase:id'])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
@@ -44,6 +46,8 @@ class PurchaseReturnController extends Controller
 
     public function create(): Response
     {
+        $this->authorize('inventory.purchase-return.create');
+
         return Inertia::render('admin/inventory/purchase-return/create', [
             'today' => now()->format('Y-m-d'),
             'paymentAccounts' => $this->paymentAccounts(),
@@ -52,6 +56,8 @@ class PurchaseReturnController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $this->authorize('inventory.purchase-return.create');
+
         $data = $request->validate([
             'purchase_id' => ['required', 'exists:purchases,id'],
             'date' => ['required', 'date'],
@@ -162,6 +168,7 @@ class PurchaseReturnController extends Controller
 
     public function show(PurchaseReturn $purchaseReturn): Response
     {
+        $this->authorize('inventory.purchase-return.view');
         $this->authorizeBranch($purchaseReturn);
 
         $purchaseReturn->load([
@@ -178,6 +185,7 @@ class PurchaseReturnController extends Controller
 
     public function edit(PurchaseReturn $purchaseReturn): Response
     {
+        $this->authorize('inventory.purchase-return.update');
         $this->authorizeBranch($purchaseReturn);
 
         $purchaseReturn->load(['supplier', 'purchase', 'products.product']);
@@ -231,6 +239,7 @@ class PurchaseReturnController extends Controller
 
     public function update(Request $request, PurchaseReturn $purchaseReturn): RedirectResponse
     {
+        $this->authorize('inventory.purchase-return.update');
         $this->authorizeBranch($purchaseReturn);
 
         $data = $request->validate([
@@ -343,6 +352,7 @@ class PurchaseReturnController extends Controller
 
     public function destroy(PurchaseReturn $purchaseReturn): RedirectResponse
     {
+        $this->authorize('inventory.purchase-return.delete');
         $this->authorizeBranch($purchaseReturn);
 
         $purchaseReturn->load(['products']);

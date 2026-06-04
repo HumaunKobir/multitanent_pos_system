@@ -1,5 +1,8 @@
+import { AdminCreateButton, AdminInlineActions } from '@/components/admin/row-actions';
+import { Can } from '@/components/can';
 import { DataTable } from '@/components/ui/data-table';
 import { useAppToast } from '@/contexts/app-toast-context';
+import { useCan } from '@/hooks/use-can';
 import { Head, router, usePage } from '@inertiajs/react';
 import { Pencil, Plus, Trash2, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -12,9 +15,10 @@ import UserFormDialog from './form-dialog';
 
 const routes = resourceRoutes('user');
 
-export default function UserIndex({ users, branches }) {
+export default function UserIndex({ users, branches, roles }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
+    const { can } = useCan();
     const [deleting, setDeleting] = useState(null);
     const [editing, setEditing] = useState(null);
     const [formOpen, setFormOpen] = useState(false);
@@ -56,6 +60,18 @@ export default function UserIndex({ users, branches }) {
             render: (row) => row.branch_name ?? 'All Branches',
         },
         {
+            id: 'role',
+            header: 'Role',
+            render: (row) =>
+                row.role_name ? (
+                    <Badge variant="outline" className="text-xs">
+                        {row.role_name}
+                    </Badge>
+                ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                ),
+        },
+        {
             id: 'status',
             header: 'Status',
             render: (row) => (
@@ -75,16 +91,7 @@ export default function UserIndex({ users, branches }) {
             header: 'Actions',
             align: 'right',
             render: (row) => (
-                <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" asChild>
-                        <button type="button" onClick={() => openEdit(row)}>
-                            <Pencil className="size-3.5" />
-                        </button>
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => setDeleting(row)}>
-                        <Trash2 className="size-3.5" />
-                    </Button>
-                </div>
+                <AdminInlineActions prefix="user" onEdit={() => openEdit(row)} onDelete={() => setDeleting(row)} />
             ),
         },
     ];
@@ -104,16 +111,18 @@ export default function UserIndex({ users, branches }) {
                             <p className="text-xs text-white/60">Manage your admin users.</p>
                         </div>
                     </div>
-                    <Button size="sm" asChild className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md">
-                        <button type="button" onClick={openCreate}>
-                            <Plus className="size-3.5" />
-                            Add New
-                        </button>
-                    </Button>
+                    <AdminCreateButton
+                        permission="user.create"
+                        onClick={openCreate}
+                        label="Add New"
+                        icon={Plus}
+                        className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
+                    />
                 </div>
 
                 <DataTable columns={columns} rows={users} rowKey="id" emptyMessage="No users found." />
 
+                {can('user.delete') && (
                 <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
                     <DialogContent>
                         <DialogHeader>
@@ -124,22 +133,29 @@ export default function UserIndex({ users, branches }) {
                         </p>
                         <DialogFooter>
                             <DialogClose asChild>
-                                <Button variant="outline" size="sm" className="border-red-500 text-red-500 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-red-500 hover:text-white hover:shadow-md hover:shadow-red-500/30">Cancel</Button>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="border-red-500 text-red-500 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-red-500 hover:text-white hover:shadow-md hover:shadow-red-500/30"
+                                >
+                                    Cancel
+                                </Button>
                             </DialogClose>
-                            <Button size="sm" className="bg-red-600 text-white shadow-sm shadow-red-500/30 transition-all duration-150 hover:bg-red-600 hover:-translate-y-0.5 hover:shadow-md hover:shadow-red-500/50" onClick={handleDelete}>
+                            <Button
+                                size="sm"
+                                className="bg-red-600 text-white shadow-sm shadow-red-500/30 transition-all duration-150 hover:bg-red-600 hover:-translate-y-0.5 hover:shadow-md hover:shadow-red-500/50"
+                                onClick={handleDelete}
+                            >
                                 Delete
                             </Button>
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+                )}
 
-                <UserFormDialog
-                    open={formOpen}
-                    onOpenChange={setFormOpen}
-                    item={editing}
-                    routes={routes}
-                    branches={branches}
-                />
+                <Can permission={['user.create', 'user.update']}>
+                    <UserFormDialog open={formOpen} onOpenChange={setFormOpen} item={editing} routes={routes} branches={branches} roles={roles} />
+                </Can>
             </div>
         </>
     );

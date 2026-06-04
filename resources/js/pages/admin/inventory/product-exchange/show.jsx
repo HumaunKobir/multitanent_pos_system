@@ -8,6 +8,8 @@ export default function ProductExchangeShow({ exchange }) {
             backRoute="inventory.product-exchange.index"
             editRoute="inventory.product-exchange.edit"
             destroyRoute="inventory.product-exchange.destroy"
+            updatePermission="inventory.product-exchange.update"
+            deletePermission="inventory.product-exchange.delete"
             id={exchange.id}
             date={exchange.date}
             comment={exchange.comment}

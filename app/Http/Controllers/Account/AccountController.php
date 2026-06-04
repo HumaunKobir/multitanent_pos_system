@@ -17,6 +17,8 @@ class AccountController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('accounts.view');
+
         $accounts = ChartOfAccount::query()
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('name', 'like', "%{$s}%")
@@ -40,6 +42,8 @@ class AccountController extends Controller
 
     public function nextCode(Request $request): JsonResponse
     {
+        $this->authorize('accounts.create');
+
         $request->validate([
             'type' => ['required', Rule::enum(AccountType::class)],
             'parent_id' => ['nullable', 'exists:chart_of_accounts,id'],
@@ -55,6 +59,8 @@ class AccountController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $this->authorize('accounts.create');
+
         $data = $request->validate([
             'parent_id' => ['nullable', 'exists:chart_of_accounts,id'],
             'type' => ['required', Rule::enum(AccountType::class)],
@@ -83,6 +89,8 @@ class AccountController extends Controller
 
     public function update(Request $request, ChartOfAccount $chartOfAccount): RedirectResponse
     {
+        $this->authorize('accounts.update');
+
         $data = $request->validate([
             'parent_id' => ['nullable', Rule::notIn([$chartOfAccount->id]), 'exists:chart_of_accounts,id'],
             'type' => ['required', Rule::enum(AccountType::class)],
@@ -109,6 +117,8 @@ class AccountController extends Controller
 
     public function destroy(ChartOfAccount $chartOfAccount): RedirectResponse
     {
+        $this->authorize('accounts.delete');
+
         if ($chartOfAccount->is_system) {
             return redirect()->route('accounts.index')
                 ->with('error', 'System accounts cannot be deleted.');

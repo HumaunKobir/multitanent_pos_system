@@ -25,6 +25,8 @@ class ProductController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('product.view');
+
         $products = Product::ownBranch()
             ->with(['category', 'brand'])
             ->withSum('variations', 'stock')
@@ -47,11 +49,15 @@ class ProductController extends Controller
 
     public function create(): Response
     {
+        $this->authorize('product.create');
+
         return Inertia::render('admin/product/create', $this->formData());
     }
 
     public function store(Request $request): RedirectResponse
     {
+        $this->authorize('product.create');
+
         $rawCombinations = $request->input('combinations', []);
         $hasVariations = ! empty($rawCombinations);
 
@@ -170,6 +176,8 @@ class ProductController extends Controller
 
     public function edit(Product $product): Response
     {
+        $this->authorize('product.update');
+
         $product->load('photos', 'variations');
 
         return Inertia::render('admin/product/edit', [
@@ -180,6 +188,8 @@ class ProductController extends Controller
 
     public function update(Request $request, Product $product): RedirectResponse
     {
+        $this->authorize('product.update');
+
         $data = $request->validate([
             'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')],
             'category_id' => ['required', Rule::exists('categories', 'id')],
@@ -242,6 +252,8 @@ class ProductController extends Controller
 
     public function destroy(Product $product): RedirectResponse
     {
+        $this->authorize('product.delete');
+
         foreach ($product->photos as $photo) {
             Storage::disk('public')->delete($photo->image);
         }

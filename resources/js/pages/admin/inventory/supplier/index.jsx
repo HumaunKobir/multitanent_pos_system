@@ -9,7 +9,10 @@ import { DataTable } from '@/components/ui/data-table';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { AdminCreateButton, AdminInlineActions } from '@/components/admin/row-actions';
+import { Can } from '@/components/can';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
+import { useCan } from '@/hooks/use-can';
 
 function FormField({ label, required, name, error, children }) {
     return (
@@ -107,6 +110,7 @@ function SupplierForm({ form, onSubmit, onCancel, isEditing }) {
 export default function SupplierIndex({ suppliers, filters }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
+    const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [creating, setCreating] = useState(false);
     const [editing, setEditing] = useState(null);
@@ -168,14 +172,11 @@ export default function SupplierIndex({ suppliers, filters }) {
         { id: 'address', header: 'Address', render: (row) => row.address ?? '—' },
         { id: 'balance', header: 'Balance', render: (row) => `৳${parseFloat(row.balance).toFixed(2)}` },
         { id: 'actions', header: 'Actions', align: 'right', render: (row) => (
-            <div className="flex justify-end gap-2">
-                <Button size="sm" variant="outline" onClick={() => openEdit(row)}>
-                    <Pencil className="size-3.5" />
-                </Button>
-                <Button size="sm" variant="destructive" onClick={() => setDeleting(row)}>
-                    <Trash2 className="size-3.5" />
-                </Button>
-            </div>
+            <AdminInlineActions
+                prefix="party.supplier"
+                onEdit={() => openEdit(row)}
+                onDelete={() => setDeleting(row)}
+            />
         )},
     ];
 
@@ -194,14 +195,13 @@ export default function SupplierIndex({ suppliers, filters }) {
                             <p className="text-xs text-white/60">Manage your suppliers.</p>
                         </div>
                     </div>
-                    <Button
-                        size="sm"
+                    <AdminCreateButton
+                        permission="party.supplier.create"
                         onClick={() => setCreating(true)}
+                        label="Add Supplier"
+                        icon={Plus}
                         className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
-                    >
-                        <Plus className="size-3.5" />
-                        Add Supplier
-                    </Button>
+                    />
                 </div>
 
                 <div className="mb-4 flex gap-2">
@@ -233,6 +233,7 @@ export default function SupplierIndex({ suppliers, filters }) {
                 )}
             </div>
 
+            <Can permission="party.supplier.create">
             {/* Create Dialog */}
             <Dialog open={creating} onOpenChange={(open) => { if (!open) { setCreating(false); createForm.reset(); } }}>
                 <DialogContent className="p-0 sm:max-w-lg">
@@ -245,7 +246,9 @@ export default function SupplierIndex({ suppliers, filters }) {
                     <SupplierForm form={createForm} onSubmit={handleCreate} onCancel={() => setCreating(false)} isEditing={false} />
                 </DialogContent>
             </Dialog>
+            </Can>
 
+            <Can permission="party.supplier.update">
             {/* Edit Dialog */}
             <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
                 <DialogContent className="p-0 sm:max-w-lg">
@@ -258,7 +261,9 @@ export default function SupplierIndex({ suppliers, filters }) {
                     <SupplierForm form={editForm} onSubmit={handleUpdate} onCancel={() => setEditing(null)} isEditing={true} />
                 </DialogContent>
             </Dialog>
+            </Can>
 
+            {can('party.supplier.delete') && (
             {/* Delete Dialog */}
             <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
                 <DialogContent className="p-0">
@@ -293,6 +298,7 @@ export default function SupplierIndex({ suppliers, filters }) {
                     </div>
                 </DialogContent>
             </Dialog>
+            )}
         </>
     );
 }

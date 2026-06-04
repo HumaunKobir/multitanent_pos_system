@@ -12,6 +12,8 @@ class CustomerSearchController extends Controller
 {
     public function store(Request $request): JsonResponse
     {
+        $this->authorize('party.customer.create');
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'min:11', 'max:11', 'unique:customers,phone'],
@@ -31,6 +33,8 @@ class CustomerSearchController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $this->authorize('party.customer.view');
+
         $customers = Customer::ownBranch()
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('name', 'like', "%{$s}%")

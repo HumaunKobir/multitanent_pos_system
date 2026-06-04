@@ -17,6 +17,8 @@ class CustomerController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('party.customer.view');
+
         $customers = Customer::with(['memberShipCard', 'branch'])
             ->ownBranch()
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
@@ -38,6 +40,8 @@ class CustomerController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $this->authorize('party.customer.create');
+
         $data = $request->validate([
             'member_ship_id' => ['nullable', 'integer', 'exists:member_ship_cards,id'],
             'name' => ['required', 'string', 'max:255'],
@@ -66,6 +70,8 @@ class CustomerController extends Controller
 
     public function update(Request $request, Customer $customer): RedirectResponse
     {
+        $this->authorize('party.customer.update');
+
         $data = $request->validate([
             'member_ship_id' => ['nullable', 'integer', 'exists:member_ship_cards,id'],
             'name' => ['required', 'string', 'max:255'],
@@ -92,6 +98,8 @@ class CustomerController extends Controller
 
     public function destroy(Customer $customer): RedirectResponse
     {
+        $this->authorize('party.customer.delete');
+
         if ($customer->is_default) {
             return back()->with('error', 'Cannot delete the default customer.');
         }

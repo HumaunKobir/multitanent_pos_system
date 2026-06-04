@@ -14,6 +14,8 @@ class UnitController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('setting.unit.view');
+
         $units = Unit::query()
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->latest()
@@ -45,6 +47,8 @@ class UnitController extends Controller
 
     public function update(Request $request, Unit $unit): RedirectResponse
     {
+        $this->authorize('setting.unit.update');
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:191'],
             'status' => ['required', 'in:0,1'],
@@ -58,6 +62,8 @@ class UnitController extends Controller
 
     public function destroy(Unit $unit): RedirectResponse
     {
+        $this->authorize('setting.unit.delete');
+
         $unit->delete();
 
         return redirect()->route('setting.unit.index')

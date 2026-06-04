@@ -9,14 +9,19 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { settingRoutes } from '@/lib/route';
+import { AdminCreateButton, AdminInlineActions } from '@/components/admin/row-actions';
+import { Can } from '@/components/can';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
+import { useCan } from '@/hooks/use-can';
 import SettingFormDialog from '../form-dialog';
 
 const routes = settingRoutes('slider');
+const PERM = 'setting.slider';
 
 export default function SliderIndex({ sliders, filters }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
+    const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [deleting, setDeleting] = useState(null);
     const [editing, setEditing] = useState(null);
@@ -84,16 +89,7 @@ export default function SliderIndex({ sliders, filters }) {
             header: 'Actions',
             align: 'right',
             render: (row) => (
-                <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" asChild>
-                        <button type="button" onClick={() => openEdit(row)}>
-                            <Pencil className="size-3.5" />
-                        </button>
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => setDeleting(row)}>
-                        <Trash2 className="size-3.5" />
-                    </Button>
-                </div>
+                <AdminInlineActions prefix={PERM} onEdit={() => openEdit(row)} onDelete={() => setDeleting(row)} />
             ),
         },
     ];
@@ -113,12 +109,7 @@ export default function SliderIndex({ sliders, filters }) {
                             <p className="text-xs text-white/60">Manage your homepage sliders.</p>
                         </div>
                     </div>
-                    <Button size="sm" asChild className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md">
-                        <button type="button" onClick={openCreate}>
-                            <Plus className="size-3.5" />
-                            Add New
-                        </button>
-                    </Button>
+                    <AdminCreateButton permission={`${PERM}.create`} onClick={openCreate} label="Add New" icon={Plus} className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md" />
                 </div>
 
                 <div className="mb-4 flex gap-2">
@@ -151,6 +142,7 @@ export default function SliderIndex({ sliders, filters }) {
                 )}
             </div>
 
+            {can(`${PERM}.delete`) && (
             <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
                 <DialogContent className="p-0">
                     <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
@@ -174,7 +166,9 @@ export default function SliderIndex({ sliders, filters }) {
                     </div>
                 </DialogContent>
             </Dialog>
+            )}
 
+            <Can permission={[`${PERM}.create`, `${PERM}.update`]}>
             <SettingFormDialog
                 open={formOpen}
                 onOpenChange={setFormOpen}
@@ -187,6 +181,7 @@ export default function SliderIndex({ sliders, filters }) {
                     { name: 'status', label: 'Status', type: 'select', defaultValue: '1' },
                 ]}
             />
+            </Can>
         </>
     );
 }

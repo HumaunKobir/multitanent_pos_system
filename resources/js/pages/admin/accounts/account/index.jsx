@@ -4,7 +4,10 @@ import { Dialog, DialogClose, DialogContent, DialogFooter } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAppToast } from '@/contexts/app-toast-context';
+import { AdminCreateButton } from '@/components/admin/row-actions';
+import { Can } from '@/components/can';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
+import { useCan } from '@/hooks/use-can';
 import { route } from '@/lib/route';
 import { Head, router, usePage } from '@inertiajs/react';
 import { ChevronDown, ChevronRight, Pencil, Plus, Search, Trash2, Wallet } from 'lucide-react';
@@ -34,6 +37,7 @@ function buildTree(accounts) {
 }
 
 function AccountRow({ node, depth, accountTypes, onEdit, onDelete, expandedIds, toggleExpand }) {
+    const { can } = useCan();
     const hasChildren = node.children.length > 0;
     const isExpanded = expandedIds.has(node.id);
     const typeLabel = accountTypes.find((t) => t.id === node.type)?.name ?? '';
@@ -93,10 +97,12 @@ function AccountRow({ node, depth, accountTypes, onEdit, onDelete, expandedIds, 
 
                 {/* Actions */}
                 <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => onEdit(node)}>
-                        <Pencil className="size-3" />
-                    </Button>
-                    {!node.is_system && (
+                    {can('accounts.update') && (
+                        <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => onEdit(node)}>
+                            <Pencil className="size-3" />
+                        </Button>
+                    )}
+                    {!node.is_system && can('accounts.delete') && (
                         <Button size="sm" variant="destructive" className="h-7 w-7 p-0" onClick={() => onDelete(node)}>
                             <Trash2 className="size-3" />
                         </Button>
@@ -125,6 +131,7 @@ function AccountRow({ node, depth, accountTypes, onEdit, onDelete, expandedIds, 
 export default function AccountIndex({ accounts, parentAccounts, accountTypes, filters }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
+    const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [typeFilter, setTypeFilter] = useState(filters.type ?? '');
     const [deleting, setDeleting] = useState(null);
@@ -194,16 +201,13 @@ export default function AccountIndex({ accounts, parentAccounts, accountTypes, f
                             <p className="text-xs text-white/60">Manage chart of accounts</p>
                         </div>
                     </div>
-                    <Button
-                        size="sm"
-                        asChild
+                    <AdminCreateButton
+                        permission="accounts.create"
+                        onClick={openCreate}
+                        label="Add New"
+                        icon={Plus}
                         className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
-                    >
-                        <button type="button" onClick={openCreate}>
-                            <Plus className="size-3.5" />
-                            Add New
-                        </button>
-                    </Button>
+                    />
                 </div>
 
                 {/* Filters */}
@@ -264,6 +268,7 @@ export default function AccountIndex({ accounts, parentAccounts, accountTypes, f
                 </div>
             </div>
 
+            {can('accounts.delete') && (
             {/* Delete Confirm */}
             <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
                 <DialogContent className="p-0">
@@ -288,14 +293,17 @@ export default function AccountIndex({ accounts, parentAccounts, accountTypes, f
                     </div>
                 </DialogContent>
             </Dialog>
+            )}
 
-            <AccountFormDialog
-                open={formOpen}
-                onOpenChange={setFormOpen}
-                item={editing}
-                accountTypes={accountTypes}
-                parentAccounts={parentAccounts}
-            />
+            <Can permission={['accounts.create', 'accounts.update']}>
+                <AccountFormDialog
+                    open={formOpen}
+                    onOpenChange={setFormOpen}
+                    item={editing}
+                    accountTypes={accountTypes}
+                    parentAccounts={parentAccounts}
+                />
+            </Can>
         </>
     );
 }

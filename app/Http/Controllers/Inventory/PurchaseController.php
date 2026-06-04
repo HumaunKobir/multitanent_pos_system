@@ -20,6 +20,8 @@ class PurchaseController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('inventory.purchase.view');
+
         $purchases = Purchase::query()->ownBranch()
             ->purchase()
             ->with('supplier:id,name')
@@ -39,6 +41,8 @@ class PurchaseController extends Controller
 
     public function create(): Response
     {
+        $this->authorize('inventory.purchase.create');
+
         return Inertia::render('admin/inventory/purchase/create', [
             'suppliers' => Supplier::query()->ownBranch()->orderBy('name', 'asc')->get(['id', 'name', 'phone']),
             'today' => now()->format('Y-m-d'),
@@ -47,6 +51,8 @@ class PurchaseController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $this->authorize('inventory.purchase.create');
+
         $data = $request->validate([
             'supplier_id' => ['required', 'exists:suppliers,id'],
             'date' => ['required', 'date'],
@@ -154,6 +160,8 @@ class PurchaseController extends Controller
 
     public function show(Purchase $purchase): Response
     {
+        $this->authorize('inventory.purchase.view');
+
         $branchId = Auth::user()?->branch_id;
 
         if ($branchId !== null && $purchase->branch_id !== $branchId) {
@@ -173,6 +181,8 @@ class PurchaseController extends Controller
 
     public function edit(Purchase $purchase): Response|RedirectResponse
     {
+        $this->authorize('inventory.purchase.update');
+
         $branchId = Auth::user()?->branch_id;
 
         if ($branchId !== null && $purchase->branch_id !== $branchId) {
@@ -265,6 +275,8 @@ class PurchaseController extends Controller
 
     public function update(Request $request, Purchase $purchase): RedirectResponse
     {
+        $this->authorize('inventory.purchase.update');
+
         $branchId = Auth::user()?->branch_id;
 
         if ($branchId !== null && $purchase->branch_id !== $branchId) {
@@ -436,6 +448,8 @@ class PurchaseController extends Controller
 
     public function destroy(Purchase $purchase): RedirectResponse
     {
+        $this->authorize('inventory.purchase.delete');
+
         $branchId = Auth::user()?->branch_id;
 
         if ($branchId !== null && $purchase->branch_id !== $branchId) {

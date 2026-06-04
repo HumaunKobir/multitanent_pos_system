@@ -15,6 +15,8 @@ class BrandController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('setting.brand.view');
+
         $brands = Brand::query()
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->latest()
@@ -29,6 +31,8 @@ class BrandController extends Controller
 
     public function store(Request $request): RedirectResponse|JsonResponse
     {
+        $this->authorize('setting.brand.create');
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:191'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
@@ -51,6 +55,8 @@ class BrandController extends Controller
 
     public function update(Request $request, Brand $brand): RedirectResponse
     {
+        $this->authorize('setting.brand.update');
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:191'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
@@ -74,6 +80,8 @@ class BrandController extends Controller
 
     public function destroy(Brand $brand): RedirectResponse
     {
+        $this->authorize('setting.brand.delete');
+
         if ($brand->image) {
             Storage::disk('public')->delete($brand->image);
         }

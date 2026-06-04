@@ -12,13 +12,14 @@ use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Fortify\TwoFactorAuthenticatable;
+use Spatie\Permission\Traits\HasRoles;
 
 #[Fillable(['name', 'email', 'phone', 'password', 'branch_id', 'image', 'status'])]
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
-    use HasBranch, HasFactory, Notifiable, TwoFactorAuthenticatable;
+    use HasBranch, HasFactory, HasRoles, Notifiable, TwoFactorAuthenticatable;
 
     protected function casts(): array
     {

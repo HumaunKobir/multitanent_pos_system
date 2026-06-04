@@ -1,0 +1,32 @@
+---
+description: Never refresh or wipe the database when running tests
+globs: tests/**/*
+alwaysApply: false
+---
+
+# No database refresh during tests
+
+Tests use the shared MySQL database configured in `phpunit.xml`. **Never refresh, wipe, or re-migrate that database while tests run.**
+
+## Forbidden
+
+- `RefreshDatabase`, `LazilyRefreshDatabase`, or `DatabaseMigrations` traits
+- `migrate:fresh`, `migrate:refresh`, `db:wipe`, or equivalent Artisan calls in tests
+- `Schema::drop*` / rebuilding tables in test setup
+
+## Required instead
+
+- Use model factories to create only the records each test needs
+- Prefer unique names/values (e.g. `fake()->unique()->word()`) when collisions matter
+- Clean up only records the test created when necessary (delete specific models), not the whole schema
+- Rely on existing schema; run migrations manually outside the test suite when the schema changes
+
+## Example
+
+```php
+// ❌ BAD
+uses(RefreshDatabase::class);
+
+// ✅ GOOD
+$user = User::factory()->create();
+```

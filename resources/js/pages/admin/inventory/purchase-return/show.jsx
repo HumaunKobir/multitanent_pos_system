@@ -8,6 +8,8 @@ export default function PurchaseReturnShow({ purchaseReturn }) {
             backRoute="inventory.purchase-return.index"
             editRoute="inventory.purchase-return.edit"
             destroyRoute="inventory.purchase-return.destroy"
+            updatePermission="inventory.purchase-return.update"
+            deletePermission="inventory.purchase-return.delete"
             id={purchaseReturn.id}
             date={purchaseReturn.date}
             comment={purchaseReturn.comment}

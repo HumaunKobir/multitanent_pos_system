@@ -13,6 +13,8 @@ class BranchController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('branch.view');
+
         $branches = Branch::query()
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->latest()
@@ -27,6 +29,8 @@ class BranchController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $this->authorize('branch.create');
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:191'],
             'phone' => ['required', 'string', 'max:20'],
@@ -44,6 +48,8 @@ class BranchController extends Controller
 
     public function update(Request $request, Branch $branch): RedirectResponse
     {
+        $this->authorize('branch.update');
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:191'],
             'phone' => ['required', 'string', 'max:20'],
@@ -62,6 +68,8 @@ class BranchController extends Controller
 
     public function destroy(Branch $branch): RedirectResponse
     {
+        $this->authorize('branch.delete');
+
         return redirect()->route('branch.index')
             ->with('error', 'Branch delete is not allowed.');
     }

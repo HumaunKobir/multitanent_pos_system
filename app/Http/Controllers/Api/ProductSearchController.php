@@ -12,6 +12,8 @@ class ProductSearchController extends Controller
 {
     public function forPurchase(Request $request): JsonResponse
     {
+        $this->authorize('inventory.purchase.create');
+
         $products = Product::ownBranch()
             ->active()
             ->with('variations:id,product_id,sku,variation_data,purchase_price,price,stock')
@@ -42,6 +44,8 @@ class ProductSearchController extends Controller
 
     public function forSell(Request $request): JsonResponse
     {
+        $this->authorize('inventory.sell.create');
+
         $branchId = Auth::user()?->branch_id;
 
         $products = Product::ownBranch()

@@ -9,7 +9,10 @@ import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { AdminCreateButton } from '@/components/admin/row-actions';
+import { Can } from '@/components/can';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
+import { useCan } from '@/hooks/use-can';
 import ContraVoucherModal from './contra-modal';
 import ExpenseVoucherModal from './expense-modal';
 import IncomeVoucherModal from './income-modal';
@@ -33,6 +36,7 @@ export default function VouchersIndex({
 }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
+    const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [formOpen, setFormOpen] = useState(false);
     const [editing, setEditing] = useState(null);
@@ -126,15 +130,21 @@ export default function VouchersIndex({
             align: 'right',
             render: (row) => (
                 <div className="flex justify-end gap-1">
-                    <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => openView(row)}>
-                        <Eye className="size-3.5" />
-                    </Button>
-                    <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => openEdit(row)}>
-                        <Pencil className="size-3.5" />
-                    </Button>
-                    <Button size="sm" variant="destructive" className="h-7 w-7 p-0" onClick={() => setDeleting(row)}>
-                        <Trash2 className="size-3.5" />
-                    </Button>
+                    {can('accounts.view') && (
+                        <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => openView(row)}>
+                            <Eye className="size-3.5" />
+                        </Button>
+                    )}
+                    {can('accounts.update') && (
+                        <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => openEdit(row)}>
+                            <Pencil className="size-3.5" />
+                        </Button>
+                    )}
+                    {can('accounts.delete') && (
+                        <Button size="sm" variant="destructive" className="h-7 w-7 p-0" onClick={() => setDeleting(row)}>
+                            <Trash2 className="size-3.5" />
+                        </Button>
+                    )}
                 </div>
             ),
         },
@@ -165,14 +175,13 @@ export default function VouchersIndex({
                             <p className="text-xs text-white/70">Financial voucher records</p>
                         </div>
                     </div>
-                    <Button
-                        size="sm"
-                        className="border border-white/30 bg-white/10 text-white hover:bg-white/20"
+                    <AdminCreateButton
+                        permission="accounts.create"
                         onClick={openCreate}
-                    >
-                        <Plus className="size-3.5" />
-                        New Voucher
-                    </Button>
+                        label="New Voucher"
+                        icon={Plus}
+                        className="border border-white/30 bg-white/10 text-white hover:bg-white/20"
+                    />
                 </div>
 
                 <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search voucher no, reference, narration…" className="mb-4 max-w-xs" />
@@ -180,10 +189,12 @@ export default function VouchersIndex({
                 <DataTable columns={columns} rows={vouchers.data} rowKey="id" emptyMessage="No vouchers found." />
             </div>
 
-            {activeType === 'journal' && <JournalVoucherModal {...modalProps} />}
-            {activeType === 'contra' && <ContraVoucherModal {...modalProps} />}
-            {activeType === 'expense' && <ExpenseVoucherModal {...modalProps} />}
-            {activeType === 'income' && <IncomeVoucherModal {...modalProps} />}
+            <Can permission={['accounts.create', 'accounts.update']}>
+                {activeType === 'journal' && <JournalVoucherModal {...modalProps} />}
+                {activeType === 'contra' && <ContraVoucherModal {...modalProps} />}
+                {activeType === 'expense' && <ExpenseVoucherModal {...modalProps} />}
+                {activeType === 'income' && <IncomeVoucherModal {...modalProps} />}
+            </Can>
 
             <Dialog open={!!viewing} onOpenChange={(open) => !open && setViewing(null)}>
                 <DialogContent className="max-w-lg">
@@ -219,6 +230,7 @@ export default function VouchersIndex({
                 </DialogContent>
             </Dialog>
 
+            {can('accounts.delete') && (
             <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
                 <DialogContent className="max-w-sm">
                     <DialogHeader>
@@ -237,6 +249,7 @@ export default function VouchersIndex({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+            )}
         </>
     );
 }

@@ -14,6 +14,8 @@ class WarrantyController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('setting.warranty.view');
+
         $warranties = Warranty::query()
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->latest()
@@ -28,6 +30,8 @@ class WarrantyController extends Controller
 
     public function store(Request $request): RedirectResponse|JsonResponse
     {
+        $this->authorize('setting.warranty.create');
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:191'],
             'duration' => ['nullable', 'string', 'max:191'],
@@ -46,6 +50,8 @@ class WarrantyController extends Controller
 
     public function update(Request $request, Warranty $warranty): RedirectResponse
     {
+        $this->authorize('setting.warranty.update');
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:191'],
             'duration' => ['nullable', 'string', 'max:191'],
@@ -60,6 +66,8 @@ class WarrantyController extends Controller
 
     public function destroy(Warranty $warranty): RedirectResponse
     {
+        $this->authorize('setting.warranty.delete');
+
         $warranty->delete();
 
         return redirect()->route('setting.warranty.index')

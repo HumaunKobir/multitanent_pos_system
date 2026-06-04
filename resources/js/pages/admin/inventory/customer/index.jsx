@@ -11,7 +11,10 @@ import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { AdminCreateButton, AdminInlineActions } from '@/components/admin/row-actions';
+import { Can } from '@/components/can';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
+import { useCan } from '@/hooks/use-can';
 
 function FormField({ label, required, name, error, children }) {
     return (
@@ -165,6 +168,7 @@ function CustomerForm({ form, onSubmit, onCancel, isEditing, memberShipCards, st
 export default function CustomerIndex({ customers, filters, memberShipCards, statuses }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
+    const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [creating, setCreating] = useState(false);
     const [editing, setEditing] = useState(null);
@@ -252,15 +256,12 @@ export default function CustomerIndex({ customers, filters, memberShipCards, sta
             ),
         },
         {
-            id: 'actions', header: 'Actions', align: 'right', render: (row) => (
-                <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" onClick={() => openEdit(row)}>
-                        <Pencil className="size-3.5" />
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => setDeleting(row)}>
-                        <Trash2 className="size-3.5" />
-                    </Button>
-                </div>
+            id: 'actions', header: 'Actions', align: 'right',             render: (row) => (
+                <AdminInlineActions
+                    prefix="party.customer"
+                    onEdit={() => openEdit(row)}
+                    onDelete={() => setDeleting(row)}
+                />
             ),
         },
     ];
@@ -280,14 +281,13 @@ export default function CustomerIndex({ customers, filters, memberShipCards, sta
                             <p className="text-xs text-white/60">Manage your customers.</p>
                         </div>
                     </div>
-                    <Button
-                        size="sm"
+                    <AdminCreateButton
+                        permission="party.customer.create"
                         onClick={() => setCreating(true)}
+                        label="Add Customer"
+                        icon={Plus}
                         className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
-                    >
-                        <Plus className="size-3.5" />
-                        Add Customer
-                    </Button>
+                    />
                 </div>
 
                 <div className="mb-4 flex gap-2">
@@ -322,6 +322,7 @@ export default function CustomerIndex({ customers, filters, memberShipCards, sta
                 )}
             </div>
 
+            <Can permission="party.customer.create">
             {/* Create Dialog */}
             <Dialog open={creating} onOpenChange={(open) => { if (!open) { setCreating(false); createForm.reset(); } }}>
                 <DialogContent className="p-0 sm:max-w-lg">
@@ -341,7 +342,9 @@ export default function CustomerIndex({ customers, filters, memberShipCards, sta
                     />
                 </DialogContent>
             </Dialog>
+            </Can>
 
+            <Can permission="party.customer.update">
             {/* Edit Dialog */}
             <Dialog open={!!editing} onOpenChange={(open) => !open && setEditing(null)}>
                 <DialogContent className="p-0 sm:max-w-lg">
@@ -361,7 +364,9 @@ export default function CustomerIndex({ customers, filters, memberShipCards, sta
                     />
                 </DialogContent>
             </Dialog>
+            </Can>
 
+            {can('party.customer.delete') && (
             {/* Delete Dialog */}
             <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
                 <DialogContent className="p-0">
@@ -396,6 +401,7 @@ export default function CustomerIndex({ customers, filters, memberShipCards, sta
                     </div>
                 </DialogContent>
             </Dialog>
+            )}
         </>
     );
 }

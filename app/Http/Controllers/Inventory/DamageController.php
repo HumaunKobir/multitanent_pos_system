@@ -19,6 +19,8 @@ class DamageController extends Controller
 
     public function index(Request $request): Response
     {
+        $this->authorize('inventory.damage.view');
+
         $damages = Damage::query()->ownBranch()
             ->when($request->search, fn ($q, $s) => $q->where('id', 'like', "%{$s}%")
                 ->orWhere('comment', 'like', "%{$s}%"))
@@ -34,6 +36,8 @@ class DamageController extends Controller
 
     public function create(): Response
     {
+        $this->authorize('inventory.damage.create');
+
         return Inertia::render('admin/inventory/damage/create', [
             'today' => now()->format('Y-m-d'),
         ]);
@@ -41,6 +45,8 @@ class DamageController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $this->authorize('inventory.damage.create');
+
         $data = $request->validate([
             'date' => ['required', 'date'],
             'comment' => ['nullable', 'string'],
@@ -118,6 +124,7 @@ class DamageController extends Controller
 
     public function show(Damage $damage): Response
     {
+        $this->authorize('inventory.damage.view');
         $this->authorizeBranch($damage);
 
         $damage->load(['products.product', 'products.variation']);
@@ -129,6 +136,7 @@ class DamageController extends Controller
 
     public function edit(Damage $damage): Response
     {
+        $this->authorize('inventory.damage.update');
         $this->authorizeBranch($damage);
 
         $damage->load(['products.product', 'products.variation']);
@@ -153,6 +161,7 @@ class DamageController extends Controller
 
     public function update(Request $request, Damage $damage): RedirectResponse
     {
+        $this->authorize('inventory.damage.update');
         $this->authorizeBranch($damage);
 
         $data = $request->validate([
@@ -235,6 +244,7 @@ class DamageController extends Controller
 
     public function destroy(Damage $damage): RedirectResponse
     {
+        $this->authorize('inventory.damage.delete');
         $this->authorizeBranch($damage);
 
         $damage->load(['products']);

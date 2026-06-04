@@ -8,7 +8,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { resourceRoutes } from '@/lib/route';
+import { AdminCreateButton } from '@/components/admin/row-actions';
+import { Can } from '@/components/can';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
+import { useCan } from '@/hooks/use-can';
 import BranchFormDialog from './form-dialog';
 
 const routes = resourceRoutes('branch');
@@ -26,6 +29,7 @@ function isActive(status) {
 export default function BranchIndex({ branches, filters }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
+    const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [editing, setEditing] = useState(null);
     const [formOpen, setFormOpen] = useState(false);
@@ -84,11 +88,13 @@ export default function BranchIndex({ branches, filters }) {
             align: 'right',
             render: (row) => (
                 <div className="flex justify-end">
-                    <Button size="sm" variant="outline" asChild>
-                        <button type="button" onClick={() => openEdit(row)}>
-                            <Pencil className="size-3.5" />
-                        </button>
-                    </Button>
+                    {can('branch.update') && (
+                        <Button size="sm" variant="outline" asChild>
+                            <button type="button" onClick={() => openEdit(row)}>
+                                <Pencil className="size-3.5" />
+                            </button>
+                        </Button>
+                    )}
                 </div>
             ),
         },
@@ -109,12 +115,13 @@ export default function BranchIndex({ branches, filters }) {
                             <p className="text-xs text-white/60">Manage your store branches.</p>
                         </div>
                     </div>
-                    <Button size="sm" asChild className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md">
-                        <button type="button" onClick={openCreate}>
-                            <Plus className="size-3.5" />
-                            Add New
-                        </button>
-                    </Button>
+                    <AdminCreateButton
+                        permission="branch.create"
+                        onClick={openCreate}
+                        label="Add New"
+                        icon={Plus}
+                        className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
+                    />
                 </div>
 
                 <div className="mb-4 flex gap-2">
@@ -147,7 +154,9 @@ export default function BranchIndex({ branches, filters }) {
                 )}
             </div>
 
-            <BranchFormDialog open={formOpen} onOpenChange={setFormOpen} item={editing} routes={routes} />
+            <Can permission={['branch.create', 'branch.update']}>
+                <BranchFormDialog open={formOpen} onOpenChange={setFormOpen} item={editing} routes={routes} />
+            </Can>
         </>
     );
 }

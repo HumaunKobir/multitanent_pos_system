@@ -28,7 +28,13 @@ class AdminNavigation
                 continue;
             }
 
-            $sections[] = $this->formatSection($section, $user);
+            $formatted = $this->formatSection($section, $user);
+
+            if ($formatted === null) {
+                continue;
+            }
+
+            $sections[] = $formatted;
         }
 
         return $sections;
@@ -36,11 +42,20 @@ class AdminNavigation
 
     /**
      * @param  array<string, mixed>  $section
-     * @return array<string, mixed>
+     * @return array<string, mixed>|null
      */
-    protected function formatSection(array $section, User $user): array
+    protected function formatSection(array $section, User $user): ?array
     {
         if (isset($section['children'])) {
+            $children = array_values(array_filter(
+                $section['children'],
+                fn (array $child): bool => $this->userCanSee($user, $child['permission'] ?? null),
+            ));
+
+            if (empty($children)) {
+                return null;
+            }
+
             return [
                 'title' => $section['title'],
                 'icon' => $section['icon'],
@@ -50,9 +65,13 @@ class AdminNavigation
                         'title' => $child['title'],
                         'href' => $child['href'] ?? null,
                     ],
-                    $section['children'],
+                    $children,
                 ),
             ];
+        }
+
+        if (! $this->userCanSee($user, $section['permission'] ?? null)) {
+            return null;
         }
 
         return [
@@ -61,6 +80,15 @@ class AdminNavigation
             'href' => $this->resolveHref($section, $user),
             'single' => (bool) ($section['single'] ?? false),
         ];
+    }
+
+    protected function userCanSee(User $user, ?string $permission): bool
+    {
+        if ($permission === null) {
+            return true;
+        }
+
+        return $user->can($permission);
     }
 
     protected function resolveHref(array $section, User $user): ?string

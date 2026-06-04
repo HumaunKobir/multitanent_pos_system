@@ -10,13 +10,16 @@ use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Inertia\Response;
+use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
 {
     public function index(): Response
     {
+        $this->authorize('user.view');
+
         $users = User::query()
-            ->with('branch')
+            ->with('branch', 'roles')
             ->where('id', '!=', 1)
             ->latest()
             ->get()
@@ -28,16 +31,21 @@ class UserController extends Controller
                 'branch_id' => $user->branch_id,
                 'branch_name' => $user->branch?->name,
                 'status' => $user->status,
+                'role_id' => $user->roles->first()?->id,
+                'role_name' => $user->roles->first()?->name,
             ]);
 
         return Inertia::render('admin/user/index', [
             'users' => $users,
             'branches' => Branch::active()->orderBy('name')->pluck('name', 'id'),
+            'roles' => Role::orderBy('name')->pluck('name', 'id'),
         ]);
     }
 
     public function store(Request $request): RedirectResponse
     {
+        $this->authorize('user.create');
+
         $data = $request->validate([
             'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')],
             'name' => ['required', 'string', 'max:191'],
@@ -45,9 +53,10 @@ class UserController extends Controller
             'phone' => ['required', 'string', 'max:20', 'unique:users,phone'],
             'password' => ['required', 'confirmed', Password::min(8)],
             'status' => ['required', 'in:0,1'],
+            'role_id' => ['nullable', 'integer', Rule::exists('roles', 'id')],
         ]);
 
-        User::create([
+        $user = User::create([
             'branch_id' => $data['branch_id'] ?? null,
             'name' => $data['name'],
             'email' => $data['email'],
@@ -56,12 +65,18 @@ class UserController extends Controller
             'status' => (int) $data['status'],
         ]);
 
+        if (! empty($data['role_id'])) {
+            $user->syncRoles([$data['role_id']]);
+        }
+
         return redirect()->route('user.index')
             ->with('success', 'User created successfully.');
     }
 
     public function update(Request $request, User $user): RedirectResponse
     {
+        $this->authorize('user.update');
+
         if ($user->id === 1) {
             abort(403);
         }
@@ -73,6 +88,7 @@ class UserController extends Controller
             'phone' => ['required', 'string', 'max:20', Rule::unique('users', 'phone')->ignore($user->id)],
             'password' => ['nullable', 'confirmed', Password::min(8)],
             'status' => ['required', 'in:0,1'],
+            'role_id' => ['nullable', 'integer', Rule::exists('roles', 'id')],
         ]);
 
         $payload = [
@@ -88,6 +104,7 @@ class UserController extends Controller
         }
 
         $user->update($payload);
+        $user->syncRoles(isset($data['role_id']) ? [$data['role_id']] : []);
 
         return redirect()->route('user.index')
             ->with('success', 'User updated successfully.');
@@ -95,6 +112,8 @@ class UserController extends Controller
 
     public function destroy(User $user): RedirectResponse
     {
+        $this->authorize('user.delete');
+
         if ($user->id === 1) {
             return redirect()->route('user.index')
                 ->with('error', 'Superadmin user cannot be deleted.');

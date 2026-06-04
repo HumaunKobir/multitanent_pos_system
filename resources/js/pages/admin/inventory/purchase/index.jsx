@@ -10,11 +10,15 @@ import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { AdminCreateLink, AdminRowActions } from '@/components/admin/row-actions';
+import { Can } from '@/components/can';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
+import { useCan } from '@/hooks/use-can';
 
 export default function PurchaseIndex({ purchases, filters }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
+    const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [deleting, setDeleting] = useState(null);
 
@@ -99,21 +103,13 @@ export default function PurchaseIndex({ purchases, filters }) {
             header: 'Actions',
             align: 'right',
             render: (row) => (
-                <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" asChild>
-                        <Link href={route('inventory.purchase.show', row.id)}>
-                            <Eye className="size-3.5" />
-                        </Link>
-                    </Button>
-                    <Button size="sm" variant="outline" asChild>
-                        <Link href={route('inventory.purchase.edit', row.id)}>
-                            <Edit className="size-3.5" />
-                        </Link>
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => setDeleting(row)}>
-                        <Trash2 className="size-3.5" />
-                    </Button>
-                </div>
+                <AdminRowActions
+                    prefix="inventory.purchase"
+                    id={row.id}
+                    showRoute="inventory.purchase.show"
+                    editRoute="inventory.purchase.edit"
+                    onDelete={() => setDeleting(row)}
+                />
             ),
         },
     ];
@@ -133,16 +129,13 @@ export default function PurchaseIndex({ purchases, filters }) {
                             <p className="text-xs text-white/60">Manage purchase orders.</p>
                         </div>
                     </div>
-                    <Button
-                        size="sm"
-                        asChild
+                    <AdminCreateLink
+                        permission="inventory.purchase.create"
+                        href={route('inventory.purchase.create')}
+                        label="New Purchase"
+                        icon={Plus}
                         className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
-                    >
-                        <Link href={route('inventory.purchase.create')}>
-                            <Plus className="size-3.5" />
-                            New Purchase
-                        </Link>
-                    </Button>
+                    />
                 </div>
 
                 <div className="mb-4 flex gap-2">
@@ -156,6 +149,7 @@ export default function PurchaseIndex({ purchases, filters }) {
 
                 <DataTable columns={columns} rows={purchases.data} rowKey="id" emptyMessage="No purchases found." />
 
+                {can('inventory.purchase.delete') && (
                 <Dialog open={!!deleting} onOpenChange={(open) => (!open ? setDeleting(null) : null)}>
                     <DialogContent className="max-w-sm">
                         <DialogHeader>
@@ -176,6 +170,7 @@ export default function PurchaseIndex({ purchases, filters }) {
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>
+                )}
 
                 {purchases.links?.length > 3 && (
                     <div className="mt-4 flex flex-wrap gap-1">

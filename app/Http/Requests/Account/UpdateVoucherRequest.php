@@ -18,7 +18,7 @@ class UpdateVoucherRequest extends StoreVoucherRequest
             'required',
             'string',
             'max:50',
-            Rule::unique('vouchers', 'voucher_no')->ignore($voucher?->id),
+            Rule::unique('vouchers', 'voucher_no')->ignore($voucher?->id)->whereNull('deleted_at'),
         ];
 
         $rules['type'] = ['required', Rule::in([$voucher?->type->value])];

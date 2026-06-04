@@ -32,7 +32,7 @@ class StoreVoucherRequest extends FormRequest
 
         $base = [
             'type' => ['required', Rule::enum(VoucherType::class)],
-            'voucher_no' => ['required', 'string', 'max:50', 'unique:vouchers,voucher_no'],
+            'voucher_no' => ['required', 'string', 'max:50', Rule::unique('vouchers', 'voucher_no')->whereNull('deleted_at')],
             'date' => ['required', 'date'],
             'transaction_reference' => ['nullable', 'string', 'max:100'],
             'narration' => ['nullable', 'string'],

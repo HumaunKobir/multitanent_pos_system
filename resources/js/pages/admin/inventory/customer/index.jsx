@@ -367,7 +367,6 @@ export default function CustomerIndex({ customers, filters, memberShipCards, sta
             </Can>
 
             {can('party.customer.delete') && (
-            {/* Delete Dialog */}
             <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
                 <DialogContent className="p-0">
                     <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">

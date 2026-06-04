@@ -269,7 +269,6 @@ export default function AccountIndex({ accounts, parentAccounts, accountTypes, f
             </div>
 
             {can('accounts.delete') && (
-            {/* Delete Confirm */}
             <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
                 <DialogContent className="p-0">
                     <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">

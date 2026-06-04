@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { StoreButton } from '@/components/frontend/store-button';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 
-export function ProductFilters({ filters, allColors, allSizes, baseUrl, mobileOpen, onMobileClose }) {
+export function ProductFilters({ filters, baseUrl, mobileOpen, onMobileClose }) {
     const [localFilters, setLocalFilters] = useState(filters || {});
 
     useDebouncedEffect(
@@ -44,68 +44,6 @@ export function ProductFilters({ filters, allColors, allSizes, baseUrl, mobileOp
                     />
                 </div>
             </div>
-
-            {allColors?.length > 0 && (
-                <div>
-                    <label className="mb-1 block text-xs font-medium text-store-muted">Color</label>
-                    <div className="flex flex-wrap gap-1">
-                        {allColors.map((color) => {
-                            const selected = (localFilters.colors ?? []).includes(color);
-                            return (
-                                <button
-                                    key={color}
-                                    onClick={() =>
-                                        setLocalFilters((p) => ({
-                                            ...p,
-                                            colors: selected
-                                                ? (p.colors ?? []).filter((c) => c !== color)
-                                                : [...(p.colors ?? []), color],
-                                        }))
-                                    }
-                                    className={`rounded-md border px-2 py-0.5 text-xs transition-colors ${
-                                        selected
-                                            ? 'border-store-accent bg-store-accent text-white'
-                                            : 'border-gray-200 hover:border-store-accent'
-                                    }`}
-                                >
-                                    {color}
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
-
-            {allSizes?.length > 0 && (
-                <div>
-                    <label className="mb-1 block text-xs font-medium text-store-muted">Size</label>
-                    <div className="flex flex-wrap gap-1">
-                        {allSizes.map((size) => {
-                            const selected = (localFilters.sizes ?? []).includes(size);
-                            return (
-                                <button
-                                    key={size}
-                                    onClick={() =>
-                                        setLocalFilters((p) => ({
-                                            ...p,
-                                            sizes: selected
-                                                ? (p.sizes ?? []).filter((s) => s !== size)
-                                                : [...(p.sizes ?? []), size],
-                                        }))
-                                    }
-                                    className={`rounded-md border px-2 py-0.5 text-xs transition-colors ${
-                                        selected
-                                            ? 'border-store-accent bg-store-accent text-white'
-                                            : 'border-gray-200 hover:border-store-accent'
-                                    }`}
-                                >
-                                    {size}
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
-            )}
 
             <StoreButton variant="outline" onClick={clearFilters} className="w-full sm:w-auto">
                 <X className="size-3" /> Clear

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { ProductCard } from '@/components/frontend/product-card';
 import { ProductFilters } from '@/components/frontend/product-filters';
 
-export function ProductListingLayout({ title, subtitle, products, filters, allColors, allSizes, baseUrl }) {
+export function ProductListingLayout({ title, subtitle, products, filters, baseUrl }) {
     const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
     const [sortBy, setSortBy] = useState(filters?.sort_by ?? 'newest');
 
@@ -54,8 +54,6 @@ export function ProductListingLayout({ title, subtitle, products, filters, allCo
             <div className="flex gap-6">
                 <ProductFilters
                     filters={filters}
-                    allColors={allColors}
-                    allSizes={allSizes}
                     baseUrl={baseUrl}
                     mobileOpen={mobileFiltersOpen}
                     onMobileClose={() => setMobileFiltersOpen(false)}

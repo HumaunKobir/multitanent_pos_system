@@ -26,7 +26,6 @@ class Product extends Model
         'purchase_price',
         'sale_price',
         'discount_price',
-        'colors',
         'tags',
         'image',
         'youtube_link',
@@ -130,8 +129,8 @@ class Product extends Model
     public static function generateUniqueSlug(string $name): string
     {
         $slug = Str::slug($name);
-        $count = static::where('slug', 'like', $slug . '%')->count();
+        $count = static::where('slug', 'like', $slug.'%')->count();
 
-        return $count > 0 ? $slug . '-' . ($count + 1) : $slug;
+        return $count > 0 ? $slug.'-'.($count + 1) : $slug;
     }
 }

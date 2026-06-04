@@ -35,13 +35,17 @@ test('home page contains product sections', function () {
 });
 
 test('single product page shows product by slug', function () {
-    $product = Product::factory()->create(['status' => 1]);
+    $product = Product::factory()->create([
+        'status' => 1,
+        'image' => 'products/sample.jpg',
+    ]);
 
     $this->get(route('product.show', $product->slug))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('frontend/single-product')
             ->where('product.slug', $product->slug)
+            ->where('product.image', fn ($image) => str_contains($image, '/storage/products/sample.jpg'))
         );
 });
 
@@ -74,8 +78,6 @@ test('category products page renders for valid category slug', function () {
         ->assertInertia(fn ($page) => $page
             ->component('frontend/category-products')
             ->where('category.slug', $category->slug)
-            ->where('allColors', [])
-            ->where('allSizes', [])
         );
 });
 

@@ -2,7 +2,7 @@ import { Head } from '@inertiajs/react';
 import { ProductListingLayout } from '@/components/frontend/product-listing-layout';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 
-export default function CollectionProducts({ collectionName, products, filters, allBrands, allColors, allSizes }) {
+export default function CollectionProducts({ collectionName, products, filters, allBrands }) {
     return (
         <FrontendLayout>
             <Head title={collectionName || 'Collection'} />
@@ -11,8 +11,6 @@ export default function CollectionProducts({ collectionName, products, filters, 
                 subtitle={`Products in ${collectionName} collection`}
                 products={products}
                 filters={filters}
-                allColors={allColors}
-                allSizes={allSizes}
                 baseUrl={`/collection/${encodeURIComponent(collectionName)}`}
             />
         </FrontendLayout>

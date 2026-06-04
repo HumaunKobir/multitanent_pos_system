@@ -23,8 +23,6 @@ class ProductFactory extends Factory
             'sale_price' => fake()->numberBetween(500, 3000),
             'discount_price' => 0,
             'purchase_price' => fake()->numberBetween(300, 499),
-            'colors' => ['Red', 'Blue'],
-            'sizes' => ['M', 'L'],
             'tags' => ['Casual'],
             'visible' => 'yes',
             'status' => 1,

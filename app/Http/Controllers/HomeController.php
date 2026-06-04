@@ -11,9 +11,9 @@ use App\Models\Contact;
 use App\Models\Product;
 use App\Models\ProductSection;
 use App\Models\Slider;
+use App\Support\StorageUrl;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -27,11 +27,15 @@ class HomeController extends Controller
             ->map(fn (Slider $slider): array => [
                 'id' => $slider->id,
                 'name' => $slider->name,
-                'image' => $slider->image
-                    ? Storage::disk('public')->url($slider->image)
-                    : null,
+                'image' => StorageUrl::public($slider->image),
             ]);
-        $collections = Collectioncategory::active()->get();
+        $collections = Collectioncategory::active()
+            ->get()
+            ->map(fn (Collectioncategory $collection): array => [
+                'id' => $collection->id,
+                'name' => $collection->name,
+                'image' => StorageUrl::public($collection->image),
+            ]);
         $productSections = ProductSection::active()
             ->orderBy('serial')
             ->get()
@@ -93,10 +97,8 @@ class HomeController extends Controller
                 'description' => $section->description,
             ],
             'products' => $products,
-            'filters' => $request->only(['min_price', 'max_price', 'brands', 'colors', 'sizes', 'sort_by']),
+            'filters' => $request->only(['min_price', 'max_price', 'brands', 'sort_by']),
             'allBrands' => Brand::active()->pluck('name'),
-            'allColors' => [],
-            'allSizes' => [],
         ]);
     }
 
@@ -114,10 +116,8 @@ class HomeController extends Controller
         return Inertia::render('frontend/collection-products', [
             'collectionName' => $name,
             'products' => $products,
-            'filters' => $request->only(['min_price', 'max_price', 'brands', 'colors', 'sizes', 'sort_by']),
+            'filters' => $request->only(['min_price', 'max_price', 'brands', 'sort_by']),
             'allBrands' => Brand::active()->pluck('name'),
-            'allColors' => [],
-            'allSizes' => [],
         ]);
     }
 
@@ -161,10 +161,8 @@ class HomeController extends Controller
         return Inertia::render('frontend/category-products', [
             'category' => $category->only(['id', 'name', 'slug', 'image']),
             'products' => $products,
-            'filters' => $request->only(['min_price', 'max_price', 'brands', 'colors', 'sizes', 'sort_by']),
+            'filters' => $request->only(['min_price', 'max_price', 'brands', 'sort_by']),
             'allBrands' => Brand::active()->pluck('name'),
-            'allColors' => [],
-            'allSizes' => [],
         ]);
     }
 
@@ -182,10 +180,8 @@ class HomeController extends Controller
         return Inertia::render('frontend/brand-products', [
             'brand' => $brand->only(['id', 'name', 'slug', 'image']),
             'products' => $products,
-            'filters' => $request->only(['min_price', 'max_price', 'brands', 'colors', 'sizes', 'sort_by']),
+            'filters' => $request->only(['min_price', 'max_price', 'brands', 'sort_by']),
             'allBrands' => Brand::active()->pluck('name'),
-            'allColors' => [],
-            'allSizes' => [],
         ]);
     }
 
@@ -258,17 +254,6 @@ class HomeController extends Controller
         if ($request->filled('max_price')) {
             $query->where('sale_price', '<=', $request->max_price);
         }
-        if ($request->filled('colors')) {
-            foreach ((array) $request->colors as $color) {
-                $query->whereJsonContains('colors', $color);
-            }
-        }
-        if ($request->filled('sizes')) {
-            foreach ((array) $request->sizes as $size) {
-                $query->whereJsonContains('sizes', $size);
-            }
-        }
-
         match ($request->sort_by ?? 'newest') {
             'price_low' => $query->orderBy('sale_price', 'asc'),
             'price_high' => $query->orderBy('sale_price', 'desc'),
@@ -285,12 +270,10 @@ class HomeController extends Controller
             'id' => $product->id,
             'name' => $product->name,
             'slug' => $product->slug,
-            'image' => $product->image,
+            'image' => StorageUrl::public($product->image),
             'sale_price' => (float) $product->sale_price,
             'discount_price' => (float) $product->discount_price,
-            'price' => (float) ($product->discount_price > 0 ? $product->discount_price : $product->sale_price),
-            'colors' => $product->colors ?? [],
-            'sizes' => $product->sizes ?? [],
+            'price' => $this->resolveDisplayPrice($product),
             'type' => $product->type,
             'tailor_option' => $product->tailor_option,
             'tailor_price' => (float) $product->tailor_price,
@@ -299,7 +282,11 @@ class HomeController extends Controller
         ];
 
         if ($withDetails) {
-            $data['photos'] = $product->photos->pluck('image');
+            $data['photos'] = $product->photos
+                ->map(fn ($photo) => StorageUrl::public($photo->image))
+                ->filter()
+                ->values()
+                ->all();
             $data['variations'] = $product->variations->map(fn ($v) => [
                 'id' => $v->id,
                 'sku' => $v->sku,
@@ -317,5 +304,24 @@ class HomeController extends Controller
         }
 
         return $data;
+    }
+
+    private function resolveDisplayPrice(Product $product): float
+    {
+        if ($product->discount_price > 0) {
+            return (float) $product->discount_price;
+        }
+
+        if ($product->sale_price > 0) {
+            return (float) $product->sale_price;
+        }
+
+        if ($product->relationLoaded('variations') && $product->variations->isNotEmpty()) {
+            return (float) $product->variations->min('price');
+        }
+
+        $minVariationPrice = $product->variations()->min('price');
+
+        return $minVariationPrice ? (float) $minVariationPrice : 0;
     }
 }

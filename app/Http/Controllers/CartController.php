@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Product;
 use App\Models\ProductVariation;
+use App\Support\StorageUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -65,7 +66,7 @@ class CartController extends Controller
             $cart[$cartKey] = [
                 'product_id' => $product->id,
                 'name' => $product->name,
-                'image' => $product->image,
+                'image' => StorageUrl::public($product->image),
                 'price' => (float) $price,
                 'base_price' => (float) ($product->discount_price > 0 ? $product->discount_price : $product->sale_price),
                 'quantity' => $validated['quantity'],

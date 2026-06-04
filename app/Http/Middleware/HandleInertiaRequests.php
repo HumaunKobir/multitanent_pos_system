@@ -5,6 +5,7 @@ namespace App\Http\Middleware;
 use App\Models\Category;
 use App\Models\ConfigDictionary;
 use App\Support\AdminNavigation;
+use App\Support\StorageUrl;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -68,9 +69,9 @@ class HandleInertiaRequests extends Middleware
                     'id' => $c->id,
                     'name' => $c->name,
                     'slug' => $c->slug,
-                    'image' => $c->image,
+                    'image' => StorageUrl::public($c->image),
                 ]),
-            'logo' => ConfigDictionary::get('logo'),
+            'logo' => StorageUrl::public(ConfigDictionary::get('logo')),
             'siteName' => ConfigDictionary::get('website_name', config('app.name')),
             'topNotice' => ConfigDictionary::get('topnotice1'),
             'contact' => [

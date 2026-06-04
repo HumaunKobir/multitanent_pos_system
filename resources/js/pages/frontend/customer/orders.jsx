@@ -1,12 +1,14 @@
 import { Link } from '@inertiajs/react';
-import { CustomerPortalLayout } from '@/layouts/frontend/customer-portal-layout';
+import { ChevronRight, Package } from 'lucide-react';
+
+import { CustomerPanelLayout } from '@/layouts/frontend/customer-panel-layout';
 
 const statusColors = {
-    1: 'bg-yellow-500/20 text-yellow-300',
-    2: 'bg-blue-500/20 text-blue-300',
-    3: 'bg-indigo-500/20 text-indigo-300',
-    5: 'bg-green-500/20 text-green-300',
-    6: 'bg-red-500/20 text-red-300',
+    1: 'bg-amber-100 text-amber-800',
+    2: 'bg-blue-100 text-blue-800',
+    3: 'bg-indigo-100 text-indigo-800',
+    5: 'bg-emerald-100 text-emerald-800',
+    6: 'bg-red-100 text-red-800',
 };
 
 const statusLabels = {
@@ -19,34 +21,54 @@ const statusLabels = {
 
 export default function CustomerOrders({ orders }) {
     return (
-        <CustomerPortalLayout title="My Orders">
-            <h1 className="mb-4 text-xl font-bold text-white">My Orders</h1>
-
+        <CustomerPanelLayout title="Online Orders">
             {orders.data?.length === 0 ? (
-                <div className="rounded-xl border border-white/10 bg-white/5 py-16 text-center backdrop-blur-md">
-                    <p className="text-white/60">No orders yet</p>
-                    <Link href="/" className="mt-3 inline-block text-sm text-store-accent hover:underline">
+                <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-white py-12 text-center shadow-sm">
+                    <span className="flex size-12 items-center justify-center rounded-lg bg-store-surface text-store-muted">
+                        <Package className="size-6" />
+                    </span>
+                    <p className="mt-3 text-sm font-semibold text-store-primary">No orders yet</p>
+                    <p className="mt-1 text-xs text-store-muted">When you place an order, it will show up here.</p>
+                    <Link
+                        href="/"
+                        className="mt-4 inline-flex items-center gap-2 rounded-lg bg-store-accent px-4 py-2 text-xs font-semibold text-white shadow-sm transition hover:opacity-95"
+                    >
                         Start shopping
                     </Link>
                 </div>
             ) : (
-                <div className="space-y-3">
+                <div className="space-y-2">
                     {orders.data?.map((order) => (
-                        <div key={order.id} className="rounded-xl border border-white/10 bg-white/10 p-4 backdrop-blur-md">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div
+                            key={order.id}
+                            className="group rounded-xl border border-gray-200/80 bg-white p-3.5 shadow-sm transition hover:border-store-accent/25"
+                        >
+                            <div className="flex flex-wrap items-center justify-between gap-3">
                                 <div>
-                                    <p className="font-medium text-white">#{order.id}</p>
-                                    <p className="text-xs text-white/50">
-                                        {new Date(order.created_at).toLocaleDateString('en-US')}
+                                    <p className="font-bold text-store-primary">Order #{order.id}</p>
+                                    <p className="mt-0.5 text-xs text-store-muted">
+                                        {new Date(order.created_at).toLocaleDateString('en-US', {
+                                            year: 'numeric',
+                                            month: 'short',
+                                            day: 'numeric',
+                                        })}
                                     </p>
                                 </div>
-                                <div className="flex items-center gap-3">
-                                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusColors[order.status] ?? 'bg-white/10 text-white/70'}`}>
+                                <div className="flex flex-wrap items-center gap-3">
+                                    <span
+                                        className={`rounded-full px-2.5 py-1 text-xs font-semibold ${statusColors[order.status] ?? 'bg-store-surface text-store-muted'}`}
+                                    >
                                         {statusLabels[order.status] ?? order.status}
                                     </span>
-                                    <span className="font-semibold text-white">৳{Number(order.total).toFixed(0)}</span>
-                                    <Link href={`/customer/orders/${order.id}`} className="text-xs text-store-accent hover:underline">
+                                    <span className="text-base font-bold text-store-primary">
+                                        ৳{Number(order.total).toFixed(0)}
+                                    </span>
+                                    <Link
+                                        href={`/customer/orders/${order.id}`}
+                                        className="inline-flex items-center gap-1 rounded-lg bg-store-surface px-2.5 py-1 text-xs font-semibold text-store-accent transition group-hover:bg-store-accent group-hover:text-white"
+                                    >
                                         Details
+                                        <ChevronRight className="size-3.5" />
                                     </Link>
                                 </div>
                             </div>
@@ -54,6 +76,6 @@ export default function CustomerOrders({ orders }) {
                     ))}
                 </div>
             )}
-        </CustomerPortalLayout>
+        </CustomerPanelLayout>
     );
 }

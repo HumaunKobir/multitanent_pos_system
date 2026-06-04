@@ -5,6 +5,7 @@ use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\Customer\Auth\CustomerLoginController;
 use App\Http\Controllers\Customer\Auth\CustomerRegisterController;
 use App\Http\Controllers\Customer\CustomerDashboardController;
+use App\Http\Controllers\Customer\CustomerProfileController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\PathaoCourierController;
 use App\Http\Controllers\SubscriptionController;
@@ -64,6 +65,8 @@ Route::prefix('customer')->name('customer.')->group(function () {
         Route::get('dashboard', [CustomerDashboardController::class, 'dashboard'])->name('dashboard');
         Route::get('orders', [CustomerDashboardController::class, 'orders'])->name('orders');
         Route::get('orders/{id}', [CustomerDashboardController::class, 'orderDetails'])->name('order.details');
+        Route::get('settings', [CustomerProfileController::class, 'edit'])->name('settings');
+        Route::patch('settings', [CustomerProfileController::class, 'update'])->name('settings.update');
     });
 });
 

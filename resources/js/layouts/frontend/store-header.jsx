@@ -19,7 +19,6 @@ export function StoreHeader() {
     };
 
     const closeMobileMenu = () => setMobileMenuOpen(false);
-    const accountHref = auth?.customer ? '/customer/profile' : '/customer/login';
 
     return (
         <>
@@ -82,7 +81,7 @@ export function StoreHeader() {
                                     <Search className="size-5" />
                                 </button>
 
-                                <StoreAccountButton href={accountHref} customer={auth?.customer} />
+                                <StoreAccountButton customer={auth?.customer} />
                             </div>
                         </div>
 
@@ -163,12 +162,12 @@ export function StoreHeader() {
                         </nav>
 
                         <div className="border-t border-gray-100 p-4">
-                            <StoreAccountButton
-                                href={accountHref}
-                                customer={auth?.customer}
-                                onClick={closeMobileMenu}
-                                className="w-full [&_a]:w-full [&_a]:justify-center"
-                            />
+                            <div className="flex justify-center">
+                                <StoreAccountButton
+                                    customer={auth?.customer}
+                                    onClick={closeMobileMenu}
+                                />
+                            </div>
                         </div>
                     </motion.div>
                 </div>

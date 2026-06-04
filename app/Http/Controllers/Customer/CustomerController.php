@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Customer;
 
 use App\Enums\CommonStatus;
+use App\Enums\CustomerRegistrationType;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\MemberShipCard;
@@ -58,6 +59,7 @@ class CustomerController extends Controller
         }
 
         $data['branch_id'] = auth()->user()?->branch_id;
+        $data['registration_type'] = CustomerRegistrationType::Offline;
 
         if ((int) $data['is_default'] === 1) {
             Customer::where('branch_id', $data['branch_id'])->where('is_default', true)->update(['is_default' => false]);

@@ -4,6 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\Category;
 use App\Models\ConfigDictionary;
+use App\Models\User;
 use App\Support\AdminNavigation;
 use App\Support\StorageUrl;
 use Illuminate\Http\Request;
@@ -41,24 +42,25 @@ class HandleInertiaRequests extends Middleware
     {
         $cart = $request->session()->get('cart', []);
 
-        $user = $request->user();
+        $user = $request->user('web');
+        $customer = $request->user('customer');
 
         return [
             ...parent::share($request),
             'name' => config('app.name'),
             'auth' => [
-                'user' => $user,
-                'customer' => $request->user('customer'),
-                'permissions' => $user
+                'user' => $user instanceof User ? $user : null,
+                'customer' => $customer,
+                'permissions' => $user instanceof User
                     ? ($user->isSuperAdmin()
                         ? ['*']
                         : $user->getAllPermissions()->pluck('name')->values()->all())
                     : [],
             ],
-            'adminNavigation' => $request->user()
-                ? app(AdminNavigation::class)->build($request->user())
+            'adminNavigation' => $user instanceof User
+                ? app(AdminNavigation::class)->build($user)
                 : [],
-            'panelType' => $request->user()?->isBranchUser() ? 'branch' : 'admin',
+            'panelType' => $user instanceof User && $user->isBranchUser() ? 'branch' : 'admin',
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'cart' => $cart,
             'cartCount' => collect($cart)->sum('quantity'),

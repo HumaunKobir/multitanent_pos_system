@@ -8,7 +8,7 @@ import { StoreFooter } from '@/layouts/frontend/store-footer';
 import { StoreHeader } from '@/layouts/frontend/store-header';
 import { TrustStrip } from '@/layouts/frontend/trust-strip';
 
-function LayoutInner({ children, isHome }) {
+function LayoutInner({ children, isHome, hideTrustStrip = false }) {
     const { cart = {}, logo, flash } = usePage().props;
     const { toast, setLocalCart } = useCartDrawer();
     const [showPreloader, setShowPreloader] = useState(isHome);
@@ -44,7 +44,7 @@ function LayoutInner({ children, isHome }) {
 
             <StoreHeader />
             <main className="flex-1">{children}</main>
-            <TrustStrip />
+            {!hideTrustStrip && <TrustStrip />}
             <StoreFooter />
             <FloatingCart />
             <CartDrawer />
@@ -53,13 +53,15 @@ function LayoutInner({ children, isHome }) {
     );
 }
 
-export default function FrontendLayout({ children, isHome = false, title }) {
+export default function FrontendLayout({ children, isHome = false, title, hideTrustStrip = false }) {
     const { cart = {} } = usePage().props;
 
     return (
         <CartDrawerProvider initialCart={cart}>
             {title && <Head title={title} />}
-            <LayoutInner isHome={isHome}>{children}</LayoutInner>
+            <LayoutInner isHome={isHome} hideTrustStrip={hideTrustStrip}>
+                {children}
+            </LayoutInner>
         </CartDrawerProvider>
     );
 }

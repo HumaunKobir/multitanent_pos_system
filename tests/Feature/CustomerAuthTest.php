@@ -1,6 +1,14 @@
 <?php
 
+use App\Enums\CustomerRegistrationType;
 use App\Models\Customer;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
+
+function uniqueCustomerPhone(): string
+{
+    return fake()->unique()->numerify('017########');
+}
 
 test('customer login page loads', function () {
     $this->get(route('customer.login'))
@@ -10,12 +18,12 @@ test('customer login page loads', function () {
 
 test('customer can login with email', function () {
     $customer = Customer::factory()->create([
-        'email' => 'customer@example.com',
+        'email' => fake()->unique()->safeEmail(),
         'password' => bcrypt('password123'),
     ]);
 
     $this->post(route('customer.login'), [
-        'email' => 'customer@example.com',
+        'email' => $customer->email,
         'password' => 'password123',
     ])->assertRedirect(route('customer.dashboard'));
 
@@ -24,12 +32,12 @@ test('customer can login with email', function () {
 
 test('customer can login with phone number', function () {
     $customer = Customer::factory()->create([
-        'phone' => '01711111111',
+        'phone' => uniqueCustomerPhone(),
         'password' => bcrypt('password123'),
     ]);
 
     $this->post(route('customer.login'), [
-        'email' => '01711111111',
+        'email' => $customer->phone,
         'password' => 'password123',
     ])->assertRedirect(route('customer.dashboard'));
 
@@ -37,13 +45,13 @@ test('customer can login with phone number', function () {
 });
 
 test('customer login fails with wrong password', function () {
-    Customer::factory()->create([
-        'email' => 'wrong@example.com',
+    $customer = Customer::factory()->create([
+        'email' => fake()->unique()->safeEmail(),
         'password' => bcrypt('correctpassword'),
     ]);
 
     $this->post(route('customer.login'), [
-        'email' => 'wrong@example.com',
+        'email' => $customer->email,
         'password' => 'wrongpassword',
     ])->assertSessionHasErrors(['email']);
 });
@@ -55,28 +63,58 @@ test('customer register page loads', function () {
 });
 
 test('customer can register', function () {
-    $this->post(route('customer.register'), [
+    $phone = uniqueCustomerPhone();
+
+    $this->post('/customer/register', [
         'name' => 'নতুন গ্রাহক',
-        'email' => 'new@example.com',
-        'phone' => '01722222222',
+        'email' => fake()->unique()->safeEmail(),
+        'phone' => $phone,
         'password' => 'password123',
         'password_confirmation' => 'password123',
     ])->assertRedirect(route('customer.dashboard'));
 
-    $this->assertDatabaseHas('customers', ['phone' => '01722222222']);
+    $this->assertDatabaseHas('customers', [
+        'phone' => $phone,
+        'registration_type' => CustomerRegistrationType::Online->value,
+    ]);
+});
+
+test('offline customer can register online with same phone', function () {
+    $phone = uniqueCustomerPhone();
+
+    Customer::factory()->offline()->create([
+        'phone' => $phone,
+        'name' => 'Store Customer',
+    ]);
+
+    $this->post('/customer/register', [
+        'name' => 'Store Customer Online',
+        'phone' => $phone,
+        'password' => 'password123',
+        'password_confirmation' => 'password123',
+    ])->assertRedirect(route('customer.dashboard'));
+
+    expect(Customer::where('phone', $phone)->first())
+        ->name->toBe('Store Customer Online')
+        ->registration_type->toBe(CustomerRegistrationType::Online);
 });
 
 test('customer register requires name, phone, and password', function () {
-    $this->post(route('customer.register'), [])
+    $this->post('/customer/register', [])
         ->assertSessionHasErrors(['name', 'phone', 'password']);
 });
 
-test('customer register prevents duplicate phone', function () {
-    Customer::factory()->create(['phone' => '01733333333']);
+test('customer register prevents duplicate phone for online customers', function () {
+    $phone = uniqueCustomerPhone();
 
-    $this->post(route('customer.register'), [
+    Customer::factory()->create([
+        'phone' => $phone,
+        'registration_type' => CustomerRegistrationType::Online,
+    ]);
+
+    $this->post('/customer/register', [
         'name' => 'Another',
-        'phone' => '01733333333',
+        'phone' => $phone,
         'password' => 'password123',
         'password_confirmation' => 'password123',
     ])->assertSessionHasErrors(['phone']);
@@ -126,4 +164,68 @@ test('authenticated customer cannot visit login page', function () {
     $this->actingAs($customer, 'customer')
         ->get(route('customer.login'))
         ->assertRedirect();
+});
+
+test('authenticated customer can visit profile settings', function () {
+    $customer = Customer::factory()->create();
+
+    $this->actingAs($customer, 'customer')
+        ->get(route('customer.settings'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->component('frontend/customer/profile'));
+});
+
+test('authenticated customer can update profile', function () {
+    $customer = Customer::factory()->create(['name' => 'Old Name']);
+
+    $this->actingAs($customer, 'customer')
+        ->patch(route('customer.settings.update'), [
+            'name' => 'New Name',
+            'phone' => $customer->phone,
+            'email' => $customer->email,
+        ])
+        ->assertRedirect();
+
+    expect($customer->fresh()->name)->toBe('New Name');
+});
+
+test('authenticated customer can upload profile image', function () {
+    Storage::fake('public');
+
+    $customer = Customer::factory()->create();
+
+    $this->actingAs($customer, 'customer')
+        ->patch(route('customer.settings.update'), [
+            'name' => $customer->name,
+            'phone' => $customer->phone,
+            'email' => $customer->email,
+            'image' => UploadedFile::fake()->image('avatar.jpg'),
+        ])
+        ->assertRedirect();
+
+    $customer->refresh();
+
+    expect($customer->image)->not->toBeNull();
+    Storage::disk('public')->assertExists($customer->image);
+});
+
+test('authenticated customer can remove profile image', function () {
+    Storage::fake('public');
+
+    $path = UploadedFile::fake()->image('avatar.jpg')->store('customers', 'public');
+    $customer = Customer::factory()->create(['image' => $path]);
+
+    $this->actingAs($customer, 'customer')
+        ->patch(route('customer.settings.update'), [
+            'name' => $customer->name,
+            'phone' => $customer->phone,
+            'email' => $customer->email,
+            'remove_image' => true,
+        ])
+        ->assertRedirect();
+
+    $customer->refresh();
+
+    expect($customer->image)->toBeNull();
+    Storage::disk('public')->assertMissing($path);
 });

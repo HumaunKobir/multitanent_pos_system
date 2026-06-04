@@ -1,5 +1,7 @@
 import { Link } from '@inertiajs/react';
-import { CustomerPortalLayout } from '@/layouts/frontend/customer-portal-layout';
+import { ArrowLeft } from 'lucide-react';
+
+import { CustomerPanelLayout } from '@/layouts/frontend/customer-panel-layout';
 
 const statusLabels = {
     1: 'Pending',
@@ -11,59 +13,65 @@ const statusLabels = {
 
 export default function OrderDetails({ order }) {
     return (
-        <CustomerPortalLayout title={`Order #${order.id}`}>
-            <div className="mb-4 flex items-center justify-between">
-                <h1 className="text-xl font-bold text-white">Order #{order.id}</h1>
-                <Link href="/customer/orders" className="text-sm text-white/60 hover:text-white">
-                    ← Back
-                </Link>
+        <CustomerPanelLayout title={`Order #${order.id}`}>
+            <Link
+                href="/customer/orders"
+                className="mb-3 inline-flex items-center gap-1.5 text-xs font-medium text-store-muted transition hover:text-store-accent"
+            >
+                <ArrowLeft className="size-4" />
+                Back to orders
+            </Link>
+
+            <div className="mb-3 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-gray-200/80 bg-white p-3.5 shadow-sm">
+                    <p className="mb-3 text-xs font-bold uppercase tracking-wider text-store-accent">Delivery</p>
+                    <p className="font-medium text-store-primary">{order.name}</p>
+                    <p className="mt-1 text-sm text-store-muted">{order.phone}</p>
+                    <p className="mt-1 text-sm text-store-muted">{order.address}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200/80 bg-white p-3.5 shadow-sm">
+                    <p className="mb-3 text-xs font-bold uppercase tracking-wider text-store-accent">Order info</p>
+                    <p className="text-sm text-store-muted">
+                        Status:{' '}
+                        <span className="font-semibold text-store-primary">
+                            {statusLabels[order.status] ?? order.status}
+                        </span>
+                    </p>
+                    <p className="mt-2 text-sm text-store-muted">Payment: {order.payment_status}</p>
+                    <p className="mt-1 text-sm text-store-muted">Method: {order.payment_method?.toUpperCase()}</p>
+                </div>
             </div>
 
-            <div className="mb-4 grid gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-white/10 bg-white/10 p-4 text-sm backdrop-blur-md">
-                    <p className="mb-2 font-medium text-white">Delivery</p>
-                    <p className="text-white/70">{order.name}</p>
-                    <p className="text-white/70">{order.phone}</p>
-                    <p className="text-white/70">{order.address}</p>
-                </div>
-                <div className="rounded-xl border border-white/10 bg-white/10 p-4 text-sm backdrop-blur-md">
-                    <p className="mb-2 font-medium text-white">Order info</p>
-                    <p className="text-white/70">Status: {statusLabels[order.status] ?? order.status}</p>
-                    <p className="text-white/70">Payment: {order.payment_status}</p>
-                    <p className="text-white/70">Method: {order.payment_method?.toUpperCase()}</p>
-                </div>
-            </div>
-
-            <div className="overflow-hidden rounded-xl border border-white/10 bg-white/10 backdrop-blur-md">
-                <div className="divide-y divide-white/10">
+            <div className="overflow-hidden rounded-xl border border-gray-200/80 bg-white shadow-sm">
+                <div className="divide-y divide-gray-100">
                     {order.products?.map((item, i) => (
-                        <div key={i} className="flex items-center justify-between gap-4 p-4 text-sm">
+                        <div key={i} className="flex items-center justify-between gap-3 p-3.5">
                             <div className="min-w-0 flex-1">
-                                <p className="font-medium text-white line-clamp-2">{item.name}</p>
-                                {item.sku && <p className="text-xs text-white/50">{item.sku}</p>}
+                                <p className="font-medium text-store-primary line-clamp-2">{item.name}</p>
+                                {item.sku && <p className="text-xs text-store-muted">{item.sku}</p>}
                             </div>
-                            <div className="text-right text-white/80">
+                            <div className="text-right text-sm text-store-muted">
                                 <p>× {item.quantity}</p>
-                                <p className="font-medium">৳{Number(item.total_price).toFixed(0)}</p>
+                                <p className="font-bold text-store-primary">৳{Number(item.total_price).toFixed(0)}</p>
                             </div>
                         </div>
                     ))}
                 </div>
-                <div className="space-y-1.5 border-t border-white/10 p-4 text-sm text-white/80">
-                    <div className="flex justify-between">
+                <div className="space-y-1.5 border-t border-gray-100 bg-store-surface/50 p-3.5">
+                    <div className="flex justify-between text-sm text-store-muted">
                         <span>Subtotal</span>
                         <span>৳{Number(order.subtotal).toFixed(0)}</span>
                     </div>
-                    <div className="flex justify-between">
+                    <div className="flex justify-between text-sm text-store-muted">
                         <span>Delivery</span>
                         <span>৳{Number(order.delivery_charge).toFixed(0)}</span>
                     </div>
-                    <div className="flex justify-between border-t border-white/10 pt-2 font-bold text-white">
+                    <div className="flex justify-between border-t border-gray-200 pt-3 text-base font-bold text-store-primary">
                         <span>Total</span>
                         <span>৳{Number(order.total).toFixed(0)}</span>
                     </div>
                 </div>
             </div>
-        </CustomerPortalLayout>
+        </CustomerPanelLayout>
     );
 }

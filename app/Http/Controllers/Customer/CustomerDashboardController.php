@@ -13,7 +13,9 @@ class CustomerDashboardController extends Controller
         $customer = auth('customer')->user();
 
         return Inertia::render('frontend/customer/dashboard', [
-            'customer' => $customer,
+            'customer' => $customer->only([
+                'id', 'name', 'email', 'phone', 'address', 'point', 'registration_type',
+            ]),
             'orderCount' => $customer->orders()->count(),
             'pendingCount' => $customer->orders()->where('status', 1)->count(),
         ]);

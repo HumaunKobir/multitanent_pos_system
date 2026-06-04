@@ -3,8 +3,11 @@
 namespace App\Models;
 
 use App\Enums\CommonStatus;
+use App\Enums\CustomerRegistrationType;
+use App\Support\StorageUrl;
 use App\Traits\HasAccount;
 use App\Traits\HasBranch;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -22,21 +25,31 @@ class Customer extends Authenticatable
         'email',
         'phone',
         'address',
+        'image',
         'password',
         'status',
         'is_default',
         'is_membership',
         'point',
+        'registration_type',
     ];
 
     protected $hidden = ['password', 'remember_token', 'api_token'];
 
+    protected $appends = ['image_url'];
+
     protected $casts = [
         'status' => CommonStatus::class,
+        'registration_type' => CustomerRegistrationType::class,
         'is_default' => 'boolean',
         'is_membership' => 'boolean',
         'balance' => 'decimal:2',
     ];
+
+    protected function imageUrl(): Attribute
+    {
+        return Attribute::get(fn (): ?string => StorageUrl::public($this->image));
+    }
 
     public function branch(): BelongsTo
     {

@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers\Customer\Auth;
 
+use App\Enums\CustomerRegistrationType;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -21,18 +23,43 @@ class CustomerRegisterController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'nullable|email|unique:customers,email',
-            'phone' => 'required|string|max:30|unique:customers,phone',
+            'phone' => [
+                'required',
+                'string',
+                'max:30',
+                Rule::unique('customers', 'phone')->where(function ($query) {
+                    $query->where('registration_type', CustomerRegistrationType::Online->value);
+                }),
+            ],
             'password' => 'required|string|min:6|confirmed',
         ]);
 
-        $customer = Customer::updateOrCreate(
-            ['phone' => $validated['phone']],
-            [
+        $existing = Customer::query()->where('phone', $validated['phone'])->first();
+
+        if ($existing) {
+            if ($existing->registration_type === CustomerRegistrationType::Online) {
+                return back()->withErrors(['phone' => 'This phone number is already registered.'])->onlyInput('name', 'email', 'phone');
+            }
+
+            $existing->update([
                 'name' => $validated['name'],
-                'email' => $validated['email'] ?? null,
+                'email' => $validated['email'] ?? $existing->email,
                 'password' => bcrypt($validated['password']),
-            ]
-        );
+                'registration_type' => CustomerRegistrationType::Online,
+            ]);
+
+            auth('customer')->login($existing);
+
+            return redirect()->route('customer.dashboard');
+        }
+
+        $customer = Customer::create([
+            'name' => $validated['name'],
+            'email' => $validated['email'] ?? null,
+            'phone' => $validated['phone'],
+            'password' => bcrypt($validated['password']),
+            'registration_type' => CustomerRegistrationType::Online,
+        ]);
 
         auth('customer')->login($customer);
 

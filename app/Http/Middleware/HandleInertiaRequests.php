@@ -2,8 +2,11 @@
 
 namespace App\Http\Middleware;
 
+use App\Enums\CommonStatus;
+use App\Models\Brand;
 use App\Models\Category;
 use App\Models\ConfigDictionary;
+use App\Models\Tag;
 use App\Models\User;
 use App\Support\AdminNavigation;
 use App\Support\StorageUrl;
@@ -72,6 +75,23 @@ class HandleInertiaRequests extends Middleware
                     'name' => $c->name,
                     'slug' => $c->slug,
                     'image' => StorageUrl::public($c->image),
+                ]),
+            'brands' => Brand::active()
+                ->orderBy('name')
+                ->get(['id', 'name', 'slug'])
+                ->map(fn ($brand) => [
+                    'id' => $brand->id,
+                    'name' => $brand->name,
+                    'slug' => $brand->slug,
+                ]),
+            'tags' => Tag::query()
+                ->whereNull('branch_id')
+                ->where('status', CommonStatus::Active)
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn ($tag) => [
+                    'id' => $tag->id,
+                    'name' => $tag->name,
                 ]),
             'logo' => StorageUrl::public(ConfigDictionary::get('logo')),
             'siteName' => ConfigDictionary::get('website_name', config('app.name')),

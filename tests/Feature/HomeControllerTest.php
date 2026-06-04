@@ -1,14 +1,37 @@
 <?php
 
+use App\Enums\CommonStatus;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductSection;
+use App\Models\Tag;
 
 test('home page loads successfully', function () {
     $this->get(route('home'))
         ->assertOk()
         ->assertInertia(fn ($page) => $page->component('frontend/home'));
+});
+
+test('home page shares storefront navigation filters', function () {
+    $category = Category::factory()->create(['status' => 1]);
+    $brand = Brand::factory()->create(['status' => 1]);
+    $tag = Tag::create([
+        'name' => 'Nav Tag '.fake()->unique()->numerify('####'),
+        'status' => CommonStatus::Active,
+        'branch_id' => null,
+    ]);
+
+    $this->get(route('home'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('categories')
+            ->has('brands')
+            ->has('tags')
+            ->where('categories', fn ($categories) => collect($categories)->contains('slug', $category->slug))
+            ->where('brands', fn ($brands) => collect($brands)->contains('slug', $brand->slug))
+            ->where('tags', fn ($tags) => collect($tags)->contains('name', $tag->name))
+        );
 });
 
 test('home page contains product sections', function () {

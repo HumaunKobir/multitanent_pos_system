@@ -3,10 +3,10 @@ import { motion } from 'framer-motion';
 import { Menu, Search, Sparkles, X } from 'lucide-react';
 import { useState } from 'react';
 import { StoreAccountButton } from '@/components/frontend/store-account-button';
-import { MobileCategoryGrid, StoreNavBar } from '@/components/frontend/store-nav';
+import { MobileFilterSection, StoreNavBar } from '@/components/frontend/store-nav';
 
 export function StoreHeader() {
-    const { siteName, topNotice, categories = [], auth, logo } = usePage().props;
+    const { siteName, topNotice, categories = [], brands = [], tags = [], auth, logo } = usePage().props;
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState('');
     const [searchOpen, setSearchOpen] = useState(false);
@@ -136,29 +136,29 @@ export function StoreHeader() {
                                 Home
                             </Link>
 
-                            <div className="px-3 pb-1 pt-2">
-                                <p className="text-[11px] font-bold uppercase tracking-wider text-store-muted">Shop Categories</p>
-                                <p className="text-[10px] text-store-muted/80">Loaded dynamically from admin</p>
-                            </div>
+                            <MobileFilterSection
+                                label="Category"
+                                items={categories}
+                                buildHref={(item) => `/category/${item.slug}/products`}
+                                onNavigate={closeMobileMenu}
+                                emptyMessage="No categories yet"
+                            />
 
-                            <MobileCategoryGrid categories={categories} onNavigate={closeMobileMenu} />
+                            <MobileFilterSection
+                                label="Brand"
+                                items={brands}
+                                buildHref={(item) => `/brand/${item.slug}/products`}
+                                onNavigate={closeMobileMenu}
+                                emptyMessage="No brands yet"
+                            />
 
-                            <div className="mt-3 space-y-1 px-3">
-                                <Link
-                                    href="/about"
-                                    className="block rounded-xl px-3 py-2.5 text-sm font-medium text-store-primary hover:bg-store-surface"
-                                    onClick={closeMobileMenu}
-                                >
-                                    About Us
-                                </Link>
-                                <Link
-                                    href="/contact"
-                                    className="block rounded-xl px-3 py-2.5 text-sm font-medium text-store-primary hover:bg-store-surface"
-                                    onClick={closeMobileMenu}
-                                >
-                                    Contact
-                                </Link>
-                            </div>
+                            <MobileFilterSection
+                                label="Tags"
+                                items={tags}
+                                buildHref={(item) => `/collection/${encodeURIComponent(item.name)}`}
+                                onNavigate={closeMobileMenu}
+                                emptyMessage="No tags yet"
+                            />
                         </nav>
 
                         <div className="border-t border-gray-100 p-4">

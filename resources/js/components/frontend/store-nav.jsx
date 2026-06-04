@@ -1,15 +1,8 @@
 import { Link, usePage } from '@inertiajs/react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronDown, Grid3X3, Home, Info, Mail, ShoppingBag } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Home } from 'lucide-react';
+import { useCallback, useState } from 'react';
 
-function categoryImage(category) {
-    if (!category.image) {
-        return null;
-    }
-
-    return category.image.startsWith('/') ? category.image : `/storage/${category.image}`;
-}
+import { FilterNavDropdown } from '@/components/frontend/filter-nav-dropdown';
 
 function NavLink({ href, label, icon: Icon, active, onClick }) {
     return (
@@ -26,43 +19,10 @@ function NavLink({ href, label, icon: Icon, active, onClick }) {
     );
 }
 
-function CategoryCard({ category, onNavigate }) {
-    const imageSrc = categoryImage(category);
-
-    return (
-        <Link
-            href={`/category/${category.slug}/products`}
-            onClick={onNavigate}
-            className="group flex flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-store-accent/30 hover:shadow-md"
-        >
-            <div className="relative aspect-[4/3] overflow-hidden bg-gradient-to-br from-store-gradient-from/20 to-store-gradient-to/20">
-                {imageSrc ? (
-                    <img
-                        src={imageSrc}
-                        alt={category.name}
-                        className="size-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                ) : (
-                    <div className="flex size-full items-center justify-center">
-                        <ShoppingBag className="size-8 text-store-accent/40" />
-                    </div>
-                )}
-                <div className="absolute inset-0 bg-gradient-to-t from-store-primary/60 via-transparent to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
-            </div>
-            <div className="px-3 py-2.5">
-                <p className="text-sm font-semibold text-store-primary group-hover:text-store-accent">{category.name}</p>
-                <p className="text-xs text-store-muted">Browse collection</p>
-            </div>
-        </Link>
-    );
-}
-
 export function StoreNavBar({ onNavigate }) {
-    const { categories = [] } = usePage().props;
+    const { categories = [], brands = [], tags = [] } = usePage().props;
     const { url } = usePage();
-    const [shopOpen, setShopOpen] = useState(false);
-    const shopRef = useRef(null);
-    const closeTimer = useRef(null);
+    const [openFilter, setOpenFilter] = useState(null);
 
     const isActive = useCallback(
         (path) => {
@@ -75,134 +35,105 @@ export function StoreNavBar({ onNavigate }) {
         [url],
     );
 
-    const openShop = () => {
-        if (closeTimer.current) {
-            clearTimeout(closeTimer.current);
-        }
-        setShopOpen(true);
-    };
-
-    const closeShop = () => {
-        closeTimer.current = setTimeout(() => setShopOpen(false), 120);
-    };
-
     const handleNavigate = () => {
-        setShopOpen(false);
+        setOpenFilter(null);
         onNavigate?.();
     };
 
-    useEffect(() => {
-        return () => {
-            if (closeTimer.current) {
-                clearTimeout(closeTimer.current);
-            }
-        };
-    }, []);
+    const categoryPath = (slug) => `/category/${slug}/products`;
+    const brandPath = (slug) => `/brand/${slug}/products`;
+    const tagPath = (name) => `/collection/${encodeURIComponent(name)}`;
 
-    useEffect(() => {
-        const handleClickOutside = (event) => {
-            if (shopRef.current && !shopRef.current.contains(event.target)) {
-                setShopOpen(false);
-            }
-        };
+    const isCategoryActive = (item) => url.startsWith(categoryPath(item.slug));
+    const isBrandActive = (item) => url.startsWith(brandPath(item.slug));
+    const isTagActive = (item) => {
+        const prefix = `/collection/${encodeURIComponent(item.name)}`;
 
-        document.addEventListener('mousedown', handleClickOutside);
-
-        return () => document.removeEventListener('mousedown', handleClickOutside);
-    }, []);
+        return url === prefix || url.startsWith(`${prefix}?`);
+    };
 
     return (
         <div className="relative hidden border-t border-white/10 bg-store-primary md:block">
-            <div className="store-container flex items-center justify-center">
+            <div className="store-container flex items-center justify-center gap-0.5 py-1">
                 <NavLink href="/" label="Home" icon={Home} active={isActive('/')} onClick={handleNavigate} />
 
-                <div ref={shopRef} className="relative" onMouseEnter={openShop} onMouseLeave={closeShop}>
-                    <button
-                        type="button"
-                        onClick={() => setShopOpen((open) => !open)}
-                        data-active={shopOpen || url.includes('/category/') ? 'true' : 'false'}
-                        className="group relative flex items-center gap-1.5 px-4 py-3 text-sm font-medium text-white/75 transition-colors hover:text-white data-[active=true]:text-white"
-                        aria-expanded={shopOpen}
-                        aria-haspopup="true"
-                    >
-                        <Grid3X3 className="size-3.5 opacity-70 group-hover:opacity-100" />
-                        Shop
-                        <ChevronDown className={`size-3.5 transition-transform duration-200 ${shopOpen ? 'rotate-180' : ''}`} />
-                        <span className="absolute inset-x-3 bottom-1.5 h-0.5 origin-center scale-x-0 rounded-full bg-store-accent transition-transform duration-300 group-hover:scale-x-100 group-data-[active=true]:scale-x-100" />
-                    </button>
+                <FilterNavDropdown
+                    label="Category"
+                    items={categories}
+                    buildHref={(item) => categoryPath(item.slug)}
+                    isItemActive={isCategoryActive}
+                    active={url.includes('/category/')}
+                    open={openFilter === 'category'}
+                    onOpenChange={(next) => setOpenFilter(next ? 'category' : null)}
+                    onNavigate={handleNavigate}
+                    emptyMessage="No categories yet"
+                />
 
-                    <AnimatePresence>
-                        {shopOpen && (
-                            <motion.div
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                exit={{ opacity: 0, y: 8 }}
-                                transition={{ duration: 0.18 }}
-                                className="absolute left-1/2 top-full z-50 w-[min(720px,calc(100vw-2rem))] -translate-x-1/2 pt-2"
-                            >
-                                <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-2xl shadow-store-primary/20">
-                                    <div className="store-gradient px-5 py-3">
-                                        <p className="text-sm font-semibold text-white">Shop by Category</p>
-                                        <p className="text-xs text-white/80">All categories from your store — updated automatically</p>
-                                    </div>
+                <FilterNavDropdown
+                    label="Brand"
+                    items={brands}
+                    buildHref={(item) => brandPath(item.slug)}
+                    isItemActive={isBrandActive}
+                    active={url.includes('/brand/')}
+                    open={openFilter === 'brand'}
+                    onOpenChange={(next) => setOpenFilter(next ? 'brand' : null)}
+                    onNavigate={handleNavigate}
+                    emptyMessage="No brands yet"
+                />
 
-                                    {categories.length > 0 ? (
-                                        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3">
-                                            {categories.map((category) => (
-                                                <CategoryCard key={category.id} category={category} onNavigate={handleNavigate} />
-                                            ))}
-                                        </div>
-                                    ) : (
-                                        <div className="px-5 py-8 text-center">
-                                            <p className="text-sm font-medium text-store-primary">No categories yet</p>
-                                            <p className="mt-1 text-xs text-store-muted">Add categories from admin to show them here</p>
-                                        </div>
-                                    )}
-                                </div>
-                            </motion.div>
-                        )}
-                    </AnimatePresence>
-                </div>
-
-                <NavLink href="/about" label="About" icon={Info} active={isActive('/about')} onClick={handleNavigate} />
-                <NavLink href="/contact" label="Contact" icon={Mail} active={isActive('/contact')} onClick={handleNavigate} />
+                <FilterNavDropdown
+                    label="Tags"
+                    items={tags}
+                    buildHref={(item) => tagPath(item.name)}
+                    isItemActive={isTagActive}
+                    active={url.includes('/collection/')}
+                    open={openFilter === 'tags'}
+                    onOpenChange={(next) => setOpenFilter(next ? 'tags' : null)}
+                    onNavigate={handleNavigate}
+                    emptyMessage="No tags yet"
+                />
             </div>
         </div>
     );
 }
 
-export function MobileCategoryGrid({ categories, onNavigate }) {
-    if (!categories.length) {
-        return (
-            <p className="px-3 py-4 text-center text-xs text-store-muted">No categories available</p>
-        );
-    }
+export function MobileFilterSection({ label, items, buildHref, onNavigate, emptyMessage }) {
+    const [search, setSearch] = useState('');
+    const query = search.trim().toLowerCase();
+    const filtered = query ? items.filter((item) => item.name.toLowerCase().includes(query)) : items;
 
     return (
-        <div className="grid grid-cols-2 gap-2 px-3 pb-2">
-            {categories.map((category) => {
-                const imageSrc = categoryImage(category);
-
-                return (
-                    <Link
-                        key={category.id}
-                        href={`/category/${category.slug}/products`}
-                        onClick={onNavigate}
-                        className="overflow-hidden rounded-xl border border-gray-100 bg-store-surface"
-                    >
-                        <div className="aspect-square bg-gradient-to-br from-store-gradient-from/15 to-store-gradient-to/15">
-                            {imageSrc ? (
-                                <img src={imageSrc} alt={category.name} className="size-full object-cover" />
-                            ) : (
-                                <div className="flex size-full items-center justify-center">
-                                    <ShoppingBag className="size-6 text-store-accent/50" />
-                                </div>
-                            )}
-                        </div>
-                        <p className="truncate px-2 py-2 text-center text-xs font-semibold text-store-primary">{category.name}</p>
-                    </Link>
-                );
-            })}
+        <div className="px-3 pb-2.5">
+            <p className="mb-1.5 text-[10px] font-bold uppercase tracking-wider text-store-muted">{label}</p>
+            <div className="relative mb-2 overflow-hidden rounded-full bg-gray-100 ring-1 ring-gray-200/90 focus-within:ring-2 focus-within:ring-store-accent/25">
+                <input
+                    type="search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder="Search ..."
+                    className="w-full appearance-none rounded-full border-0 bg-transparent py-2 pl-3 pr-3 text-xs focus:outline-none"
+                />
+            </div>
+            <ul className="store-filter-scroll flex max-h-36 flex-col gap-2 overflow-y-auto pr-0.5">
+                {filtered.length > 0 ? (
+                    filtered.map((item) => (
+                        <li key={item.id}>
+                            <Link
+                                href={buildHref(item)}
+                                onClick={onNavigate}
+                                className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-[13px] font-medium text-store-primary hover:bg-store-surface"
+                            >
+                                <span className="size-3.5 shrink-0 rounded-full border-[1.5px] border-gray-300" aria-hidden />
+                                {item.name}
+                            </Link>
+                        </li>
+                    ))
+                ) : (
+                    <li className="py-2.5 text-center text-xs text-store-muted">
+                        {items.length === 0 ? emptyMessage : 'No matches found'}
+                    </li>
+                )}
+            </ul>
         </div>
     );
 }

@@ -31,7 +31,7 @@ function CategoryCard({ category, onNavigate }) {
 
     return (
         <Link
-            href={`/category/${category.id}/products`}
+            href={`/category/${category.slug}/products`}
             onClick={onNavigate}
             className="group flex flex-col overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm transition-all hover:-translate-y-0.5 hover:border-store-accent/30 hover:shadow-md"
         >
@@ -186,7 +186,7 @@ export function MobileCategoryGrid({ categories, onNavigate }) {
                 return (
                     <Link
                         key={category.id}
-                        href={`/category/${category.id}/products`}
+                        href={`/category/${category.slug}/products`}
                         onClick={onNavigate}
                         className="overflow-hidden rounded-xl border border-gray-100 bg-store-surface"
                     >

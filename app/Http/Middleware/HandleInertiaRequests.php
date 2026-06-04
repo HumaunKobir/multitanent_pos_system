@@ -63,10 +63,11 @@ class HandleInertiaRequests extends Middleware
             'cartCount' => collect($cart)->sum('quantity'),
             'categories' => Category::active()
                 ->orderBy('name')
-                ->get(['id', 'name', 'image'])
+                ->get(['id', 'name', 'slug', 'image'])
                 ->map(fn ($c) => [
                     'id' => $c->id,
                     'name' => $c->name,
+                    'slug' => $c->slug,
                     'image' => $c->image,
                 ]),
             'logo' => ConfigDictionary::get('logo'),

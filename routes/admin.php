@@ -24,9 +24,7 @@ use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Setting\BrandController;
 use App\Http\Controllers\Setting\CategoryController;
-use App\Http\Controllers\Setting\ColorController;
 use App\Http\Controllers\Setting\ProductSectionController;
-use App\Http\Controllers\Setting\SizeController;
 use App\Http\Controllers\Setting\SliderController;
 use App\Http\Controllers\Setting\TagController;
 use App\Http\Controllers\Setting\UnitController;
@@ -117,8 +115,6 @@ Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->gr
     Route::resource('tag', TagController::class)->except(['create', 'edit']);
     Route::resource('brand', BrandController::class)->except(['create', 'edit']);
     Route::resource('unit', UnitController::class)->except(['create', 'edit']);
-    Route::resource('size', SizeController::class)->except(['create', 'edit']);
-    Route::resource('color', ColorController::class)->except(['create', 'edit']);
     Route::resource('warranty', WarrantyController::class)->except(['create', 'edit']);
     Route::resource('slider', SliderController::class)->except(['create', 'edit', 'show']);
     Route::resource('productsection', ProductSectionController::class)->except(['create', 'edit', 'show']);

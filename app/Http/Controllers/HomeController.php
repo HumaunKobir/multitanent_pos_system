@@ -6,12 +6,10 @@ use App\Enums\BlockType;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Collectioncategory;
-use App\Models\Color;
 use App\Models\ConfigDictionary;
 use App\Models\Contact;
 use App\Models\Product;
 use App\Models\ProductSection;
-use App\Models\Size;
 use App\Models\Slider;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -97,8 +95,8 @@ class HomeController extends Controller
             'products' => $products,
             'filters' => $request->only(['min_price', 'max_price', 'brands', 'colors', 'sizes', 'sort_by']),
             'allBrands' => Brand::active()->pluck('name'),
-            'allColors' => Color::active()->pluck('name'),
-            'allSizes' => Size::active()->pluck('name'),
+            'allColors' => [],
+            'allSizes' => [],
         ]);
     }
 
@@ -118,30 +116,76 @@ class HomeController extends Controller
             'products' => $products,
             'filters' => $request->only(['min_price', 'max_price', 'brands', 'colors', 'sizes', 'sort_by']),
             'allBrands' => Brand::active()->pluck('name'),
-            'allColors' => Color::active()->pluck('name'),
-            'allSizes' => Size::active()->pluck('name'),
+            'allColors' => [],
+            'allSizes' => [],
         ]);
     }
 
-    public function categoryProducts(int $id, Request $request): Response
+    public function categoryProducts(string $category, Request $request): Response|RedirectResponse
     {
-        $category = Category::findOrFail($id);
+        if (ctype_digit($category)) {
+            $model = Category::findOrFail((int) $category);
+
+            return redirect()->route('category.products', $model->slug, 301);
+        }
+
+        $model = Category::where('slug', $category)->firstOrFail();
+
+        return $this->renderCategoryProducts($model, $request);
+    }
+
+    public function brandProducts(string $brand, Request $request): Response|RedirectResponse
+    {
+        if (ctype_digit($brand)) {
+            $model = Brand::findOrFail((int) $brand);
+
+            return redirect()->route('brand.products', $model->slug, 301);
+        }
+
+        $model = Brand::where('slug', $brand)->firstOrFail();
+
+        return $this->renderBrandProducts($model, $request);
+    }
+
+    private function renderCategoryProducts(Category $category, Request $request): Response
+    {
         $query = Product::with(['photos'])->withCount('variations')
             ->where('status', 1)
             ->where('visible', 'yes')
-            ->where('category_id', $id);
+            ->where('category_id', $category->id);
 
         $query = $this->applyFilters($query, $request);
 
         $products = $query->paginate(12)->through(fn ($p) => $this->formatProduct($p));
 
         return Inertia::render('frontend/category-products', [
-            'category' => $category,
+            'category' => $category->only(['id', 'name', 'slug', 'image']),
             'products' => $products,
             'filters' => $request->only(['min_price', 'max_price', 'brands', 'colors', 'sizes', 'sort_by']),
             'allBrands' => Brand::active()->pluck('name'),
-            'allColors' => Color::active()->pluck('name'),
-            'allSizes' => Size::active()->pluck('name'),
+            'allColors' => [],
+            'allSizes' => [],
+        ]);
+    }
+
+    private function renderBrandProducts(Brand $brand, Request $request): Response
+    {
+        $query = Product::with(['photos'])->withCount('variations')
+            ->where('status', 1)
+            ->where('visible', 'yes')
+            ->where('brand_id', $brand->id);
+
+        $query = $this->applyFilters($query, $request);
+
+        $products = $query->paginate(12)->through(fn ($p) => $this->formatProduct($p));
+
+        return Inertia::render('frontend/brand-products', [
+            'brand' => $brand->only(['id', 'name', 'slug', 'image']),
+            'products' => $products,
+            'filters' => $request->only(['min_price', 'max_price', 'brands', 'colors', 'sizes', 'sort_by']),
+            'allBrands' => Brand::active()->pluck('name'),
+            'allColors' => [],
+            'allSizes' => [],
         ]);
     }
 

@@ -13,7 +13,8 @@ use Illuminate\Support\Facades\Route;
 // ── PUBLIC FRONTEND ───────────────────────────────────────────────────────────
 Route::get('/', [HomeController::class, 'index'])->name('home');
 Route::get('/products/{product:slug}', [HomeController::class, 'show'])->name('product.show');
-Route::get('/category/{id}/products', [HomeController::class, 'categoryProducts'])->name('category.products');
+Route::get('/category/{category}/products', [HomeController::class, 'categoryProducts'])->name('category.products');
+Route::get('/brand/{brand}/products', [HomeController::class, 'brandProducts'])->name('brand.products');
 Route::get('/section/{id}/products', [HomeController::class, 'sectionProducts'])->name('section.products');
 Route::get('/collection/{name}', [HomeController::class, 'collectionProducts'])->name('collection.products')->where('name', '.*');
 Route::get('/search', [HomeController::class, 'search'])->name('search');

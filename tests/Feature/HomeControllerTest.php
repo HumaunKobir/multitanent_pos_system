@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductSection;
@@ -65,17 +66,47 @@ test('collection products page renders', function () {
         );
 });
 
-test('category products page renders for valid category', function () {
-    $category = Category::factory()->create();
+test('category products page renders for valid category slug', function () {
+    $category = Category::factory()->create(['name' => 'Summer Wear']);
 
-    $this->get(route('category.products', $category->id))
+    $this->get(route('category.products', $category->slug))
         ->assertOk()
-        ->assertInertia(fn ($page) => $page->component('frontend/category-products'));
+        ->assertInertia(fn ($page) => $page
+            ->component('frontend/category-products')
+            ->where('category.slug', $category->slug)
+            ->where('allColors', [])
+            ->where('allSizes', [])
+        );
 });
 
-test('category products page returns 404 for invalid category', function () {
-    $this->get(route('category.products', 9999))
+test('category products page redirects legacy id urls to slug', function () {
+    $category = Category::factory()->create(['name' => 'Winter Wear']);
+
+    $this->get("/category/{$category->id}/products")
+        ->assertRedirect(route('category.products', $category->slug));
+});
+
+test('category products page returns 404 for invalid category slug', function () {
+    $this->get(route('category.products', 'non-existent-category'))
         ->assertNotFound();
+});
+
+test('brand products page renders for valid brand slug', function () {
+    $brand = Brand::factory()->create(['name' => 'Cool Brand']);
+
+    $this->get(route('brand.products', $brand->slug))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('frontend/brand-products')
+            ->where('brand.slug', $brand->slug)
+        );
+});
+
+test('brand products page redirects legacy id urls to slug', function () {
+    $brand = Brand::factory()->create(['name' => 'Legacy Brand']);
+
+    $this->get("/brand/{$brand->id}/products")
+        ->assertRedirect(route('brand.products', $brand->slug));
 });
 
 test('search page returns matching products', function () {

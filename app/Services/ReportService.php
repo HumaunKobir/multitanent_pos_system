@@ -137,7 +137,7 @@ class ReportService
             return [];
         }
 
-        return Ledger::query()
+        return $this->scopeLedgerForBranch(Ledger::query())
             ->whereIn('account_id', $accountIds)
             ->when($dateFrom, fn (Builder $q, string $d) => $q->whereDate('date', '>=', $d))
             ->when($dateTo, fn (Builder $q, string $d) => $q->whereDate('date', '<=', $d))
@@ -169,7 +169,7 @@ class ReportService
             return [];
         }
 
-        return Ledger::query()
+        return $this->scopeLedgerForBranch(Ledger::query())
             ->whereIn('account_id', $accountIds)
             ->when($dateFrom, fn (Builder $q, string $d) => $q->whereDate('date', '>=', $d))
             ->when($dateTo, fn (Builder $q, string $d) => $q->whereDate('date', '<=', $d))
@@ -191,7 +191,7 @@ class ReportService
      */
     public function dailyTransactions(?string $dateFrom, ?string $dateTo): array
     {
-        return Ledger::query()
+        return $this->scopeLedgerForBranch(Ledger::query())
             ->when($dateFrom, fn (Builder $q, string $d) => $q->whereDate('date', '>=', $d))
             ->when($dateTo, fn (Builder $q, string $d) => $q->whereDate('date', '<=', $d))
             ->with(['account:id,code,name', 'transaction:id,description,source_type,source_id'])
@@ -317,7 +317,9 @@ class ReportService
                 ],
             ],
             'transactions' => [
-                'count' => Transaction::query()->whereDate('date', $date)->count(),
+                'count' => $this->scopeTransactionForBranch(Transaction::query())
+                    ->whereDate('date', $date)
+                    ->count(),
             ],
         ];
     }
@@ -358,7 +360,7 @@ class ReportService
             ? $this->accountBalanceAsOf($accountId, Carbon::parse($dateFrom)->subDay()->format('Y-m-d'))
             : 0.0;
 
-        $ledgers = Ledger::query()
+        $ledgers = $this->scopeLedgerForBranch(Ledger::query())
             ->where('account_id', $accountId)
             ->when($dateFrom, fn (Builder $q, string $d) => $q->whereDate('date', '>=', $d))
             ->when($dateTo, fn (Builder $q, string $d) => $q->whereDate('date', '<=', $d))
@@ -415,7 +417,7 @@ class ReportService
         $transactionIds = null;
 
         if ($accountId !== null) {
-            $transactionIds = Ledger::query()
+            $transactionIds = $this->scopeLedgerForBranch(Ledger::query())
                 ->where('account_id', $accountId)
                 ->when($dateFrom, fn (Builder $q, string $d) => $q->whereDate('date', '>=', $d))
                 ->when($dateTo, fn (Builder $q, string $d) => $q->whereDate('date', '<=', $d))
@@ -426,7 +428,7 @@ class ReportService
                 ->all();
         }
 
-        return Transaction::query()
+        return $this->scopeTransactionForBranch(Transaction::query())
             ->when($dateFrom, fn (Builder $q, string $d) => $q->whereDate('date', '>=', $d))
             ->when($dateTo, fn (Builder $q, string $d) => $q->whereDate('date', '<=', $d))
             ->when($accountId !== null, function (Builder $q) use ($accountId, $transactionIds) {
@@ -448,7 +450,7 @@ class ReportService
             ->limit(300)
             ->get()
             ->map(function (Transaction $transaction) {
-                $lines = Ledger::query()
+                $lines = $this->scopeLedgerForBranch(Ledger::query())
                     ->where('transaction_id', $transaction->id)
                     ->with('account:id,code,name')
                     ->orderBy('id')
@@ -575,7 +577,7 @@ class ReportService
 
     private function accountBalanceAsOf(int $accountId, string $asOfDate): float
     {
-        $ledger = Ledger::query()
+        $ledger = $this->scopeLedgerForBranch(Ledger::query())
             ->where('account_id', $accountId)
             ->whereDate('date', '<=', $asOfDate)
             ->orderByDesc('date')
@@ -591,6 +593,7 @@ class ReportService
     public function productOptions(): array
     {
         return Product::query()
+            ->ownBranch()
             ->orderBy('name')
             ->limit(200)
             ->get(['id', 'name'])
@@ -620,6 +623,46 @@ class ReportService
     private function branchId(): ?int
     {
         return Auth::user()?->branch_id;
+    }
+
+    /**
+     * Branch users only see ledger rows tied to their branch vouchers.
+     * Super admins (no branch) see all branches.
+     */
+    private function scopeLedgerForBranch(Builder $query): Builder
+    {
+        $branchId = $this->branchId();
+
+        if ($branchId === null) {
+            return $query;
+        }
+
+        return $query->where(function (Builder $q) use ($branchId) {
+            $q->where('source_type', Voucher::class)
+                ->whereIn(
+                    'source_id',
+                    Voucher::query()->where('branch_id', $branchId)->select('id'),
+                );
+        });
+    }
+
+    /**
+     * Branch users only see accounting transactions from their branch vouchers.
+     */
+    private function scopeTransactionForBranch(Builder $query): Builder
+    {
+        $branchId = $this->branchId();
+
+        if ($branchId === null) {
+            return $query;
+        }
+
+        return $query
+            ->where('source_type', Voucher::class)
+            ->whereIn(
+                'source_id',
+                Voucher::query()->where('branch_id', $branchId)->select('id'),
+            );
     }
 
     private function productLogLabel(int $type): string

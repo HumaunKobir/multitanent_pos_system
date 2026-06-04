@@ -1,0 +1,247 @@
+<?php
+
+use App\Enums\SaleType;
+use App\Http\Controllers\Reports\ReportController;
+use App\Models\Branch;
+use App\Models\Customer;
+use App\Models\Sell;
+use App\Models\User;
+use App\Support\AdminNavigation;
+use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
+
+function reportUser(array $permissions = []): User
+{
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+
+    foreach ($permissions as $permission) {
+        Permission::findOrCreate($permission, 'web');
+        $user->givePermissionTo($permission);
+    }
+
+    return $user;
+}
+
+/**
+ * @return array<string, array{path: string, permission: string, component: string}>
+ */
+function reportRoutes(): array
+{
+    return [
+        'customer-ledger' => [
+            'path' => '/report/customer-ledger',
+            'permission' => ReportController::PERMISSION_CUSTOMER_LEDGER,
+            'component' => 'admin/reports/customer-ledger',
+        ],
+        'cash-flow' => [
+            'path' => '/report/cash-flow',
+            'permission' => ReportController::PERMISSION_CASH_FLOW,
+            'component' => 'admin/reports/cash-flow',
+        ],
+        'cash-flow-summary' => [
+            'path' => '/report/cash-flow-summary',
+            'permission' => ReportController::PERMISSION_CASH_FLOW_SUMMARY,
+            'component' => 'admin/reports/cash-flow-summary',
+        ],
+        'daily-transactions' => [
+            'path' => '/report/daily-transactions',
+            'permission' => ReportController::PERMISSION_DAILY_TRANSACTIONS,
+            'component' => 'admin/reports/daily-transactions',
+        ],
+        'date-wise-stock' => [
+            'path' => '/report/date-wise-stock',
+            'permission' => ReportController::PERMISSION_DATE_WISE_STOCK,
+            'component' => 'admin/reports/date-wise-stock',
+        ],
+        'daily-summary' => [
+            'path' => '/report/daily-summary',
+            'permission' => ReportController::PERMISSION_DAILY_SUMMARY,
+            'component' => 'admin/reports/daily-summary',
+        ],
+        'account-ledger' => [
+            'path' => '/report/account-ledger',
+            'permission' => ReportController::PERMISSION_ACCOUNT_LEDGER,
+            'component' => 'admin/reports/account-ledger',
+        ],
+        'account-transactions' => [
+            'path' => '/report/account-transactions',
+            'permission' => ReportController::PERMISSION_ACCOUNT_TRANSACTIONS,
+            'component' => 'admin/reports/account-transactions',
+        ],
+        'balance-sheet' => [
+            'path' => '/report/balance-sheet',
+            'permission' => ReportController::PERMISSION_BALANCE_SHEET,
+            'component' => 'admin/reports/balance-sheet',
+        ],
+    ];
+}
+
+test('permissions sync creates all report permissions from config', function () {
+    $this->artisan('permissions:sync')->assertExitCode(0);
+
+    foreach (reportRoutes() as $report) {
+        expect(Permission::where('name', $report['permission'])->exists())
+            ->toBeTrue("Permission [{$report['permission']}] should exist after sync");
+    }
+});
+
+test('guests cannot access reports', function () {
+    $this->get('/report/customer-ledger')->assertRedirect(route('login'));
+});
+
+test('branch user without report permission is denied all report routes', function (string $key, array $report) {
+    $this->artisan('permissions:sync');
+
+    $this->actingAs(reportUser())
+        ->get($report['path'])
+        ->assertForbidden();
+})->with(fn () => collect(reportRoutes())->map(fn ($report, $key) => [$key, $report]));
+
+test('branch user with permission can access their assigned report', function (string $key, array $report) {
+    $this->artisan('permissions:sync');
+
+    $this->actingAs(reportUser([$report['permission']]))
+        ->get($report['path'])
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->component($report['component']));
+})->with(fn () => collect(reportRoutes())->map(fn ($report, $key) => [$key, $report]));
+
+test('user cannot access cash flow without cash flow permission', function () {
+    $this->artisan('permissions:sync');
+
+    $this->actingAs(reportUser([ReportController::PERMISSION_CUSTOMER_LEDGER]))
+        ->get('/report/cash-flow')
+        ->assertForbidden();
+});
+
+test('user can view customer ledger report with customer filter', function () {
+    $this->artisan('permissions:sync');
+
+    $user = reportUser([ReportController::PERMISSION_CUSTOMER_LEDGER]);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    $this->actingAs($user)
+        ->get('/report/customer-ledger?customer_id='.$customer->id)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/customer-ledger')
+            ->where('customer.id', $customer->id)
+            ->has('entries')
+            ->has('customers'));
+});
+
+test('superadmin can access all report routes', function () {
+    $admin = User::factory()->create(['branch_id' => null]);
+
+    $this->actingAs($admin);
+
+    foreach (reportRoutes() as $report) {
+        $this->get($report['path'])->assertOk();
+    }
+});
+
+test('reports navigation only shows items the user may view', function () {
+    $this->artisan('permissions:sync');
+
+    $user = User::factory()->create(['branch_id' => Branch::factory()->create()->id]);
+    $role = Role::create(['name' => 'report-viewer-'.uniqid(), 'guard_name' => 'web']);
+    $role->givePermissionTo([
+        ReportController::PERMISSION_DAILY_SUMMARY,
+        ReportController::PERMISSION_BALANCE_SHEET,
+    ]);
+    $user->assignRole($role);
+
+    $navigation = app(AdminNavigation::class)->build($user);
+    $reports = collect($navigation)->firstWhere('title', 'Reports');
+
+    expect($reports)->not->toBeNull()
+        ->and(collect($reports['children'])->pluck('title')->all())->toEqual([
+            'Balance Sheet',
+            'Daily Summary',
+        ])
+        ->and(collect($reports['children'])->pluck('title')->all())->not->toContain('Cash Flow', 'Customer Ledger');
+});
+
+test('reports navigation includes all report links for superadmin', function () {
+    $admin = User::factory()->create(['branch_id' => null]);
+
+    $navigation = app(AdminNavigation::class)->build($admin);
+    $reports = collect($navigation)->firstWhere('title', 'Reports');
+
+    expect(collect($reports['children'])->pluck('title')->all())->toContain(
+        'Customer Ledger',
+        'Cash Flow',
+        'Cash Flow Summary',
+        'Daily Transactions',
+        'Date Wise Stock',
+        'Daily Summary',
+        'Account Ledger',
+        'A/C Transactions',
+        'Balance Sheet',
+    );
+});
+
+test('branch user daily summary only includes their branch sales', function () {
+    $this->artisan('permissions:sync');
+
+    $date = '2026-06-04';
+    $branchA = Branch::factory()->create();
+    $branchB = Branch::factory()->create();
+    $userA = reportUser([ReportController::PERMISSION_DAILY_SUMMARY]);
+    $userA->update(['branch_id' => $branchA->id]);
+
+    Sell::factory()->create([
+        'branch_id' => $branchA->id,
+        'type' => SaleType::Sale,
+        'date' => $date,
+        'gross_amount' => 1000,
+        'paid_amount' => 200,
+    ]);
+
+    Sell::factory()->create([
+        'branch_id' => $branchB->id,
+        'type' => SaleType::Sale,
+        'date' => $date,
+        'gross_amount' => 5000,
+        'paid_amount' => 0,
+    ]);
+
+    $this->actingAs($userA)
+        ->get('/report/daily-summary?date='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/daily-summary')
+            ->where('summary.sales.count', 1)
+            ->where('summary.sales.gross', 1000)
+            ->where('summary.sales.paid', 200));
+
+    $admin = User::factory()->create(['branch_id' => null]);
+
+    $this->actingAs($admin)
+        ->get('/report/daily-summary?date='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('summary.sales.count', 2)
+            ->where('summary.sales.gross', 6000));
+});
+
+test('branch user customer ledger options exclude other branches', function () {
+    $this->artisan('permissions:sync');
+
+    $branchA = Branch::factory()->create();
+    $branchB = Branch::factory()->create();
+    $userA = reportUser([ReportController::PERMISSION_CUSTOMER_LEDGER]);
+    $userA->update(['branch_id' => $branchA->id]);
+
+    $ownCustomer = Customer::factory()->create(['branch_id' => $branchA->id, 'name' => 'Own Branch Customer']);
+    Customer::factory()->create(['branch_id' => $branchB->id, 'name' => 'Other Branch Customer']);
+
+    $this->actingAs($userA)
+        ->get('/report/customer-ledger')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('customers', 1)
+            ->where('customers.0.id', $ownCustomer->id));
+});

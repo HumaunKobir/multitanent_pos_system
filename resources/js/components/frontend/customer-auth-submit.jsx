@@ -6,8 +6,8 @@ export function CustomerAuthSubmit({ children, className, ...props }) {
         <button
             type="submit"
             className={storeCn(
-                'auth-btn-gradient auth-btn-shine group relative flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm font-semibold text-white',
-                'shadow-lg shadow-auth-accent/25 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-auth-accent/30',
+                'store-gradient auth-btn-shine group relative flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3.5 text-sm font-semibold text-white',
+                'shadow-lg shadow-[#667eea]/25 transition-all hover:-translate-y-0.5 hover:opacity-95 hover:shadow-xl',
                 'active:translate-y-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0',
                 className,
             )}

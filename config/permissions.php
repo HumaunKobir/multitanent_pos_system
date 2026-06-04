@@ -277,19 +277,75 @@ return [
 
         // ── Reports ───────────────────────────────────────────────────────────
 
-        'report' => [
-            'label' => 'Reports',
+        'report.customer-ledger' => [
+            'label' => 'Customer Ledger',
             'group' => 'Reports',
             'permissions' => [
-                'report.customer-ledger.view' => 'Customer Ledger Report',
-                'report.cash-flow.view' => 'Cash Flow Report',
-                'report.cash-flow-summary.view' => 'Cash Flow Summary Report',
-                'report.daily-transactions.view' => 'Daily Transactions Report',
-                'report.date-wise-stock.view' => 'Date Wise Stock Report',
-                'report.daily-summary.view' => 'Daily Summary Report',
-                'report.account-ledger.view' => 'Account Ledger Report',
-                'report.account-transactions.view' => 'A/C Transactions Report',
-                'report.balance-sheet.view' => 'Balance Sheet Report',
+                'report.customer-ledger.view' => 'View Customer Ledger',
+            ],
+        ],
+
+        'report.cash-flow' => [
+            'label' => 'Cash Flow',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.cash-flow.view' => 'View Cash Flow',
+            ],
+        ],
+
+        'report.cash-flow-summary' => [
+            'label' => 'Cash Flow Summary',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.cash-flow-summary.view' => 'View Cash Flow Summary',
+            ],
+        ],
+
+        'report.daily-transactions' => [
+            'label' => 'Daily Transactions',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.daily-transactions.view' => 'View Daily Transactions',
+            ],
+        ],
+
+        'report.date-wise-stock' => [
+            'label' => 'Date Wise Stock',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.date-wise-stock.view' => 'View Date Wise Stock',
+            ],
+        ],
+
+        'report.daily-summary' => [
+            'label' => 'Daily Summary',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.daily-summary.view' => 'View Daily Summary',
+            ],
+        ],
+
+        'report.account-ledger' => [
+            'label' => 'Account Ledger',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.account-ledger.view' => 'View Account Ledger',
+            ],
+        ],
+
+        'report.account-transactions' => [
+            'label' => 'A/C Transactions',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.account-transactions.view' => 'View A/C Transactions',
+            ],
+        ],
+
+        'report.balance-sheet' => [
+            'label' => 'Balance Sheet',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.balance-sheet.view' => 'View Balance Sheet',
             ],
         ],
 

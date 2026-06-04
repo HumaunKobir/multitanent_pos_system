@@ -10,7 +10,7 @@ const panelContent = {
             <>
                 Shop smarter.
                 <br />
-                <span className="text-teal-300/95 italic">Live stylish.</span>
+                <span className="text-store-accent italic">Live stylish.</span>
             </>
         ),
         description: 'Your wardrobe, your orders, your rewards — all in one place built for modern shoppers.',
@@ -22,7 +22,7 @@ const panelContent = {
             <>
                 Join the
                 <br />
-                <span className="text-teal-300/95 italic">inner circle.</span>
+                <span className="text-store-accent italic">inner circle.</span>
             </>
         ),
         description: 'Create your account in seconds and unlock faster checkout, order tracking, and member perks.',
@@ -51,7 +51,7 @@ function PanelWave() {
         >
             <path
                 d="M0,0 Q40,300 20,600 T0,1200 L80,1200 L80,0 Z"
-                fill="var(--auth-bg)"
+                fill="var(--store-surface)"
             />
             <path
                 d="M0,0 Q40,300 20,600 T0,1200"
@@ -77,7 +77,7 @@ export function CustomerAuthLayout({
     const brandName = siteName || 'Coolness Point';
 
     return (
-        <div className="auth-body min-h-screen bg-auth-bg text-auth-ink">
+        <div className="auth-body min-h-screen bg-store-surface font-[Inter,system-ui,sans-serif] text-store-primary">
             <Head title={title} />
 
             <div className="flex min-h-screen flex-col lg:flex-row">
@@ -92,7 +92,7 @@ export function CustomerAuthLayout({
                     </div>
 
                     <div
-                        className="pointer-events-none absolute left-0 top-0 h-full w-1 bg-linear-to-b from-teal-400/80 via-teal-300/40 to-amber-400/50"
+                        className="pointer-events-none absolute left-0 top-0 h-full w-1 store-gradient opacity-90"
                         aria-hidden="true"
                     />
 
@@ -114,8 +114,8 @@ export function CustomerAuthLayout({
                     </div>
 
                     <div className="relative z-10 max-w-md">
-                        <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-teal-200 ring-1 ring-white/10">
-                            <span className="size-1.5 rounded-full bg-teal-300" />
+                        <span className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.22em] text-white/80 ring-1 ring-white/10">
+                            <span className="size-1.5 rounded-full bg-store-accent" />
                             {panel.badge}
                         </span>
 
@@ -123,7 +123,10 @@ export function CustomerAuthLayout({
                             {panel.headline}
                         </h2>
 
-                        <div className="mt-6 h-1 w-14 rounded-full bg-linear-to-r from-teal-400 to-amber-400/80" />
+                        <div className="mt-6 flex items-center gap-2">
+                            <div className="h-1 w-10 rounded-full bg-store-accent" />
+                            <div className="h-px flex-1 max-w-12 bg-store-accent/30" />
+                        </div>
 
                         <p className="mt-5 max-w-[280px] text-sm leading-relaxed text-white/85">{panel.description}</p>
 
@@ -136,8 +139,8 @@ export function CustomerAuthLayout({
                                     transition={{ delay: 0.15 + index * 0.08, duration: 0.4 }}
                                     className="flex items-center gap-3.5 text-sm font-medium text-white"
                                 >
-                                    <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-linear-to-br from-white/20 to-white/5 ring-1 ring-white/20">
-                                        <Icon className="size-4 text-teal-200" strokeWidth={2.25} />
+                                    <span className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 ring-1 ring-white/15">
+                                        <Icon className="size-4 text-store-accent" strokeWidth={2.25} />
                                     </span>
                                     {text}
                                 </motion.li>
@@ -160,11 +163,11 @@ export function CustomerAuthLayout({
                     </div>
 
                     <div
-                        className="pointer-events-none absolute -right-20 top-1/4 size-72 rounded-full bg-teal-400/25 blur-3xl"
+                        className="pointer-events-none absolute -right-20 top-1/4 size-72 rounded-full bg-[#667eea]/25 blur-3xl"
                         aria-hidden="true"
                     />
                     <div
-                        className="pointer-events-none absolute -bottom-20 left-1/4 size-80 rounded-full bg-amber-400/20 blur-3xl"
+                        className="pointer-events-none absolute -bottom-20 left-1/4 size-80 rounded-full bg-store-accent/20 blur-3xl"
                         aria-hidden="true"
                     />
 
@@ -175,7 +178,7 @@ export function CustomerAuthLayout({
                     <header className="relative z-10 flex items-center justify-between px-4 py-4 sm:px-6 lg:px-12 lg:py-6">
                         <Link
                             href="/"
-                            className="inline-flex items-center gap-2 rounded-full border border-auth-border/80 bg-white/70 px-3 py-1.5 text-sm font-medium text-auth-muted shadow-sm backdrop-blur-sm transition-colors hover:border-auth-accent/30 hover:text-auth-ink lg:hidden"
+                            className="inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white/80 px-3 py-1.5 text-sm font-medium text-store-muted shadow-sm backdrop-blur-sm transition-colors hover:border-store-accent/40 hover:text-store-primary lg:hidden"
                         >
                             <ArrowLeft className="size-4" />
                             Back to shop
@@ -184,12 +187,12 @@ export function CustomerAuthLayout({
                             {logo ? (
                                 <img src={logo} alt={brandName} className="h-8 object-contain" />
                             ) : (
-                                <span className="auth-display text-lg font-bold text-auth-ink">{brandName}</span>
+                                <span className="text-lg font-bold text-store-primary">{brandName}</span>
                             )}
                         </Link>
                         <Link
                             href="/"
-                            className="hidden rounded-full border border-auth-border/80 bg-white/70 px-4 py-1.5 text-sm font-medium text-auth-muted shadow-sm backdrop-blur-sm transition-colors hover:border-auth-accent/30 hover:text-auth-accent lg:inline-block"
+                            className="hidden rounded-full border border-gray-200 bg-white/80 px-4 py-1.5 text-sm font-medium text-store-muted shadow-sm backdrop-blur-sm transition-colors hover:border-store-accent/40 hover:text-store-accent lg:inline-block"
                         >
                             Continue shopping →
                         </Link>
@@ -197,11 +200,11 @@ export function CustomerAuthLayout({
 
                     <div className="relative z-10 flex flex-1 items-center justify-center px-4 pb-10 sm:px-6 lg:px-12 lg:pb-14">
                         <div
-                            className="pointer-events-none absolute left-1/2 top-1/2 size-[min(90vw,420px)] -translate-x-1/2 -translate-y-1/2 rounded-full border border-auth-accent/10"
+                            className="pointer-events-none absolute left-1/2 top-1/2 size-[min(90vw,420px)] -translate-x-1/2 -translate-y-1/2 rounded-full border border-store-accent/10"
                             aria-hidden="true"
                         />
                         <div
-                            className="pointer-events-none absolute left-1/2 top-1/2 size-[min(75vw,340px)] -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-auth-accent/15"
+                            className="pointer-events-none absolute left-1/2 top-1/2 size-[min(75vw,340px)] -translate-x-1/2 -translate-y-1/2 rounded-full border border-dashed border-[#667eea]/20"
                             aria-hidden="true"
                         />
 
@@ -213,44 +216,44 @@ export function CustomerAuthLayout({
                         >
                             <div className="mb-7 lg:mb-9">
                                 <div className="mb-5 flex items-center gap-3 lg:hidden">
-                                    <div className="flex size-11 items-center justify-center rounded-2xl auth-btn-gradient shadow-lg shadow-auth-accent/30">
+                                    <div className="flex size-11 items-center justify-center rounded-2xl store-gradient shadow-lg shadow-[#667eea]/30">
                                         <Sparkles className="size-5 text-white" />
                                     </div>
                                     <div>
-                                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-auth-accent">
+                                        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-store-accent">
                                             {panel.badge}
                                         </p>
-                                        <p className="auth-display text-lg font-bold text-auth-ink">{brandName}</p>
+                                        <p className="text-lg font-bold text-store-primary">{brandName}</p>
                                     </div>
                                 </div>
 
                                 <div className="flex items-start justify-between gap-4">
                                     <div>
-                                        <h1 className="auth-display text-3xl font-bold tracking-tight text-auth-ink sm:text-[2rem]">
+                                        <h1 className="auth-display text-3xl font-bold tracking-tight text-store-primary sm:text-[2rem]">
                                             {title}
                                         </h1>
                                         {subtitle && (
-                                            <p className="mt-2 max-w-sm text-sm leading-relaxed text-auth-muted">
+                                            <p className="mt-2 max-w-sm text-sm leading-relaxed text-store-muted">
                                                 {subtitle}
                                             </p>
                                         )}
                                     </div>
-                                    <span className="auth-display hidden shrink-0 text-5xl font-bold text-auth-accent/15 sm:block">
+                                    <span className="auth-display hidden shrink-0 text-5xl font-bold text-store-primary/10 sm:block">
                                         {panel.watermark}
                                     </span>
                                 </div>
                             </div>
 
-                            <div className="auth-card-frame rounded-[1.35rem] p-[2px] shadow-xl shadow-auth-accent/10">
+                            <div className="auth-card-frame rounded-[1.35rem] p-[2px] shadow-xl shadow-store-primary/10">
                                 <div className="rounded-[1.25rem] bg-white p-6 sm:p-8">{children}</div>
                             </div>
 
                             {alternatePrompt && alternateHref && alternateLabel && (
-                                <p className="mt-7 text-center text-sm text-auth-muted">
+                                <p className="mt-7 text-center text-sm text-store-muted">
                                     {alternatePrompt}{' '}
                                     <Link
                                         href={alternateHref}
-                                        className="font-semibold text-auth-accent underline decoration-auth-accent/30 underline-offset-4 transition-colors hover:text-auth-accent-hover hover:decoration-auth-accent"
+                                        className="font-semibold text-store-accent underline decoration-store-accent/30 underline-offset-4 transition-colors hover:opacity-90 hover:decoration-store-accent"
                                     >
                                         {alternateLabel}
                                     </Link>
@@ -261,10 +264,10 @@ export function CustomerAuthLayout({
                                 {trustStats.map((stat) => (
                                     <div
                                         key={stat.label}
-                                        className="rounded-xl border border-auth-border/80 bg-white/80 px-3 py-2 text-center shadow-sm backdrop-blur-sm"
+                                        className="rounded-xl border border-gray-200 bg-white/90 px-3 py-2 text-center shadow-sm"
                                     >
-                                        <p className="text-xs font-bold text-auth-accent">{stat.value}</p>
-                                        <p className="text-[10px] text-auth-muted">{stat.label}</p>
+                                        <p className="text-xs font-bold text-store-accent">{stat.value}</p>
+                                        <p className="text-[10px] text-store-muted">{stat.label}</p>
                                     </div>
                                 ))}
                             </div>

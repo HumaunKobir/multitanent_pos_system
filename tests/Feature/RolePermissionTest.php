@@ -303,6 +303,27 @@ test('branch user without permission is denied customer index', function () {
         ->assertForbidden();
 });
 
+test('branch user without permission is denied daily summary report', function () {
+    $this->artisan('permissions:sync');
+
+    $this->actingAs(branchStaffUser())
+        ->get('/report/daily-summary')
+        ->assertForbidden();
+});
+
+test('branch user with daily summary permission can access daily summary report', function () {
+    $this->artisan('permissions:sync');
+
+    $user = branchStaffUser();
+    $role = Role::create(['name' => testRoleName('Report Clerk'), 'guard_name' => 'web']);
+    $role->givePermissionTo('report.daily-summary.view');
+    $user->assignRole($role);
+
+    $this->actingAs($user)
+        ->get('/report/daily-summary')
+        ->assertOk();
+});
+
 test('branch user with customer view permission can access customer index', function () {
     $this->artisan('permissions:sync');
 

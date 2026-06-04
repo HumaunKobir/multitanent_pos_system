@@ -10,11 +10,29 @@ use Inertia\Response;
 
 class ReportController extends Controller
 {
+    public const PERMISSION_CUSTOMER_LEDGER = 'report.customer-ledger.view';
+
+    public const PERMISSION_CASH_FLOW = 'report.cash-flow.view';
+
+    public const PERMISSION_CASH_FLOW_SUMMARY = 'report.cash-flow-summary.view';
+
+    public const PERMISSION_DAILY_TRANSACTIONS = 'report.daily-transactions.view';
+
+    public const PERMISSION_DATE_WISE_STOCK = 'report.date-wise-stock.view';
+
+    public const PERMISSION_DAILY_SUMMARY = 'report.daily-summary.view';
+
+    public const PERMISSION_ACCOUNT_LEDGER = 'report.account-ledger.view';
+
+    public const PERMISSION_ACCOUNT_TRANSACTIONS = 'report.account-transactions.view';
+
+    public const PERMISSION_BALANCE_SHEET = 'report.balance-sheet.view';
+
     public function __construct(private ReportService $reports) {}
 
     public function customerLedger(Request $request): Response
     {
-        $this->authorize('report.customer-ledger.view');
+        $this->authorize(self::PERMISSION_CUSTOMER_LEDGER);
 
         $filters = $request->validate([
             'customer_id' => ['nullable', 'integer', 'exists:customers,id'],
@@ -36,7 +54,7 @@ class ReportController extends Controller
 
     public function cashFlow(Request $request): Response
     {
-        $this->authorize('report.cash-flow.view');
+        $this->authorize(self::PERMISSION_CASH_FLOW);
 
         $filters = $request->validate([
             'account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
@@ -57,7 +75,7 @@ class ReportController extends Controller
 
     public function cashFlowSummary(Request $request): Response
     {
-        $this->authorize('report.cash-flow-summary.view');
+        $this->authorize(self::PERMISSION_CASH_FLOW_SUMMARY);
 
         $filters = $request->validate([
             'account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
@@ -78,7 +96,7 @@ class ReportController extends Controller
 
     public function dailyTransactions(Request $request): Response
     {
-        $this->authorize('report.daily-transactions.view');
+        $this->authorize(self::PERMISSION_DAILY_TRANSACTIONS);
 
         $filters = $request->validate([
             'date_from' => ['nullable', 'date'],
@@ -101,7 +119,7 @@ class ReportController extends Controller
 
     public function dateWiseStock(Request $request): Response
     {
-        $this->authorize('report.date-wise-stock.view');
+        $this->authorize(self::PERMISSION_DATE_WISE_STOCK);
 
         $filters = $request->validate([
             'product_id' => ['nullable', 'integer', 'exists:products,id'],
@@ -122,7 +140,7 @@ class ReportController extends Controller
 
     public function dailySummary(Request $request): Response
     {
-        $this->authorize('report.daily-summary.view');
+        $this->authorize(self::PERMISSION_DAILY_SUMMARY);
 
         $filters = $request->validate([
             'date' => ['nullable', 'date'],
@@ -138,7 +156,7 @@ class ReportController extends Controller
 
     public function accountLedger(Request $request): Response
     {
-        $this->authorize('report.account-ledger.view');
+        $this->authorize(self::PERMISSION_ACCOUNT_LEDGER);
 
         $filters = $request->validate([
             'account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
@@ -160,7 +178,7 @@ class ReportController extends Controller
 
     public function accountTransactions(Request $request): Response
     {
-        $this->authorize('report.account-transactions.view');
+        $this->authorize(self::PERMISSION_ACCOUNT_TRANSACTIONS);
 
         $filters = $request->validate([
             'account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
@@ -186,7 +204,7 @@ class ReportController extends Controller
 
     public function balanceSheet(Request $request): Response
     {
-        $this->authorize('report.balance-sheet.view');
+        $this->authorize(self::PERMISSION_BALANCE_SHEET);
 
         $filters = $request->validate([
             'as_of' => ['nullable', 'date'],

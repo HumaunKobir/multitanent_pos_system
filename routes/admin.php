@@ -17,6 +17,7 @@ use App\Http\Controllers\Inventory\PurchaseReturnController;
 use App\Http\Controllers\Inventory\SaleReturnController;
 use App\Http\Controllers\Inventory\SellController;
 use App\Http\Controllers\Inventory\SupplierController;
+use App\Http\Controllers\Inventory\SupplierPaymentController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Setting\BrandController;
@@ -62,6 +63,7 @@ Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')
 
 Route::middleware(['auth', 'verified'])->prefix('party')->name('party.')->group(function () {
     Route::resource('supplier', SupplierController::class)->except(['create', 'edit', 'show']);
+    Route::resource('supplier-payment', SupplierPaymentController::class)->only(['index', 'store', 'destroy']);
     Route::resource('customer', CustomerController::class)->except(['create', 'edit', 'show']);
 });
 

@@ -127,6 +127,16 @@ return [
             ],
         ],
 
+        'party.supplier-payment' => [
+            'label' => 'Supplier Payments',
+            'group' => 'Parties',
+            'permissions' => [
+                'party.supplier-payment.view' => 'View Supplier Payments',
+                'party.supplier-payment.create' => 'Create Supplier Payment',
+                'party.supplier-payment.delete' => 'Delete Supplier Payment',
+            ],
+        ],
+
         'party.customer' => [
             'label' => 'Customers',
             'group' => 'Parties',

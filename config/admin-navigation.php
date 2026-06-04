@@ -50,7 +50,7 @@ return [
             'icon' => 'user',
             'children' => [
                 ['title' => 'Supplier', 'href' => '/party/supplier', 'permission' => 'party.supplier.view'],
-                ['title' => 'Supplier Payment', 'href' => '/party/supplier-payment', 'permission' => 'party.supplier.view'],
+                ['title' => 'Supplier Payment', 'href' => '/party/supplier-payment', 'permission' => 'party.supplier-payment.view'],
             ],
         ],
         [

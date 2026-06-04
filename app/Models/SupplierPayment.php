@@ -1,0 +1,44 @@
+<?php
+
+namespace App\Models;
+
+use App\Traits\HasBranch;
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+
+class SupplierPayment extends Model
+{
+    use HasBranch;
+
+    protected $appends = ['invoice_number'];
+
+    protected $fillable = [
+        'branch_id',
+        'supplier_id',
+        'date',
+        'amount',
+        'serial',
+        'comment',
+        'created_by',
+    ];
+
+    protected $casts = [
+        'date' => 'date',
+        'amount' => 'decimal:2',
+    ];
+
+    public function getInvoiceNumberAttribute(): string
+    {
+        return $this->serial ?? 'INVSP'.str_pad((string) $this->id, 8, '0', STR_PAD_LEFT);
+    }
+
+    public function supplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class);
+    }
+
+    public function createdBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'created_by');
+    }
+}

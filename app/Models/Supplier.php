@@ -4,13 +4,16 @@ namespace App\Models;
 
 use App\Enums\CommonStatus;
 use App\Traits\HasBranch;
+use Database\Factories\SupplierFactory;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Supplier extends Model
 {
-    use HasBranch;
+    /** @use HasFactory<SupplierFactory> */
+    use HasBranch, HasFactory;
 
     protected $fillable = [
         'name',
@@ -35,5 +38,10 @@ class Supplier extends Model
     public function purchases(): HasMany
     {
         return $this->hasMany(Purchase::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(SupplierPayment::class);
     }
 }

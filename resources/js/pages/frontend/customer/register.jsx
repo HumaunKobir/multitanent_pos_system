@@ -1,6 +1,20 @@
-import { Head, Link, useForm } from '@inertiajs/react';
-import { motion } from 'framer-motion';
-import { StoreButton } from '@/components/frontend/store-button';
+import { useForm } from '@inertiajs/react';
+import { CustomerAuthField } from '@/components/frontend/customer-auth-field';
+import { CustomerAuthLayout } from '@/components/frontend/customer-auth-layout';
+
+const fields = [
+    { key: 'name', label: 'Full name', type: 'text', autoComplete: 'name', required: true },
+    { key: 'phone', label: 'Phone number', type: 'tel', autoComplete: 'tel', required: true },
+    { key: 'email', label: 'Email (optional)', type: 'email', autoComplete: 'email', required: false },
+    { key: 'password', label: 'Password', type: 'password', autoComplete: 'new-password', required: true },
+    {
+        key: 'password_confirmation',
+        label: 'Confirm password',
+        type: 'password',
+        autoComplete: 'new-password',
+        required: true,
+    },
+];
 
 export default function CustomerRegister() {
     const { data, setData, post, processing, errors } = useForm({
@@ -16,52 +30,35 @@ export default function CustomerRegister() {
         post('/customer/register');
     };
 
-    const fields = [
-        { key: 'name', label: 'Name *', type: 'text', required: true },
-        { key: 'phone', label: 'Phone *', type: 'tel', required: true },
-        { key: 'email', label: 'Email', type: 'email', required: false },
-        { key: 'password', label: 'Password *', type: 'password', required: true },
-        { key: 'password_confirmation', label: 'Confirm password *', type: 'password', required: true },
-    ];
-
     return (
-        <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-store-primary via-[#16213e] to-[#0f3460] p-4 font-[Inter,system-ui,sans-serif]">
-            <Head title="Register" />
-            <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="w-full max-w-md rounded-xl border border-white/10 bg-white/10 p-6 shadow-2xl backdrop-blur-md sm:p-8"
-            >
-                <div className="mb-6 text-center">
-                    <h1 className="text-2xl font-bold text-white">Create Account</h1>
-                    <p className="mt-1 text-sm text-white/60">Register for free</p>
-                </div>
-
-                <form onSubmit={submit} className="space-y-3">
-                    {fields.map(({ key, label, type, required }) => (
-                        <div key={key}>
-                            <label className="mb-1 block text-sm font-medium text-white/90">{label}</label>
-                            <input
-                                type={type}
-                                value={data[key]}
-                                onChange={(e) => setData(key, e.target.value)}
-                                className="w-full rounded-md border border-white/20 bg-white/90 px-3 py-2 text-sm focus:border-store-accent focus:outline-none"
-                                required={required}
-                            />
-                            {errors[key] && <p className="mt-1 text-xs text-red-300">{errors[key]}</p>}
-                        </div>
-                    ))}
-                    <StoreButton type="submit" className="w-full" disabled={processing}>
-                        {processing ? 'Creating account...' : 'Register'}
-                    </StoreButton>
-                    <p className="text-center text-sm text-white/70">
-                        Already have an account?{' '}
-                        <Link href="/customer/login" className="font-medium text-white underline">
-                            Login
-                        </Link>
-                    </p>
-                </form>
-            </motion.div>
-        </div>
+        <CustomerAuthLayout
+            title="Create your account"
+            subtitle="Join for free — track orders and checkout faster"
+            alternatePrompt="Already have an account?"
+            alternateHref="/customer/login"
+            alternateLabel="Sign in"
+        >
+            <form onSubmit={submit} className="space-y-4">
+                {fields.map(({ key, label, type, autoComplete, required }) => (
+                    <CustomerAuthField
+                        key={key}
+                        label={required ? `${label} *` : label}
+                        type={type}
+                        autoComplete={autoComplete}
+                        value={data[key]}
+                        onChange={(e) => setData(key, e.target.value)}
+                        error={errors[key]}
+                        required={required}
+                    />
+                ))}
+                <button
+                    type="submit"
+                    disabled={processing}
+                    className="auth-btn-gradient mt-2 w-full rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-md shadow-auth-accent/30 transition-all hover:opacity-95 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                    {processing ? 'Creating account…' : 'Create account'}
+                </button>
+            </form>
+        </CustomerAuthLayout>
     );
 }

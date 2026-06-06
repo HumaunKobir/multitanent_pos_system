@@ -118,7 +118,7 @@ test('store fails when stock is insufficient', function () {
     expect(SellProduct::query()->where('product_id', $product->id)->count())->toBe($sellProductCount);
 });
 
-test('main branch user can search legacy products with null branch and stock', function () {
+test('main branch user can sell products with stock at main branch', function () {
     $this->artisan('permissions:sync');
 
     Branch::query()->firstOrCreate(
@@ -130,7 +130,7 @@ test('main branch user can search legacy products with null branch and stock', f
     Permission::findOrCreate('inventory.sell.create', 'web');
     $user->givePermissionTo('inventory.sell.create');
 
-    ['product' => $product, 'batch' => $batch] = sellProduct(15, null);
+    ['product' => $product, 'batch' => $batch] = sellProduct(15, Branch::MAIN_BRANCH_ID);
 
     $response = $this->actingAs($user)
         ->getJson('/api/products/for-sell?search='.$product->name);

@@ -32,6 +32,7 @@ class SystemAccountService
 
             $leaves = [
                 SystemAccountKey::Inventory,
+                SystemAccountKey::BranchInventory,
                 SystemAccountKey::InputVat,
                 SystemAccountKey::AccountsReceivable,
                 SystemAccountKey::AccountsPayable,
@@ -120,6 +121,7 @@ class SystemAccountService
         return match ($key) {
             SystemAccountKey::CurrentAssets => 'A001',
             SystemAccountKey::Inventory => 'A001-01',
+            SystemAccountKey::BranchInventory => 'A001-04',
             SystemAccountKey::InputVat => 'A001-02',
             SystemAccountKey::AccountsReceivable => 'A001-03',
             SystemAccountKey::CurrentLiabilities => 'L001',

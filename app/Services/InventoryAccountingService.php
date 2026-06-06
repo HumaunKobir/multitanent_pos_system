@@ -12,6 +12,7 @@ use App\Models\ProductExchange;
 use App\Models\Purchase;
 use App\Models\SaleReturn;
 use App\Models\Sell;
+use App\Models\StockDistribution;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
 use App\Models\Transaction;
@@ -180,6 +181,27 @@ class InventoryAccountingService
             $damage->id,
             $damage->date->format('Y-m-d'),
             "Damage {$serial}",
+            $lines,
+        );
+    }
+
+    public function postStockDistribution(StockDistribution $distribution, float $totalCost): Transaction
+    {
+        $distribution->loadMissing('toBranch:id,name');
+
+        $serial = $distribution->serial ?? $distribution->invoice_number;
+        $branchName = $distribution->toBranch?->name ?? 'Branch';
+
+        $lines = [
+            $this->debitLine(SystemAccountKey::BranchInventory, $totalCost, "Branch inventory increased — Distribution {$serial}, {$branchName}"),
+            $this->creditLine(SystemAccountKey::Inventory, $totalCost, "Main inventory reduced — Distribution {$serial}, to {$branchName}"),
+        ];
+
+        return $this->postJournal(
+            StockDistribution::class,
+            $distribution->id,
+            $distribution->date->format('Y-m-d'),
+            "Stock Distribution {$serial}",
             $lines,
         );
     }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
 use App\Models\Product;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -63,9 +64,8 @@ class ProductSearchController extends Controller
             ->get(['id', 'name', 'code', 'branch_id', 'sale_price', 'discount_price', 'image']);
 
         return response()->json($products->map(function (Product $product) use ($branchId) {
-            $stockBranchId = $product->resolveStockBranchId($branchId);
             $branchVariations = $product->variations
-                ->when($stockBranchId !== null, fn ($variations) => $variations->where('branch_id', $stockBranchId));
+                ->when($branchId !== null, fn ($variations) => $variations->where('branch_id', $branchId));
 
             return [
                 'id' => $product->id,
@@ -75,7 +75,7 @@ class ProductSearchController extends Controller
                 'image' => $product->image,
                 'has_variations' => $branchVariations->isNotEmpty(),
                 'stock' => (float) $product->batches
-                    ->when($stockBranchId !== null, fn ($batches) => $batches->where('branch_id', $stockBranchId))
+                    ->when($branchId !== null, fn ($batches) => $batches->where('branch_id', $branchId))
                     ->sum('available'),
                 'variations' => $branchVariations
                     ->map(fn ($v) => [
@@ -87,5 +87,59 @@ class ProductSearchController extends Controller
                     ->values(),
             ];
         }));
+    }
+
+    public function forDistribution(Request $request): JsonResponse
+    {
+        $this->authorize('inventory.stock-distribution.create');
+
+        abort_unless(
+            Branch::isMainBranch(Auth::user()?->branch_id) || Auth::user()?->isSuperAdmin(),
+            403
+        );
+
+        $mainBranchId = Branch::MAIN_BRANCH_ID;
+
+        $products = Product::forPurchase()
+            ->active()
+            ->with([
+                'variations:id,product_id,branch_id,sku,variation_data,price,stock',
+                'batches' => fn ($q) => $q->atBranchWarehouse($mainBranchId)
+                    ->where('available', '>', 0)
+                    ->select(['id', 'product_id', 'branch_id', 'available']),
+            ])
+            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
+                $q->where('name', 'like', "%{$s}%")
+                    ->orWhere('code', 'like', "%{$s}%");
+            }))
+            ->limit(15)
+            ->get(['id', 'name', 'code', 'sale_price', 'discount_price', 'image']);
+
+        return response()->json($products->map(function (Product $product) use ($mainBranchId) {
+            $mainVariations = $product->variations->filter(
+                fn ($v) => $v->branch_id === $mainBranchId || $v->branch_id === null
+            );
+
+            return [
+                'id' => $product->id,
+                'name' => $product->name,
+                'code' => $product->code,
+                'has_variations' => $mainVariations->isNotEmpty(),
+                'stock' => (float) $product->batches->sum('available'),
+                'variations' => $mainVariations
+                    ->map(fn ($v) => [
+                        'id' => $v->id,
+                        'label' => $v->variation_data['label'] ?? $v->sku,
+                        'stock' => (float) $v->stock,
+                    ])
+                    ->values(),
+            ];
+        })->filter(function (array $product) {
+            if ((float) $product['stock'] > 0) {
+                return true;
+            }
+
+            return collect($product['variations'])->contains(fn ($v) => (float) $v['stock'] > 0);
+        })->values());
     }
 }

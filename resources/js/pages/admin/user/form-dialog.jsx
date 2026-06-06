@@ -1,16 +1,26 @@
 import { FormField } from '@/components/form-field';
+import { SmartSelect } from '@/components/smart-select';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from '@inertiajs/react';
 import { UserRound } from 'lucide-react';
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 
 export default function UserFormDialog({ open, onOpenChange, item, routes, branches, roles }) {
     const isEditing = !!item?.id;
-    const branchOptions = Object.entries(branches ?? {});
     const roleOptions = Object.entries(roles ?? {});
+    const branchSelectOptions = useMemo(
+        () => [
+            { value: '', label: 'All Branches' },
+            ...Object.entries(branches ?? {}).map(([id, name]) => ({
+                value: String(id),
+                label: name,
+            })),
+        ],
+        [branches],
+    );
 
     const form = useForm({
         branch_id: item?.branch_id ? String(item.branch_id) : '',
@@ -66,7 +76,7 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="p-0 sm:max-w-lg">
+            <DialogContent className="p-0 sm:max-w-lg" onOpenAutoFocus={(event) => event.preventDefault()}>
                 <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
                     <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
                         <UserRound className="size-3.5 text-white" />
@@ -76,22 +86,16 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
 
                 <form onSubmit={handleSubmit} className="max-h-[75vh] space-y-3 overflow-y-auto p-4">
                     <FormField label="Branch" name="branch_id" error={form.errors.branch_id}>
-                        <Select
-                            value={form.data.branch_id === '' ? '__all__' : form.data.branch_id}
-                            onValueChange={(value) => form.setData('branch_id', value === '__all__' ? '' : value)}
-                        >
-                            <SelectTrigger id="branch_id" className="mt-1 w-full" aria-invalid={!!form.errors.branch_id}>
-                                <SelectValue placeholder="Select branch" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="__all__">All Branches</SelectItem>
-                                {branchOptions.map(([id, name]) => (
-                                    <SelectItem key={id} value={String(id)}>
-                                        {name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <div className="mt-1">
+                            <SmartSelect
+                                id="branch_id"
+                                options={branchSelectOptions}
+                                value={form.data.branch_id === '' ? '' : String(form.data.branch_id)}
+                                onValueChange={(value) => form.setData('branch_id', value ?? '')}
+                                placeholder="Search branch…"
+                                triggerClassName="rounded-md"
+                            />
+                        </div>
                     </FormField>
 
                     <FormField label="Name" name="name" error={form.errors.name}>

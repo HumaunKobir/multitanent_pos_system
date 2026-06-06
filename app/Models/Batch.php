@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ProductLogType;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -42,6 +43,22 @@ class Batch extends Model
         return $this->belongsTo(Supplier::class);
     }
 
+    public function scopeAtBranchWarehouse(Builder $query, ?int $branchId): Builder
+    {
+        if ($branchId === Branch::MAIN_BRANCH_ID) {
+            return $query->where(function (Builder $q) {
+                $q->where('branch_id', Branch::MAIN_BRANCH_ID)
+                    ->orWhereNull('branch_id');
+            });
+        }
+
+        if ($branchId === null) {
+            return $query;
+        }
+
+        return $query->where('branch_id', $branchId);
+    }
+
     public function inStock(int|float $quantity): void
     {
         $this->stockLog(ProductLogType::Purchase, $quantity);
@@ -75,6 +92,16 @@ class Batch extends Model
     public function exchangeStock(int|float $quantity): void
     {
         $this->stockLog(ProductLogType::Exchange, $quantity);
+    }
+
+    public function distributionOutStock(int|float $quantity): void
+    {
+        $this->stockLog(ProductLogType::Distribution_Out, $quantity);
+    }
+
+    public function distributionInStock(int|float $quantity): void
+    {
+        $this->stockLog(ProductLogType::Distribution_In, $quantity);
     }
 
     private function stockLog(ProductLogType $type, int|float $quantity): void

@@ -126,7 +126,7 @@ class Product extends Model
 
     public function resolveStockBranchId(?int $actingBranchId = null): ?int
     {
-        return $this->branch_id;
+        return $this->branch_id ?? $actingBranchId;
     }
 
     public function purchaseProducts(): HasMany

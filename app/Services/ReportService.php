@@ -16,6 +16,7 @@ use App\Models\ProductInOutLog;
 use App\Models\Purchase;
 use App\Models\SaleReturn;
 use App\Models\Sell;
+use App\Models\StockDistribution;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
 use App\Models\Transaction;
@@ -658,6 +659,14 @@ class ReportService
                         );
                 });
             }
+
+            $q->orWhere(function (Builder $inner) use ($branchId) {
+                $inner->where('source_type', StockDistribution::class)
+                    ->whereIn(
+                        'source_id',
+                        StockDistribution::query()->where('to_branch_id', $branchId)->select('id'),
+                    );
+            });
         });
     }
 
@@ -690,6 +699,14 @@ class ReportService
                         );
                 });
             }
+
+            $q->orWhere(function (Builder $inner) use ($branchId) {
+                $inner->where('source_type', StockDistribution::class)
+                    ->whereIn(
+                        'source_id',
+                        StockDistribution::query()->where('to_branch_id', $branchId)->select('id'),
+                    );
+            });
         });
     }
 
@@ -703,6 +720,7 @@ class ReportService
             Sell::class => Sell::class,
             SaleReturn::class => SaleReturn::class,
             Damage::class => Damage::class,
+            StockDistribution::class => StockDistribution::class,
             SupplierPayment::class => SupplierPayment::class,
             ProductExchange::class => ProductExchange::class,
             Supplier::class => Supplier::class,

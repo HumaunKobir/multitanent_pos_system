@@ -15,4 +15,6 @@ enum ProductLogType: int
     case Purchase_Return = 12;
     case InitialStock = 13;
     case Exchange = 14;
+    case Distribution_Out = 15;
+    case Distribution_In = 16;
 }

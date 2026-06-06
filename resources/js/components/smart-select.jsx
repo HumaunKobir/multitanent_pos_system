@@ -1,12 +1,6 @@
-import {
-    Combobox,
-    ComboboxInput,
-    ComboboxOption,
-    ComboboxOptions,
-} from '@headlessui/react';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { Check, Plus } from 'lucide-react';
-import { useCallback, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -50,6 +44,7 @@ const CREATE_PREFIX = '__smart_select_create__:';
  *   onModalCreate?: (payload: SmartSelectModalPayload) => SmartSelectOption | Promise<SmartSelectOption>;
  *   className?: string;
  *   triggerClassName?: string;
+ *   optionsClassName?: string;
  * }} props
  */
 export function SmartSelect({
@@ -70,13 +65,16 @@ export function SmartSelect({
     onModalCreate,
     className,
     triggerClassName,
+    optionsClassName,
 }) {
     const toast = useAppToast();
     const reactId = useId();
     const listboxId = idProp ?? `smart-select-${reactId}`;
     const inputId = `${listboxId}-input`;
+    const containerRef = useRef(/** @type {HTMLDivElement | null} */ (null));
     const inputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
 
+    const [open, setOpen] = useState(false);
     const [query, setQuery] = useState('');
     const [modalOpen, setModalOpen] = useState(false);
     const [modalSku, setModalSku] = useState('');
@@ -131,6 +129,44 @@ export function SmartSelect({
         return filtered;
     }, [filtered, createOption]);
 
+    useEffect(() => {
+        function handlePointerDown(event) {
+            if (containerRef.current?.contains(event.target)) {
+                return;
+            }
+
+            setOpen(false);
+            setQuery('');
+        }
+
+        document.addEventListener('mousedown', handlePointerDown);
+
+        return () => document.removeEventListener('mousedown', handlePointerDown);
+    }, []);
+
+    function handleListWheel(event) {
+        const element = event.currentTarget;
+        const delta = event.deltaY;
+        const atTop = element.scrollTop <= 0;
+        const atBottom = element.scrollTop + element.clientHeight >= element.scrollHeight - 1;
+
+        if ((delta < 0 && atTop) || (delta > 0 && atBottom)) {
+            return;
+        }
+
+        event.stopPropagation();
+    }
+
+    function openDropdown() {
+        if (disabled) {
+            return;
+        }
+
+        setOpen(true);
+        setQuery('');
+        requestAnimationFrame(() => inputRef.current?.focus());
+    }
+
     const newValueFromLabel = useCallback((lbl) => {
         const base = lbl
             .trim()
@@ -157,11 +193,12 @@ export function SmartSelect({
             onOptionsChange?.([...options, next]);
             onValueChange(next.value);
             setQuery('');
+            setOpen(false);
         },
         [createMode, newValueFromLabel, onModalCreate, onOptionsChange, onValueChange, options],
     );
 
-    const handleComboboxChange = useCallback(
+    const handleOptionSelect = useCallback(
         async (opt) => {
             if (!opt) {
                 return;
@@ -175,6 +212,8 @@ export function SmartSelect({
                     setModalSku('');
                     setModalNotes('');
                     setModalOpen(true);
+                    setOpen(false);
+                    setQuery('');
 
                     return;
                 }
@@ -186,12 +225,14 @@ export function SmartSelect({
                         onOptionsChange?.([...options, next]);
                         onValueChange(next.value);
                         setQuery('');
+                        setOpen(false);
                         toast.success(`"${next.label}" created.`);
                     } catch {
                         toast.error('Failed to create. Try again.');
                     } finally {
                         setInstantLoading(false);
                     }
+
                     return;
                 }
 
@@ -206,6 +247,7 @@ export function SmartSelect({
 
             onValueChange(opt.value);
             setQuery('');
+            setOpen(false);
         },
         [commitNewOption, createMode, onModalCreate, onOptionsChange, onValueChange, options, toast],
     );
@@ -220,111 +262,102 @@ export function SmartSelect({
         setPendingQuery('');
     }, [commitNewOption, modalNotes, modalSku, onOptionsChange, pendingQuery]);
 
+    function handleInputChange(event) {
+        const next = event.target.value;
+
+        if (!searchable) {
+            return;
+        }
+
+        setQuery(next);
+
+        if (!open) {
+            setOpen(true);
+        }
+    }
+
     return (
-        <div className={cn('w-full max-w-full min-w-0', className)}>
+        <div ref={containerRef} className={cn('relative w-full max-w-full min-w-0', className)}>
             {label ? (
                 <FieldLabel htmlFor={inputId} className="mb-1.5 block">
                     {label}
                 </FieldLabel>
             ) : null}
 
-            <Combobox
-                value={selected}
-                onChange={handleComboboxChange}
-                onClose={() => setQuery('')}
+            <Input
+                ref={inputRef}
+                id={inputId}
+                data-slot="smart-select-input"
+                value={open ? query : (selected?.label ?? '')}
+                onChange={handleInputChange}
+                onPointerDown={() => openDropdown()}
+                placeholder={placeholder}
+                readOnly={!searchable}
                 disabled={disabled}
-                immediate
-                by={(a, b) => a?.value === b?.value}
-            >
-                {({ open }) => (
-                    <div className="relative w-full max-w-full min-w-0">
-                        <div
-                            className={cn(
-                                'relative w-full max-w-full min-w-0 border border-input bg-background shadow-xs transition-shadow',
-                                'has-[[data-slot=combobox-input]:focus-visible]:ring-[3px] has-[[data-slot=combobox-input]:focus-visible]:ring-ring/50',
-                                disabled && 'pointer-events-none opacity-50',
-                                triggerClassName,
-                            )}
-                        >
-                            <ComboboxInput
-                                ref={inputRef}
-                                id={inputId}
-                                data-slot="combobox-input"
-                                className={cn(
-                                    'block w-full max-w-full min-w-0 overflow-x-auto border-0 bg-transparent py-2 pr-10 pl-3 text-sm outline-none',
-                                    !searchable && 'cursor-default',
-                                )}
-                                displayValue={(opt) => opt?.label ?? ''}
-                                onChange={(e) => setQuery(e.target.value)}
-                                onMouseDown={(event) => {
-                                    if (open || document.activeElement !== inputRef.current) {
-                                        return;
-                                    }
-
-                                    event.preventDefault();
-                                    inputRef.current?.blur();
-                                    requestAnimationFrame(() => inputRef.current?.focus());
-                                }}
-                                placeholder={placeholder}
-                                readOnly={!searchable}
-                                autoComplete="off"
-                            />
-                        </div>
-
-                        <ComboboxOptions
-                            anchor="bottom start"
-                            transition
-                            className={cn(
-                                'z-50 w-(--input-width) [--anchor-gap:4px] max-h-60 overflow-auto border border-border bg-popover py-1 text-popover-foreground shadow-md',
-                                'transition duration-100 ease-out data-closed:opacity-0 data-leave:data-closed:opacity-0',
-                            )}
-                        >
-                            {listOptions.length === 0 ? (
-                                <p className="px-3 py-2 text-sm text-muted-foreground">No matches.</p>
-                            ) : (
-                                listOptions.map((opt) => (
-                                    <ComboboxOption
-                                        key={opt.value}
-                                        value={opt}
-                                        className={({ focus }) =>
-                                            cn(
-                                                'flex w-full min-w-0 cursor-pointer border-l-2 border-transparent py-2 pr-3 pl-2 text-sm',
-                                                focus && 'border-primary bg-accent/80 text-accent-foreground',
-                                                opt.isCreate && 'font-medium',
-                                            )
-                                        }
-                                    >
-                                        {({ selected }) => (
-                                            <div className="flex w-full min-w-0 items-center justify-between gap-2">
-                                                <div className="flex min-w-0 flex-1 items-center gap-2">
-                                                    {opt.isCreate ? (
-                                                        <Plus className="size-4 shrink-0 text-primary" aria-hidden />
-                                                    ) : null}
-                                                    <span className="min-w-0 flex-1 truncate">
-                                                        {opt.isCreate && instantLoading ? 'Creating…' : opt.label}
-                                                    </span>
-                                                </div>
-                                                <span className="flex size-5 shrink-0 items-center justify-center text-primary">
-                                                    {opt.isCreate || selected ? (
-                                                        <Check className="size-4" strokeWidth={2.5} aria-hidden />
-                                                    ) : null}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </ComboboxOption>
-                                ))
-                            )}
-                        </ComboboxOptions>
-                    </div>
+                autoComplete="off"
+                className={cn(
+                    'bg-background',
+                    !searchable && open && 'cursor-pointer',
+                    triggerClassName,
                 )}
-            </Combobox>
+                aria-expanded={open}
+                aria-haspopup="listbox"
+                role="combobox"
+            />
+
+            {open && (
+                <div
+                    role="listbox"
+                    className={cn(
+                        'absolute top-[calc(100%+4px)] right-0 left-0 z-50 max-h-48 overflow-y-auto overscroll-contain border border-border bg-popover py-1 text-popover-foreground shadow-md',
+                        optionsClassName,
+                    )}
+                    onWheel={handleListWheel}
+                    onTouchMove={(event) => event.stopPropagation()}
+                >
+                    {listOptions.length === 0 ? (
+                        <p className="px-3 py-2 text-sm text-muted-foreground">No matches.</p>
+                    ) : (
+                        listOptions.map((opt) => {
+                            const isSelected = opt.value === value;
+
+                            return (
+                                <button
+                                    key={opt.value}
+                                    type="button"
+                                    role="option"
+                                    aria-selected={isSelected}
+                                    className={cn(
+                                        'flex w-full min-w-0 cursor-pointer items-center justify-between gap-2 border-l-2 border-transparent py-2 pr-3 pl-2 text-left text-sm hover:bg-accent/80',
+                                        isSelected && 'border-primary bg-accent/50',
+                                        opt.isCreate && 'font-medium',
+                                    )}
+                                    onClick={() => void handleOptionSelect(opt)}
+                                >
+                                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                                        {opt.isCreate ? (
+                                            <Plus className="size-4 shrink-0 text-primary" aria-hidden />
+                                        ) : null}
+                                        <span className="min-w-0 flex-1 truncate">
+                                            {opt.isCreate && instantLoading ? 'Creating…' : opt.label}
+                                        </span>
+                                    </div>
+                                    {opt.isCreate || isSelected ? (
+                                        <Check className="size-4 shrink-0 text-primary" strokeWidth={2.5} aria-hidden />
+                                    ) : null}
+                                </button>
+                            );
+                        })
+                    )}
+                </div>
+            )}
 
             <Dialog
                 open={modalOpen}
-                onOpenChange={(open) => {
-                    setModalOpen(open);
+                onOpenChange={(nextOpen) => {
+                    setModalOpen(nextOpen);
 
-                    if (!open) {
+                    if (!nextOpen) {
                         setPendingQuery('');
                         setModalSku('');
                         setModalNotes('');

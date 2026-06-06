@@ -34,6 +34,7 @@ return [
                 ['title' => 'Sale', 'href' => '/inventory/sell', 'permission' => 'inventory.sell.view'],
                 ['title' => 'Sale Return', 'href' => '/inventory/sale-return', 'permission' => 'inventory.sale-return.view'],
                 ['title' => 'Product Exchange', 'href' => '/inventory/product-exchange', 'permission' => 'inventory.product-exchange.view'],
+                ['title' => 'Received Stock', 'href' => '/inventory/stock-distribution', 'permission' => 'inventory.stock-distribution.view', 'branch_received_only' => true],
             ],
         ],
         [
@@ -43,6 +44,7 @@ return [
                 ['title' => 'Purchase', 'href' => '/inventory/purchase', 'permission' => 'inventory.purchase.view'],
                 ['title' => 'Purchase Return', 'href' => '/inventory/purchase-return', 'permission' => 'inventory.purchase-return.view'],
                 ['title' => 'Damage', 'href' => '/inventory/damage', 'permission' => 'inventory.damage.view'],
+                ['title' => 'Distribute Stock', 'href' => '/inventory/stock-distribution', 'permission' => 'inventory.stock-distribution.view', 'main_branch_only' => true],
             ],
         ],
         [

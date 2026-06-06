@@ -79,6 +79,17 @@ return [
             ],
         ],
 
+        'inventory.stock-distribution' => [
+            'label' => 'Stock Distribution',
+            'group' => 'Inventory',
+            'permissions' => [
+                'inventory.stock-distribution.view' => 'View Stock Distributions',
+                'inventory.stock-distribution.create' => 'Create Stock Distribution',
+                'inventory.stock-distribution.update' => 'Update Stock Distribution',
+                'inventory.stock-distribution.delete' => 'Delete Stock Distribution',
+            ],
+        ],
+
         // ── Sales ─────────────────────────────────────────────────────────────
 
         'inventory.sell' => [

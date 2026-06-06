@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\Branch;
 use App\Models\User;
 use App\Services\EcommerceBranchService;
 
@@ -54,7 +55,8 @@ class AdminNavigation
         if (isset($section['children'])) {
             $children = array_values(array_filter(
                 $section['children'],
-                fn (array $child): bool => $this->userCanSee($user, $child['permission'] ?? null),
+                fn (array $child): bool => $this->userCanSee($user, $child['permission'] ?? null)
+                    && $this->userCanSeeBranchScope($user, $child),
             ));
 
             if (empty($children)) {
@@ -94,6 +96,23 @@ class AdminNavigation
         }
 
         return $user->can($permission);
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    protected function userCanSeeBranchScope(User $user, array $item): bool
+    {
+        if ($item['main_branch_only'] ?? false) {
+            return Branch::isMainBranch($user->branch_id) || $user->isSuperAdmin();
+        }
+
+        if ($item['branch_received_only'] ?? false) {
+            return $user->isBranchUser()
+                && ! Branch::isMainBranch($user->branch_id);
+        }
+
+        return true;
     }
 
     protected function resolveHref(array $section, User $user): ?string

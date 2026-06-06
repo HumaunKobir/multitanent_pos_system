@@ -7,6 +7,7 @@ use App\Models\Damage;
 use App\Models\ProductVariation;
 use App\Models\SaleReturn;
 use App\Models\Sell;
+use App\Models\StockDistribution;
 
 class InventoryCostService
 {
@@ -111,6 +112,23 @@ class InventoryCostService
                 $line->variation_id ? (int) $line->variation_id : null,
                 (float) $line->quantity,
                 $line->batches ?? [],
+            );
+        }
+
+        return round($total, 2);
+    }
+
+    public function costForStockDistribution(StockDistribution $distribution): float
+    {
+        $distribution->loadMissing('products');
+
+        $total = 0.0;
+
+        foreach ($distribution->products as $line) {
+            $total += $this->costForLine(
+                $line->variation_id ? (int) $line->variation_id : null,
+                (float) $line->quantity,
+                $line->source_batches ?? [],
             );
         }
 

@@ -6,6 +6,7 @@ enum SystemAccountKey: string
 {
     case CurrentAssets = 'current_assets';
     case Inventory = 'inventory';
+    case BranchInventory = 'branch_inventory';
     case InputVat = 'input_vat';
     case AccountsReceivable = 'accounts_receivable';
     case CurrentLiabilities = 'current_liabilities';
@@ -30,6 +31,7 @@ enum SystemAccountKey: string
         return match ($this) {
             self::CurrentAssets => 'Current Assets',
             self::Inventory => 'Inventory',
+            self::BranchInventory => 'Branch Inventory',
             self::InputVat => 'Input VAT',
             self::AccountsReceivable => 'Accounts Receivable',
             self::CurrentLiabilities => 'Current Liabilities',
@@ -49,7 +51,7 @@ enum SystemAccountKey: string
     public function accountType(): AccountType
     {
         return match ($this) {
-            self::CurrentAssets, self::Inventory, self::InputVat, self::AccountsReceivable => AccountType::Asset,
+            self::CurrentAssets, self::Inventory, self::BranchInventory, self::InputVat, self::AccountsReceivable => AccountType::Asset,
             self::CurrentLiabilities, self::AccountsPayable, self::OutputVat => AccountType::Liability,
             self::Equity, self::OpeningBalanceEquity => AccountType::Equity,
             self::Income, self::SalesRevenue, self::SalesReturns => AccountType::Income,
@@ -68,7 +70,7 @@ enum SystemAccountKey: string
     public function parentKey(): ?SystemAccountKey
     {
         return match ($this) {
-            self::Inventory, self::InputVat, self::AccountsReceivable => self::CurrentAssets,
+            self::Inventory, self::BranchInventory, self::InputVat, self::AccountsReceivable => self::CurrentAssets,
             self::AccountsPayable, self::OutputVat => self::CurrentLiabilities,
             self::OpeningBalanceEquity => self::Equity,
             self::SalesRevenue, self::SalesReturns => self::Income,

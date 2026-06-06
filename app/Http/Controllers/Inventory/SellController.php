@@ -8,7 +8,6 @@ use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Customer;
-use App\Models\Product;
 use App\Models\ProductExchange;
 use App\Models\ProductVariation;
 use App\Models\SaleReturn;
@@ -218,13 +217,14 @@ class SellController extends Controller
 
         $items = $sell->products->map(function ($sp) use ($branchId) {
             $product = $sp->product;
-            $stockBranchId = $product?->resolveStockBranchId($branchId);
-
             if ($sp->variation_id) {
-                $availableStock = (float) ($sp->variation?->stock ?? 0);
+                $availableStock = (float) ProductVariation::query()
+                    ->whereKey($sp->variation_id)
+                    ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+                    ->value('stock') ?? 0;
             } else {
                 $availableStock = (float) Batch::where('product_id', $sp->product_id)
-                    ->when($stockBranchId, fn ($q) => $q->where('branch_id', $stockBranchId))
+                    ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
                     ->sum('available');
             }
 
@@ -449,12 +449,9 @@ class SellController extends Controller
     /** @return array<int|string, float> */
     private function deductBatchStock(?int $branchId, int $productId, float $qty): array
     {
-        $product = Product::query()->whereKey($productId)->first(['id', 'branch_id']);
-        $stockBranchId = $product?->resolveStockBranchId($branchId);
-
         $batches = Batch::where('product_id', $productId)
             ->where('available', '>', 0)
-            ->when($stockBranchId, fn ($q) => $q->where('branch_id', $stockBranchId))
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
             ->oldest()
             ->lockForUpdate()
             ->get();

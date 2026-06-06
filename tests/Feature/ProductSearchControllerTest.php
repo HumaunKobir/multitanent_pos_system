@@ -62,7 +62,7 @@ test('operating branch user only sees their own products in purchase search', fu
     expect($ids)->not->toContain($otherProduct->id);
 });
 
-test('main branch user can find legacy products with null branch in sell search', function () {
+test('main branch user can find products with main branch stock in sell search', function () {
     $this->artisan('permissions:sync');
 
     Branch::query()->firstOrCreate(
@@ -74,19 +74,87 @@ test('main branch user can find legacy products with null branch in sell search'
     Permission::findOrCreate('inventory.sell.create', 'web');
     $mainUser->givePermissionTo('inventory.sell.create');
 
-    $legacyProduct = Product::factory()->create([
-        'branch_id' => null,
-        'name' => 'Legacy Sell Product '.fake()->unique()->numerify('###'),
+    $product = Product::factory()->create([
+        'name' => 'Main Stock Product '.fake()->unique()->numerify('###'),
     ]);
-    Batch::factory()->for($legacyProduct)->withStock(12)->create(['branch_id' => null]);
+    Batch::factory()->for($product)->withStock(12)->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
 
     $response = $this->actingAs($mainUser)
-        ->getJson('/api/products/for-sell?search='.urlencode($legacyProduct->name));
+        ->getJson('/api/products/for-sell?search='.urlencode($product->name));
 
     $response->assertOk();
 
-    $match = collect($response->json())->firstWhere('id', $legacyProduct->id);
+    $match = collect($response->json())->firstWhere('id', $product->id);
 
     expect($match)->not->toBeNull();
     expect((float) $match['stock'])->toBe(12.0);
+});
+
+test('main branch user can find products with main branch stock in distribution search', function () {
+    $this->artisan('permissions:sync');
+
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    $mainUser = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    Permission::findOrCreate('inventory.stock-distribution.create', 'web');
+    $mainUser->givePermissionTo('inventory.stock-distribution.create');
+
+    $product = Product::factory()->create([
+        'name' => 'Distribute Product '.fake()->unique()->numerify('###'),
+    ]);
+    Batch::factory()->for($product)->withStock(20)->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+
+    $response = $this->actingAs($mainUser)
+        ->getJson('/api/products/for-distribution?search='.urlencode($product->name));
+
+    $response->assertOk();
+
+    $match = collect($response->json())->firstWhere('id', $product->id);
+
+    expect($match)->not->toBeNull();
+    expect((float) $match['stock'])->toBe(20.0);
+});
+
+test('main branch user can find legacy null branch stock in distribution search', function () {
+    $this->artisan('permissions:sync');
+
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    $mainUser = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    Permission::findOrCreate('inventory.stock-distribution.create', 'web');
+    $mainUser->givePermissionTo('inventory.stock-distribution.create');
+
+    $product = Product::factory()->create([
+        'name' => 'Legacy Warehouse Product '.fake()->unique()->numerify('###'),
+    ]);
+    Batch::factory()->for($product)->withStock(18)->create(['branch_id' => null]);
+
+    $response = $this->actingAs($mainUser)
+        ->getJson('/api/products/for-distribution?search='.urlencode($product->name));
+
+    $response->assertOk();
+
+    $match = collect($response->json())->firstWhere('id', $product->id);
+
+    expect($match)->not->toBeNull();
+    expect((float) $match['stock'])->toBe(18.0);
+});
+
+test('operating branch user cannot access distribution product search', function () {
+    $this->artisan('permissions:sync');
+
+    $operatingBranch = Branch::factory()->create();
+    $branchUser = User::factory()->create(['branch_id' => $operatingBranch->id]);
+    Permission::findOrCreate('inventory.stock-distribution.create', 'web');
+    $branchUser->givePermissionTo('inventory.stock-distribution.create');
+
+    $this->actingAs($branchUser)
+        ->getJson('/api/products/for-distribution?search=')
+        ->assertForbidden();
 });

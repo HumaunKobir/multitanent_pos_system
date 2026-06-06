@@ -16,7 +16,7 @@ class InventoryStockService
     {
         $batches = Batch::where('product_id', $productId)
             ->where('available', '>', 0)
-            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->when($branchId !== null, fn ($q) => $q->atBranchWarehouse($branchId))
             ->oldest()
             ->lockForUpdate()
             ->get();

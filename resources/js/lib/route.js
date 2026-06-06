@@ -1,5 +1,7 @@
 const routes = {
     home: '/',
+    search: '/search',
+    'search.suggestions': '/search/suggestions',
     dashboard: '/dashboard',
     'admin.dashboard': '/dashboard',
     'branch-panel.dashboard': '/branch-panel',

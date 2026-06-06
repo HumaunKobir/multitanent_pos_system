@@ -55,7 +55,7 @@ export function StoreNavBar({ onNavigate }) {
     const isAllProductsActive = url === '/products' || url.startsWith('/products?');
 
     return (
-        <div className="relative hidden border-t border-white/10 bg-store-primary md:block">
+        <div className="relative z-0 hidden border-t border-white/10 bg-store-primary md:block">
             <div className="store-container flex items-center justify-center gap-0.5 py-1">
                 <NavLink href="/" label="Home" icon={Home} active={isActive('/')} onClick={handleNavigate} />
 

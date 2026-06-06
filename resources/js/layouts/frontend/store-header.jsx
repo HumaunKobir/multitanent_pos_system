@@ -1,22 +1,26 @@
-import { Link, router, usePage } from '@inertiajs/react';
+import { Link, usePage } from '@inertiajs/react';
 import { motion } from 'framer-motion';
 import { Menu, Search, Sparkles, X } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { StoreAccountButton } from '@/components/frontend/store-account-button';
+import { StoreSearchBox } from '@/components/frontend/store-search-box';
 import { MobileFilterSection, StoreNavBar } from '@/components/frontend/store-nav';
 
 export function StoreHeader() {
-    const { siteName, topNotice, categories = [], brands = [], tags = [], auth, logo } = usePage().props;
+    const { props, url } = usePage();
+    const { siteName, topNotice, categories = [], brands = [], tags = [], auth, logo } = props;
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-    const [searchQuery, setSearchQuery] = useState('');
     const [searchOpen, setSearchOpen] = useState(false);
 
-    const handleSearch = (e) => {
-        e.preventDefault();
-        if (searchQuery.trim()) {
-            router.get('/search', { q: searchQuery.trim() });
+    const initialSearchQuery = useMemo(() => {
+        if (!url.startsWith('/search')) {
+            return '';
         }
-    };
+
+        const queryString = url.includes('?') ? url.split('?')[1] : '';
+
+        return new URLSearchParams(queryString).get('q') ?? '';
+    }, [url]);
 
     const closeMobileMenu = () => setMobileMenuOpen(false);
 
@@ -38,9 +42,9 @@ export function StoreHeader() {
             )}
 
             <header className={`sticky z-50 shadow-md shadow-store-primary/5 ${topNotice ? 'top-7' : 'top-0'}`}>
-                <div className="border-b border-gray-100 bg-white/95 backdrop-blur-md">
-                    <div className="store-container">
-                        <div className="flex h-16 items-center gap-3 lg:gap-6">
+                <div className="overflow-visible border-b border-gray-100 bg-white/95 backdrop-blur-md">
+                    <div className="store-container overflow-visible">
+                        <div className="relative flex h-16 items-center gap-3 overflow-visible lg:gap-6">
                             <div className="flex shrink-0 items-center gap-2">
                                 <button
                                     className="rounded-lg p-2 text-store-primary transition-colors hover:bg-store-surface md:hidden"
@@ -68,18 +72,7 @@ export function StoreHeader() {
                                 </Link>
                             </div>
 
-                            <form onSubmit={handleSearch} className="hidden min-w-0 flex-1 md:block">
-                                <div className="relative w-full">
-                                    <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-store-muted" />
-                                    <input
-                                        type="search"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        placeholder="Search products..."
-                                        className="w-full rounded-full border border-gray-200 bg-store-surface/80 py-3 pl-11 pr-5 text-sm text-store-primary placeholder:text-store-muted focus:border-store-accent focus:bg-white focus:outline-none focus:ring-2 focus:ring-store-accent/20"
-                                    />
-                                </div>
-                            </form>
+                            <StoreSearchBox initialQuery={initialSearchQuery} variant="desktop" />
 
                             <div className="flex shrink-0 items-center gap-1 sm:gap-2">
                                 <button
@@ -95,19 +88,14 @@ export function StoreHeader() {
                         </div>
 
                         {searchOpen && (
-                            <form onSubmit={handleSearch} className="border-t border-gray-100 pb-3 pt-2 md:hidden">
-                                <div className="relative">
-                                    <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-store-muted" />
-                                    <input
-                                        type="search"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                        placeholder="Search products..."
-                                        className="w-full rounded-full border border-gray-200 bg-store-surface py-2.5 pl-10 pr-4 text-sm focus:border-store-accent focus:outline-none focus:ring-2 focus:ring-store-accent/20"
-                                        autoFocus
-                                    />
-                                </div>
-                            </form>
+                            <div className="border-t border-gray-100 pb-3 pt-2 md:hidden">
+                                <StoreSearchBox
+                                    initialQuery={initialSearchQuery}
+                                    variant="mobile"
+                                    autoFocus
+                                    onSubmitted={() => setSearchOpen(false)}
+                                />
+                            </div>
                         )}
                     </div>
                 </div>

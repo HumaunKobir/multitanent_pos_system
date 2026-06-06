@@ -23,6 +23,7 @@ Route::get('/brand/{brand}/products', [HomeController::class, 'brandProducts'])-
 Route::get('/section/{id}/products', [HomeController::class, 'sectionProducts'])->name('section.products');
 Route::get('/collection/{name}', [HomeController::class, 'collectionProducts'])->name('collection.products')->where('name', '.*');
 Route::get('/search', [HomeController::class, 'search'])->name('search');
+Route::get('/search/suggestions', [HomeController::class, 'searchSuggestions'])->name('search.suggestions');
 
 // Static pages
 Route::get('/about', [HomeController::class, 'about'])->name('about');

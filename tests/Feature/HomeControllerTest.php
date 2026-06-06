@@ -368,13 +368,91 @@ test('brand products page redirects legacy id urls to slug', function () {
 });
 
 test('search page returns matching products', function () {
-    Product::factory()->create(['name' => 'Demo Shirt', 'status' => 1, 'visible' => 'yes']);
+    $term = 'Unique Search Term '.fake()->unique()->numerify('####');
+    Product::factory()->create(['name' => $term.' Shirt', 'status' => 1, 'visible' => 'yes']);
 
-    $this->get(route('search', ['q' => 'Demo']))
+    $this->get(route('search', ['q' => $term]))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('frontend/search')
-            ->where('query', 'Demo')
+            ->where('query', $term)
+            ->has('products.data', 1)
+        );
+});
+
+test('search page matches products by brand name', function () {
+    $brand = Brand::factory()->create(['name' => 'Search Brand '.fake()->unique()->numerify('####'), 'status' => 1]);
+    Product::factory()->create([
+        'name' => 'Hidden Label Product',
+        'brand_id' => $brand->id,
+        'status' => 1,
+        'visible' => 'yes',
+    ]);
+
+    $this->get(route('search', ['q' => $brand->name]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('frontend/search')
+            ->where('query', $brand->name)
+            ->has('products.data', 1)
+        );
+});
+
+test('search page preserves query string in pagination links', function () {
+    $term = 'Paged Search Term '.fake()->unique()->numerify('####');
+
+    Product::factory()->count(13)->create([
+        'name' => $term.' Item',
+        'status' => 1,
+        'visible' => 'yes',
+    ]);
+
+    $this->get(route('search', ['q' => $term]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('frontend/search')
+            ->where('query', $term)
+            ->where('products.total', 13)
+            ->where('products.last_page', 2)
+            ->where('products.next_page_url', fn (?string $url): bool => is_string($url) && str_contains($url, 'q='))
+        );
+});
+
+test('search suggestions returns matching products with images', function () {
+    $term = 'Suggestion Term '.fake()->unique()->numerify('####');
+    $product = Product::factory()->create([
+        'name' => $term.' Jacket',
+        'image' => 'products/test-image.jpg',
+        'status' => 1,
+        'visible' => 'yes',
+    ]);
+
+    $this->getJson(route('search.suggestions', ['q' => $term]))
+        ->assertOk()
+        ->assertJsonCount(1)
+        ->assertJsonFragment([
+            'id' => $product->id,
+            'name' => $product->name,
+            'slug' => $product->slug,
+        ])
+        ->assertJsonPath('0.image', fn (?string $image): bool => is_string($image) && $image !== '');
+});
+
+test('search suggestions returns empty array for short queries', function () {
+    $this->getJson(route('search.suggestions', ['q' => 'a']))
+        ->assertOk()
+        ->assertExactJson([]);
+});
+
+test('search page returns no products when query is empty', function () {
+    Product::factory()->create(['name' => 'Visible Product', 'status' => 1, 'visible' => 'yes']);
+
+    $this->get(route('search'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('frontend/search')
+            ->where('query', '')
+            ->where('products.total', 0)
         );
 });
 

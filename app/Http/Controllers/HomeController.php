@@ -14,6 +14,8 @@ use App\Models\ProductSection;
 use App\Models\Slider;
 use App\Services\EcommerceBranchService;
 use App\Support\StorageUrl;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -256,22 +258,52 @@ class HomeController extends Controller
 
     public function search(Request $request): Response
     {
-        $query = $request->get('q', '');
-        $products = Product::with(['photos', 'variations'])->withCount('variations')
+        $query = trim($request->string('q')->toString());
+
+        $products = $this->storefrontSearchQuery($query)
+            ->with(['photos', 'variations', 'brand', 'category'])
+            ->withCount('variations')
             ->withReviewSummary()
-            ->where('status', 1)
-            ->where('visible', 'yes')
-            ->where(function ($q) use ($query) {
-                $q->where('name', 'like', '%'.$query.'%')
-                    ->orWhere('code', 'like', '%'.$query.'%');
-            })
+            ->latest('id')
             ->paginate(12)
-            ->through(fn ($p) => $this->formatProduct($p));
+            ->withQueryString()
+            ->through(fn (Product $product) => $this->formatProduct($product));
 
         return Inertia::render('frontend/search', [
             'query' => $query,
             'products' => $products,
         ]);
+    }
+
+    public function searchSuggestions(Request $request): JsonResponse
+    {
+        $query = trim($request->string('q')->toString());
+
+        if (mb_strlen($query) < 2) {
+            return response()->json([]);
+        }
+
+        $products = $this->storefrontSearchQuery($query)
+            ->with(['variations'])
+            ->latest('id')
+            ->limit(8)
+            ->get()
+            ->map(function (Product $product): array {
+                $variationSummary = $this->variationSummary($product);
+
+                return [
+                    'id' => $product->id,
+                    'name' => $product->name,
+                    'slug' => $product->slug,
+                    'image' => StorageUrl::public($product->image),
+                    'price' => $this->resolveDisplayPrice($product),
+                    'has_variations' => $variationSummary['variations_count'] > 0,
+                    'price_min' => $variationSummary['price_min'],
+                ];
+            })
+            ->values();
+
+        return response()->json($products);
     }
 
     public function contact(): Response
@@ -322,6 +354,29 @@ class HomeController extends Controller
             'page' => $page,
             'content' => ConfigDictionary::get($keyMap[$page] ?? $page, ''),
         ]);
+    }
+
+    private function storefrontSearchQuery(string $query): Builder
+    {
+        $productsQuery = Product::query()
+            ->active()
+            ->visible();
+
+        if ($query === '') {
+            return $productsQuery->whereRaw('0 = 1');
+        }
+
+        return $productsQuery->where(function (Builder $builder) use ($query): void {
+            $like = '%'.$query.'%';
+
+            $builder->where('name', 'like', $like)
+                ->orWhere('code', 'like', $like)
+                ->orWhere('description', 'like', $like)
+                ->orWhere('tags', 'like', $like)
+                ->orWhereHas('brand', fn (Builder $brandQuery) => $brandQuery->where('name', 'like', $like))
+                ->orWhereHas('category', fn (Builder $categoryQuery) => $categoryQuery->where('name', 'like', $like))
+                ->orWhereHas('variations', fn (Builder $variationQuery) => $variationQuery->where('sku', 'like', $like));
+        });
     }
 
     private function applyFilters($query, Request $request): mixed

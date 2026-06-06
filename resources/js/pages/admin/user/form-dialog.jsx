@@ -88,11 +88,13 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                     <FormField label="Branch" name="branch_id" error={form.errors.branch_id}>
                         <div className="mt-1">
                             <SmartSelect
-                                id="branch_id"
+                                key={open ? 'open' : 'closed'}
+                                id="user-branch"
                                 options={branchSelectOptions}
                                 value={form.data.branch_id === '' ? '' : String(form.data.branch_id)}
                                 onValueChange={(value) => form.setData('branch_id', value ?? '')}
                                 placeholder="Search branch…"
+                                autoComplete="one-time-code"
                                 triggerClassName="rounded-md"
                             />
                         </div>
@@ -112,7 +114,9 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                     <FormField label="Email" name="email" required error={form.errors.email}>
                         <Input
                             id="email"
+                            name="email"
                             type="email"
+                            autoComplete="email"
                             value={form.data.email}
                             onChange={(e) => form.setData('email', e.target.value)}
                             placeholder="Email address"
@@ -135,7 +139,9 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                     <FormField label="Password" name="password" required={!isEditing} error={form.errors.password}>
                         <Input
                             id="password"
+                            name="password"
                             type="password"
+                            autoComplete="new-password"
                             value={form.data.password}
                             onChange={(e) => form.setData('password', e.target.value)}
                             placeholder={isEditing ? 'Leave blank to keep current' : 'Password'}
@@ -147,7 +153,9 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                     <FormField label="Confirm Password" name="password_confirmation" required={!isEditing} error={form.errors.password_confirmation}>
                         <Input
                             id="password_confirmation"
+                            name="password_confirmation"
                             type="password"
+                            autoComplete="new-password"
                             value={form.data.password_confirmation}
                             onChange={(e) => form.setData('password_confirmation', e.target.value)}
                             placeholder="Confirm password"

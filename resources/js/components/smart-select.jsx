@@ -46,6 +46,7 @@ const CREATE_PREFIX = '__smart_select_create__:';
  *   className?: string;
  *   triggerClassName?: string;
  *   optionsClassName?: string;
+ *   autoComplete?: string;
  * }} props
  */
 export function SmartSelect({
@@ -67,23 +68,31 @@ export function SmartSelect({
     className,
     triggerClassName,
     optionsClassName,
+    autoComplete = 'off',
 }) {
     const toast = useAppToast();
     const reactId = useId();
     const listboxId = idProp ?? `smart-select-${reactId}`;
     const inputId = `${listboxId}-input`;
+    const inputName = `${listboxId}-combobox`;
     const containerRef = useRef(/** @type {HTMLDivElement | null} */ (null));
     const inputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
     const listboxRef = useRef(/** @type {HTMLDivElement | null} */ (null));
 
     const [open, setOpen] = useState(false);
-    const [dropdownStyle, setDropdownStyle] = useState({ top: 0, left: 0, width: 0 });
+    const [dropdownStyle, setDropdownStyle] = useState({
+        top: 0,
+        left: 0,
+        width: 0,
+        position: 'fixed',
+    });
     const [query, setQuery] = useState('');
     const [modalOpen, setModalOpen] = useState(false);
     const [modalSku, setModalSku] = useState('');
     const [modalNotes, setModalNotes] = useState('');
     const [pendingQuery, setPendingQuery] = useState('');
     const [instantLoading, setInstantLoading] = useState(false);
+    const [autofillGuard, setAutofillGuard] = useState(searchable);
 
     const selected = useMemo(() => options.find((o) => o.value === value) ?? null, [options, value]);
 
@@ -132,6 +141,16 @@ export function SmartSelect({
         return filtered;
     }, [filtered, createOption]);
 
+    const resolvePortalContainer = useCallback(() => {
+        const dialogContent = containerRef.current?.closest('[data-slot="dialog-content"]');
+
+        if (dialogContent instanceof HTMLElement) {
+            return dialogContent;
+        }
+
+        return document.body;
+    }, []);
+
     const updateDropdownPosition = useCallback(() => {
         const input = inputRef.current;
 
@@ -140,13 +159,28 @@ export function SmartSelect({
         }
 
         const rect = input.getBoundingClientRect();
+        const portalTarget = resolvePortalContainer();
+
+        if (portalTarget !== document.body) {
+            const containerRect = portalTarget.getBoundingClientRect();
+
+            setDropdownStyle({
+                top: rect.bottom - containerRect.top + 4,
+                left: rect.left - containerRect.left,
+                width: rect.width,
+                position: 'absolute',
+            });
+
+            return;
+        }
 
         setDropdownStyle({
             top: rect.bottom + 4,
             left: rect.left,
             width: rect.width,
+            position: 'fixed',
         });
-    }, []);
+    }, [resolvePortalContainer]);
 
     useEffect(() => {
         if (!open) {
@@ -166,11 +200,21 @@ export function SmartSelect({
 
     useEffect(() => {
         function handlePointerDown(event) {
-            if (containerRef.current?.contains(event.target)) {
+            const target = event.target;
+
+            if (!(target instanceof Node)) {
                 return;
             }
 
-            if (listboxRef.current?.contains(event.target)) {
+            if (containerRef.current?.contains(target)) {
+                return;
+            }
+
+            if (listboxRef.current?.contains(target)) {
+                return;
+            }
+
+            if (target instanceof Element && target.closest('[data-slot="smart-select-listbox"]')) {
                 return;
             }
 
@@ -201,6 +245,7 @@ export function SmartSelect({
             return;
         }
 
+        setAutofillGuard(false);
         setOpen(true);
         setQuery('');
         requestAnimationFrame(() => {
@@ -329,16 +374,24 @@ export function SmartSelect({
             <Input
                 ref={inputRef}
                 id={inputId}
+                name={inputName}
+                type={searchable ? 'search' : 'text'}
                 data-slot="smart-select-input"
+                data-1p-ignore="true"
+                data-lpignore="true"
+                data-form-type="other"
                 value={open ? query : (selected?.label ?? '')}
                 onChange={handleInputChange}
+                onFocus={() => setAutofillGuard(false)}
                 onPointerDown={() => openDropdown()}
                 placeholder={placeholder}
-                readOnly={!searchable}
+                readOnly={!searchable || autofillGuard}
                 disabled={disabled}
-                autoComplete="off"
+                autoComplete={autoComplete}
+                enterKeyHint="search"
                 className={cn(
                     'bg-background',
+                    (!searchable || autofillGuard) && 'cursor-pointer',
                     !searchable && open && 'cursor-pointer',
                     triggerClassName,
                 )}
@@ -353,16 +406,18 @@ export function SmartSelect({
                     <div
                         ref={listboxRef}
                         role="listbox"
+                        data-slot="smart-select-listbox"
                         style={{
-                            position: 'fixed',
+                            position: dropdownStyle.position,
                             top: dropdownStyle.top,
                             left: dropdownStyle.left,
                             width: dropdownStyle.width,
                         }}
                         className={cn(
-                            'z-50 max-h-48 overflow-y-auto overscroll-contain border border-border bg-popover py-1 text-popover-foreground shadow-md',
+                            'pointer-events-auto z-100 max-h-48 overflow-y-auto overscroll-contain border border-border bg-popover py-1 text-popover-foreground shadow-md',
                             optionsClassName,
                         )}
+                        onMouseDown={(event) => event.preventDefault()}
                         onWheel={handleListWheel}
                         onTouchMove={(event) => event.stopPropagation()}
                     >
@@ -383,7 +438,11 @@ export function SmartSelect({
                                             isSelected && 'border-primary bg-accent/50',
                                             opt.isCreate && 'font-medium',
                                         )}
-                                        onClick={() => void handleOptionSelect(opt)}
+                                        onMouseDown={(event) => {
+                                            event.preventDefault();
+                                            event.stopPropagation();
+                                            void handleOptionSelect(opt);
+                                        }}
                                     >
                                         <div className="flex min-w-0 flex-1 items-center gap-2">
                                             {opt.isCreate ? (
@@ -401,7 +460,7 @@ export function SmartSelect({
                             })
                         )}
                     </div>,
-                    document.body,
+                    resolvePortalContainer(),
                 )}
 
             <Dialog

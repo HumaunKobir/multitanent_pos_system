@@ -36,7 +36,7 @@ class CheckoutController extends Controller
             'email' => 'nullable|email|max:255',
             'phone' => 'required|string|max:30',
             'address' => 'required|string',
-            'payment_method' => 'required|in:cod,sslcommerz,bkash',
+            'payment_method' => 'required|in:cod,sslcommerz',
             'city_id' => 'nullable|integer',
             'zone_id' => 'nullable|integer',
             'area_id' => 'nullable|integer',

@@ -119,6 +119,13 @@ class Product extends Model
         return $this->hasMany(ProductReview::class);
     }
 
+    public function scopeWithReviewSummary(Builder $query): Builder
+    {
+        return $query
+            ->withAvg(['reviews as reviews_avg_rating' => fn (Builder $query) => $query->approved()], 'rating')
+            ->withCount(['reviews as reviews_count' => fn (Builder $query) => $query->approved()]);
+    }
+
     public function batches(): HasMany
     {
         return $this->hasMany(Batch::class);

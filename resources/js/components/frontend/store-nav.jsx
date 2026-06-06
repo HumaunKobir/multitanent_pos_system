@@ -1,5 +1,5 @@
 import { Link, usePage } from '@inertiajs/react';
-import { Home } from 'lucide-react';
+import { Home, LayoutGrid } from 'lucide-react';
 import { useCallback, useState } from 'react';
 
 import { FilterNavDropdown } from '@/components/frontend/filter-nav-dropdown';
@@ -52,10 +52,20 @@ export function StoreNavBar({ onNavigate }) {
         return url === prefix || url.startsWith(`${prefix}?`);
     };
 
+    const isAllProductsActive = url === '/products' || url.startsWith('/products?');
+
     return (
         <div className="relative hidden border-t border-white/10 bg-store-primary md:block">
             <div className="store-container flex items-center justify-center gap-0.5 py-1">
                 <NavLink href="/" label="Home" icon={Home} active={isActive('/')} onClick={handleNavigate} />
+
+                <NavLink
+                    href="/products"
+                    label="All Products"
+                    icon={LayoutGrid}
+                    active={isAllProductsActive}
+                    onClick={handleNavigate}
+                />
 
                 <FilterNavDropdown
                     label="Category"

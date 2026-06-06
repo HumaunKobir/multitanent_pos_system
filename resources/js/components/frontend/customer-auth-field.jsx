@@ -33,7 +33,7 @@ export function CustomerAuthField({ label, required = false, error, className, i
     );
 }
 
-export function CustomerAuthTextarea({ label, error, className, id, rows = 5, ...props }) {
+export function CustomerAuthTextarea({ label, required = false, error, className, id, rows = 5, ...props }) {
     const inputId = id || label?.toLowerCase()?.replace(/[^a-z0-9]+/g, '-');
 
     return (
@@ -41,6 +41,7 @@ export function CustomerAuthTextarea({ label, error, className, id, rows = 5, ..
             {label && (
                 <label htmlFor={inputId} className={fieldLabelClass}>
                     {label}
+                    {required && <RequiredMark />}
                 </label>
             )}
             <textarea

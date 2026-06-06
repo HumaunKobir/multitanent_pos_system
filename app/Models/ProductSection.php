@@ -88,6 +88,7 @@ class ProductSection extends Model
         }
 
         return Product::with(['photos', 'variations'])
+            ->withReviewSummary()
             ->whereIn('id', $this->items)
             ->where('status', 1)
             ->get();

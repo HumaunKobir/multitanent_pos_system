@@ -136,6 +136,14 @@ export function StoreHeader() {
                                 Home
                             </Link>
 
+                            <Link
+                                href="/products"
+                                className="mx-3 mb-3 block rounded-xl px-3 py-2.5 text-sm font-semibold text-store-primary hover:bg-store-surface"
+                                onClick={closeMobileMenu}
+                            >
+                                All Products
+                            </Link>
+
                             <MobileFilterSection
                                 label="Category"
                                 items={categories}

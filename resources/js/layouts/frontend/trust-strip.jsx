@@ -3,8 +3,8 @@ import { ShieldCheck, Truck, Wallet } from 'lucide-react';
 export function TrustStrip() {
     const items = [
         { icon: ShieldCheck, title: 'Satisfaction guaranteed', desc: '100% quality assured' },
-        { icon: Truck, title: 'Cash On Delivery', desc: 'Inside & outside Dhaka' },
-        { icon: Wallet, title: 'Pay however you like', desc: 'SSLCommerz · bKash · COD' },
+        { icon: Truck, title: 'Cash on delivery', desc: 'Inside & outside Dhaka' },
+        { icon: Wallet, title: 'Flexible payment', desc: 'SSLCommerz · COD' },
     ];
 
     return (

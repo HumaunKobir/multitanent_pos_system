@@ -9,7 +9,7 @@ export function StoreButton({
     return (
         <button
             className={storeCn(
-                'inline-flex items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50',
+                'inline-flex items-center justify-center gap-2 rounded-none px-4 py-2.5 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50',
                 storeButtonVariants[variant],
                 className,
             )}

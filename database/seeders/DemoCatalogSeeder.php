@@ -182,7 +182,7 @@ class DemoCatalogSeeder extends Seeder
                 'tags' => ['Eid', 'Premium', 'Best Seller', 'Festive Drop'],
                 'image' => 'https://picsum.photos/seed/cp-panjabi/600/800',
                 'description' => '<p>Soft premium cotton panjabi with minimal embroidery. Breathable fabric ideal for Eid and festive gatherings.</p><ul><li>100% combed cotton</li><li>Regular fit</li><li>Machine wash cold</li></ul>',
-                'delivery_info' => 'Inside Dhaka: 1–2 days · Outside Dhaka: 2–4 days · Cash on delivery available.',
+                'delivery_info' => 'Inside Dhaka: 1–2 days · Outside Dhaka: 2–4 days · SSLCommerz or cash on delivery.',
                 'combinations' => [
                     ['Size' => 'M', 'Color' => 'White', 'price' => 2490, 'purchase_price' => 1650, 'stock' => 12],
                     ['Size' => 'L', 'Color' => 'White', 'price' => 2490, 'purchase_price' => 1650, 'stock' => 15],

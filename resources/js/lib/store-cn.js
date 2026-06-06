@@ -8,7 +8,7 @@ export const storeButtonVariants = {
 };
 
 export const storeInputClass =
-    'w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-store-primary placeholder:text-gray-400 focus:border-store-accent focus:outline-none focus:ring-2 focus:ring-store-accent/20';
+    'w-full rounded-none border border-gray-200 bg-white px-3 py-2 text-sm text-store-primary placeholder:text-gray-400 focus:border-store-accent focus:outline-none focus:ring-2 focus:ring-store-accent/20';
 
 export function storeCn(...inputs) {
     return cn(inputs);

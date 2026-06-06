@@ -5,6 +5,7 @@ use App\Models\Branch;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\ProductReview;
 use App\Models\ProductSection;
 use App\Models\ProductVariation;
 use App\Models\Tag;
@@ -95,6 +96,72 @@ test('collection products page renders', function () {
         ->assertInertia(fn ($page) => $page
             ->component('frontend/collection-products')
             ->where('collectionName', 'Summer')
+        );
+});
+
+test('all products page renders visible products', function () {
+    $visibleProduct = Product::factory()->create([
+        'name' => 'All Products Visible '.fake()->unique()->numerify('####'),
+        'status' => 1,
+        'visible' => 'yes',
+    ]);
+
+    Product::factory()->create([
+        'name' => 'All Products Hidden '.fake()->unique()->numerify('####'),
+        'status' => 0,
+        'visible' => 'yes',
+    ]);
+
+    $this->get(route('products.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('frontend/all-products')
+            ->where('products.data', fn ($products) => collect($products)->contains('slug', $visibleProduct->slug))
+        );
+});
+
+test('product listings include approved review summary', function () {
+    $product = Product::factory()->create([
+        'status' => 1,
+        'visible' => 'yes',
+    ]);
+
+    ProductReview::factory()->create([
+        'product_id' => $product->id,
+        'rating' => 5,
+        'status' => 1,
+    ]);
+
+    ProductReview::factory()->create([
+        'product_id' => $product->id,
+        'rating' => 4,
+        'status' => 1,
+    ]);
+
+    ProductReview::factory()->pending()->create([
+        'product_id' => $product->id,
+        'rating' => 1,
+    ]);
+
+    $this->get(route('products.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('frontend/all-products')
+            ->where('products.data', fn ($products) => collect($products)
+                ->firstWhere('slug', $product->slug)['review_summary']['count'] === 2
+                && collect($products)->firstWhere('slug', $product->slug)['review_summary']['average'] === 4.5
+            )
+        );
+});
+
+test('single product page still resolves when all products route exists', function () {
+    $product = Product::factory()->create(['status' => 1, 'visible' => 'yes']);
+
+    $this->get(route('product.show', $product->slug))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('frontend/single-product')
+            ->where('product.slug', $product->slug)
         );
 });
 

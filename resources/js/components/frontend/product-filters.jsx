@@ -39,11 +39,11 @@ function FilterChip({ href, label, active = false }) {
     );
 }
 
-function BrowseSections({ currentCategorySlug, currentBrandSlug, currentTagName }) {
+function BrowseSections({ currentCategorySlug, currentBrandSlug, currentTagName, isAllProducts = false }) {
     const { categories = [], brands = [], tags = [] } = usePage().props;
 
     const otherCategories = categories.filter((category) => category.slug !== currentCategorySlug);
-    const hasCategories = otherCategories.length > 0;
+    const hasCategories = otherCategories.length > 0 || isAllProducts;
     const hasBrands = brands.length > 0;
     const hasTags = tags.length > 0;
 
@@ -56,6 +56,7 @@ function BrowseSections({ currentCategorySlug, currentBrandSlug, currentTagName 
             {hasCategories && (
                 <FilterChipSection title="Categories">
                     <div className="flex flex-wrap gap-1">
+                        <FilterChip href="/products" label="All Products" active={isAllProducts} />
                         {otherCategories.map((category) => (
                             <FilterChip
                                 key={category.id}
@@ -109,6 +110,7 @@ export function ProductFilters({
     currentCategorySlug,
     currentBrandSlug,
     currentTagName,
+    isAllProducts = false,
 }) {
     const [localFilters, setLocalFilters] = useState(filters || {});
 
@@ -237,6 +239,7 @@ export function ProductFilters({
                 currentCategorySlug={currentCategorySlug}
                 currentBrandSlug={currentBrandSlug}
                 currentTagName={currentTagName}
+                isAllProducts={isAllProducts}
             />
         </div>
     );

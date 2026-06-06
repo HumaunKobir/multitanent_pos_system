@@ -1,5 +1,5 @@
 import { Head } from '@inertiajs/react';
-import { FileText, MessageSquare, Truck } from 'lucide-react';
+import { FileText, MessageSquare } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { ProductDetailHero } from '@/components/frontend/product-detail-hero';
 import { ProductImageZoom } from '@/components/frontend/product-image-zoom';
@@ -28,6 +28,7 @@ function SingleProductContent({ product, reviews, reviewSummary }) {
     const [selectedVariation, setSelectedVariation] = useState(null);
     const [tailorService, setTailorService] = useState('standard');
     const [adding, setAdding] = useState(false);
+    const [buyingNow, setBuyingNow] = useState(false);
     const [activeTab, setActiveTab] = useState('description');
     const { addToCart } = useAddToCart();
 
@@ -41,6 +42,14 @@ function SingleProductContent({ product, reviews, reviewSummary }) {
         });
 
     const needsVariation = hasVariations && !selectedVariation;
+
+    const buildCartPayload = () => ({
+        product_id: product.id,
+        quantity: 1,
+        variation_id: selectedVariation?.id ?? null,
+        tailor_service: product.tailor_option === 'yes' ? tailorService : null,
+        tailor_price: product.tailor_option === 'yes' ? product.tailor_price : null,
+    });
 
     useEffect(() => {
         if (!product.variations?.length) {
@@ -59,15 +68,24 @@ function SingleProductContent({ product, reviews, reviewSummary }) {
         }
         setAdding(true);
         try {
-            await addToCart({
-                product_id: product.id,
-                quantity: 1,
-                variation_id: selectedVariation?.id ?? null,
-                tailor_service: product.tailor_option === 'yes' ? tailorService : null,
-                tailor_price: product.tailor_option === 'yes' ? product.tailor_price : null,
-            });
+            await addToCart(buildCartPayload());
         } finally {
             setAdding(false);
+        }
+    };
+
+    const handleBuyNow = async () => {
+        if (needsVariation) {
+            return;
+        }
+        setBuyingNow(true);
+        try {
+            await addToCart(buildCartPayload(), {
+                openDrawerOnAdd: false,
+                redirectTo: '/checkout',
+            });
+        } finally {
+            setBuyingNow(false);
         }
     };
 
@@ -78,7 +96,7 @@ function SingleProductContent({ product, reviews, reviewSummary }) {
 
     const tabs = [
         { id: 'description', label: 'Description', icon: FileText },
-        { id: 'reviews', label: 'Reviews', count: reviewSummary.count, icon: MessageSquare },
+        { id: 'reviews', label: 'Reviews', icon: MessageSquare },
     ];
 
     return (
@@ -91,8 +109,8 @@ function SingleProductContent({ product, reviews, reviewSummary }) {
 
             <section className="bg-store-surface/60">
                 <div className="store-container py-4 pb-24 sm:py-5 lg:pb-5">
-                    <div className="grid gap-3 lg:grid-cols-2 lg:gap-4">
-                        <div className="overflow-hidden rounded-2xl bg-white ring-1 ring-gray-200">
+                    <div className="grid gap-3 lg:grid-cols-2 lg:items-start lg:gap-4">
+                        <div className="self-start overflow-hidden rounded-2xl bg-white ring-1 ring-gray-200">
                             <ProductImageZoom
                                 src={photos[selectedPhoto]}
                                 alt={product.name}
@@ -128,20 +146,10 @@ function SingleProductContent({ product, reviews, reviewSummary }) {
                                 onVariationSelect={setSelectedVariation}
                                 needsVariation={needsVariation}
                                 adding={adding}
+                                buyingNow={buyingNow}
                                 onAddToCart={handleAddToCart}
+                                onBuyNow={handleBuyNow}
                             />
-
-                            {product.delivery_info && (
-                                <div className="flex gap-2.5 rounded-2xl bg-white p-3 ring-1 ring-gray-200">
-                                    <Truck className="mt-0.5 size-4 shrink-0 text-store-accent" aria-hidden />
-                                    <div>
-                                        <p className="text-xs font-semibold text-store-primary">Delivery</p>
-                                        <p className="mt-0.5 text-[11px] leading-relaxed text-store-muted">
-                                            {product.delivery_info}
-                                        </p>
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     </div>
 
@@ -171,16 +179,6 @@ function SingleProductContent({ product, reviews, reviewSummary }) {
                                         >
                                             <Icon className="size-3 shrink-0" aria-hidden />
                                             {tab.label}
-                                            {tab.count > 0 && (
-                                                <span
-                                                    className={cn(
-                                                        'rounded-full px-1.5 py-px text-[9px] font-bold',
-                                                        selected ? 'bg-white/20' : 'bg-gray-200 text-store-muted',
-                                                    )}
-                                                >
-                                                    {tab.count}
-                                                </span>
-                                            )}
                                         </button>
                                     );
                                 })}
@@ -260,19 +258,24 @@ function SingleProductContent({ product, reviews, reviewSummary }) {
                             </>
                         )}
                     </div>
-                    <StoreButton
-                        className="flex-1 rounded-xl py-2.5 text-xs font-bold"
-                        onClick={handleAddToCart}
-                        disabled={adding || needsVariation || allVariantsOutOfStock || selectedOutOfStock}
-                    >
-                        {allVariantsOutOfStock || selectedOutOfStock
-                            ? 'Out of stock'
-                            : needsVariation
-                              ? 'Choose option'
-                              : adding
-                                ? 'Adding...'
-                                : 'Add to Cart'}
-                    </StoreButton>
+                    <div className="flex min-w-0 flex-1 gap-1.5">
+                        <StoreButton
+                            variant="outline"
+                            className="flex-1 gap-1 px-2 py-2 text-[11px] font-bold"
+                            onClick={handleAddToCart}
+                            disabled={adding || buyingNow || needsVariation || allVariantsOutOfStock || selectedOutOfStock}
+                        >
+                            {adding ? 'Adding...' : 'Add to Cart'}
+                        </StoreButton>
+                        <StoreButton
+                            variant="ghost"
+                            className="flex-1 gap-1 bg-emerald-600 px-2 py-2 text-[11px] font-bold text-white hover:bg-emerald-700 hover:text-white"
+                            onClick={handleBuyNow}
+                            disabled={adding || buyingNow || needsVariation || allVariantsOutOfStock || selectedOutOfStock}
+                        >
+                            {buyingNow ? 'Checkout...' : 'Buy Now'}
+                        </StoreButton>
+                    </div>
                 </div>
             </div>
         </>

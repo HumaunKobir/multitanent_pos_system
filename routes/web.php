@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\Route;
 
 // ── PUBLIC FRONTEND ───────────────────────────────────────────────────────────
 Route::get('/', [HomeController::class, 'index'])->name('home');
+Route::get('/products', [HomeController::class, 'allProducts'])->name('products.index');
 Route::get('/products/{product:slug}', [HomeController::class, 'show'])->name('product.show');
 Route::post('/products/{product:slug}/reviews', [ProductReviewController::class, 'store'])->name('product.reviews.store');
 Route::get('/category/{category}/products', [HomeController::class, 'categoryProducts'])->name('category.products');

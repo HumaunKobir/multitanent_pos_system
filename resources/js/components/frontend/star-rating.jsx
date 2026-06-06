@@ -1,7 +1,9 @@
 import { Star } from 'lucide-react';
+import { formatRating } from '@/lib/rating-utils';
 
 export function StarRating({ rating, size = 'sm', showValue = false }) {
-    const sizeClass = size === 'lg' ? 'size-5' : size === 'md' ? 'size-4' : 'size-3.5';
+    const sizeClass =
+        size === 'lg' ? 'size-5' : size === 'md' ? 'size-4' : size === 'xs' ? 'size-2.5' : 'size-3.5';
     const rounded = Math.round(Number(rating) * 2) / 2;
 
     return (
@@ -25,7 +27,7 @@ export function StarRating({ rating, size = 'sm', showValue = false }) {
                 })}
             </div>
             {showValue && (
-                <span className="text-sm font-medium text-store-primary">{Number(rating).toFixed(1)}</span>
+                <span className="text-sm font-medium text-store-primary">{formatRating(rating)}</span>
             )}
         </div>
     );

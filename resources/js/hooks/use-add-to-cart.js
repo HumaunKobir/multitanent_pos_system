@@ -1,3 +1,4 @@
+import { router } from '@inertiajs/react';
 import { useCallback, useRef } from 'react';
 import { useCartDrawer } from '@/hooks/use-cart-drawer';
 
@@ -7,7 +8,7 @@ export function useAddToCart() {
     const loadingRef = useRef(false);
 
     const addToCart = useCallback(
-        async (payload, { redirect = false, openDrawerOnAdd = true } = {}) => {
+        async (payload, { redirect = false, redirectTo = null, openDrawerOnAdd = true } = {}) => {
             if (loadingRef.current) {
                 return null;
             }
@@ -35,8 +36,10 @@ export function useAddToCart() {
                 const data = await response.json();
                 setLocalCart(data.cart);
 
-                if (redirect) {
-                    window.location.href = '/cart';
+                const destination = redirectTo || (redirect ? '/cart' : null);
+
+                if (destination) {
+                    router.visit(destination);
                     return data;
                 }
 

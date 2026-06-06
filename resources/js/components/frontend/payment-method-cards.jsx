@@ -1,10 +1,11 @@
-import { Banknote, CreditCard, Smartphone } from 'lucide-react';
+import { Banknote, CreditCard } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 const methods = [
     {
         value: 'cod',
         label: 'Cash on Delivery',
-        desc: 'Pay on delivery',
+        desc: 'Pay when you receive',
         icon: Banknote,
     },
     {
@@ -13,37 +14,47 @@ const methods = [
         desc: 'Card / mobile banking',
         icon: CreditCard,
     },
-    {
-        value: 'bkash',
-        label: 'bKash',
-        desc: 'Mobile wallet',
-        icon: Smartphone,
-    },
 ];
 
 export function PaymentMethodCards({ value, onChange, error }) {
     return (
         <div>
-            <p className="mb-2 text-sm font-medium text-store-primary">Payment method</p>
-            <div className="grid gap-2 sm:grid-cols-3">
-                {methods.map(({ value: v, label, desc, icon: Icon }) => (
-                    <button
-                        key={v}
-                        type="button"
-                        onClick={() => onChange(v)}
-                        className={`flex flex-col items-start rounded-lg border p-3 text-left transition-all ${
-                            value === v
-                                ? 'border-store-accent bg-store-accent/5 ring-2 ring-store-accent/20'
-                                : 'border-gray-200 hover:border-store-accent/50'
-                        }`}
-                    >
-                        <Icon className={`mb-2 size-5 ${value === v ? 'text-store-accent' : 'text-store-muted'}`} />
-                        <span className="text-sm font-semibold text-store-primary">{label}</span>
-                        <span className="text-[11px] text-store-muted">{desc}</span>
-                    </button>
-                ))}
+            <div className="grid grid-cols-1 divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+                {methods.map(({ value: v, label, desc, icon: Icon }) => {
+                    const selected = value === v;
+
+                    return (
+                        <button
+                            key={v}
+                            type="button"
+                            onClick={() => onChange(v)}
+                            className={cn(
+                                'group px-3 py-3 text-left transition-all',
+                                selected
+                                    ? 'bg-store-accent/5 ring-2 ring-inset ring-store-accent/30'
+                                    : 'bg-white hover:bg-store-surface/50',
+                            )}
+                        >
+                            <span
+                                className={cn(
+                                    'inline-flex size-8 items-center justify-center rounded-lg border transition-colors',
+                                    selected
+                                        ? 'border-store-accent/30 bg-store-accent/10'
+                                        : 'border-gray-200 bg-store-surface group-hover:border-store-accent/20',
+                                )}
+                            >
+                                <Icon
+                                    className={cn('size-4', selected ? 'text-store-accent' : 'text-store-muted')}
+                                    aria-hidden
+                                />
+                            </span>
+                            <span className="mt-2 block text-[11px] font-bold text-store-primary">{label}</span>
+                            <span className="mt-0.5 block text-[10px] text-store-muted">{desc}</span>
+                        </button>
+                    );
+                })}
             </div>
-            {error && <p className="mt-1 text-xs text-store-accent">{error}</p>}
+            {error && <p className="mt-2 text-[11px] text-red-600">{error}</p>}
         </div>
     );
 }

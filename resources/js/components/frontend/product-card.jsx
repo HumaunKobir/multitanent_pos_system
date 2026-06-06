@@ -2,6 +2,7 @@ import { Link } from '@inertiajs/react';
 import { Eye, Layers, Play, ShoppingBag, Tag } from 'lucide-react';
 import { useState } from 'react';
 import { VariantModal } from '@/components/frontend/variant-modal';
+import { ProductReviewBadge } from '@/components/frontend/product-review-badge';
 import { useAddToCart } from '@/hooks/use-add-to-cart';
 
 function getDiscountMeta(product) {
@@ -62,7 +63,6 @@ export function ProductCard({ product }) {
     const [variantOpen, setVariantOpen] = useState(false);
     const { addToCart } = useAddToCart();
     const productUrl = `/products/${product.slug}`;
-    const optionCount = product.variations_count ?? product.variations?.length ?? 0;
 
     const handleBagAction = async (event) => {
         event.preventDefault();
@@ -111,13 +111,6 @@ export function ProductCard({ product }) {
                                 </span>
                             )}
 
-                            {product.has_variations && (
-                                <span className="absolute left-2 top-2 z-10 inline-flex items-center gap-0.5 rounded-full bg-store-primary px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
-                                    <Layers className="size-2.5" aria-hidden />
-                                    {optionCount} {optionCount === 1 ? 'option' : 'options'}
-                                </span>
-                            )}
-
                             {product.youtube_link && (
                                 <div className="absolute right-2 top-2 z-10 flex size-6 items-center justify-center rounded-full bg-white/95 shadow-sm">
                                     <Play className="size-3 fill-store-primary text-store-primary" aria-hidden />
@@ -160,9 +153,6 @@ export function ProductCard({ product }) {
                                         {priceDisplay.secondary && (
                                             <p className="mt-0.5 text-[10px] text-store-muted">{priceDisplay.secondary}</p>
                                         )}
-                                        <p className="mt-0.5 text-[10px] font-semibold text-store-primary">
-                                            {optionCount} variants available
-                                        </p>
                                     </>
                                 ) : (
                                     <>
@@ -188,6 +178,7 @@ export function ProductCard({ product }) {
                     <p className="truncate text-xs font-medium text-store-primary transition-colors group-hover:text-store-accent">
                         {product.name}
                     </p>
+                    <ProductReviewBadge summary={product.review_summary} className="mt-1" />
                     <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
                         <span
                             className={`text-xs font-bold ${priceDisplay.isVariant || discount ? 'text-store-accent' : 'text-store-primary'}`}
@@ -196,9 +187,6 @@ export function ProductCard({ product }) {
                         </span>
                         {priceDisplay.strikethrough && priceDisplay.secondary && (
                             <span className="text-[11px] text-gray-400 line-through">{priceDisplay.secondary}</span>
-                        )}
-                        {product.has_variations && (
-                            <span className="text-[10px] text-store-muted">· {optionCount} options</span>
                         )}
                     </div>
                 </Link>

@@ -80,10 +80,7 @@ export function ProductDetailHero({ product, reviewSummary, onReviewsClick }) {
                                 onClick={onReviewsClick}
                                 className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2 py-1 ring-1 ring-white/10 transition-colors hover:bg-white/15"
                             >
-                                <StarRating rating={reviewSummary.average} size="sm" />
-                                <span className="text-[11px] font-medium text-white/80">
-                                    {reviewSummary.count} {reviewSummary.count === 1 ? 'review' : 'reviews'}
-                                </span>
+                                <StarRating rating={reviewSummary.average} size="sm" showValue />
                             </button>
                         )}
                     </div>

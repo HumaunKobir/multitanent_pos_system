@@ -49,6 +49,20 @@ test('can place order with cod payment', function () {
     expect(session('cart'))->toBeNull();
 });
 
+test('can place order with sslcommerz payment', function () {
+    session(['cart' => cartWithProduct()]);
+
+    $this->post(route('checkout.store'), [
+        'name' => 'Karim Ahmed',
+        'phone' => '01700000099',
+        'address' => 'Dhaka',
+        'payment_method' => 'sslcommerz',
+    ])->assertRedirect();
+
+    $this->assertDatabaseHas('online_orders', ['phone' => '01700000099']);
+    expect(session('cart'))->toBeNull();
+});
+
 test('order calculates dhaka delivery charge as 60', function () {
     session(['cart' => cartWithProduct()]);
 

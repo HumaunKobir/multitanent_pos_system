@@ -15,6 +15,7 @@ export function ProductListingLayout({
     currentCategorySlug,
     currentBrandSlug,
     currentTagName,
+    isAllProducts = false,
 }) {
     const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
     const [sortBy, setSortBy] = useState(filters?.sort_by ?? 'newest');
@@ -48,6 +49,7 @@ export function ProductListingLayout({
                         currentCategorySlug={currentCategorySlug}
                         currentBrandSlug={currentBrandSlug}
                         currentTagName={currentTagName}
+                        isAllProducts={isAllProducts}
                     />
 
                     <div className="min-w-0 flex-1">

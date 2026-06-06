@@ -3,6 +3,7 @@ import { Link } from '@inertiajs/react';
 import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { DynamicVariantPicker } from '@/components/frontend/dynamic-variant-picker';
+import { ProductReviewBadge } from '@/components/frontend/product-review-badge';
 import { StoreButton } from '@/components/frontend/store-button';
 import { useAddToCart } from '@/hooks/use-add-to-cart';
 
@@ -61,6 +62,7 @@ export function VariantModal({ product, open, onClose }) {
                             <DialogTitle className="line-clamp-2 text-sm font-semibold text-store-primary">
                                 {product.name}
                             </DialogTitle>
+                            <ProductReviewBadge summary={product.review_summary} className="mt-1" />
                             <p className="mt-1 text-base font-bold text-store-accent">
                                 {selectedVariation ? (
                                     <>৳{formatPrice(effectivePrice)}</>
@@ -74,9 +76,10 @@ export function VariantModal({ product, open, onClose }) {
                         <button
                             type="button"
                             onClick={onClose}
-                            className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-store-muted"
+                            className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-store-accent transition-colors hover:bg-store-accent/10"
+                            aria-label="Close"
                         >
-                            <X className="size-4" />
+                            <X className="size-4" strokeWidth={2.25} />
                         </button>
                     </div>
 

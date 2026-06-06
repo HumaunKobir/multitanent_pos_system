@@ -71,6 +71,7 @@ class HomeController extends Controller
     public function show(string $slug): Response
     {
         $product = Product::with(['photos', 'variations', 'category', 'brand'])
+            ->withReviewSummary()
             ->where('slug', $slug)
             ->where('status', 1)
             ->firstOrFail();
@@ -111,6 +112,7 @@ class HomeController extends Controller
         $productIds = $section->items ?? [];
 
         $query = Product::with(['photos', 'variations'])->withCount('variations')
+            ->withReviewSummary()
             ->where('status', 1)
             ->where('visible', 'yes')
             ->whereIn('id', $productIds);
@@ -134,6 +136,7 @@ class HomeController extends Controller
     public function collectionProducts(string $name, Request $request): Response
     {
         $query = Product::with(['photos', 'variations'])->withCount('variations')
+            ->withReviewSummary()
             ->where('status', 1)
             ->where('visible', 'yes')
             ->whereJsonContains('tags', $name);
@@ -163,6 +166,24 @@ class HomeController extends Controller
         return $this->renderCategoryProducts($model, $request);
     }
 
+    public function allProducts(Request $request): Response
+    {
+        $query = Product::with(['photos', 'variations'])->withCount('variations')
+            ->withReviewSummary()
+            ->where('status', 1)
+            ->where('visible', 'yes');
+
+        $query = $this->applyFilters($query, $request);
+
+        $products = $query->paginate(12)->through(fn ($p) => $this->formatProduct($p));
+
+        return Inertia::render('frontend/all-products', [
+            'products' => $products,
+            'filters' => $request->only(['min_price', 'max_price', 'brands', 'sort_by']),
+            'allBrands' => Brand::active()->pluck('name'),
+        ]);
+    }
+
     public function brandProducts(string $brand, Request $request): Response|RedirectResponse
     {
         if (ctype_digit($brand)) {
@@ -179,6 +200,7 @@ class HomeController extends Controller
     private function renderCategoryProducts(Category $category, Request $request): Response
     {
         $query = Product::with(['photos', 'variations'])->withCount('variations')
+            ->withReviewSummary()
             ->where('status', 1)
             ->where('visible', 'yes')
             ->where('category_id', $category->id);
@@ -203,6 +225,7 @@ class HomeController extends Controller
     private function renderBrandProducts(Brand $brand, Request $request): Response
     {
         $query = Product::with(['photos', 'variations'])->withCount('variations')
+            ->withReviewSummary()
             ->where('status', 1)
             ->where('visible', 'yes')
             ->where('brand_id', $brand->id);
@@ -223,6 +246,7 @@ class HomeController extends Controller
     {
         $query = $request->get('q', '');
         $products = Product::with(['photos', 'variations'])->withCount('variations')
+            ->withReviewSummary()
             ->where('status', 1)
             ->where('visible', 'yes')
             ->where(function ($q) use ($query) {
@@ -327,6 +351,7 @@ class HomeController extends Controller
             'price_max' => $variationSummary['price_max'],
             'variations' => $variationSummary['variations'],
             'youtube_link' => $product->youtube_link,
+            'review_summary' => $this->reviewSummaryFor($product),
         ];
 
         if ($withDetails) {
@@ -343,6 +368,7 @@ class HomeController extends Controller
             $data['category'] = $product->category?->name;
             $data['category_slug'] = $product->category?->slug;
             $data['brand'] = $product->brand?->name;
+            $data['code'] = $product->code;
         }
 
         return $data;
@@ -412,5 +438,18 @@ class HomeController extends Controller
         $minVariationPrice = $product->variations()->min('price');
 
         return $minVariationPrice ? (float) $minVariationPrice : 0;
+    }
+
+    /**
+     * @return array{average: float, count: int}
+     */
+    private function reviewSummaryFor(Product $product): array
+    {
+        return [
+            'average' => $product->reviews_avg_rating !== null
+                ? round((float) $product->reviews_avg_rating, 1)
+                : 0,
+            'count' => (int) ($product->reviews_count ?? 0),
+        ];
     }
 }

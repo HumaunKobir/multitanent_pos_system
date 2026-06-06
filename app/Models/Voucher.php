@@ -6,6 +6,7 @@ use App\Enums\VoucherType;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Voucher extends Model
@@ -17,6 +18,7 @@ class Voucher extends Model
         'voucher_no',
         'date',
         'transaction_reference',
+        'party_type',
         'party_id',
         'from_account_id',
         'to_account_id',
@@ -39,9 +41,9 @@ class Voucher extends Model
         return $this->hasMany(VoucherLine::class)->orderBy('sort_order');
     }
 
-    public function party(): BelongsTo
+    public function party(): MorphTo
     {
-        return $this->belongsTo(Party::class);
+        return $this->morphTo();
     }
 
     public function fromAccount(): BelongsTo

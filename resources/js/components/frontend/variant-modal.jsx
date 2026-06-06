@@ -1,18 +1,13 @@
 import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react';
 import { Link } from '@inertiajs/react';
-import { Layers, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { DynamicVariantPicker } from '@/components/frontend/dynamic-variant-picker';
 import { StoreButton } from '@/components/frontend/store-button';
 import { useAddToCart } from '@/hooks/use-add-to-cart';
 
 function formatPrice(value) {
     return Number(value).toLocaleString('en-BD', { maximumFractionDigits: 0 });
-}
-
-function variationLabel(variation) {
-    const values = Object.values(variation.variation_data || {});
-
-    return values.length > 0 ? values.join(' / ') : variation.sku || 'Option';
 }
 
 export function VariantModal({ product, open, onClose }) {
@@ -23,11 +18,7 @@ export function VariantModal({ product, open, onClose }) {
     useEffect(() => {
         if (!open) {
             setSelectedVariation(null);
-            return;
         }
-
-        const firstAvailable = product?.variations?.find((variation) => variation.stock > 0) ?? null;
-        setSelectedVariation(firstAvailable);
     }, [open, product]);
 
     if (!product) {
@@ -91,39 +82,11 @@ export function VariantModal({ product, open, onClose }) {
 
                     {hasVariations && (
                         <div className="p-4">
-                            <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-store-muted">
-                                <Layers className="size-3 text-store-accent" aria-hidden />
-                                Choose option
-                            </p>
-                            <div className="flex flex-wrap gap-1.5">
-                                {product.variations.map((variation) => {
-                                    const selected = selectedVariation?.id === variation.id;
-                                    const outOfStock = variation.stock <= 0;
-
-                                    return (
-                                        <button
-                                            key={variation.id}
-                                            type="button"
-                                            onClick={() => setSelectedVariation(variation)}
-                                            disabled={outOfStock}
-                                            className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all ${
-                                                selected
-                                                    ? 'bg-store-primary text-white shadow-sm'
-                                                    : outOfStock
-                                                      ? 'cursor-not-allowed bg-gray-50 text-gray-300 line-through ring-1 ring-gray-100'
-                                                      : 'bg-store-surface text-store-primary ring-1 ring-gray-200 hover:ring-store-accent/50'
-                                            }`}
-                                        >
-                                            {variationLabel(variation)}
-                                            {!outOfStock && (
-                                                <span className={`ml-1 ${selected ? 'text-white/75' : 'text-store-muted'}`}>
-                                                    ৳{formatPrice(variation.price)}
-                                                </span>
-                                            )}
-                                        </button>
-                                    );
-                                })}
-                            </div>
+                            <DynamicVariantPicker
+                                variations={product.variations}
+                                selectedVariation={selectedVariation}
+                                onVariationChange={setSelectedVariation}
+                            />
                         </div>
                     )}
 
@@ -131,7 +94,7 @@ export function VariantModal({ product, open, onClose }) {
                         <StoreButton
                             className="w-full rounded-full py-2.5 text-xs"
                             onClick={handleAdd}
-                            disabled={loading || (hasVariations && !selectedVariation)}
+                            disabled={loading || (hasVariations && (!selectedVariation || selectedVariation.stock <= 0))}
                         >
                             {loading ? 'Adding…' : hasVariations ? 'Add selected to bag' : 'Add to bag'}
                         </StoreButton>

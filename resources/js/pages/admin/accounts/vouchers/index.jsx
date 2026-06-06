@@ -30,7 +30,7 @@ export default function VouchersIndex({
     activeType = 'journal',
     accountsPicker = [],
     assetAccounts = [],
-    parties = [],
+    contacts = [],
     defaults = {},
     filters = {},
 }) {
@@ -156,7 +156,7 @@ export default function VouchersIndex({
         item: editing,
         accountsPicker,
         assetAccounts,
-        parties,
+        contacts,
         defaults,
     };
 

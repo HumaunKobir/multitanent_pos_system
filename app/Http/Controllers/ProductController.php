@@ -94,6 +94,7 @@ class ProductController extends Controller
             'photos.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
             'combinations' => ['nullable', 'array'],
             'combinations.*.variant' => ['required_with:combinations', 'string', 'max:255'],
+            'combinations.*.variation_data' => ['nullable', 'array'],
             'combinations.*.sale_price' => ['nullable', 'numeric', 'min:0'],
             'combinations.*.purchase_price' => ['nullable', 'numeric', 'min:0'],
             'combinations.*.sku' => ['required_with:combinations', 'string', 'max:255'],
@@ -161,7 +162,7 @@ class ProductController extends Controller
                     'price' => $salePrice,
                     'purchase_price' => $purchasePrice,
                     'stock' => (int) $combo['stock'],
-                    'variation_data' => ['label' => $combo['variant']],
+                    'variation_data' => $combo['variation_data'] ?? ['label' => $combo['variant']],
                 ]);
 
                 Barcode::create([

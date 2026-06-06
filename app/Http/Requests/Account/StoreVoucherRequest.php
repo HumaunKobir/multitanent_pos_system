@@ -6,6 +6,9 @@ use App\Enums\AccountType;
 use App\Enums\VoucherLineSide;
 use App\Enums\VoucherType;
 use App\Models\ChartOfAccount;
+use App\Models\Customer;
+use App\Models\Supplier;
+use App\Services\VoucherContactPicker;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
@@ -15,6 +18,13 @@ class StoreVoucherRequest extends FormRequest
     public function authorize(): bool
     {
         return true;
+    }
+
+    protected function prepareForValidation(): void
+    {
+        if ($this->filled('party_key')) {
+            $this->merge(VoucherContactPicker::parsePartyKey($this->input('party_key')));
+        }
     }
 
     /**
@@ -54,7 +64,9 @@ class StoreVoucherRequest extends FormRequest
                 'total_amount' => ['required', 'numeric', 'min:0.01'],
             ]),
             VoucherType::Expense => array_merge($base, [
-                'party_id' => ['nullable', 'exists:parties,id'],
+                'party_key' => ['nullable', 'string', 'regex:/^(supplier|customer):\d+$/'],
+                'party_type' => ['nullable', 'string'],
+                'party_id' => ['nullable', 'integer'],
                 'payment_account_id' => ['required', 'exists:chart_of_accounts,id'],
                 'lines' => ['required', 'array', 'min:1'],
                 'lines.*.account_id' => ['required', 'exists:chart_of_accounts,id'],
@@ -62,7 +74,9 @@ class StoreVoucherRequest extends FormRequest
                 'lines.*.narration' => ['nullable', 'string', 'max:500'],
             ]),
             VoucherType::Income => array_merge($base, [
-                'party_id' => ['nullable', 'exists:parties,id'],
+                'party_key' => ['nullable', 'string', 'regex:/^(supplier|customer):\d+$/'],
+                'party_type' => ['nullable', 'string'],
+                'party_id' => ['nullable', 'integer'],
                 'payment_account_id' => ['required', 'exists:chart_of_accounts,id'],
                 'lines' => ['required', 'array', 'min:1'],
                 'lines.*.account_id' => ['required', 'exists:chart_of_accounts,id'],
@@ -93,11 +107,13 @@ class StoreVoucherRequest extends FormRequest
             if ($type === VoucherType::Expense) {
                 $this->validateExpenseLines($validator);
                 $this->validateAssetAccount($validator, 'payment_account_id');
+                $this->validateParty($validator);
             }
 
             if ($type === VoucherType::Income) {
                 $this->validateIncomeLines($validator);
                 $this->validateAssetAccount($validator, 'payment_account_id');
+                $this->validateParty($validator);
             }
         });
     }
@@ -179,6 +195,26 @@ class StoreVoucherRequest extends FormRequest
 
         if ($invalid) {
             $validator->errors()->add('lines', 'Income lines must use income posting accounts.');
+        }
+    }
+
+    private function validateParty(Validator $validator): void
+    {
+        $type = $this->input('party_type');
+        $id = $this->input('party_id');
+
+        if (! $type || ! $id) {
+            return;
+        }
+
+        $exists = match ($type) {
+            Supplier::class => Supplier::query()->ownBranch()->whereKey($id)->exists(),
+            Customer::class => Customer::query()->ownBranch()->whereKey($id)->exists(),
+            default => false,
+        };
+
+        if (! $exists) {
+            $validator->errors()->add('party_key', 'Selected contact is invalid.');
         }
     }
 }

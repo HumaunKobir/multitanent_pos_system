@@ -7,6 +7,7 @@ import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogT
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { route } from '@/lib/route';
+import { buildVariationDataFromRows } from '@/lib/variation-utils';
 import ProductForm from './partials/product-form';
 
 function TagInput({ tags, onChange, placeholder = 'Type value, press Space or Enter…' }) {
@@ -114,7 +115,15 @@ return;
             const skuPart = variantText.replace(/[^A-Za-z0-9]+/g, '-').toUpperCase();
             const sku = [productCode, skuPart].filter(Boolean).join('-');
 
-            return { _existing: false, variant: variantText, sale_price: '', purchase_price: '', sku, stock: '' };
+            return {
+                _existing: false,
+                variant: variantText,
+                variation_data: buildVariationDataFromRows(parsed, combo),
+                sale_price: '',
+                purchase_price: '',
+                sku,
+                stock: '',
+            };
         });
 
         setCombinations((prev) => [...prev.filter((c) => c._existing), ...newCombos]);
@@ -149,7 +158,7 @@ return;
                     },
                     body: JSON.stringify({
                         product_id: product.id,
-                        variation_data: { label: combo.variant },
+                        variation_data: combo.variation_data ?? { label: combo.variant },
                         price: combo.sale_price,
                         purchase_price: combo.purchase_price,
                         stock: combo.stock,

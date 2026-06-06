@@ -6,9 +6,9 @@ use App\Enums\VoucherType;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Account\StoreVoucherRequest;
 use App\Http\Requests\Account\UpdateVoucherRequest;
-use App\Models\Party;
 use App\Models\Voucher;
 use App\Services\VoucherAccountsPicker;
+use App\Services\VoucherContactPicker;
 use App\Services\VoucherService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -30,7 +30,7 @@ class VoucherController extends Controller
 
         $vouchers = Voucher::query()
             ->where('type', $type)
-            ->with(['party:id,name', 'createdBy:id,name'])
+            ->with(['party', 'createdBy:id,name'])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('voucher_no', 'like', "%{$s}%")
                     ->orWhere('transaction_reference', 'like', "%{$s}%")
@@ -46,7 +46,7 @@ class VoucherController extends Controller
             'activeType' => $type->slug(),
             'accountsPicker' => VoucherAccountsPicker::forType($type),
             'assetAccounts' => VoucherAccountsPicker::assetLeafAccounts(),
-            'parties' => Party::query()->orderBy('name')->get(['id', 'name']),
+            'contacts' => VoucherContactPicker::contacts(),
             'filters' => $request->only('search', 'type'),
             'defaults' => [
                 'voucher_no' => VoucherService::nextVoucherNo($type),
@@ -150,7 +150,9 @@ class VoucherController extends Controller
             'voucher_no' => $voucher->voucher_no,
             'date' => $voucher->date->format('Y-m-d'),
             'transaction_reference' => $voucher->transaction_reference,
+            'party_type' => $voucher->party_type,
             'party_id' => $voucher->party_id,
+            'party_key' => VoucherContactPicker::partyKey($voucher->party_type, $voucher->party_id),
             'party_name' => $voucher->party?->name,
             'from_account_id' => $voucher->from_account_id,
             'to_account_id' => $voucher->to_account_id,

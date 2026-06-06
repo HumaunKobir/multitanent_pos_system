@@ -115,6 +115,7 @@ class VoucherService
         $voucher->voucher_no = $data['voucher_no'];
         $voucher->date = $data['date'];
         $voucher->transaction_reference = $data['transaction_reference'] ?? self::nextTransactionReference();
+        $voucher->party_type = $data['party_type'] ?? null;
         $voucher->party_id = $data['party_id'] ?? null;
         $voucher->from_account_id = $data['from_account_id'] ?? null;
         $voucher->to_account_id = $data['to_account_id'] ?? null;

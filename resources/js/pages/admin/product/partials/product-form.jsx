@@ -10,6 +10,7 @@ import { route } from '@/lib/route';
 import { Link, usePage } from '@inertiajs/react';
 import { AlignLeft, DollarSign, GitBranch, ImagePlus, Images, Info, Plus, Settings, Trash2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import { buildVariationDataFromRows } from '@/lib/variation-utils';
 
 function getXsrf() {
     return decodeURIComponent(document.cookie.split('; ').find((r) => r.startsWith('XSRF-TOKEN='))?.split('=')[1] ?? '');
@@ -367,7 +368,15 @@ function VariationBuilder({ productCode, variationNames = [], onChange, onEnable
             const variantText = combo.join('-');
             const skuPart = variantText.replace(/[^A-Za-z0-9]+/g, '-').toUpperCase();
             const sku = [productCode, skuPart].filter(Boolean).join('-');
-            return { variant: variantText, sale_price: '', purchase_price: '', sku, stock: 0 };
+
+            return {
+                variant: variantText,
+                variation_data: buildVariationDataFromRows(parsed, combo),
+                sale_price: '',
+                purchase_price: '',
+                sku,
+                stock: 0,
+            };
         });
 
         setCombinations(combos);

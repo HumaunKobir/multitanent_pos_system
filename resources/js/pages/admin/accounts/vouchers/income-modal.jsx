@@ -2,13 +2,13 @@ import { RequiredMark } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { route } from '@/lib/route';
 import { useForm } from '@inertiajs/react';
 import { Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import { FlatAccountSelect, GroupedAccountSelect } from './grouped-account-select';
+import { VoucherContactSelect } from './voucher-contact-select';
 import { VoucherFormFooter } from './voucher-form-footer';
 import { VoucherModalShell } from './voucher-modal-shell';
 
@@ -18,7 +18,7 @@ function emptyRow() {
     return { account_id: '', amount: '', narration: '' };
 }
 
-export default function IncomeVoucherModal({ open, onOpenChange, item, accountsPicker, assetAccounts, parties, defaults }) {
+export default function IncomeVoucherModal({ open, onOpenChange, item, accountsPicker, assetAccounts, contacts, defaults }) {
     const isEditing = !!item?.id;
 
     const form = useForm({
@@ -26,7 +26,7 @@ export default function IncomeVoucherModal({ open, onOpenChange, item, accountsP
         voucher_no: defaults?.voucher_no ?? '',
         date: defaults?.date ?? '',
         transaction_reference: defaults?.transaction_reference ?? '',
-        party_id: '',
+        party_key: '',
         payment_account_id: '',
         debit_description: '',
         narration: '',
@@ -41,7 +41,7 @@ export default function IncomeVoucherModal({ open, onOpenChange, item, accountsP
                 voucher_no: item.voucher_no ?? '',
                 date: item.date ?? '',
                 transaction_reference: item.transaction_reference ?? '',
-                party_id: item.party_id ? String(item.party_id) : '',
+                party_key: item.party_key ?? '',
                 payment_account_id: String(item.payment_account_id ?? ''),
                 debit_description: '',
                 narration: item.narration ?? '',
@@ -57,7 +57,7 @@ export default function IncomeVoucherModal({ open, onOpenChange, item, accountsP
                 voucher_no: defaults?.voucher_no ?? '',
                 date: defaults?.date ?? '',
                 transaction_reference: defaults?.transaction_reference ?? '',
-                party_id: '',
+                party_key: '',
                 payment_account_id: '',
                 debit_description: '',
                 narration: '',
@@ -79,7 +79,7 @@ export default function IncomeVoucherModal({ open, onOpenChange, item, accountsP
         e.preventDefault();
         const payload = {
             ...form.data,
-            party_id: form.data.party_id ? Number(form.data.party_id) : null,
+            party_key: form.data.party_key || null,
             payment_account_id: Number(form.data.payment_account_id),
             lines: form.data.lines
                 .filter((l) => l.account_id && parseFloat(l.amount) > 0)
@@ -122,20 +122,13 @@ export default function IncomeVoucherModal({ open, onOpenChange, item, accountsP
                         <Input type="date" className="mt-1" value={form.data.date} onChange={(e) => form.setData('date', e.target.value)} />
                     </div>
                     <div>
-                        <Label>Received From</Label>
-                        <Select value={form.data.party_id || '_none'} onValueChange={(v) => form.setData('party_id', v === '_none' ? '' : v)}>
-                            <SelectTrigger className="mt-1">
-                                <SelectValue placeholder="Select contact..." />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="_none">—</SelectItem>
-                                {parties.map((p) => (
-                                    <SelectItem key={p.id} value={String(p.id)}>
-                                        {p.name}
-                                    </SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                        <Label>Received By</Label>
+                        <VoucherContactSelect
+                            contacts={contacts}
+                            value={form.data.party_key}
+                            onChange={(value) => form.setData('party_key', value)}
+                        />
+                        {form.errors.party_key && <p className="mt-1 text-sm text-destructive">{form.errors.party_key}</p>}
                     </div>
                 </div>
                 <div className="rounded-lg border">

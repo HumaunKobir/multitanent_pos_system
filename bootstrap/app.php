@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\EnsureBranchUser;
+use App\Http\Middleware\EnsureEcommercePanel;
 use App\Http\Middleware\EnsureSuperAdmin;
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
@@ -34,6 +35,7 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->alias([
             'superadmin' => EnsureSuperAdmin::class,
+            'ecommerce.panel' => EnsureEcommercePanel::class,
             'branch.user' => EnsureBranchUser::class,
             'role' => RoleMiddleware::class,
             'permission' => PermissionMiddleware::class,

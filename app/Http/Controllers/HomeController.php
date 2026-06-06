@@ -11,6 +11,7 @@ use App\Models\Contact;
 use App\Models\Product;
 use App\Models\ProductSection;
 use App\Models\Slider;
+use App\Services\EcommerceBranchService;
 use App\Support\StorageUrl;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -19,6 +20,8 @@ use Inertia\Response;
 
 class HomeController extends Controller
 {
+    public function __construct(private EcommerceBranchService $ecommerceBranch) {}
+
     public function index(): Response
     {
         $sliders = Slider::active()
@@ -206,11 +209,7 @@ class HomeController extends Controller
 
     public function contact(): Response
     {
-        return Inertia::render('frontend/contact', [
-            'email' => ConfigDictionary::get('email'),
-            'phone' => ConfigDictionary::get('phone'),
-            'address' => ConfigDictionary::get('address'),
-        ]);
+        return Inertia::render('frontend/contact');
     }
 
     public function contactStore(Request $request): RedirectResponse
@@ -219,11 +218,13 @@ class HomeController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'nullable|email|max:255',
             'phone' => 'nullable|string|max:30',
-            'subject' => 'nullable|string|max:255',
             'message' => 'required|string',
         ]);
 
-        Contact::create($validated);
+        Contact::create([
+            ...$validated,
+            'branch_id' => $this->ecommerceBranch->resolveId(),
+        ]);
 
         return back()->with('success', 'Your message has been sent.');
     }

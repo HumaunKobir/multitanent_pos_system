@@ -2,6 +2,7 @@
 
 use App\Models\Branch;
 use App\Models\User;
+use App\Services\EcommerceBranchService;
 use App\Support\AdminNavigation;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -220,7 +221,7 @@ test('superadmin sees full navigation', function () {
     expect($titles)->toContain('Branch');
     expect($titles)->toContain('User');
     expect($titles)->toContain('Roles');
-    expect($titles)->toContain('Contact List');
+    expect($titles)->toContain('Contact Messages');
     expect($titles)->toContain('Dashboard');
 });
 
@@ -231,7 +232,25 @@ test('branch user with no role sees no permission-gated menu items', function ()
     expect($titles)->not->toContain('Branch');
     expect($titles)->not->toContain('User');
     expect($titles)->not->toContain('Roles');
+    expect($titles)->not->toContain('Contact Messages');
     expect($titles)->toContain('Dashboard');
+});
+
+test('ecommerce branch user sees contact messages in navigation', function () {
+    $this->artisan('permissions:sync');
+
+    EcommerceBranchService::resetResolvedId();
+
+    $branch = Branch::query()->firstOrCreate(
+        ['name' => EcommerceBranchService::BRANCH_NAME],
+        Branch::factory()->make(['name' => EcommerceBranchService::BRANCH_NAME])->toArray(),
+    );
+
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    $titles = collect(app(AdminNavigation::class)->build($user))->pluck('title')->toArray();
+
+    expect($titles)->toContain('Contact Messages');
+    expect($titles)->not->toContain('Branch');
 });
 
 test('branch user sees only nav items their role permits', function () {

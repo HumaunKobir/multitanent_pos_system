@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Enums\CommonStatus;
 use App\Models\Branch;
 use App\Models\User;
+use Database\Seeders\ChartOfAccountsSeeder;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -21,7 +22,7 @@ class DatabaseSeeder extends Seeder
         ]);
 
         $branch = Branch::query()->create([
-            'name' => 'Main Branch',
+            'name' => Branch::ECOMMERCE_BRANCH_NAME,
             'phone' => '01700000000',
             'address' => 'ঢাকা, বাংলাদেশ',
             'status' => CommonStatus::Active,
@@ -34,6 +35,10 @@ class DatabaseSeeder extends Seeder
             'password' => bcrypt('123456789'),
             'branch_id' => $branch->id,
             'status' => 1,
+        ]);
+
+        $this->call([
+            ChartOfAccountsSeeder::class,
         ]);
     }
 }

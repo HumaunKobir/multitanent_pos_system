@@ -47,8 +47,11 @@ Route::middleware(['auth', 'verified', 'superadmin'])->group(function () {
     Route::resource('role', RoleController::class)->except(['show']);
     Route::get('role/{role}/permissions', [RoleController::class, 'editPermissions'])->name('role.permissions');
     Route::put('role/{role}/permissions', [RoleController::class, 'updatePermissions'])->name('role.permissions.update');
+});
+
+Route::middleware(['auth', 'verified', 'ecommerce.panel'])->group(function () {
     Route::get('contact-list', [ContactListController::class, 'index'])->name('contact-list.index');
-    Route::delete('contact-list/{subscriber}', [ContactListController::class, 'destroy'])->name('contact-list.destroy');
+    Route::delete('contact-list/{contact}', [ContactListController::class, 'destroy'])->name('contact-list.destroy');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {

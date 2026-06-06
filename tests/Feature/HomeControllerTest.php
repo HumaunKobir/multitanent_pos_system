@@ -1,11 +1,13 @@
 <?php
 
 use App\Enums\CommonStatus;
+use App\Models\Branch;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductSection;
 use App\Models\Tag;
+use App\Services\EcommerceBranchService;
 
 test('home page loads successfully', function () {
     $this->get(route('home'))
@@ -151,16 +153,26 @@ test('contact page loads', function () {
         ->assertInertia(fn ($page) => $page->component('frontend/contact'));
 });
 
-test('contact form stores message and redirects', function () {
+test('contact form stores message for ecommerce branch and redirects', function () {
+    $ecommerceBranch = Branch::query()->firstOrCreate(
+        ['name' => EcommerceBranchService::BRANCH_NAME],
+        Branch::factory()->make(['name' => EcommerceBranchService::BRANCH_NAME])->toArray(),
+    );
+
+    EcommerceBranchService::resetResolvedId();
+
     $this->post(route('contact.store'), [
         'name' => 'Test User',
         'email' => 'test@example.com',
         'phone' => '01700000000',
-        'subject' => 'Test Subject',
         'message' => 'Test message body',
     ])->assertRedirect();
 
-    $this->assertDatabaseHas('contacts', ['email' => 'test@example.com']);
+    $this->assertDatabaseHas('contacts', [
+        'email' => 'test@example.com',
+        'message' => 'Test message body',
+        'branch_id' => $ecommerceBranch->id,
+    ]);
 });
 
 test('contact form requires name and message', function () {

@@ -87,11 +87,11 @@ return [
             'permission' => 'role.view',
         ],
         [
-            'title' => 'Contact List',
+            'title' => 'Contact Messages',
             'icon' => 'phone-call',
             'href' => '/contact-list',
             'single' => true,
-            'admin_only' => true,
+            'ecommerce_only' => true,
             'permission' => null,
         ],
         [

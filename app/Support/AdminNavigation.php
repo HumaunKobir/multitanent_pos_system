@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\User;
+use App\Services\EcommerceBranchService;
 
 class AdminNavigation
 {
@@ -20,7 +21,11 @@ class AdminNavigation
         $sections = [];
 
         foreach (config('admin-navigation.sections', []) as $section) {
-            if ($user->isBranchUser() && ($section['admin_only'] ?? false)) {
+            if ($user->isBranchUser() && ($section['admin_only'] ?? false) && ! ($section['ecommerce_only'] ?? false)) {
+                continue;
+            }
+
+            if ($user->isBranchUser() && ($section['ecommerce_only'] ?? false) && ! EcommerceBranchService::isEcommerceBranchStatic($user->branch_id)) {
                 continue;
             }
 

@@ -16,6 +16,8 @@ class Branch extends Model
 
     public const int MAIN_BRANCH_ID = 1;
 
+    public const string ECOMMERCE_BRANCH_NAME = 'Ecommerce';
+
     protected $fillable = ['name', 'phone', 'address', 'status'];
 
     protected $casts = [

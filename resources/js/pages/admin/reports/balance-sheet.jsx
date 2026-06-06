@@ -146,7 +146,7 @@ export default function BalanceSheetReport({ filters = {}, sheet = {} }) {
 
                 <div className="grid gap-4 lg:grid-cols-3">
                     {(sheet.sections ?? []).map((section) => {
-                        const s = style[section.slug] ?? style.asset;
+                        const s = sectionStyles[section.slug] ?? sectionStyles.asset;
 
                         return (
                             <div

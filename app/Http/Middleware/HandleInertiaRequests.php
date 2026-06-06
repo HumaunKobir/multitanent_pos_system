@@ -10,6 +10,7 @@ use App\Models\Tag;
 use App\Models\User;
 use App\Support\AdminNavigation;
 use App\Support\StorageUrl;
+use App\Support\WebsiteSettings;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -94,25 +95,35 @@ class HandleInertiaRequests extends Middleware
                     'name' => $tag->name,
                 ]),
             'logo' => StorageUrl::public(ConfigDictionary::get('logo')),
-            'siteName' => ConfigDictionary::get('website_name', config('app.name')),
-            'topNotice' => ConfigDictionary::get('topnotice1'),
+            'siteName' => WebsiteSettings::get('website_name', config('app.name')),
+            'topNotice' => WebsiteSettings::get('topnotice1'),
+            'footerDescription' => WebsiteSettings::get('footer_description'),
+            'supportTime' => WebsiteSettings::get('support_time'),
             'contact' => [
-                'phone' => ConfigDictionary::get('phone'),
-                'email' => ConfigDictionary::get('email'),
-                'address' => ConfigDictionary::get('address'),
+                'phone' => WebsiteSettings::get('phone'),
+                'email' => WebsiteSettings::get('email'),
+                'address' => WebsiteSettings::get('address'),
             ],
             'social' => [
-                'facebook' => ConfigDictionary::get('fb_share_for_withdraw'),
-                'youtube' => ConfigDictionary::get('youtube'),
-                'twitter' => ConfigDictionary::get('twit'),
-                'linkedin' => ConfigDictionary::get('linkend'),
+                'facebook' => WebsiteSettings::get('fb_share_for_withdraw'),
+                'youtube' => WebsiteSettings::get('youtube'),
+                'twitter' => WebsiteSettings::get('twit'),
+                'linkedin' => WebsiteSettings::get('linkend'),
+            ],
+            'deliveryCharges' => [
+                'inside_dhaka' => (float) WebsiteSettings::get('delivery_charge_inside_dhaka', '60'),
+                'outside_dhaka' => (float) WebsiteSettings::get('delivery_charge_outside_dhaka', '120'),
             ],
             'newsletter' => [
-                'enabled' => filter_var(ConfigDictionary::get('newsletter_enabled', '1'), FILTER_VALIDATE_BOOLEAN),
-                'title' => ConfigDictionary::get('newsletter_title', 'Sign Up For Newsletter'),
-                'description' => ConfigDictionary::get('newsletter_description', ''),
-                'placeholder' => ConfigDictionary::get('newsletter_placeholder', 'Your Email Address...'),
-                'button' => ConfigDictionary::get('newsletter_button', 'Subscribe'),
+                'enabled' => filter_var(WebsiteSettings::get('newsletter_enabled', '1'), FILTER_VALIDATE_BOOLEAN),
+                'title' => WebsiteSettings::get('newsletter_title', 'Sign Up For Newsletter'),
+                'description' => WebsiteSettings::get('newsletter_description', ''),
+                'placeholder' => WebsiteSettings::get('newsletter_placeholder', 'Your Email Address...'),
+                'button' => WebsiteSettings::get('newsletter_button', 'Subscribe'),
+            ],
+            'seo' => [
+                'meta_tags' => WebsiteSettings::get('meta_tags'),
+                'meta_description' => WebsiteSettings::get('meta_description'),
             ],
             'flash' => [
                 'success' => $request->session()->get('success'),

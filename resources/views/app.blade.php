@@ -5,6 +5,20 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
+        @php
+            $favicon = \App\Support\StorageUrl::public(\App\Models\ConfigDictionary::get('fav_icon'));
+            $metaDescription = \App\Support\WebsiteSettings::get('meta_description');
+            $metaTags = \App\Support\WebsiteSettings::get('meta_tags');
+        @endphp
+
+        @if($metaDescription)
+            <meta name="description" content="{{ $metaDescription }}">
+        @endif
+
+        @if($metaTags)
+            <meta name="keywords" content="{{ $metaTags }}">
+        @endif
+
         <link rel="preconnect" href="https://fonts.googleapis.com">
         <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -35,8 +49,10 @@
             }
         </style>
 
-        <link rel="icon" href="/favicon.ico" sizes="any">
+        <link rel="icon" href="{{ $favicon ?: '/favicon.ico' }}" sizes="any">
+        @unless($favicon)
         <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+        @endunless
         <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 
         @fonts

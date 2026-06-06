@@ -117,8 +117,8 @@ return [
                 ['title' => 'Barcode', 'href' => '/barcode', 'permission' => 'barcode.view'],
                 ['title' => 'Product Section', 'href' => '/setting/productsection', 'permission' => 'setting.productsection.view'],
                 ['title' => 'Slider', 'href' => '/setting/slider', 'permission' => 'setting.slider.view'],
+                ['title' => 'Website Setting', 'href' => '/setting/website', 'permission' => 'setting.website.view'],
                 ['title' => 'Membership', 'permission' => null],
-                ['title' => 'Website Setting', 'permission' => null],
             ],
         ],
         [

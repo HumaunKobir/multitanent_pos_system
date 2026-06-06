@@ -23,12 +23,21 @@ export function StoreHeader() {
     return (
         <>
             {topNotice && (
-                <div className="store-gradient py-1.5 text-center text-xs font-medium tracking-wide text-white">
-                    {topNotice}
-                </div>
+                <>
+                    <div className="h-7 shrink-0" aria-hidden="true" />
+                    <div className="store-top-banner fixed top-0 left-0 right-0 z-60 h-7">
+                        <marquee className="flex h-full items-center" scrollAmount={3}>
+                            <span className="mx-10 inline-flex items-center gap-2.5 text-xs font-semibold uppercase tracking-[0.18em] text-white/90">
+                                <span className="size-1.5 shrink-0 rounded-full bg-store-accent shadow-[0_0_6px_rgb(233_69_96/0.8)]" />
+                                {topNotice}
+                                <span className="size-1.5 shrink-0 rounded-full bg-store-accent shadow-[0_0_6px_rgb(233_69_96/0.8)]" />
+                            </span>
+                        </marquee>
+                    </div>
+                </>
             )}
 
-            <header className="sticky top-0 z-50 shadow-md shadow-store-primary/5">
+            <header className={`sticky z-50 shadow-md shadow-store-primary/5 ${topNotice ? 'top-7' : 'top-0'}`}>
                 <div className="border-b border-gray-100 bg-white/95 backdrop-blur-md">
                     <div className="store-container">
                         <div className="flex h-16 items-center gap-3 lg:gap-6">

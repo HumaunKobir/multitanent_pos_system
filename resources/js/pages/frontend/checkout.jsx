@@ -1,4 +1,4 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { BadgeCheck, ShieldCheck, Truck } from 'lucide-react';
 import { RequiredMark } from '@/components/form-field';
 import { CustomerAuthField, CustomerAuthTextarea } from '@/components/frontend/customer-auth-field';
@@ -11,12 +11,15 @@ function formatPrice(value) {
     return Number(value).toLocaleString('en-BD', { maximumFractionDigits: 0 });
 }
 
-const deliveryZones = [
-    { value: '1', label: 'Inside Dhaka', desc: 'Delivery ৳60' },
-    { value: '2', label: 'Outside Dhaka', desc: 'Delivery ৳120' },
-];
+function DeliveryZoneOptions({ value, onChange, error, deliveryCharges = {} }) {
+    const insideCharge = deliveryCharges.inside_dhaka ?? 60;
+    const outsideCharge = deliveryCharges.outside_dhaka ?? 120;
 
-function DeliveryZoneOptions({ value, onChange, error }) {
+    const deliveryZones = [
+        { value: '1', label: 'Inside Dhaka', desc: `Delivery ৳${formatPrice(insideCharge)}` },
+        { value: '2', label: 'Outside Dhaka', desc: `Delivery ৳${formatPrice(outsideCharge)}` },
+    ];
+
     return (
         <div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
@@ -193,8 +196,12 @@ function OrderSummaryPanel({ items, subtotal, deliveryCharge, total, processing 
 }
 
 export default function Checkout({ cart, customer }) {
+    const { deliveryCharges = {} } = usePage().props;
     const items = cart || [];
     const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+    const insideCharge = deliveryCharges.inside_dhaka ?? 60;
+    const outsideCharge = deliveryCharges.outside_dhaka ?? 120;
 
     const { data, setData, post, processing, errors } = useForm({
         name: customer?.name ?? '',
@@ -207,7 +214,7 @@ export default function Checkout({ cart, customer }) {
         area_id: '',
     });
 
-    const deliveryCharge = data.city_id === '1' ? 60 : 120;
+    const deliveryCharge = data.city_id === '1' ? insideCharge : outsideCharge;
     const total = subtotal + deliveryCharge;
 
     const submit = (e) => {
@@ -286,6 +293,7 @@ export default function Checkout({ cart, customer }) {
                                             value={data.city_id}
                                             onChange={(v) => setData('city_id', v)}
                                             error={errors.city_id}
+                                            deliveryCharges={deliveryCharges}
                                         />
                                     </div>
 

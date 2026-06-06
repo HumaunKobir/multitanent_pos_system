@@ -251,6 +251,15 @@ return [
             ],
         ],
 
+        'setting.website' => [
+            'label' => 'Website Settings',
+            'group' => 'Settings',
+            'permissions' => [
+                'setting.website.view' => 'View Website Settings',
+                'setting.website.update' => 'Update Website Settings',
+            ],
+        ],
+
         // ── Administration ────────────────────────────────────────────────────
 
         'branch' => [

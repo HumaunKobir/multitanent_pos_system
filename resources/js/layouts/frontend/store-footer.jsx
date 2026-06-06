@@ -18,7 +18,7 @@ const shopLinks = [
     { href: '/contact', label: 'Contact' },
     { href: '/faq', label: 'FAQ' },
     { href: '/customer/login', label: 'Login' },
-    { href: '/customer/orders', label: 'My Orders' },
+    { href: '/', label: 'Home' },
 ];
 
 const legalLinks = [
@@ -31,7 +31,6 @@ const legalLinks = [
 const trustHighlights = [
     { icon: Truck, label: 'Fast delivery nationwide' },
     { icon: ShieldCheck, label: 'Secure checkout & payments' },
-    { icon: Clock, label: 'Support: Sat–Thu, 10AM–8PM' },
 ];
 
 const socialPlatforms = [
@@ -60,9 +59,9 @@ function FooterSectionCard({ badge, title, children, className = '' }) {
 
 function FooterFollowUs({ socialLinks }) {
     return (
-        <div className="mt-6 max-w-xs border-t border-white/10 pt-6 lg:text-left">
+        <div className="mt-4 max-w-xs border-t border-white/10 pt-4 lg:text-left">
             <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/50">Follow us</p>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-2 flex flex-wrap gap-1">
                 {socialLinks.map(({ href, icon: Icon, label }) =>
                     href ? (
                         <a
@@ -70,24 +69,63 @@ function FooterFollowUs({ socialLinks }) {
                             href={href}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex size-10 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15 transition-all hover:bg-store-accent hover:ring-store-accent/40"
+                            className="flex size-7 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15 transition-all hover:bg-store-accent hover:ring-store-accent/40"
                             aria-label={label}
                         >
-                            <Icon className="size-4" />
+                            <Icon className="size-3" />
                         </a>
                     ) : (
                         <span
                             key={label}
-                            className="flex size-10 cursor-default items-center justify-center rounded-xl bg-white/5 text-white/25 ring-1 ring-white/10"
+                            className="flex size-7 cursor-default items-center justify-center rounded-xl bg-white/5 text-white/25 ring-1 ring-white/10"
                             aria-label={`${label} (not configured)`}
                             title={`${label} — link not set`}
                         >
-                            <Icon className="size-4" />
+                            <Icon className="size-3" />
                         </span>
                     ),
                 )}
             </div>
         </div>
+    );
+}
+
+function FooterContactInfo({ contact }) {
+    const hasContact = contact.phone || contact.email || contact.address;
+
+    if (!hasContact) {
+        return null;
+    }
+
+    return (
+        <ul className="mt-4 max-w-xs space-y-1.5 border-t border-white/10 pt-4 text-xs text-white/80 lg:text-left">
+            {contact.phone && (
+                <li className="flex items-center gap-2">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
+                        <Phone className="size-3 text-store-accent" strokeWidth={2.25} />
+                    </span>
+                    <span>{contact.phone}</span>
+                </li>
+            )}
+            {contact.email && (
+                <li className="flex items-center gap-2">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
+                        <Mail className="size-3 text-store-accent" strokeWidth={2.25} />
+                    </span>
+                    <a href={`mailto:${contact.email}`} className="transition-colors hover:text-white">
+                        {contact.email}
+                    </a>
+                </li>
+            )}
+            {contact.address && (
+                <li className="flex items-center gap-2">
+                    <span className="flex size-7 shrink-0 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
+                        <MapPin className="size-3 text-store-accent" strokeWidth={2.25} />
+                    </span>
+                    <span className="text-white/65">{contact.address}</span>
+                </li>
+            )}
+        </ul>
     );
 }
 
@@ -110,8 +148,13 @@ function FooterLinkList({ links }) {
 }
 
 export function StoreFooter() {
-    const { siteName, contact = {}, social = {}, logo, topNotice } = usePage().props;
+    const { siteName, contact = {}, social = {}, logo, topNotice, footerDescription, supportTime } = usePage().props;
     const brandName = siteName || 'Coolness Point';
+
+    const highlights = [
+        ...trustHighlights,
+        ...(supportTime ? [{ icon: Clock, label: `Support: ${supportTime}` }] : []),
+    ];
 
     const socialLinks = socialPlatforms.map(({ key, icon, label }) => ({
         href: social[key],
@@ -123,10 +166,10 @@ export function StoreFooter() {
         <footer className="relative overflow-hidden bg-store-primary text-white">
             <div className="auth-grid-overlay pointer-events-none absolute inset-0 opacity-25" aria-hidden="true" />
 
-            <div className="store-container relative z-10 py-12 lg:py-14">
-                <div className="grid gap-8 lg:grid-cols-12 lg:gap-6 xl:gap-8">
+            <div className="store-container relative z-10 py-10 lg:py-12">
+                <div className="grid items-start gap-6 lg:grid-cols-12 lg:gap-6 xl:gap-8">
                     <div className="lg:col-span-4">
-                        <div className="rounded-2xl bg-white/5 p-6 ring-1 ring-white/10 backdrop-blur-sm">
+                        <div className="rounded-2xl bg-white/5 p-5 ring-1 ring-white/10 backdrop-blur-sm">
                             <Link
                                 href="/"
                                 className="inline-flex items-center rounded-2xl bg-white/10 px-3.5 py-2.5 ring-1 ring-white/15 transition-all hover:bg-white/15 hover:ring-white/25"
@@ -143,8 +186,8 @@ export function StoreFooter() {
                             </Link>
 
                             <p className="mt-4 text-sm leading-relaxed text-white/75">
-                                Your destination for fashion and apparel — quality products, reliable delivery, and a
-                                shopping experience built on trust.
+                                {footerDescription ||
+                                    'Your destination for fashion and apparel — quality products, reliable delivery, and a shopping experience built on trust.'}
                             </p>
 
                             {topNotice && (
@@ -153,37 +196,8 @@ export function StoreFooter() {
                                 </p>
                             )}
 
-                            <ul className="mt-5 space-y-3 text-sm text-white/80">
-                                {contact.phone && (
-                                    <li className="flex items-start gap-3">
-                                        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
-                                            <Phone className="size-4 text-store-accent" strokeWidth={2.25} />
-                                        </span>
-                                        <span className="pt-1.5">{contact.phone}</span>
-                                    </li>
-                                )}
-                                {contact.email && (
-                                    <li className="flex items-start gap-3">
-                                        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
-                                            <Mail className="size-4 text-store-accent" strokeWidth={2.25} />
-                                        </span>
-                                        <a href={`mailto:${contact.email}`} className="pt-1.5 transition-colors hover:text-white">
-                                            {contact.email}
-                                        </a>
-                                    </li>
-                                )}
-                                {contact.address && (
-                                    <li className="flex items-start gap-3">
-                                        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/15">
-                                            <MapPin className="size-4 text-store-accent" strokeWidth={2.25} />
-                                        </span>
-                                        <span className="pt-1.5 leading-relaxed text-white/65">{contact.address}</span>
-                                    </li>
-                                )}
-                            </ul>
-
-                            <ul className="mt-6 space-y-2.5 border-t border-white/10 pt-5">
-                                {trustHighlights.map(({ icon: Icon, label }) => (
+                            <ul className="mt-5 space-y-2 border-t border-white/10 pt-4">
+                                {highlights.map(({ icon: Icon, label }) => (
                                     <li key={label} className="flex items-center gap-2.5 text-xs font-medium text-white/70">
                                         <Icon className="size-3.5 shrink-0 text-store-accent" strokeWidth={2.25} />
                                         {label}
@@ -193,7 +207,7 @@ export function StoreFooter() {
                         </div>
                     </div>
 
-                    <div className="grid gap-6 sm:grid-cols-2 lg:col-span-5 lg:grid-cols-2">
+                    <div className="grid items-start gap-5 sm:grid-cols-2 lg:col-span-5 lg:grid-cols-2">
                         <FooterSectionCard badge="Explore" title="Shop">
                             <FooterLinkList links={shopLinks} />
                         </FooterSectionCard>
@@ -206,10 +220,11 @@ export function StoreFooter() {
                     <div className="lg:col-span-3 lg:justify-self-end">
                         <FooterNewsletter />
                         <FooterFollowUs socialLinks={socialLinks} />
+                        <FooterContactInfo contact={contact} />
                     </div>
                 </div>
 
-                <div className="mt-10 flex flex-col items-center justify-between gap-4 border-t border-white/10 pt-6 text-xs text-white/50 sm:flex-row sm:items-center">
+                <div className="mt-8 flex flex-col items-center justify-between gap-3 border-t border-white/10 pt-5 text-xs text-white/50 sm:flex-row sm:items-center">
                     <p>
                         &copy; {new Date().getFullYear()} {brandName}. All rights reserved.
                     </p>

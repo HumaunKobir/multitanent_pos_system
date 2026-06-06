@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\OnlineOrder;
 use App\Models\OnlineOrderProduct;
+use App\Support\WebsiteSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -48,8 +49,8 @@ class CheckoutController extends Controller
             $subtotal += $item['price'] * $item['quantity'];
         }
 
-        $cityId = $validated['city_id'] ?? null;
-        $deliveryCharge = ($cityId && $cityId == 1) ? 60 : 120;
+        $cityId = isset($validated['city_id']) ? (int) $validated['city_id'] : null;
+        $deliveryCharge = WebsiteSettings::deliveryChargeForCity($cityId);
 
         $order = OnlineOrder::create([
             'customer_id' => auth('customer')->id(),

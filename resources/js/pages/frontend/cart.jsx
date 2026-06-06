@@ -2,9 +2,11 @@ import { Head, Link, router } from '@inertiajs/react';
 import { ShoppingBag, Trash2 } from 'lucide-react';
 import { QuantityStepper } from '@/components/frontend/quantity-stepper';
 import { StoreButton } from '@/components/frontend/store-button';
+import { useCustomerCheckoutGuard } from '@/hooks/use-customer-checkout-guard';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 
 export default function Cart({ cart }) {
+    const { goToCheckout } = useCustomerCheckoutGuard();
     const items = Object.entries(cart || {}).map(([key, item]) => ({ ...item, cartKey: key }));
     const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
     const tailorTotal = items.reduce(
@@ -84,9 +86,9 @@ export default function Cart({ cart }) {
                                         <span className="text-store-accent">৳{subtotal}</span>
                                     </div>
                                 </div>
-                                <Link href="/checkout" className="mt-4 block">
-                                    <StoreButton className="w-full">Proceed to Checkout</StoreButton>
-                                </Link>
+                                <StoreButton className="mt-4 w-full" onClick={goToCheckout}>
+                                    Proceed to Checkout
+                                </StoreButton>
                             </div>
                         </div>
                     </div>
@@ -95,9 +97,9 @@ export default function Cart({ cart }) {
 
             {items.length > 0 && (
                 <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-white p-3 shadow-lg lg:hidden">
-                    <Link href="/checkout">
-                        <StoreButton className="w-full">Checkout — ৳{subtotal}</StoreButton>
-                    </Link>
+                    <StoreButton className="w-full" onClick={goToCheckout}>
+                        Checkout — ৳{subtotal}
+                    </StoreButton>
                 </div>
             )}
         </FrontendLayout>

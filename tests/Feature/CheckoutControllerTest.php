@@ -35,44 +35,63 @@ test('checkout page loads when cart has items', function () {
         ->assertInertia(fn ($page) => $page->component('frontend/checkout'));
 });
 
-test('can place order with cod payment', function () {
+test('guest cannot place order without logging in', function () {
     session(['cart' => cartWithProduct()]);
 
     $this->post(route('checkout.store'), [
-        'name' => 'রাহেলা বেগম',
+        'name' => 'Guest User',
         'phone' => '01700000001',
-        'address' => 'ঢাকা, বাংলাদেশ',
+        'address' => 'Dhaka',
         'payment_method' => 'cod',
-    ])->assertRedirect();
+    ])
+        ->assertRedirect()
+        ->assertSessionHas('error', 'Please log in to place your order.');
+});
+
+test('can place order with cod payment', function () {
+    $customer = Customer::factory()->create();
+    session(['cart' => cartWithProduct()]);
+
+    $this->actingAs($customer, 'customer')
+        ->post(route('checkout.store'), [
+            'name' => 'রাহেলা বেগম',
+            'phone' => '01700000001',
+            'address' => 'ঢাকা, বাংলাদেশ',
+            'payment_method' => 'cod',
+        ])->assertRedirect();
 
     $this->assertDatabaseHas('online_orders', ['phone' => '01700000001']);
     expect(session('cart'))->toBeNull();
 });
 
 test('can place order with sslcommerz payment', function () {
+    $customer = Customer::factory()->create();
     session(['cart' => cartWithProduct()]);
 
-    $this->post(route('checkout.store'), [
-        'name' => 'Karim Ahmed',
-        'phone' => '01700000099',
-        'address' => 'Dhaka',
-        'payment_method' => 'sslcommerz',
-    ])->assertRedirect();
+    $this->actingAs($customer, 'customer')
+        ->post(route('checkout.store'), [
+            'name' => 'Karim Ahmed',
+            'phone' => '01700000099',
+            'address' => 'Dhaka',
+            'payment_method' => 'sslcommerz',
+        ])->assertRedirect();
 
     $this->assertDatabaseHas('online_orders', ['phone' => '01700000099']);
     expect(session('cart'))->toBeNull();
 });
 
 test('order calculates dhaka delivery charge as 60', function () {
+    $customer = Customer::factory()->create();
     session(['cart' => cartWithProduct()]);
 
-    $this->post(route('checkout.store'), [
-        'name' => 'Test',
-        'phone' => '01700000002',
-        'address' => 'Dhaka',
-        'payment_method' => 'cod',
-        'city_id' => 1,
-    ]);
+    $this->actingAs($customer, 'customer')
+        ->post(route('checkout.store'), [
+            'name' => 'Test',
+            'phone' => '01700000002',
+            'address' => 'Dhaka',
+            'payment_method' => 'cod',
+            'city_id' => 1,
+        ]);
 
     $this->assertDatabaseHas('online_orders', [
         'phone' => '01700000002',
@@ -81,15 +100,17 @@ test('order calculates dhaka delivery charge as 60', function () {
 });
 
 test('order calculates outside dhaka delivery charge as 120', function () {
+    $customer = Customer::factory()->create();
     session(['cart' => cartWithProduct()]);
 
-    $this->post(route('checkout.store'), [
-        'name' => 'Test',
-        'phone' => '01700000003',
-        'address' => 'Chittagong',
-        'payment_method' => 'cod',
-        'city_id' => 5,
-    ]);
+    $this->actingAs($customer, 'customer')
+        ->post(route('checkout.store'), [
+            'name' => 'Test',
+            'phone' => '01700000003',
+            'address' => 'Chittagong',
+            'payment_method' => 'cod',
+            'city_id' => 5,
+        ]);
 
     $this->assertDatabaseHas('online_orders', [
         'phone' => '01700000003',
@@ -98,23 +119,28 @@ test('order calculates outside dhaka delivery charge as 120', function () {
 });
 
 test('checkout form requires name, phone, address, and payment method', function () {
+    $customer = Customer::factory()->create();
     session(['cart' => cartWithProduct()]);
 
-    $this->post(route('checkout.store'), [])
+    $this->actingAs($customer, 'customer')
+        ->post(route('checkout.store'), [])
         ->assertSessionHasErrors(['name', 'phone', 'address', 'payment_method']);
 });
 
 test('checkout redirects to empty cart when cart is empty on post', function () {
-    $this->post(route('checkout.store'), [
-        'name' => 'Test',
-        'phone' => '01700000000',
-        'address' => 'Dhaka',
-        'payment_method' => 'cod',
-    ])->assertRedirect(route('cart'));
+    $customer = Customer::factory()->create();
+
+    $this->actingAs($customer, 'customer')
+        ->post(route('checkout.store'), [
+            'name' => 'Test',
+            'phone' => '01700000000',
+            'address' => 'Dhaka',
+            'payment_method' => 'cod',
+        ])->assertRedirect(route('cart'));
 });
 
 test('order success page loads', function () {
-    $product = Product::factory()->create(['sale_price' => 1000, 'discount_price' => 0]);
+    Product::factory()->create(['sale_price' => 1000, 'discount_price' => 0]);
 
     $order = OnlineOrder::create([
         'name' => 'Test',
@@ -128,7 +154,7 @@ test('order success page loads', function () {
         'payment_status' => 'pending',
     ]);
 
-    $this->get(route('order.success', $order->id))
+    $this->get(route('checkout.success', $order->id))
         ->assertOk()
         ->assertInertia(fn ($page) => $page->component('frontend/order-success'));
 });

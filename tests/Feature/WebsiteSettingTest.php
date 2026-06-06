@@ -2,6 +2,7 @@
 
 use App\Models\Branch;
 use App\Models\ConfigDictionary;
+use App\Models\Customer;
 use App\Models\Product;
 use App\Models\User;
 use App\Services\EcommerceBranchService;
@@ -144,6 +145,7 @@ test('checkout uses configured delivery charges', function () {
         'delivery_charge_outside_dhaka' => '140',
     ]);
 
+    $customer = Customer::factory()->create();
     $product = Product::factory()->create(['sale_price' => 1200, 'discount_price' => 0]);
     $cartKey = $product->id.'-0';
     $cartItem = [
@@ -160,13 +162,14 @@ test('checkout uses configured delivery charges', function () {
 
     session(['cart' => $cartItem]);
 
-    $this->post(route('checkout.store'), [
-        'name' => 'Test',
-        'phone' => '01700000004',
-        'address' => 'Dhaka',
-        'payment_method' => 'cod',
-        'city_id' => 1,
-    ]);
+    $this->actingAs($customer, 'customer')
+        ->post(route('checkout.store'), [
+            'name' => 'Test',
+            'phone' => '01700000004',
+            'address' => 'Dhaka',
+            'payment_method' => 'cod',
+            'city_id' => 1,
+        ]);
 
     $this->assertDatabaseHas('online_orders', [
         'phone' => '01700000004',
@@ -175,13 +178,14 @@ test('checkout uses configured delivery charges', function () {
 
     session(['cart' => $cartItem]);
 
-    $this->post(route('checkout.store'), [
-        'name' => 'Test',
-        'phone' => '01700000005',
-        'address' => 'Chittagong',
-        'payment_method' => 'cod',
-        'city_id' => 5,
-    ]);
+    $this->actingAs($customer, 'customer')
+        ->post(route('checkout.store'), [
+            'name' => 'Test',
+            'phone' => '01700000005',
+            'address' => 'Chittagong',
+            'payment_method' => 'cod',
+            'city_id' => 5,
+        ]);
 
     $this->assertDatabaseHas('online_orders', [
         'phone' => '01700000005',

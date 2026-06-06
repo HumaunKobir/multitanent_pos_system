@@ -27,6 +27,10 @@ class CheckoutController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        if (! auth('customer')->check()) {
+            return back()->with('error', 'Please log in to place your order.');
+        }
+
         $cart = session('cart', []);
         if (empty($cart)) {
             return redirect()->route('cart')->with('error', 'Your cart is empty.');

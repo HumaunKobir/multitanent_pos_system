@@ -1,10 +1,11 @@
 import { AnimatePresence, motion } from 'framer-motion';
-import { Link, router } from '@inertiajs/react';
+import { Link } from '@inertiajs/react';
 import { ShoppingBag, Trash2, Truck, X } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { QuantityStepper } from '@/components/frontend/quantity-stepper';
 import { StoreButton } from '@/components/frontend/store-button';
 import { useCartDrawer } from '@/hooks/use-cart-drawer';
+import { useCustomerCheckoutGuard } from '@/hooks/use-customer-checkout-guard';
 
 const FREE_SHIPPING_THRESHOLD = 500;
 const drawerTransition = { type: 'spring', damping: 32, stiffness: 320 };
@@ -19,6 +20,7 @@ function formatPrice(amount) {
 
 export function CartDrawer() {
     const { isOpen, closeDrawer, localCart, setLocalCart, removedItem, setRemovedItem } = useCartDrawer();
+    const { goToCheckout } = useCustomerCheckoutGuard();
     const [updating, setUpdating] = useState(null);
 
     const items = useMemo(
@@ -293,7 +295,7 @@ export function CartDrawer() {
                                         className="w-full py-2 text-xs"
                                         onClick={() => {
                                             closeDrawer();
-                                            router.visit('/checkout');
+                                            goToCheckout();
                                         }}
                                     >
                                         Checkout — ৳{formatPrice(subtotal)}

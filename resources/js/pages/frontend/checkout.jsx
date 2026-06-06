@@ -1,9 +1,11 @@
-import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { BadgeCheck, ShieldCheck, Truck } from 'lucide-react';
+import { useEffect } from 'react';
 import { RequiredMark } from '@/components/form-field';
 import { CustomerAuthField, CustomerAuthTextarea } from '@/components/frontend/customer-auth-field';
 import { PaymentMethodCards } from '@/components/frontend/payment-method-cards';
 import { StoreButton } from '@/components/frontend/store-button';
+import { alertCustomerLoginRequired } from '@/lib/customer-checkout-auth';
 import FrontendLayout from '@/layouts/frontend/frontend-layout';
 import { cn } from '@/lib/utils';
 
@@ -217,8 +219,21 @@ export default function Checkout({ cart, customer }) {
     const deliveryCharge = data.city_id === '1' ? insideCharge : outsideCharge;
     const total = subtotal + deliveryCharge;
 
+    useEffect(() => {
+        if (!customer) {
+            alertCustomerLoginRequired();
+            router.visit('/cart');
+        }
+    }, [customer]);
+
     const submit = (e) => {
         e.preventDefault();
+
+        if (!customer) {
+            alertCustomerLoginRequired();
+            return;
+        }
+
         post('/checkout');
     };
 
@@ -235,12 +250,10 @@ export default function Checkout({ cart, customer }) {
                             Checkout
                         </span>
                         <h1 className="mt-2 text-xl font-bold text-store-primary sm:text-2xl">Complete your order</h1>
-                        {!customer && (
+                        {customer && (
                             <p className="mt-1 text-[11px] text-store-muted">
-                                Checking out as a guest?{' '}
-                                <Link href="/customer/login" className="font-semibold text-store-accent hover:underline">
-                                    Log in
-                                </Link>
+                                Signed in as{' '}
+                                <span className="font-semibold text-store-primary">{customer.name}</span>
                             </p>
                         )}
                     </div>

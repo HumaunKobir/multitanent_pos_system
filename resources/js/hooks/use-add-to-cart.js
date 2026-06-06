@@ -1,8 +1,10 @@
-import { router } from '@inertiajs/react';
+import { router, usePage } from '@inertiajs/react';
 import { useCallback, useRef } from 'react';
 import { useCartDrawer } from '@/hooks/use-cart-drawer';
+import { alertCustomerLoginRequired, isCustomerLoggedIn } from '@/lib/customer-checkout-auth';
 
 export function useAddToCart() {
+    const { auth } = usePage().props;
     const { openDrawer, setLocalCart, showToast, isOpen } = useCartDrawer();
     const hasOpenedRef = useRef(false);
     const loadingRef = useRef(false);
@@ -39,6 +41,11 @@ export function useAddToCart() {
                 const destination = redirectTo || (redirect ? '/cart' : null);
 
                 if (destination) {
+                    if (destination === '/checkout' && !isCustomerLoggedIn(auth)) {
+                        alertCustomerLoginRequired();
+                        return data;
+                    }
+
                     router.visit(destination);
                     return data;
                 }
@@ -55,7 +62,7 @@ export function useAddToCart() {
                 loadingRef.current = false;
             }
         },
-        [openDrawer, setLocalCart, showToast, isOpen],
+        [auth, openDrawer, setLocalCart, showToast, isOpen],
     );
 
     return { addToCart };

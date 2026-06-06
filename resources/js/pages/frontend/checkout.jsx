@@ -40,7 +40,7 @@ function DeliveryZoneOptions({ value, onChange, error, deliveryCharges = {} }) {
                         >
                             <input
                                 type="radio"
-                                name="city_id"
+                                name="delivery_zone"
                                 value={zoneValue}
                                 checked={selected}
                                 onChange={() => onChange(zoneValue)}
@@ -211,12 +211,10 @@ export default function Checkout({ cart, customer }) {
         phone: customer?.phone ?? '',
         address: '',
         payment_method: 'cod',
-        city_id: '1',
-        zone_id: '',
-        area_id: '',
+        delivery_zone: '1',
     });
 
-    const deliveryCharge = data.city_id === '1' ? insideCharge : outsideCharge;
+    const deliveryCharge = data.delivery_zone === '1' ? insideCharge : outsideCharge;
     const total = subtotal + deliveryCharge;
 
     useEffect(() => {
@@ -303,9 +301,9 @@ export default function Checkout({ cart, customer }) {
                                             <RequiredMark />
                                         </p>
                                         <DeliveryZoneOptions
-                                            value={data.city_id}
-                                            onChange={(v) => setData('city_id', v)}
-                                            error={errors.city_id}
+                                            value={data.delivery_zone}
+                                            onChange={(v) => setData('delivery_zone', v)}
+                                            error={errors.delivery_zone}
                                             deliveryCharges={deliveryCharges}
                                         />
                                     </div>

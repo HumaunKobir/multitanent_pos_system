@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Checkout\PlaceCodOnlineOrder;
+use App\Http\Requests\StoreCheckoutRequest;
 use App\Models\OnlineOrder;
-use App\Models\OnlineOrderProduct;
-use App\Support\WebsiteSettings;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use InvalidArgumentException;
 
 class CheckoutController extends Controller
 {
@@ -25,10 +25,14 @@ class CheckoutController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(StoreCheckoutRequest $request, PlaceCodOnlineOrder $placeCodOnlineOrder): RedirectResponse
     {
         if (! auth('customer')->check()) {
             return back()->with('error', 'Please log in to place your order.');
+        }
+
+        if ($request->validated('payment_method') === 'sslcommerz') {
+            return back()->with('error', 'Online payment is coming soon. Please choose Cash on Delivery.');
         }
 
         $cart = session('cart', []);
@@ -36,54 +40,14 @@ class CheckoutController extends Controller
             return redirect()->route('cart')->with('error', 'Your cart is empty.');
         }
 
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'nullable|email|max:255',
-            'phone' => 'required|string|max:30',
-            'address' => 'required|string',
-            'payment_method' => 'required|in:cod,sslcommerz',
-            'city_id' => 'nullable|integer',
-            'zone_id' => 'nullable|integer',
-            'area_id' => 'nullable|integer',
-        ]);
-
-        $subtotal = 0;
-
-        foreach ($cart as $item) {
-            $subtotal += $item['price'] * $item['quantity'];
-        }
-
-        $cityId = isset($validated['city_id']) ? (int) $validated['city_id'] : null;
-        $deliveryCharge = WebsiteSettings::deliveryChargeForCity($cityId);
-
-        $order = OnlineOrder::create([
-            'customer_id' => auth('customer')->id(),
-            'name' => $validated['name'],
-            'email' => $validated['email'] ?? null,
-            'phone' => $validated['phone'],
-            'address' => $validated['address'],
-            'payment_method' => $validated['payment_method'],
-            'delivery_charge' => $deliveryCharge,
-            'subtotal' => $subtotal,
-            'total' => $subtotal + $deliveryCharge,
-            'city_id' => $cityId,
-            'zone_id' => $validated['zone_id'] ?? null,
-            'area_id' => $validated['area_id'] ?? null,
-            'status' => 1,
-            'payment_status' => 'pending',
-        ]);
-
-        foreach ($cart as $item) {
-            OnlineOrderProduct::create([
-                'online_order_id' => $order->id,
-                'product_id' => $item['product_id'],
-                'variation_id' => $item['variation_id'] ?? null,
-                'name' => $item['name'],
-                'sku' => $item['sku'] ?? null,
-                'price' => $item['price'],
-                'quantity' => $item['quantity'],
-                'total_price' => $item['price'] * $item['quantity'],
-            ]);
+        try {
+            $order = $placeCodOnlineOrder->execute(
+                auth('customer')->user(),
+                $cart,
+                $request->validated(),
+            );
+        } catch (InvalidArgumentException $exception) {
+            return back()->with('error', $exception->getMessage());
         }
 
         session()->forget('cart');

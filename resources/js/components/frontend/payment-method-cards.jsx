@@ -11,8 +11,9 @@ const methods = [
     {
         value: 'sslcommerz',
         label: 'SSLCommerz',
-        desc: 'Card / mobile banking',
+        desc: 'Coming soon',
         icon: CreditCard,
+        disabled: true,
     },
 ];
 
@@ -20,19 +21,26 @@ export function PaymentMethodCards({ value, onChange, error }) {
     return (
         <div>
             <div className="grid grid-cols-1 divide-y divide-gray-200 overflow-hidden rounded-lg border border-gray-200 sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-                {methods.map(({ value: v, label, desc, icon: Icon }) => {
+                {methods.map(({ value: v, label, desc, icon: Icon, disabled = false }) => {
                     const selected = value === v;
 
                     return (
                         <button
                             key={v}
                             type="button"
-                            onClick={() => onChange(v)}
+                            disabled={disabled}
+                            onClick={() => {
+                                if (!disabled) {
+                                    onChange(v);
+                                }
+                            }}
                             className={cn(
                                 'group px-3 py-3 text-left transition-all',
+                                disabled && 'cursor-not-allowed opacity-60',
                                 selected
                                     ? 'bg-store-accent/5 ring-2 ring-inset ring-store-accent/30'
                                     : 'bg-white hover:bg-store-surface/50',
+                                disabled && !selected && 'hover:bg-white',
                             )}
                         >
                             <span

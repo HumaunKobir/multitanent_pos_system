@@ -168,7 +168,7 @@ test('checkout uses configured delivery charges', function () {
             'phone' => '01700000004',
             'address' => 'Dhaka',
             'payment_method' => 'cod',
-            'city_id' => 1,
+            'delivery_zone' => 1,
         ]);
 
     $this->assertDatabaseHas('online_orders', [
@@ -184,7 +184,7 @@ test('checkout uses configured delivery charges', function () {
             'phone' => '01700000005',
             'address' => 'Chittagong',
             'payment_method' => 'cod',
-            'city_id' => 5,
+            'delivery_zone' => 2,
         ]);
 
     $this->assertDatabaseHas('online_orders', [

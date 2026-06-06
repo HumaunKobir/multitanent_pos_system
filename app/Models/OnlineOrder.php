@@ -11,7 +11,7 @@ class OnlineOrder extends Model
 {
     protected $fillable = [
         'customer_id', 'name', 'email', 'phone', 'address',
-        'payment_method_id', 'delivery_charge', 'subtotal', 'total',
+        'payment_method', 'delivery_charge', 'subtotal', 'total',
         'payment_status', 'courier', 'status',
     ];
 
@@ -30,10 +30,5 @@ class OnlineOrder extends Model
     public function products(): HasMany
     {
         return $this->hasMany(OnlineOrderProduct::class);
-    }
-
-    public function paymentMethod(): BelongsTo
-    {
-        return $this->belongsTo(PaymentMethod::class, 'payment_method_id');
     }
 }

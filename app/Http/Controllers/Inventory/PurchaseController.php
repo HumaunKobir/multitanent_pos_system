@@ -170,6 +170,7 @@ class PurchaseController extends Controller
 
         $purchase->load([
             'supplier',
+            'branch:id,name',
             'purchaseProducts.product',
             'purchaseProducts.variation',
         ]);

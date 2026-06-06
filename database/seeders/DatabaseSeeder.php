@@ -5,7 +5,6 @@ namespace Database\Seeders;
 use App\Enums\CommonStatus;
 use App\Models\Branch;
 use App\Models\User;
-use Database\Seeders\ChartOfAccountsSeeder;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -39,6 +38,7 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             ChartOfAccountsSeeder::class,
+            DemoCatalogSeeder::class,
         ]);
     }
 }

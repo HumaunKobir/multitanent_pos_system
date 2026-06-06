@@ -130,9 +130,6 @@ return [
                 ['title' => 'Contra Voucher', 'href' => '/accounts/vouchers?type=contra', 'permission' => 'accounts.view'],
                 ['title' => 'Income Voucher', 'href' => '/accounts/vouchers?type=income', 'permission' => 'accounts.view'],
                 ['title' => 'Expense Voucher', 'href' => '/accounts/vouchers?type=expense', 'permission' => 'accounts.view'],
-                ['title' => 'Account Ledger', 'href' => '/report/account-ledger', 'permission' => 'report.account-ledger.view'],
-                ['title' => 'A/C Transactions', 'href' => '/report/account-transactions', 'permission' => 'report.account-transactions.view'],
-                ['title' => 'Balance Sheet', 'href' => '/report/balance-sheet', 'permission' => 'report.balance-sheet.view'],
             ],
         ],
         [

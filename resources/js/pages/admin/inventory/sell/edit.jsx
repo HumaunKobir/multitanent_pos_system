@@ -449,8 +449,6 @@ export default function SellEdit({ sell, paymentAccounts = [] }) {
     const vatAmount = grossAmount * (parseFloat(form.data.vat || 0) / 100);
     const netAmount = grossAmount + vatAmount - parseFloat(form.data.discount || 0);
     const dueAmount = Math.max(0, netAmount - parseFloat(form.data.paid_amount || 0));
-
-    const dueAmount = Math.max(0, netAmount - parseFloat(form.data.paid_amount || 0));
     const hasOverStock = items.some((item) => parseFloat(item.quantity || 0) > parseFloat(item.available_stock ?? 0));
 
     function addItem(item) {

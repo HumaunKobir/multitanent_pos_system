@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Inventory;
 
 use App\Enums\ReceivedPaymentMethod;
 use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
+use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Customer;
 use App\Models\SaleReturn;
 use App\Models\Sell;
+use App\Services\InventoryAccountingService;
+use App\Services\InventoryCostService;
 use App\Services\InventoryStockService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,8 +23,13 @@ use Inertia\Response;
 class SaleReturnController extends Controller
 {
     use ProvidesPaymentAccounts;
+    use UsesInventoryAccounting;
 
-    public function __construct(private InventoryStockService $stock) {}
+    public function __construct(
+        private InventoryStockService $stock,
+        private InventoryAccountingService $accounting,
+        private InventoryCostService $costService,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -63,15 +71,20 @@ class SaleReturnController extends Controller
             'comment' => ['nullable', 'string'],
             'paid_amount' => ['required', 'numeric', 'min:0'],
             'payment_type' => ['required', 'integer'],
+            'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
         ]);
 
         $branchId = Auth::user()?->branch_id;
+        $paymentType = ReceivedPaymentMethod::from((int) $data['payment_type']);
+        $paymentAccountId = $paymentType === ReceivedPaymentMethod::Cash
+            ? $this->resolvePaymentAccountId($request, (float) $data['paid_amount'])
+            : null;
 
         try {
-            DB::transaction(function () use ($data, $branchId) {
+            DB::transaction(function () use ($data, $branchId, $paymentAccountId, $paymentType) {
                 $parent = Sell::query()
                     ->ownBranch()
                     ->sale()
@@ -138,7 +151,6 @@ class SaleReturnController extends Controller
                 }
 
                 $paidAmount = min((float) $data['paid_amount'], $grossAmount);
-                $paymentType = ReceivedPaymentMethod::from((int) $data['payment_type']);
 
                 $saleReturn = SaleReturn::create([
                     'branch_id' => $branchId,
@@ -158,6 +170,13 @@ class SaleReturnController extends Controller
                 if ($parent->customer_id && $paymentType === ReceivedPaymentMethod::Customer_Account && $paidAmount > 0) {
                     Customer::whereKey($parent->customer_id)->increment('balance', $paidAmount);
                 }
+
+                $saleReturn->load('products');
+                $this->accounting->postSaleReturn(
+                    $saleReturn->fresh(['customer', 'sell']),
+                    $paymentAccountId,
+                    $this->costService->costForSaleReturn($saleReturn),
+                );
             });
         } catch (\Throwable $e) {
             return back()
@@ -256,15 +275,21 @@ class SaleReturnController extends Controller
             'comment' => ['nullable', 'string'],
             'paid_amount' => ['required', 'numeric', 'min:0'],
             'payment_type' => ['required', 'integer'],
+            'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
         ]);
 
         $branchId = Auth::user()?->branch_id;
+        $paymentType = ReceivedPaymentMethod::from((int) $data['payment_type']);
+        $paymentAccountId = $paymentType === ReceivedPaymentMethod::Cash
+            ? $this->resolvePaymentAccountId($request, (float) $data['paid_amount'])
+            : null;
 
         try {
-            DB::transaction(function () use ($saleReturn, $data, $branchId) {
+            DB::transaction(function () use ($saleReturn, $data, $branchId, $paymentAccountId, $paymentType) {
+                $this->accounting->reverseFor($saleReturn);
                 $saleReturn->load(['products']);
 
                 $this->rollbackSaleReturn($saleReturn);
@@ -336,7 +361,6 @@ class SaleReturnController extends Controller
                 }
 
                 $paidAmount = min((float) $data['paid_amount'], $grossAmount);
-                $paymentType = ReceivedPaymentMethod::from((int) $data['payment_type']);
 
                 $saleReturn->update([
                     'date' => $data['date'],
@@ -353,6 +377,13 @@ class SaleReturnController extends Controller
                 if ($parent->customer_id && $paymentType === ReceivedPaymentMethod::Customer_Account && $paidAmount > 0) {
                     Customer::whereKey($parent->customer_id)->increment('balance', $paidAmount);
                 }
+
+                $saleReturn->load('products');
+                $this->accounting->postSaleReturn(
+                    $saleReturn->fresh(['customer', 'sell']),
+                    $paymentAccountId,
+                    $this->costService->costForSaleReturn($saleReturn),
+                );
             });
         } catch (\Throwable $e) {
             return back()
@@ -376,6 +407,7 @@ class SaleReturnController extends Controller
 
         try {
             DB::transaction(function () use ($saleReturn) {
+                $this->accounting->reverseFor($saleReturn);
                 $this->rollbackSaleReturn($saleReturn);
                 $saleReturn->products()->delete();
                 $saleReturn->delete();

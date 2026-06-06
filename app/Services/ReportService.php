@@ -11,15 +11,18 @@ use App\Models\Customer;
 use App\Models\Damage;
 use App\Models\Ledger;
 use App\Models\Product;
+use App\Models\ProductExchange;
 use App\Models\ProductInOutLog;
 use App\Models\Purchase;
 use App\Models\SaleReturn;
 use App\Models\Sell;
+use App\Models\Supplier;
 use App\Models\SupplierPayment;
 use App\Models\Transaction;
 use App\Models\Voucher;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 
 class ReportService
@@ -626,7 +629,7 @@ class ReportService
     }
 
     /**
-     * Branch users only see ledger rows tied to their branch vouchers.
+     * Branch users only see ledger rows tied to their branch vouchers or inventory documents.
      * Super admins (no branch) see all branches.
      */
     private function scopeLedgerForBranch(Builder $query): Builder
@@ -638,16 +641,28 @@ class ReportService
         }
 
         return $query->where(function (Builder $q) use ($branchId) {
-            $q->where('source_type', Voucher::class)
-                ->whereIn(
-                    'source_id',
-                    Voucher::query()->where('branch_id', $branchId)->select('id'),
-                );
+            $q->where(function (Builder $inner) use ($branchId) {
+                $inner->where('source_type', Voucher::class)
+                    ->whereIn(
+                        'source_id',
+                        Voucher::query()->where('branch_id', $branchId)->select('id'),
+                    );
+            });
+
+            foreach ($this->branchScopedSourceMap() as $sourceType => $modelClass) {
+                $q->orWhere(function (Builder $inner) use ($branchId, $sourceType, $modelClass) {
+                    $inner->where('source_type', $sourceType)
+                        ->whereIn(
+                            'source_id',
+                            $modelClass::query()->where('branch_id', $branchId)->select('id'),
+                        );
+                });
+            }
         });
     }
 
     /**
-     * Branch users only see accounting transactions from their branch vouchers.
+     * Branch users only see accounting transactions from their branch vouchers or inventory documents.
      */
     private function scopeTransactionForBranch(Builder $query): Builder
     {
@@ -657,12 +672,42 @@ class ReportService
             return $query;
         }
 
-        return $query
-            ->where('source_type', Voucher::class)
-            ->whereIn(
-                'source_id',
-                Voucher::query()->where('branch_id', $branchId)->select('id'),
-            );
+        return $query->where(function (Builder $q) use ($branchId) {
+            $q->where(function (Builder $inner) use ($branchId) {
+                $inner->where('source_type', Voucher::class)
+                    ->whereIn(
+                        'source_id',
+                        Voucher::query()->where('branch_id', $branchId)->select('id'),
+                    );
+            });
+
+            foreach ($this->branchScopedSourceMap() as $sourceType => $modelClass) {
+                $q->orWhere(function (Builder $inner) use ($branchId, $sourceType, $modelClass) {
+                    $inner->where('source_type', $sourceType)
+                        ->whereIn(
+                            'source_id',
+                            $modelClass::query()->where('branch_id', $branchId)->select('id'),
+                        );
+                });
+            }
+        });
+    }
+
+    /**
+     * @return array<class-string, class-string<Model>>
+     */
+    private function branchScopedSourceMap(): array
+    {
+        return [
+            Purchase::class => Purchase::class,
+            Sell::class => Sell::class,
+            SaleReturn::class => SaleReturn::class,
+            Damage::class => Damage::class,
+            SupplierPayment::class => SupplierPayment::class,
+            ProductExchange::class => ProductExchange::class,
+            Supplier::class => Supplier::class,
+            Customer::class => Customer::class,
+        ];
     }
 
     private function productLogLabel(int $type): string

@@ -6,6 +6,7 @@ use App\Enums\AccountType;
 use App\Enums\CommonStatus;
 use App\Http\Controllers\Controller;
 use App\Models\ChartOfAccount;
+use App\Services\InventoryAccountingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,6 +16,8 @@ use Inertia\Response;
 
 class AccountController extends Controller
 {
+    public function __construct(private InventoryAccountingService $accounting) {}
+
     public function index(Request $request): Response
     {
         $this->authorize('accounts.view');
@@ -72,7 +75,9 @@ class AccountController extends Controller
             'opening_balance' => ['nullable', 'numeric', 'min:0'],
         ]);
 
-        ChartOfAccount::create([
+        $openingBalance = (float) ($data['opening_balance'] ?? 0);
+
+        $account = ChartOfAccount::create([
             'parent_id' => $data['parent_id'] ?? null,
             'type' => $data['type'],
             'name' => $data['name'],
@@ -80,8 +85,16 @@ class AccountController extends Controller
             'account_number' => $data['account_number'] ?? null,
             'description' => $data['description'] ?? null,
             'status' => $data['status'],
-            'current_balance' => $data['opening_balance'] ?? 0,
+            'current_balance' => 0,
         ]);
+
+        if ($openingBalance > 0) {
+            $this->accounting->postAccountOpeningBalance(
+                $account,
+                $openingBalance,
+                now()->format('Y-m-d'),
+            );
+        }
 
         return redirect()->route('accounts.index')
             ->with('success', 'Account created successfully.');

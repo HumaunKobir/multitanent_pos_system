@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Inventory;
 
 use App\Http\Controllers\Controller;
 use App\Models\Supplier;
+use App\Services\InventoryAccountingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -11,6 +12,8 @@ use Inertia\Response;
 
 class SupplierController extends Controller
 {
+    public function __construct(private InventoryAccountingService $accounting) {}
+
     public function index(Request $request): Response
     {
         $this->authorize('party.supplier.view');
@@ -44,10 +47,19 @@ class SupplierController extends Controller
         ]);
 
         $data['branch_id'] = auth()->user()?->branch_id;
-        $data['balance'] = $data['opening_balance'] ?? 0;
+        $openingBalance = (float) ($data['opening_balance'] ?? 0);
+        $data['balance'] = $openingBalance;
         unset($data['opening_balance']);
 
-        Supplier::create($data);
+        $supplier = Supplier::create($data);
+
+        if ($openingBalance > 0) {
+            $this->accounting->postSupplierOpeningBalance(
+                $supplier,
+                $openingBalance,
+                now()->format('Y-m-d'),
+            );
+        }
 
         return back()->with('success', 'Supplier created successfully.');
     }

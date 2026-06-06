@@ -11,6 +11,7 @@ import {
     PaymentSummaryCard,
     inputCls,
     paymentModeToType,
+    paymentModeToAccountId,
 } from '@/components/inventory/inventory-form';
 import { ProductSearchBox } from '@/components/inventory/product-search-box';
 import { useAppToast } from '@/contexts/app-toast-context';
@@ -153,6 +154,7 @@ export default function ProductExchangeCreate({ today, paymentAccounts = [] }) {
         form.transform((data) => ({
             ...data,
             payment_type: paymentModeToType(paymentMode),
+            payment_account_id: paymentModeToAccountId(paymentMode),
             items: exchangeItems,
         }));
         form.post(route('inventory.product-exchange.store'), {

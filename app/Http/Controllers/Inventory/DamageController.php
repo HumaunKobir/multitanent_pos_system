@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Inventory;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Damage;
+use App\Services\InventoryAccountingService;
+use App\Services\InventoryCostService;
 use App\Services\InventoryStockService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -15,7 +17,11 @@ use Inertia\Response;
 
 class DamageController extends Controller
 {
-    public function __construct(private InventoryStockService $stock) {}
+    public function __construct(
+        private InventoryStockService $stock,
+        private InventoryAccountingService $accounting,
+        private InventoryCostService $costService,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -107,6 +113,9 @@ class DamageController extends Controller
                 foreach ($lines as $line) {
                     $damage->products()->create($line);
                 }
+
+                $damage->load('products');
+                $this->accounting->postDamage($damage, $this->costService->costForDamage($damage));
             });
         } catch (\Throwable $e) {
             return back()
@@ -177,6 +186,7 @@ class DamageController extends Controller
 
         try {
             DB::transaction(function () use ($damage, $data, $branchId) {
+                $this->accounting->reverseFor($damage);
                 $damage->load(['products']);
 
                 $this->rollbackDamage($damage);
@@ -227,6 +237,9 @@ class DamageController extends Controller
                 foreach ($lines as $line) {
                     $damage->products()->create($line);
                 }
+
+                $damage->load('products');
+                $this->accounting->postDamage($damage, $this->costService->costForDamage($damage));
             });
         } catch (\Throwable $e) {
             return back()
@@ -251,6 +264,7 @@ class DamageController extends Controller
 
         try {
             DB::transaction(function () use ($damage) {
+                $this->accounting->reverseFor($damage);
                 $this->rollbackDamage($damage);
                 $damage->products()->delete();
                 $damage->delete();

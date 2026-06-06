@@ -10,6 +10,7 @@ import {
     PaymentSummaryCard,
     inputCls,
     paymentModeToType,
+    paymentModeToAccountId,
     paymentTypeToMode,
 } from '@/components/inventory/inventory-form';
 import { ProductSearchBox } from '@/components/inventory/product-search-box';
@@ -117,6 +118,7 @@ export default function ProductExchangeEdit({ exchange, paymentAccounts = [] }) 
         form.transform((data) => ({
             ...data,
             payment_type: paymentModeToType(paymentMode),
+            payment_account_id: paymentModeToAccountId(paymentMode),
             items: exchangeItems,
         }));
         form.put(route('inventory.product-exchange.update', exchange.id), {

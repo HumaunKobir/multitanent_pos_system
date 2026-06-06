@@ -32,6 +32,7 @@ class Customer extends Authenticatable
         'is_membership',
         'point',
         'registration_type',
+        'balance',
     ];
 
     protected $hidden = ['password', 'remember_token', 'api_token'];

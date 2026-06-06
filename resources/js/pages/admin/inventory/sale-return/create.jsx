@@ -11,6 +11,7 @@ import {
     PaymentSummaryCard,
     inputCls,
     paymentModeToType,
+    paymentModeToAccountId,
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
@@ -107,6 +108,7 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
         form.transform((data) => ({
             ...data,
             payment_type: paymentModeToType(paymentMode),
+            payment_account_id: paymentModeToAccountId(paymentMode),
             items: returnItems,
         }));
         form.post(route('inventory.sale-return.store'), {

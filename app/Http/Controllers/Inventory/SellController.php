@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Inventory;
 
 use App\Enums\SaleType;
+use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
+use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Customer;
@@ -10,6 +12,8 @@ use App\Models\ProductExchange;
 use App\Models\ProductVariation;
 use App\Models\SaleReturn;
 use App\Models\Sell;
+use App\Services\InventoryAccountingService;
+use App\Services\InventoryCostService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -19,6 +23,14 @@ use Inertia\Response;
 
 class SellController extends Controller
 {
+    use ProvidesPaymentAccounts;
+    use UsesInventoryAccounting;
+
+    public function __construct(
+        private InventoryAccountingService $accounting,
+        private InventoryCostService $costService,
+    ) {}
+
     public function index(Request $request): Response
     {
         $this->authorize('inventory.sell.view');
@@ -53,6 +65,7 @@ class SellController extends Controller
         return Inertia::render('admin/inventory/sell/create', [
             'today' => now()->format('Y-m-d'),
             'defaultCustomer' => $defaultCustomer,
+            'paymentAccounts' => $this->paymentAccounts(),
         ]);
     }
 
@@ -67,6 +80,7 @@ class SellController extends Controller
             'discount' => ['required', 'numeric', 'min:0'],
             'vat' => ['required', 'numeric', 'min:0'],
             'paid_amount' => ['required', 'numeric', 'min:0'],
+            'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
@@ -75,8 +89,9 @@ class SellController extends Controller
         ]);
 
         $branchId = Auth::user()?->branch_id;
+        $paymentAccountId = $this->resolvePaymentAccountId($request, (float) $data['paid_amount']);
 
-        $sell = DB::transaction(function () use ($data, $branchId) {
+        $sell = DB::transaction(function () use ($data, $branchId, $paymentAccountId) {
             $grossAmount = 0;
             $sellProductsData = [];
 
@@ -127,6 +142,19 @@ class SellController extends Controller
             foreach ($sellProductsData as $lineItem) {
                 $sell->products()->create($lineItem);
             }
+
+            $sell->load('products');
+            $dueAmount = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
+
+            if ($sell->customer_id && $dueAmount > 0) {
+                Customer::whereKey($sell->customer_id)->increment('balance', $dueAmount);
+            }
+
+            $this->accounting->postSale(
+                $sell->fresh(['customer']),
+                $paymentAccountId,
+                $this->costService->costForSell($sell),
+            );
 
             return $sell;
         });
@@ -218,6 +246,7 @@ class SellController extends Controller
                 'invoice_number' => 'INVS'.str_pad($sell->id, 8, '0', STR_PAD_LEFT),
                 'items' => $items,
             ],
+            'paymentAccounts' => $this->paymentAccounts(),
         ]);
     }
 
@@ -241,6 +270,7 @@ class SellController extends Controller
             'discount' => ['required', 'numeric', 'min:0'],
             'vat' => ['required', 'numeric', 'min:0'],
             'paid_amount' => ['required', 'numeric', 'min:0'],
+            'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
@@ -249,10 +279,17 @@ class SellController extends Controller
         ]);
 
         $branchId = Auth::user()?->branch_id;
+        $paymentAccountId = $this->resolvePaymentAccountId($request, (float) $data['paid_amount']);
 
         try {
-            DB::transaction(function () use ($sell, $data, $branchId) {
+            DB::transaction(function () use ($sell, $data, $branchId, $paymentAccountId) {
+                $this->accounting->reverseFor($sell);
                 $sell->load(['products']);
+
+                $oldDue = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
+                if ($sell->customer_id && $oldDue > 0) {
+                    Customer::whereKey($sell->customer_id)->decrement('balance', $oldDue);
+                }
 
                 // Rollback previous stock deductions
                 foreach ($sell->products as $sp) {
@@ -323,6 +360,19 @@ class SellController extends Controller
                 foreach ($sellProductsData as $lineItem) {
                     $sell->products()->create($lineItem);
                 }
+
+                $sell->load('products');
+                $newDue = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
+
+                if ($sell->customer_id && $newDue > 0) {
+                    Customer::whereKey($sell->customer_id)->increment('balance', $newDue);
+                }
+
+                $this->accounting->postSale(
+                    $sell->fresh(['customer']),
+                    $paymentAccountId,
+                    $this->costService->costForSell($sell),
+                );
             });
         } catch (\Throwable $e) {
             return back()
@@ -347,6 +397,13 @@ class SellController extends Controller
 
         try {
             DB::transaction(function () use ($sell) {
+                $this->accounting->reverseFor($sell);
+
+                $dueAmount = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
+                if ($sell->customer_id && $dueAmount > 0) {
+                    Customer::whereKey($sell->customer_id)->decrement('balance', $dueAmount);
+                }
+
                 foreach ($sell->products as $sp) {
                     $totalLineQty = (float) $sp->quantity;
 

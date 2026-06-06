@@ -7,6 +7,7 @@ use App\Enums\CustomerRegistrationType;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\MemberShipCard;
+use App\Services\InventoryAccountingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -16,6 +17,8 @@ use Inertia\Response;
 
 class CustomerController extends Controller
 {
+    public function __construct(private InventoryAccountingService $accounting) {}
+
     public function index(Request $request): Response
     {
         $this->authorize('party.customer.view');
@@ -50,6 +53,7 @@ class CustomerController extends Controller
             'email' => ['nullable', 'string', 'email', 'max:255', 'unique:customers,email'],
             'password' => ['nullable', 'string', 'min:6'],
             'address' => ['nullable', 'string', 'max:255'],
+            'opening_balance' => ['nullable', 'numeric', 'min:0'],
             'is_default' => ['required', 'in:0,1'],
             'status' => ['required', new Enum(CommonStatus::class)],
         ]);
@@ -65,7 +69,19 @@ class CustomerController extends Controller
             Customer::where('branch_id', $data['branch_id'])->where('is_default', true)->update(['is_default' => false]);
         }
 
-        Customer::create($data);
+        $openingBalance = (float) ($data['opening_balance'] ?? 0);
+        unset($data['opening_balance']);
+        $data['balance'] = $openingBalance;
+
+        $customer = Customer::create($data);
+
+        if ($openingBalance > 0) {
+            $this->accounting->postCustomerOpeningBalance(
+                $customer,
+                $openingBalance,
+                now()->format('Y-m-d'),
+            );
+        }
 
         return back()->with('success', 'Customer created successfully.');
     }

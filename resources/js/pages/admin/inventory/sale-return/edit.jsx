@@ -10,6 +10,7 @@ import {
     PaymentSummaryCard,
     inputCls,
     paymentModeToType,
+    paymentModeToAccountId,
     paymentTypeToMode,
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
@@ -75,6 +76,7 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
         form.transform((data) => ({
             ...data,
             payment_type: paymentModeToType(paymentMode),
+            payment_account_id: paymentModeToAccountId(paymentMode),
             items: returnItems,
         }));
         form.put(route('inventory.sale-return.update', saleReturn.id), {

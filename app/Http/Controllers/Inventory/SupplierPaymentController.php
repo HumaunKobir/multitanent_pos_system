@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
+use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
+use App\Services\InventoryAccountingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -14,6 +17,11 @@ use Inertia\Response;
 
 class SupplierPaymentController extends Controller
 {
+    use ProvidesPaymentAccounts;
+    use UsesInventoryAccounting;
+
+    public function __construct(private InventoryAccountingService $accounting) {}
+
     public function index(Request $request): Response
     {
         $this->authorize('party.supplier-payment.view');
@@ -43,6 +51,7 @@ class SupplierPaymentController extends Controller
             'suppliers' => $suppliers,
             'filters' => $request->only('search'),
             'today' => now()->format('Y-m-d'),
+            'paymentAccounts' => $this->paymentAccounts(),
         ]);
     }
 
@@ -54,10 +63,12 @@ class SupplierPaymentController extends Controller
             'supplier_id' => ['required', 'exists:suppliers,id'],
             'date' => ['required', 'date'],
             'amount' => ['required', 'numeric', 'min:0.01'],
+            'payment_account_id' => ['required', 'integer', 'exists:chart_of_accounts,id'],
             'comment' => ['nullable', 'string', 'max:1000'],
         ]);
 
         $branchId = Auth::user()?->branch_id;
+        $paymentAccountId = $this->requirePaymentAccountId($request);
         $supplier = Supplier::ownBranch()->whereKey($data['supplier_id'])->first();
 
         if ($supplier === null) {
@@ -86,6 +97,8 @@ class SupplierPaymentController extends Controller
 
         $supplier->decrement('balance', $amount);
 
+        $this->accounting->postSupplierPayment($payment->fresh(['supplier']), $paymentAccountId);
+
         return back()->with('success', "Supplier payment {$payment->invoice_number} recorded successfully.");
     }
 
@@ -99,6 +112,8 @@ class SupplierPaymentController extends Controller
         if ($supplier !== null) {
             $supplier->increment('balance', (float) $supplierPayment->amount);
         }
+
+        $this->accounting->reverseFor($supplierPayment);
 
         $supplierPayment->delete();
 

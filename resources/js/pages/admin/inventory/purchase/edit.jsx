@@ -331,7 +331,7 @@ function ProductSearchBox({ onAdd }) {
     );
 }
 
-export default function PurchaseEdit({ purchase, suppliers: initialSuppliers }) {
+export default function PurchaseEdit({ purchase, suppliers: initialSuppliers, paymentAccounts = [] }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const form = useForm({
@@ -340,6 +340,7 @@ export default function PurchaseEdit({ purchase, suppliers: initialSuppliers }) 
         discount: String(purchase.discount ?? 0),
         vat: String(purchase.vat_percent ?? 0),
         paid_amount: String(purchase.paid_amount ?? 0),
+        payment_account_id: '',
         comment: purchase.comment ?? '',
         items: purchase.items ?? [],
     });
@@ -612,6 +613,27 @@ export default function PurchaseEdit({ purchase, suppliers: initialSuppliers }) 
                                     />
                                 </div>
                                 {form.errors.paid_amount && <p className="text-xs text-destructive">{form.errors.paid_amount}</p>}
+
+                                {parseFloat(form.data.paid_amount || 0) > 0 && (
+                                    <div>
+                                        <Label className="mb-1 block text-xs text-muted-foreground">Payment Account</Label>
+                                        <select
+                                            className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
+                                            value={form.data.payment_account_id}
+                                            onChange={(e) => form.setData('payment_account_id', e.target.value)}
+                                        >
+                                            <option value="">Select cash / bank account</option>
+                                            {paymentAccounts.map((acc) => (
+                                                <option key={acc.id} value={String(acc.id)}>
+                                                    {acc.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                        {form.errors.payment_account_id && (
+                                            <p className="mt-1 text-xs text-destructive">{form.errors.payment_account_id}</p>
+                                        )}
+                                    </div>
+                                )}
 
                                 <div className="flex justify-between border-t border-border pt-2">
                                     <span className="font-semibold text-destructive">Due Amount</span>

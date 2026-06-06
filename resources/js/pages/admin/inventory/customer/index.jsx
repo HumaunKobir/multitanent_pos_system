@@ -85,6 +85,20 @@ function CustomerForm({ form, onSubmit, onCancel, isEditing, memberShipCards, st
                     className="mt-1"
                 />
             </FormField>
+            {!isEditing && (
+                <FormField label="Opening Balance" name="opening_balance" error={form.errors.opening_balance}>
+                    <Input
+                        id="opening_balance"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={form.data.opening_balance}
+                        onChange={(e) => form.setData('opening_balance', e.target.value)}
+                        placeholder="0.00"
+                        className="mt-1"
+                    />
+                </FormField>
+            )}
             <div className="grid grid-cols-2 gap-3">
                 <FormField label="Membership Card" name="member_ship_id" error={form.errors.member_ship_id}>
                     <Select
@@ -174,7 +188,7 @@ export default function CustomerIndex({ customers, filters, memberShipCards, sta
     const [editing, setEditing] = useState(null);
     const [deleting, setDeleting] = useState(null);
 
-    const blankForm = { name: '', phone: '', email: '', address: '', member_ship_id: '', password: '', is_default: '0', status: 1 };
+    const blankForm = { name: '', phone: '', email: '', address: '', opening_balance: '', member_ship_id: '', password: '', is_default: '0', status: 1 };
     const createForm = useForm(blankForm);
     const editForm = useForm(blankForm);
 

@@ -29,7 +29,7 @@ function FormField({ label, required, name, error, children }) {
     );
 }
 
-function PaymentForm({ form, suppliers, onSubmit, onCancel }) {
+function PaymentForm({ form, suppliers, paymentAccounts = [], onSubmit, onCancel }) {
     const selected = useMemo(
         () => suppliers.find((s) => String(s.id) === String(form.data.supplier_id)),
         [suppliers, form.data.supplier_id],
@@ -97,6 +97,24 @@ function PaymentForm({ form, suppliers, onSubmit, onCancel }) {
                 />
             </FormField>
 
+            <FormField label="Payment Account" required name="payment_account_id" error={form.errors.payment_account_id}>
+                <Select
+                    value={form.data.payment_account_id ? String(form.data.payment_account_id) : undefined}
+                    onValueChange={(value) => form.setData('payment_account_id', value)}
+                >
+                    <SelectTrigger id="payment_account_id" className="mt-1 w-full" aria-invalid={!!form.errors.payment_account_id}>
+                        <SelectValue placeholder="Select cash / bank account" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {paymentAccounts.map((account) => (
+                            <SelectItem key={account.id} value={String(account.id)}>
+                                {account.label}
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </FormField>
+
             <div className="flex justify-end gap-3 border-t pt-4">
                 <Button
                     type="button"
@@ -120,7 +138,7 @@ function PaymentForm({ form, suppliers, onSubmit, onCancel }) {
     );
 }
 
-export default function SupplierPaymentIndex({ payments, suppliers, filters, today }) {
+export default function SupplierPaymentIndex({ payments, suppliers, filters, today, paymentAccounts = [] }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const { can } = useCan();
@@ -132,6 +150,7 @@ export default function SupplierPaymentIndex({ payments, suppliers, filters, tod
         supplier_id: '',
         date: today,
         amount: '',
+        payment_account_id: '',
         comment: '',
     });
 
@@ -298,6 +317,7 @@ export default function SupplierPaymentIndex({ payments, suppliers, filters, tod
                         <PaymentForm
                             form={createForm}
                             suppliers={suppliers}
+                            paymentAccounts={paymentAccounts}
                             onSubmit={handleCreate}
                             onCancel={() => setCreating(false)}
                         />

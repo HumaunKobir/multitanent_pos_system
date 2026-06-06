@@ -1,5 +1,12 @@
 <?php
 
+use App\Enums\AccountType;
+use App\Enums\CommonStatus;
+use App\Enums\SystemAccountKey;
+use App\Models\ChartOfAccount;
+use App\Models\Transaction;
+use App\Services\InventoryAccountingService;
+use App\Services\SystemAccountService;
 use Tests\TestCase;
 
 /*
@@ -45,4 +52,61 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+function seedAccountingAccounts(float $minimumBalance = 100000): ChartOfAccount
+{
+    SystemAccountService::seed();
+
+    ChartOfAccount::$skipCodeGeneration = true;
+
+    $cash = ChartOfAccount::query()->firstOrCreate(
+        ['code' => 'A001-99'],
+        [
+            'parent_id' => SystemAccountService::resolve(SystemAccountKey::CurrentAssets)->id,
+            'name' => 'Test Cash Account',
+            'type' => AccountType::Asset,
+            'status' => CommonStatus::Active,
+            'current_balance' => 0,
+        ],
+    );
+
+    ChartOfAccount::$skipCodeGeneration = false;
+
+    if (! Transaction::query()
+        ->where('source_type', ChartOfAccount::class)
+        ->where('source_id', $cash->id)
+        ->exists()) {
+        app(InventoryAccountingService::class)->postAccountOpeningBalance(
+            $cash,
+            $minimumBalance,
+            now()->format('Y-m-d'),
+        );
+    }
+
+    $cash->refresh();
+
+    $shortfall = round($minimumBalance - (float) $cash->current_balance, 2);
+
+    if ($shortfall > 0) {
+        app(InventoryAccountingService::class)->postAccountOpeningBalance(
+            $cash,
+            $shortfall,
+            now()->format('Y-m-d'),
+        );
+        $cash->refresh();
+    }
+
+    $inventory = SystemAccountService::resolve(SystemAccountKey::Inventory);
+    $inventoryShortfall = round($minimumBalance - (float) $inventory->current_balance, 2);
+
+    if ($inventoryShortfall > 0) {
+        app(InventoryAccountingService::class)->postAccountOpeningBalance(
+            $inventory,
+            $inventoryShortfall,
+            now()->format('Y-m-d'),
+        );
+    }
+
+    return $cash;
 }

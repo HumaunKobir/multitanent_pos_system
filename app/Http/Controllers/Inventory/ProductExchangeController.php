@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Inventory;
 
 use App\Enums\ReceivedPaymentMethod;
 use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
+use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Customer;
 use App\Models\ProductExchange;
 use App\Models\Sell;
+use App\Services\InventoryAccountingService;
 use App\Services\InventoryStockService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -20,8 +22,12 @@ use Inertia\Response;
 class ProductExchangeController extends Controller
 {
     use ProvidesPaymentAccounts;
+    use UsesInventoryAccounting;
 
-    public function __construct(private InventoryStockService $stock) {}
+    public function __construct(
+        private InventoryStockService $stock,
+        private InventoryAccountingService $accounting,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -63,6 +69,7 @@ class ProductExchangeController extends Controller
             'comment' => ['nullable', 'string'],
             'paid_amount' => ['required', 'numeric', 'min:0'],
             'payment_type' => ['required', 'integer'],
+            'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
             'items.*.product_id' => ['required', 'exists:products,id'],
@@ -72,9 +79,13 @@ class ProductExchangeController extends Controller
         ]);
 
         $branchId = Auth::user()?->branch_id;
+        $paymentType = ReceivedPaymentMethod::from((int) $data['payment_type']);
+        $paymentAccountId = $paymentType === ReceivedPaymentMethod::Cash
+            ? $this->resolvePaymentAccountId($request, (float) $data['paid_amount'])
+            : null;
 
         try {
-            DB::transaction(function () use ($data, $branchId) {
+            DB::transaction(function () use ($data, $branchId, $paymentAccountId, $paymentType) {
                 $parent = Sell::query()
                     ->ownBranch()
                     ->sale()
@@ -185,6 +196,8 @@ class ProductExchangeController extends Controller
                         Customer::whereKey($parent->customer_id)->increment('balance', abs($priceDifference));
                     }
                 }
+
+                $this->accounting->postExchange($exchange->fresh(['customer', 'sell', 'products']), $paymentAccountId);
             });
         } catch (\Throwable $e) {
             return back()
@@ -278,6 +291,7 @@ class ProductExchangeController extends Controller
             'comment' => ['nullable', 'string'],
             'paid_amount' => ['required', 'numeric', 'min:0'],
             'payment_type' => ['required', 'integer'],
+            'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
             'items.*.product_id' => ['required', 'exists:products,id'],
@@ -287,9 +301,14 @@ class ProductExchangeController extends Controller
         ]);
 
         $branchId = Auth::user()?->branch_id;
+        $paymentType = ReceivedPaymentMethod::from((int) $data['payment_type']);
+        $paymentAccountId = $paymentType === ReceivedPaymentMethod::Cash
+            ? $this->resolvePaymentAccountId($request, (float) $data['paid_amount'])
+            : null;
 
         try {
-            DB::transaction(function () use ($productExchange, $data, $branchId) {
+            DB::transaction(function () use ($productExchange, $data, $branchId, $paymentAccountId, $paymentType) {
+                $this->accounting->reverseFor($productExchange);
                 $productExchange->load(['products', 'sell']);
 
                 $this->rollbackProductExchange($productExchange);
@@ -402,6 +421,8 @@ class ProductExchangeController extends Controller
                         Customer::whereKey($parent->customer_id)->increment('balance', abs($priceDifference));
                     }
                 }
+
+                $this->accounting->postExchange($productExchange->fresh(['customer', 'sell', 'products']), $paymentAccountId);
             });
         } catch (\Throwable $e) {
             return back()
@@ -426,6 +447,7 @@ class ProductExchangeController extends Controller
 
         try {
             DB::transaction(function () use ($productExchange) {
+                $this->accounting->reverseFor($productExchange);
                 $this->rollbackProductExchange($productExchange);
                 $productExchange->products()->delete();
                 $productExchange->delete();

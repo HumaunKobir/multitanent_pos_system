@@ -3,12 +3,15 @@
 namespace App\Http\Controllers\Inventory;
 
 use App\Enums\PurchaseType;
+use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
+use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\ProductVariation;
 use App\Models\Purchase;
 use App\Models\PurchaseReturn;
 use App\Models\Supplier;
+use App\Services\InventoryAccountingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -18,6 +21,11 @@ use Inertia\Response;
 
 class PurchaseController extends Controller
 {
+    use ProvidesPaymentAccounts;
+    use UsesInventoryAccounting;
+
+    public function __construct(private InventoryAccountingService $accounting) {}
+
     public function index(Request $request): Response
     {
         $this->authorize('inventory.purchase.view');
@@ -46,6 +54,7 @@ class PurchaseController extends Controller
         return Inertia::render('admin/inventory/purchase/create', [
             'suppliers' => Supplier::query()->ownBranch()->orderBy('name', 'asc')->get(['id', 'name', 'phone']),
             'today' => now()->format('Y-m-d'),
+            'paymentAccounts' => $this->paymentAccounts(),
         ]);
     }
 
@@ -60,6 +69,7 @@ class PurchaseController extends Controller
             'discount' => ['required', 'numeric', 'min:0'],
             'vat' => ['required', 'numeric', 'min:0'],
             'paid_amount' => ['required', 'numeric', 'min:0'],
+            'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
@@ -71,8 +81,9 @@ class PurchaseController extends Controller
         ]);
 
         $branchId = Auth::user()?->branch_id;
+        $paymentAccountId = $this->resolvePaymentAccountId($request, (float) $data['paid_amount']);
 
-        DB::transaction(function () use ($data, $branchId) {
+        DB::transaction(function () use ($data, $branchId, $paymentAccountId) {
             $grossAmount = 0;
             $purchaseProductsData = [];
 
@@ -152,6 +163,8 @@ class PurchaseController extends Controller
             // Update supplier due balance
             $dueChange = $netAmount - (float) $data['paid_amount'];
             Supplier::whereKey($data['supplier_id'])->increment('balance', $dueChange);
+
+            $this->accounting->postPurchase($purchase->fresh(['supplier']), $paymentAccountId);
         });
 
         return redirect()->route('inventory.purchase.index')
@@ -271,6 +284,7 @@ class PurchaseController extends Controller
                 'items' => $items,
             ],
             'suppliers' => Supplier::query()->ownBranch()->orderBy('name', 'asc')->get(['id', 'name', 'phone']),
+            'paymentAccounts' => $this->paymentAccounts(),
         ]);
     }
 
@@ -295,6 +309,7 @@ class PurchaseController extends Controller
             'discount' => ['required', 'numeric', 'min:0'],
             'vat' => ['required', 'numeric', 'min:0'],
             'paid_amount' => ['required', 'numeric', 'min:0'],
+            'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
@@ -305,8 +320,11 @@ class PurchaseController extends Controller
             'items.*.serial' => ['nullable', 'string'],
         ]);
 
+        $paymentAccountId = $this->resolvePaymentAccountId($request, (float) $data['paid_amount']);
+
         try {
-            DB::transaction(function () use ($purchase, $data, $branchId) {
+            DB::transaction(function () use ($purchase, $data, $branchId, $paymentAccountId) {
+                $this->accounting->reverseFor($purchase);
                 $purchase->load(['purchaseProducts']);
 
                 // Rollback previous stock changes
@@ -431,6 +449,8 @@ class PurchaseController extends Controller
 
                 $newDueChange = $netAmount - (float) $data['paid_amount'];
                 Supplier::whereKey($data['supplier_id'])->increment('balance', $newDueChange);
+
+                $this->accounting->postPurchase($purchase->fresh(['supplier']), $paymentAccountId);
             });
         } catch (\Throwable $e) {
             return back()
@@ -461,6 +481,8 @@ class PurchaseController extends Controller
 
         try {
             DB::transaction(function () use ($purchase) {
+                $this->accounting->reverseFor($purchase);
+
                 foreach ($purchase->purchaseProducts as $purchaseProduct) {
                     $batches = $purchaseProduct->batches ?? [];
 

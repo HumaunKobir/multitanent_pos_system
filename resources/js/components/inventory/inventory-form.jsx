@@ -165,8 +165,22 @@ export function paymentModeToType(paymentMode) {
     return paymentMode === 'party' ? '5' : '0';
 }
 
-export function paymentTypeToMode(paymentType) {
-    return String(paymentType ?? '0') === '5' ? 'party' : 'cash';
+export function paymentModeToAccountId(paymentMode) {
+    if (paymentMode === 'party' || !paymentMode.startsWith('cash-')) {
+        return null;
+    }
+
+    const id = paymentMode.replace('cash-', '');
+
+    return id ? Number(id) : null;
+}
+
+export function paymentTypeToMode(paymentType, paymentAccountId = null) {
+    if (String(paymentType ?? '0') === '5') {
+        return 'party';
+    }
+
+    return paymentAccountId ? `cash-${paymentAccountId}` : 'cash-0';
 }
 
 export function InvoiceLookupField({ label, placeholder, value, onChange, onSearch, error, hint }) {

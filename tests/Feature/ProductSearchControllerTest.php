@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Product;
 use App\Models\User;
@@ -59,4 +60,33 @@ test('operating branch user only sees their own products in purchase search', fu
 
     expect($ids)->toContain($ownProduct->id);
     expect($ids)->not->toContain($otherProduct->id);
+});
+
+test('main branch user can find legacy products with null branch in sell search', function () {
+    $this->artisan('permissions:sync');
+
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    $mainUser = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    $mainUser->givePermissionTo('inventory.sell.create');
+
+    $legacyProduct = Product::factory()->create([
+        'branch_id' => null,
+        'name' => 'Legacy Sell Product '.fake()->unique()->numerify('###'),
+    ]);
+    Batch::factory()->for($legacyProduct)->withStock(12)->create(['branch_id' => null]);
+
+    $response = $this->actingAs($mainUser)
+        ->getJson('/api/products/for-sell?search='.urlencode($legacyProduct->name));
+
+    $response->assertOk();
+
+    $match = collect($response->json())->firstWhere('id', $legacyProduct->id);
+
+    expect($match)->not->toBeNull();
+    expect((float) $match['stock'])->toBe(12.0);
 });

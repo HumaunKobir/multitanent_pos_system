@@ -48,7 +48,7 @@ class ProductSearchController extends Controller
 
         $branchId = Auth::user()?->branch_id;
 
-        $products = Product::ownBranch()
+        $products = Product::forPurchase()
             ->active()
             ->with([
                 'variations:id,product_id,branch_id,sku,variation_data,price,stock',
@@ -64,6 +64,8 @@ class ProductSearchController extends Controller
 
         return response()->json($products->map(function (Product $product) use ($branchId) {
             $stockBranchId = $product->resolveStockBranchId($branchId);
+            $branchVariations = $product->variations
+                ->when($stockBranchId !== null, fn ($variations) => $variations->where('branch_id', $stockBranchId));
 
             return [
                 'id' => $product->id,
@@ -71,12 +73,11 @@ class ProductSearchController extends Controller
                 'code' => $product->code,
                 'sale_price' => $product->discount_price > 0 ? (float) $product->discount_price : (float) $product->sale_price,
                 'image' => $product->image,
-                'has_variations' => $product->variations->isNotEmpty(),
+                'has_variations' => $branchVariations->isNotEmpty(),
                 'stock' => (float) $product->batches
                     ->when($stockBranchId !== null, fn ($batches) => $batches->where('branch_id', $stockBranchId))
                     ->sum('available'),
-                'variations' => $product->variations
-                    ->when($stockBranchId !== null, fn ($variations) => $variations->where('branch_id', $stockBranchId))
+                'variations' => $branchVariations
                     ->map(fn ($v) => [
                         'id' => $v->id,
                         'label' => $v->variation_data['label'] ?? $v->sku,

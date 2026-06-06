@@ -118,6 +118,54 @@ test('store fails when stock is insufficient', function () {
     expect(SellProduct::query()->where('product_id', $product->id)->count())->toBe($sellProductCount);
 });
 
+test('main branch user can search legacy products with null branch and stock', function () {
+    $this->artisan('permissions:sync');
+
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    $user = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    $user->givePermissionTo('inventory.sell.create');
+
+    ['product' => $product, 'batch' => $batch] = sellProduct(15, null);
+
+    $response = $this->actingAs($user)
+        ->getJson('/api/products/for-sell?search='.$product->name);
+
+    $response->assertOk();
+    $match = collect($response->json())->firstWhere('id', $product->id);
+    expect($match)->not->toBeNull();
+    expect((float) $match['stock'])->toBe(15.0);
+
+    $cash = seedAccountingAccounts();
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '500',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '500',
+                    'quantity' => '2',
+                ],
+            ],
+        ])
+        ->assertRedirect();
+
+    $batch->refresh();
+    expect((float) $batch->available)->toBe(13.0);
+});
+
 test('purchase stores stock on product branch and branch user can sell it', function () {
     $this->artisan('permissions:sync');
 

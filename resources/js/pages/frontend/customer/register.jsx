@@ -6,7 +6,7 @@ import { CustomerAuthSubmit } from '@/components/frontend/customer-auth-submit';
 const fields = [
     { key: 'name', label: 'Full name', type: 'text', autoComplete: 'name', required: true },
     { key: 'phone', label: 'Phone number', type: 'tel', autoComplete: 'tel', required: true },
-    { key: 'email', label: 'Email (optional)', type: 'email', autoComplete: 'email', required: false },
+    { key: 'email', label: 'Email', type: 'email', autoComplete: 'email', required: false },
     { key: 'password', label: 'Password', type: 'password', autoComplete: 'new-password', required: true },
     {
         key: 'password_confirmation',
@@ -44,7 +44,8 @@ export default function CustomerRegister() {
                 {fields.map(({ key, label, type, autoComplete, required }) => (
                     <CustomerAuthField
                         key={key}
-                        label={required ? `${label} *` : label}
+                        label={label}
+                        required={required}
                         type={type}
                         autoComplete={autoComplete}
                         value={data[key]}

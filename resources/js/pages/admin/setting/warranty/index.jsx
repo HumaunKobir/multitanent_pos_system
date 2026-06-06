@@ -171,9 +171,9 @@ export default function WarrantyIndex({ warranties, filters }) {
                 item={editing}
                 routes={routes}
                 fields={[
-                    { name: 'name', label: 'Name', placeholder: 'Warranty name' },
-                    { name: 'duration', label: 'Duration (optional)', placeholder: 'e.g. 1 Year, 6 Months' },
-                    { name: 'status', label: 'Status', type: 'select', defaultValue: '1' },
+                    { name: 'name', label: 'Name', placeholder: 'Warranty name', required: true },
+                    { name: 'duration', label: 'Duration', placeholder: 'e.g. 1 Year, 6 Months' },
+                    { name: 'status', label: 'Status', type: 'select', defaultValue: '1', required: true },
                 ]}
             />
             </Can>

@@ -114,6 +114,11 @@ class Product extends Model
         return $this->hasMany(ProductPhoto::class);
     }
 
+    public function reviews(): HasMany
+    {
+        return $this->hasMany(ProductReview::class);
+    }
+
     public function batches(): HasMany
     {
         return $this->hasMany(Batch::class);

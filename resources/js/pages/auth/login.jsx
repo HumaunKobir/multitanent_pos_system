@@ -1,5 +1,6 @@
 import { Form, Head, Link, usePage } from '@inertiajs/react';
 
+import { RequiredMark } from '@/components/form-field';
 import InputError from '@/components/input-error';
 import PasswordInput from '@/components/password-input';
 import TextLink from '@/components/text-link';
@@ -168,6 +169,7 @@ export default function Login({ status, canResetPassword, canRegister }) {
                             <div className="flex items-center justify-between">
                                 <Label htmlFor="password" className="text-[12.5px] font-semibold tracking-wide uppercase text-muted-foreground">
                                     Password
+                                    <RequiredMark />
                                 </Label>
                                 {canResetPassword ? (
                                     <TextLink

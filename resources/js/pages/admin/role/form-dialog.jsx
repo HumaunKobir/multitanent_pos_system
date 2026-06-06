@@ -1,7 +1,7 @@
+import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { useForm } from '@inertiajs/react';
 import { Shield } from 'lucide-react';
 import { useEffect } from 'react';
@@ -41,8 +41,7 @@ export default function RoleFormDialog({ open, onOpenChange, item, routes }) {
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-4 p-4">
-                    <div>
-                        <Label htmlFor="name">Role Name</Label>
+                    <FormField label="Role Name" name="name" required error={form.errors.name}>
                         <Input
                             id="name"
                             value={form.data.name}
@@ -51,8 +50,7 @@ export default function RoleFormDialog({ open, onOpenChange, item, routes }) {
                             className="mt-1"
                             aria-invalid={!!form.errors.name}
                         />
-                        {form.errors.name && <p className="mt-1 text-xs text-destructive">{form.errors.name}</p>}
-                    </div>
+                    </FormField>
 
                     <div className="flex justify-end gap-3 border-t pt-3">
                         <Button

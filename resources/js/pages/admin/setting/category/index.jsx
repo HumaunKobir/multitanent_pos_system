@@ -186,9 +186,9 @@ export default function CategoryIndex({ categories, filters }) {
                     item={editing}
                     routes={routes}
                     fields={[
-                        { name: 'name', label: 'Name', placeholder: 'Category name' },
+                        { name: 'name', label: 'Name', placeholder: 'Category name', required: true },
                         { name: 'image', label: 'Image', type: 'file', accept: 'image/jpeg,image/png,image/webp' },
-                        { name: 'status', label: 'Status', type: 'select', defaultValue: '1' },
+                        { name: 'status', label: 'Status', type: 'select', defaultValue: '1', required: true },
                     ]}
                 />
             </Can>

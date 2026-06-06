@@ -9,12 +9,14 @@ use App\Http\Controllers\Customer\CustomerDashboardController;
 use App\Http\Controllers\Customer\CustomerProfileController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\PathaoCourierController;
+use App\Http\Controllers\ProductReviewController;
 use App\Http\Controllers\SubscriptionController;
 use Illuminate\Support\Facades\Route;
 
 // ── PUBLIC FRONTEND ───────────────────────────────────────────────────────────
 Route::get('/', [HomeController::class, 'index'])->name('home');
 Route::get('/products/{product:slug}', [HomeController::class, 'show'])->name('product.show');
+Route::post('/products/{product:slug}/reviews', [ProductReviewController::class, 'store'])->name('product.reviews.store');
 Route::get('/category/{category}/products', [HomeController::class, 'categoryProducts'])->name('category.products');
 Route::get('/brand/{brand}/products', [HomeController::class, 'brandProducts'])->name('brand.products');
 Route::get('/section/{id}/products', [HomeController::class, 'sectionProducts'])->name('section.products');

@@ -2,6 +2,7 @@ import { useForm, usePage } from '@inertiajs/react';
 import { Camera, Trash2, UserRound } from 'lucide-react';
 import { useRef, useState } from 'react';
 
+import { RequiredMark } from '@/components/form-field';
 import { CustomerPanelLayout } from '@/layouts/frontend/customer-panel-layout';
 
 export default function CustomerProfile({ customer }) {
@@ -109,7 +110,8 @@ export default function CustomerProfile({ customer }) {
 
                 <div>
                     <label htmlFor="name" className="text-sm font-semibold text-store-primary">
-                        Full name *
+                        Full name
+                        <RequiredMark />
                     </label>
                     <input
                         id="name"
@@ -125,7 +127,8 @@ export default function CustomerProfile({ customer }) {
                 <div className="grid gap-5 sm:grid-cols-2">
                     <div>
                         <label htmlFor="phone" className="text-sm font-semibold text-store-primary">
-                            Phone *
+                            Phone
+                            <RequiredMark />
                         </label>
                         <input
                             id="phone"

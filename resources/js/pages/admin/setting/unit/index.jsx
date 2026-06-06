@@ -166,8 +166,8 @@ export default function UnitIndex({ units, filters }) {
                 item={editing}
                 routes={routes}
                 fields={[
-                    { name: 'name', label: 'Name', placeholder: 'Unit name' },
-                    { name: 'status', label: 'Status', type: 'select', defaultValue: '1' },
+                    { name: 'name', label: 'Name', placeholder: 'Unit name', required: true },
+                    { name: 'status', label: 'Status', type: 'select', defaultValue: '1', required: true },
                 ]}
             />
             </Can>

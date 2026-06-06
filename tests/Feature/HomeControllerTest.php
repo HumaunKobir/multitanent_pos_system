@@ -72,6 +72,8 @@ test('single product page shows product by slug', function () {
             ->component('frontend/single-product')
             ->where('product.slug', $product->slug)
             ->where('product.image', fn ($image) => str_contains($image, '/storage/products/sample.jpg'))
+            ->has('reviews')
+            ->has('reviewSummary')
         );
 });
 

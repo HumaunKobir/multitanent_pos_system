@@ -1,3 +1,4 @@
+import { RequiredMark } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -111,7 +112,10 @@ export default function ExpenseVoucherModal({ open, onOpenChange, item, accounts
                         <Input className="mt-1" value={form.data.voucher_no} onChange={(e) => form.setData('voucher_no', e.target.value)} />
                     </div>
                     <div>
-                        <Label>Date</Label>
+                        <Label>
+                            Date
+                            <RequiredMark />
+                        </Label>
                         <Input type="date" className="mt-1" value={form.data.date} onChange={(e) => form.setData('date', e.target.value)} />
                     </div>
                     <div>
@@ -159,7 +163,10 @@ export default function ExpenseVoucherModal({ open, onOpenChange, item, accounts
                     <p className="mb-2 text-sm font-semibold">Payment Details</p>
                     <div className="grid gap-4 sm:grid-cols-2">
                         <div>
-                            <Label>Paid From (Credit)</Label>
+                            <Label>
+                                Paid From (Credit)
+                                <RequiredMark />
+                            </Label>
                             <div className="mt-1">
                                 <FlatAccountSelect accounts={assetAccounts} value={form.data.payment_account_id} onChange={(v) => form.setData('payment_account_id', v)} placeholder="Select source account..." />
                             </div>

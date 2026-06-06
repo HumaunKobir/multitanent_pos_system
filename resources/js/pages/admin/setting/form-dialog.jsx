@@ -1,3 +1,4 @@
+import { RequiredMark } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Settings } from 'lucide-react';
@@ -56,7 +57,10 @@ export default function SettingFormDialog({ open, onOpenChange, title, item, rou
                 <form onSubmit={handleSubmit} className="space-y-1.5 px-3 py-2" encType="multipart/form-data">
                     {fields.map((field) => (
                         <div key={field.name}>
-                            <Label htmlFor={field.name}>{field.label}</Label>
+                            <Label htmlFor={field.name}>
+                                {field.label}
+                                {field.required && <RequiredMark />}
+                            </Label>
                             {field.type === 'select' ? (
                                 <Select value={form.data[field.name]} onValueChange={(value) => form.setData(field.name, value)}>
                                     <SelectTrigger id={field.name} className="mt-1 w-full" aria-invalid={!!form.errors[field.name]}>

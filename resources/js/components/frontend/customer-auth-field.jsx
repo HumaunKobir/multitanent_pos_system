@@ -1,3 +1,4 @@
+import { RequiredMark } from '@/components/form-field';
 import { storeCn, storeInputClass } from '@/lib/store-cn';
 
 const fieldLabelClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-wide text-store-muted';
@@ -11,7 +12,7 @@ function fieldErrorClass(error) {
     return error ? 'border-red-400 bg-red-50/40 focus:border-red-500 focus:ring-red-500/15' : '';
 }
 
-export function CustomerAuthField({ label, error, className, id, ...props }) {
+export function CustomerAuthField({ label, required = false, error, className, id, ...props }) {
     const inputId = id || label?.toLowerCase()?.replace(/[^a-z0-9]+/g, '-');
 
     return (
@@ -19,6 +20,7 @@ export function CustomerAuthField({ label, error, className, id, ...props }) {
             {label && (
                 <label htmlFor={inputId} className={fieldLabelClass}>
                     {label}
+                    {required && <RequiredMark />}
                 </label>
             )}
             <input

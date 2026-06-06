@@ -1,21 +1,11 @@
+import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from '@inertiajs/react';
 import { UserRound } from 'lucide-react';
 import { useEffect } from 'react';
-
-function FormField({ label, name, error, children }) {
-    return (
-        <div>
-            <Label htmlFor={name}>{label}</Label>
-            {children}
-            {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
-        </div>
-    );
-}
 
 export default function UserFormDialog({ open, onOpenChange, item, routes, branches, roles }) {
     const isEditing = !!item?.id;
@@ -115,7 +105,7 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                         />
                     </FormField>
 
-                    <FormField label="Email" name="email" error={form.errors.email}>
+                    <FormField label="Email" name="email" required error={form.errors.email}>
                         <Input
                             id="email"
                             type="email"
@@ -127,7 +117,7 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                         />
                     </FormField>
 
-                    <FormField label="Phone" name="phone" error={form.errors.phone}>
+                    <FormField label="Phone" name="phone" required error={form.errors.phone}>
                         <Input
                             id="phone"
                             value={form.data.phone}
@@ -138,7 +128,7 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                         />
                     </FormField>
 
-                    <FormField label={isEditing ? 'Password (optional)' : 'Password'} name="password" error={form.errors.password}>
+                    <FormField label="Password" name="password" required={!isEditing} error={form.errors.password}>
                         <Input
                             id="password"
                             type="password"
@@ -150,7 +140,7 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                         />
                     </FormField>
 
-                    <FormField label="Confirm Password" name="password_confirmation" error={form.errors.password_confirmation}>
+                    <FormField label="Confirm Password" name="password_confirmation" required={!isEditing} error={form.errors.password_confirmation}>
                         <Input
                             id="password_confirmation"
                             type="password"
@@ -181,7 +171,7 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                         </Select>
                     </FormField>
 
-                    <FormField label="Status" name="status" error={form.errors.status}>
+                    <FormField label="Status" name="status" required error={form.errors.status}>
                         <Select value={form.data.status} onValueChange={(value) => form.setData('status', value)}>
                             <SelectTrigger id="status" className="mt-1 w-full" aria-invalid={!!form.errors.status}>
                                 <SelectValue />

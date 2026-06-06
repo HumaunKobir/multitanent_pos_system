@@ -1,5 +1,6 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 import { ShieldCheck } from 'lucide-react';
+import { RequiredMark } from '@/components/form-field';
 import { PaymentMethodCards } from '@/components/frontend/payment-method-cards';
 import { StoreButton } from '@/components/frontend/store-button';
 import { StoreInput } from '@/components/frontend/store-input';
@@ -67,14 +68,14 @@ export default function Checkout({ cart, customer }) {
                             <h2 className="mb-3 font-semibold text-store-primary">Delivery details</h2>
                             <div className="grid gap-3 sm:grid-cols-2">
                                 <StoreInput
-                                    label="Name *"
+                                    label="Name"
                                     value={data.name}
                                     onChange={(e) => setData('name', e.target.value)}
                                     error={errors.name}
                                     required
                                 />
                                 <StoreInput
-                                    label="Phone *"
+                                    label="Phone"
                                     type="tel"
                                     value={data.phone}
                                     onChange={(e) => setData('phone', e.target.value)}
@@ -92,7 +93,10 @@ export default function Checkout({ cart, customer }) {
                                 />
                             </div>
                             <div className="mt-3">
-                                <label className="mb-1 block text-sm font-medium text-store-primary">City *</label>
+                                <label className="mb-1 block text-sm font-medium text-store-primary">
+                                    City
+                                    <RequiredMark />
+                                </label>
                                 <select
                                     value={data.city_id}
                                     onChange={(e) => setData('city_id', e.target.value)}
@@ -104,7 +108,7 @@ export default function Checkout({ cart, customer }) {
                             </div>
                             <div className="mt-3">
                                 <StoreInput
-                                    label="Full address *"
+                                    label="Full address"
                                     value={data.address}
                                     onChange={(e) => setData('address', e.target.value)}
                                     error={errors.address}

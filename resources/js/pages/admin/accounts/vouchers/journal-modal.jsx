@@ -1,3 +1,4 @@
+import { RequiredMark } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -184,12 +185,18 @@ export default function JournalVoucherModal({ open, onOpenChange, item, accounts
                 {form.errors.lines && <p className="text-sm text-destructive">{form.errors.lines}</p>}
                 <div className="grid gap-4 sm:grid-cols-3">
                     <div>
-                        <Label>Voucher No</Label>
+                        <Label>
+                            Voucher No
+                            <RequiredMark />
+                        </Label>
                         <Input className="mt-1" value={form.data.voucher_no} onChange={(e) => form.setData('voucher_no', e.target.value)} />
                         {form.errors.voucher_no && <p className="mt-1 text-xs text-destructive">{form.errors.voucher_no}</p>}
                     </div>
                     <div>
-                        <Label>Date</Label>
+                        <Label>
+                            Date
+                            <RequiredMark />
+                        </Label>
                         <Input type="date" className="mt-1" value={form.data.date} onChange={(e) => form.setData('date', e.target.value)} />
                         {form.errors.date && <p className="mt-1 text-xs text-destructive">{form.errors.date}</p>}
                     </div>

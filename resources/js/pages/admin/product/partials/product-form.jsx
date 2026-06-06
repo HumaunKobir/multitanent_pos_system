@@ -1,5 +1,6 @@
 import { SmartMultiSelect } from '@/components/smart-multi-select';
 import { SmartSelect } from '@/components/smart-select';
+import { RequiredMark } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -93,7 +94,7 @@ function Field({ label, required, error, children }) {
         <div>
             <Label className="mb-1 block text-xs font-medium">
                 {label}
-                {required && <span className="ml-0.5 text-destructive">*</span>}
+                {required && <RequiredMark />}
             </Label>
             {children}
             {error && <p className="mt-0.5 text-xs text-destructive">{error}</p>}

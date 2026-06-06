@@ -1,7 +1,7 @@
+import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from '@inertiajs/react';
 import { Building2 } from 'lucide-react';
@@ -15,16 +15,6 @@ function resolveStatus(status) {
         return status.value ?? 1;
     }
     return status;
-}
-
-function FormField({ label, name, error, children }) {
-    return (
-        <div>
-            <Label htmlFor={name}>{label}</Label>
-            {children}
-            {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
-        </div>
-    );
 }
 
 export default function BranchFormDialog({ open, onOpenChange, item, routes }) {
@@ -72,7 +62,7 @@ export default function BranchFormDialog({ open, onOpenChange, item, routes }) {
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-1.5 px-3 py-2">
-                    <FormField label="Name" name="name" error={form.errors.name}>
+                    <FormField label="Name" name="name" required error={form.errors.name}>
                         <Input
                             id="name"
                             value={form.data.name}
@@ -83,7 +73,7 @@ export default function BranchFormDialog({ open, onOpenChange, item, routes }) {
                         />
                     </FormField>
 
-                    <FormField label="Phone" name="phone" error={form.errors.phone}>
+                    <FormField label="Phone" name="phone" required error={form.errors.phone}>
                         <Input
                             id="phone"
                             value={form.data.phone}
@@ -94,7 +84,7 @@ export default function BranchFormDialog({ open, onOpenChange, item, routes }) {
                         />
                     </FormField>
 
-                    <FormField label="Address" name="address" error={form.errors.address}>
+                    <FormField label="Address" name="address" required error={form.errors.address}>
                         <textarea
                             id="address"
                             value={form.data.address}
@@ -107,7 +97,7 @@ export default function BranchFormDialog({ open, onOpenChange, item, routes }) {
                     </FormField>
 
                     {isEditing && (
-                        <FormField label="Status" name="status" error={form.errors.status}>
+                        <FormField label="Status" name="status" required error={form.errors.status}>
                             <Select value={form.data.status} onValueChange={(value) => form.setData('status', value)}>
                                 <SelectTrigger id="status" className="mt-1 w-full" aria-invalid={!!form.errors.status}>
                                     <SelectValue />

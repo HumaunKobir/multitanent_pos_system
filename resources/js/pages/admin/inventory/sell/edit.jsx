@@ -5,6 +5,7 @@ import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Save, Search, ShoppingCart, Trash2, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+import { RequiredMark } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { dateInputRightIconClassName } from '@/components/ui/date-kit';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -33,7 +34,7 @@ function Field({ label, required, error, children }) {
         <div>
             <Label className="mb-1 block text-xs font-medium">
                 {label}
-                {required && <span className="ml-0.5 text-destructive">*</span>}
+                {required && <RequiredMark />}
             </Label>
             {children}
             {error && <p className="mt-0.5 text-xs text-destructive">{error}</p>}

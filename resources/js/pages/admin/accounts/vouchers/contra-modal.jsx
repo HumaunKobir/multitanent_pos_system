@@ -1,3 +1,4 @@
+import { RequiredMark } from '@/components/form-field';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
@@ -87,27 +88,42 @@ export default function ContraVoucherModal({ open, onOpenChange, item, assetAcco
                 {form.errors.general && <p className="text-sm text-destructive">{form.errors.general}</p>}
                 <div className="grid gap-4 sm:grid-cols-2">
                     <div>
-                        <Label>Voucher No</Label>
+                        <Label>
+                            Voucher No
+                            <RequiredMark />
+                        </Label>
                         <Input className="mt-1" value={form.data.voucher_no} onChange={(e) => form.setData('voucher_no', e.target.value)} />
                     </div>
                     <div>
-                        <Label>Date</Label>
+                        <Label>
+                            Date
+                            <RequiredMark />
+                        </Label>
                         <Input type="date" className="mt-1" value={form.data.date} onChange={(e) => form.setData('date', e.target.value)} />
                     </div>
                     <div>
-                        <Label>From Account</Label>
+                        <Label>
+                            From Account
+                            <RequiredMark />
+                        </Label>
                         <div className="mt-1">
                             <FlatAccountSelect accounts={assetAccounts} value={form.data.from_account_id} onChange={(v) => form.setData('from_account_id', v)} placeholder="Select Account..." />
                         </div>
                     </div>
                     <div>
-                        <Label>To Account</Label>
+                        <Label>
+                            To Account
+                            <RequiredMark />
+                        </Label>
                         <div className="mt-1">
                             <FlatAccountSelect accounts={assetAccounts} value={form.data.to_account_id} onChange={(v) => form.setData('to_account_id', v)} placeholder="Select Account..." />
                         </div>
                     </div>
                     <div>
-                        <Label>Transfer Amount</Label>
+                        <Label>
+                            Transfer Amount
+                            <RequiredMark />
+                        </Label>
                         <Input type="number" min="0" step="0.01" className="mt-1" placeholder="0.00" value={form.data.total_amount} onChange={(e) => form.setData('total_amount', e.target.value)} />
                     </div>
                     <div>

@@ -1,3 +1,4 @@
+import { RequiredMark } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -95,7 +96,8 @@ export default function AccountFormDialog({ open, onOpenChange, item, accountTyp
                     {/* Type */}
                     <div>
                         <Label htmlFor="type">
-                            Account Type <span className="text-destructive">*</span>
+                            Account Type
+                            <RequiredMark />
                         </Label>
                         <Select
                             value={form.data.type}
@@ -117,9 +119,7 @@ export default function AccountFormDialog({ open, onOpenChange, item, accountTyp
 
                     {/* Parent Account */}
                     <div>
-                        <Label htmlFor="parent_id">
-                            Parent Account <span className="text-xs text-muted-foreground">(optional)</span>
-                        </Label>
+                        <Label htmlFor="parent_id">Parent Account</Label>
                         <Select
                             value={form.data.parent_id || 'none'}
                             onValueChange={(v) => form.setData('parent_id', v === 'none' ? '' : v)}
@@ -142,7 +142,8 @@ export default function AccountFormDialog({ open, onOpenChange, item, accountTyp
                     {/* Account Name */}
                     <div>
                         <Label htmlFor="name">
-                            Account Name <span className="text-destructive">*</span>
+                            Account Name
+                            <RequiredMark />
                         </Label>
                         <Input
                             id="name"
@@ -176,9 +177,7 @@ export default function AccountFormDialog({ open, onOpenChange, item, accountTyp
                         </div>
 
                         <div>
-                            <Label htmlFor="account_number">
-                                Account Number <span className="text-xs text-muted-foreground">(optional)</span>
-                            </Label>
+                            <Label htmlFor="account_number">Account Number</Label>
                             <Input
                                 id="account_number"
                                 value={form.data.account_number}

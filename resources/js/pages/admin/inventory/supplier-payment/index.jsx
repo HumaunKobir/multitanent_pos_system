@@ -7,27 +7,14 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { AdminCreateButton } from '@/components/admin/row-actions';
 import { Can } from '@/components/can';
+import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { useCan } from '@/hooks/use-can';
-
-function FormField({ label, required, name, error, children }) {
-    return (
-        <div>
-            <Label htmlFor={name}>
-                {label}
-                {required && <span className="ml-0.5 text-red-500">*</span>}
-            </Label>
-            {children}
-            {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
-        </div>
-    );
-}
 
 function PaymentForm({ form, suppliers, paymentAccounts = [], onSubmit, onCancel }) {
     const selected = useMemo(

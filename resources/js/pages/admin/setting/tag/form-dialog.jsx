@@ -1,8 +1,8 @@
+import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Tag } from 'lucide-react';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useForm } from '@inertiajs/react';
 import { useEffect } from 'react';
@@ -104,7 +104,7 @@ export default function TagFormDialog({ open, onOpenChange, item, routes, parent
                         </Select>
                     </FormField>
 
-                    <FormField label="Name" name="name" error={form.errors.name}>
+                    <FormField label="Name" name="name" required error={form.errors.name}>
                         <Input
                             id="name"
                             value={form.data.name}
@@ -126,7 +126,7 @@ export default function TagFormDialog({ open, onOpenChange, item, routes, parent
                         />
                     </FormField>
 
-                    <FormField label="Status" name="status" error={form.errors.status}>
+                    <FormField label="Status" name="status" required error={form.errors.status}>
                         <Select value={form.data.status} onValueChange={(value) => form.setData('status', value)}>
                             <SelectTrigger id="status" className="mt-1 w-full" aria-invalid={!!form.errors.status}>
                                 <SelectValue />

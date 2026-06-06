@@ -1,5 +1,6 @@
 import { Form, Head, Link, usePage } from '@inertiajs/react';
 
+import { RequiredMark } from '@/components/form-field';
 import DeleteUser from '@/components/delete-user';
 import Heading from '@/components/heading';
 import InputError from '@/components/input-error';
@@ -27,7 +28,10 @@ export default function Profile({ mustVerifyEmail, status }) {
                     {({ processing, errors }) => (
                         <>
                             <div className="grid gap-2">
-                                <Label htmlFor="name">Name</Label>
+                                <Label htmlFor="name">
+                                    Name
+                                    <RequiredMark />
+                                </Label>
                                 <Input
                                     id="name"
                                     className="mt-1 block w-full"
@@ -40,7 +44,10 @@ export default function Profile({ mustVerifyEmail, status }) {
                                 <InputError className="mt-2" message={errors.name} />
                             </div>
                             <div className="grid gap-2">
-                                <Label htmlFor="email">Email address</Label>
+                                <Label htmlFor="email">
+                                    Email address
+                                    <RequiredMark />
+                                </Label>
                                 <Input
                                     id="email"
                                     type="email"

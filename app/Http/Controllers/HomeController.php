@@ -9,6 +9,7 @@ use App\Models\Collectioncategory;
 use App\Models\ConfigDictionary;
 use App\Models\Contact;
 use App\Models\Product;
+use App\Models\ProductReview;
 use App\Models\ProductSection;
 use App\Models\Slider;
 use App\Services\EcommerceBranchService;
@@ -74,8 +75,33 @@ class HomeController extends Controller
             ->where('status', 1)
             ->firstOrFail();
 
+        $reviews = $product->reviews()
+            ->approved()
+            ->latest()
+            ->limit(20)
+            ->get()
+            ->map(fn (ProductReview $review): array => [
+                'id' => $review->id,
+                'reviewer_name' => $review->reviewer_name,
+                'rating' => $review->rating,
+                'comment' => $review->comment,
+                'created_at' => $review->created_at?->diffForHumans(),
+            ])
+            ->values()
+            ->all();
+
+        $reviewCount = $product->reviews()->approved()->count();
+        $averageRating = $reviewCount > 0
+            ? round((float) $product->reviews()->approved()->avg('rating'), 1)
+            : 0;
+
         return Inertia::render('frontend/single-product', [
             'product' => $this->formatProduct($product, true),
+            'reviews' => $reviews,
+            'reviewSummary' => [
+                'average' => $averageRating,
+                'count' => $reviewCount,
+            ],
         ]);
     }
 
@@ -315,6 +341,7 @@ class HomeController extends Controller
             $data['tailormeasurement'] = $product->tailormeasurement ?? [];
             $data['tags'] = $product->tags ?? [];
             $data['category'] = $product->category?->name;
+            $data['category_slug'] = $product->category?->slug;
             $data['brand'] = $product->brand?->name;
         }
 

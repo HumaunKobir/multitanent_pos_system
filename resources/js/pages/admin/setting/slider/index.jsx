@@ -176,9 +176,9 @@ export default function SliderIndex({ sliders, filters }) {
                 item={editing}
                 routes={routes}
                 fields={[
-                    { name: 'name', label: 'Name', placeholder: 'Slider name' },
+                    { name: 'name', label: 'Name', placeholder: 'Slider name', required: true },
                     { name: 'image', label: 'Image', type: 'file', accept: 'image/jpeg,image/png,image/webp,image/gif' },
-                    { name: 'status', label: 'Status', type: 'select', defaultValue: '1' },
+                    { name: 'status', label: 'Status', type: 'select', defaultValue: '1', required: true },
                 ]}
             />
             </Can>

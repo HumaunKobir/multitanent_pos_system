@@ -1,3 +1,4 @@
+import { RequiredMark } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -156,7 +157,10 @@ export default function ProductSectionFormDialog({
 
                 <form onSubmit={handleSubmit} className="max-h-[80vh] space-y-1.5 overflow-y-auto px-3 py-2">
                     <div>
-                        <Label htmlFor="name">Section Name *</Label>
+                        <Label htmlFor="name">
+                            Section Name
+                            <RequiredMark />
+                        </Label>
                         <Input
                             id="name"
                             value={form.data.name}
@@ -169,7 +173,10 @@ export default function ProductSectionFormDialog({
                     <div className={`grid gap-4 ${isEditing ? '' : 'sm:grid-cols-2'}`}>
                         {!isEditing && (
                             <div>
-                                <Label>Layout Type</Label>
+                                <Label>
+                                    Layout Type
+                                    <RequiredMark />
+                                </Label>
                                 <Select value={form.data.layout_type} onValueChange={(value) => form.setData('layout_type', value)}>
                                     <SelectTrigger className="mt-1 w-full">
                                         <SelectValue />
@@ -186,7 +193,10 @@ export default function ProductSectionFormDialog({
                         )}
 
                         <div>
-                            <Label>Block Type</Label>
+                            <Label>
+                                Block Type
+                                <RequiredMark />
+                            </Label>
                             <Select value={form.data.block_type} onValueChange={(value) => form.setData('block_type', value)}>
                                 <SelectTrigger className="mt-1 w-full">
                                     <SelectValue />
@@ -204,7 +214,10 @@ export default function ProductSectionFormDialog({
 
                     <div className="grid gap-4 sm:grid-cols-2">
                         <div>
-                            <Label htmlFor="block_per_line">Blocks Per Line</Label>
+                            <Label htmlFor="block_per_line">
+                                Blocks Per Line
+                                <RequiredMark />
+                            </Label>
                             <Input
                                 id="block_per_line"
                                 type="number"
@@ -216,7 +229,10 @@ export default function ProductSectionFormDialog({
                             />
                         </div>
                         <div>
-                            <Label>Status</Label>
+                            <Label>
+                                Status
+                                <RequiredMark />
+                            </Label>
                             <Select value={form.data.status} onValueChange={(value) => form.setData('status', value)}>
                                 <SelectTrigger className="mt-1 w-full">
                                     <SelectValue />
@@ -254,7 +270,10 @@ export default function ProductSectionFormDialog({
                                 </>
                             )}
                             <div>
-                                <Label>Products *</Label>
+                                <Label>
+                                    Products
+                                    <RequiredMark />
+                                </Label>
                                 <div className="mt-2 max-h-48 space-y-2 overflow-y-auto rounded border p-3">
                                     {productOptions.map((option) => (
                                         <label key={option.value} className="flex cursor-pointer items-center gap-2 text-sm">

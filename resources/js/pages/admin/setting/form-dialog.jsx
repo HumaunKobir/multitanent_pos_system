@@ -30,17 +30,20 @@ export default function SettingFormDialog({ open, onOpenChange, title, item, rou
             onSuccess: () => onOpenChange(false),
         };
 
+        const hasFileUpload = fields.some(
+            (field) => field.type === 'file' && form.data[field.name] instanceof File,
+        );
+
         if (isEditing) {
-            if (fields.some((field) => field.type === 'file')) {
-                form.post(routes.update(item.id), {
-                    ...options,
-                    _method: 'patch',
-                });
-            } else {
-                form.patch(routes.update(item.id), options);
-            }
+            form.submit('patch', routes.update(item.id), {
+                ...options,
+                forceFormData: hasFileUpload,
+            });
         } else {
-            form.post(routes.store, options);
+            form.post(routes.store, {
+                ...options,
+                forceFormData: hasFileUpload,
+            });
         }
     }
 

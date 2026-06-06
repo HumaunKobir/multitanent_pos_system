@@ -52,6 +52,8 @@ class SliderController extends Controller
 
     public function update(Request $request, Slider $slider): RedirectResponse
     {
+        $this->authorize('setting.slider.update');
+
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,gif,webp', 'max:5048'],

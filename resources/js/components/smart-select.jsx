@@ -1,6 +1,7 @@
 import { useAppToast } from '@/contexts/app-toast-context';
 import { Check, Plus } from 'lucide-react';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
 import {
@@ -73,8 +74,10 @@ export function SmartSelect({
     const inputId = `${listboxId}-input`;
     const containerRef = useRef(/** @type {HTMLDivElement | null} */ (null));
     const inputRef = useRef(/** @type {HTMLInputElement | null} */ (null));
+    const listboxRef = useRef(/** @type {HTMLDivElement | null} */ (null));
 
     const [open, setOpen] = useState(false);
+    const [dropdownStyle, setDropdownStyle] = useState({ top: 0, left: 0, width: 0 });
     const [query, setQuery] = useState('');
     const [modalOpen, setModalOpen] = useState(false);
     const [modalSku, setModalSku] = useState('');
@@ -129,9 +132,45 @@ export function SmartSelect({
         return filtered;
     }, [filtered, createOption]);
 
+    const updateDropdownPosition = useCallback(() => {
+        const input = inputRef.current;
+
+        if (!input) {
+            return;
+        }
+
+        const rect = input.getBoundingClientRect();
+
+        setDropdownStyle({
+            top: rect.bottom + 4,
+            left: rect.left,
+            width: rect.width,
+        });
+    }, []);
+
+    useEffect(() => {
+        if (!open) {
+            return;
+        }
+
+        updateDropdownPosition();
+
+        window.addEventListener('scroll', updateDropdownPosition, true);
+        window.addEventListener('resize', updateDropdownPosition);
+
+        return () => {
+            window.removeEventListener('scroll', updateDropdownPosition, true);
+            window.removeEventListener('resize', updateDropdownPosition);
+        };
+    }, [open, updateDropdownPosition]);
+
     useEffect(() => {
         function handlePointerDown(event) {
             if (containerRef.current?.contains(event.target)) {
+                return;
+            }
+
+            if (listboxRef.current?.contains(event.target)) {
                 return;
             }
 
@@ -164,7 +203,10 @@ export function SmartSelect({
 
         setOpen(true);
         setQuery('');
-        requestAnimationFrame(() => inputRef.current?.focus());
+        requestAnimationFrame(() => {
+            inputRef.current?.focus();
+            updateDropdownPosition();
+        });
     }
 
     const newValueFromLabel = useCallback((lbl) => {
@@ -305,52 +347,62 @@ export function SmartSelect({
                 role="combobox"
             />
 
-            {open && (
-                <div
-                    role="listbox"
-                    className={cn(
-                        'absolute top-[calc(100%+4px)] right-0 left-0 z-50 max-h-48 overflow-y-auto overscroll-contain border border-border bg-popover py-1 text-popover-foreground shadow-md',
-                        optionsClassName,
-                    )}
-                    onWheel={handleListWheel}
-                    onTouchMove={(event) => event.stopPropagation()}
-                >
-                    {listOptions.length === 0 ? (
-                        <p className="px-3 py-2 text-sm text-muted-foreground">No matches.</p>
-                    ) : (
-                        listOptions.map((opt) => {
-                            const isSelected = opt.value === value;
+            {open &&
+                typeof document !== 'undefined' &&
+                createPortal(
+                    <div
+                        ref={listboxRef}
+                        role="listbox"
+                        style={{
+                            position: 'fixed',
+                            top: dropdownStyle.top,
+                            left: dropdownStyle.left,
+                            width: dropdownStyle.width,
+                        }}
+                        className={cn(
+                            'z-50 max-h-48 overflow-y-auto overscroll-contain border border-border bg-popover py-1 text-popover-foreground shadow-md',
+                            optionsClassName,
+                        )}
+                        onWheel={handleListWheel}
+                        onTouchMove={(event) => event.stopPropagation()}
+                    >
+                        {listOptions.length === 0 ? (
+                            <p className="px-3 py-2 text-sm text-muted-foreground">No matches.</p>
+                        ) : (
+                            listOptions.map((opt) => {
+                                const isSelected = opt.value === value;
 
-                            return (
-                                <button
-                                    key={opt.value}
-                                    type="button"
-                                    role="option"
-                                    aria-selected={isSelected}
-                                    className={cn(
-                                        'flex w-full min-w-0 cursor-pointer items-center justify-between gap-2 border-l-2 border-transparent py-2 pr-3 pl-2 text-left text-sm hover:bg-accent/80',
-                                        isSelected && 'border-primary bg-accent/50',
-                                        opt.isCreate && 'font-medium',
-                                    )}
-                                    onClick={() => void handleOptionSelect(opt)}
-                                >
-                                    <div className="flex min-w-0 flex-1 items-center gap-2">
-                                        {opt.isCreate ? (
-                                            <Plus className="size-4 shrink-0 text-primary" aria-hidden />
+                                return (
+                                    <button
+                                        key={opt.value}
+                                        type="button"
+                                        role="option"
+                                        aria-selected={isSelected}
+                                        className={cn(
+                                            'flex w-full min-w-0 cursor-pointer items-center justify-between gap-2 border-l-2 border-transparent py-2 pr-3 pl-2 text-left text-sm hover:bg-accent/80',
+                                            isSelected && 'border-primary bg-accent/50',
+                                            opt.isCreate && 'font-medium',
+                                        )}
+                                        onClick={() => void handleOptionSelect(opt)}
+                                    >
+                                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                                            {opt.isCreate ? (
+                                                <Plus className="size-4 shrink-0 text-primary" aria-hidden />
+                                            ) : null}
+                                            <span className="min-w-0 flex-1 truncate">
+                                                {opt.isCreate && instantLoading ? 'Creating…' : opt.label}
+                                            </span>
+                                        </div>
+                                        {opt.isCreate || isSelected ? (
+                                            <Check className="size-4 shrink-0 text-primary" strokeWidth={2.5} aria-hidden />
                                         ) : null}
-                                        <span className="min-w-0 flex-1 truncate">
-                                            {opt.isCreate && instantLoading ? 'Creating…' : opt.label}
-                                        </span>
-                                    </div>
-                                    {opt.isCreate || isSelected ? (
-                                        <Check className="size-4 shrink-0 text-primary" strokeWidth={2.5} aria-hidden />
-                                    ) : null}
-                                </button>
-                            );
-                        })
-                    )}
-                </div>
-            )}
+                                    </button>
+                                );
+                            })
+                        )}
+                    </div>,
+                    document.body,
+                )}
 
             <Dialog
                 open={modalOpen}

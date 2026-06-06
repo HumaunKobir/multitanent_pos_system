@@ -65,7 +65,9 @@ class ProductSearchController extends Controller
 
         return response()->json($products->map(function (Product $product) use ($branchId) {
             $branchVariations = $product->variations
-                ->when($branchId !== null, fn ($variations) => $variations->where('branch_id', $branchId));
+                ->when($branchId !== null, fn ($variations) => $variations->filter(
+                    fn ($variation) => $variation->branch_id === $branchId || $variation->branch_id === null
+                ));
 
             return [
                 'id' => $product->id,
@@ -75,7 +77,9 @@ class ProductSearchController extends Controller
                 'image' => $product->image,
                 'has_variations' => $branchVariations->isNotEmpty(),
                 'stock' => (float) $product->batches
-                    ->when($branchId !== null, fn ($batches) => $batches->where('branch_id', $branchId))
+                    ->when($branchId !== null, fn ($batches) => $batches->filter(
+                        fn ($batch) => $batch->branch_id === $branchId || $batch->branch_id === null
+                    ))
                     ->sum('available'),
                 'variations' => $branchVariations
                     ->map(fn ($v) => [

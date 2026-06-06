@@ -9,7 +9,7 @@ import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
 import { Link, usePage } from '@inertiajs/react';
 import { AlignLeft, DollarSign, GitBranch, ImagePlus, Images, Info, Plus, Settings, Trash2, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildVariationDataFromRows } from '@/lib/variation-utils';
 
 function getXsrf() {
@@ -542,7 +542,13 @@ export default function ProductForm({ form, categories, brands, units, warrantie
     const { auth } = usePage().props;
     const isAdmin = !auth.user?.branch_id;
 
-    const branchOptions = Object.entries(branches || {}).map(([value, label]) => ({ value, label }));
+    const branchSelectOptions = useMemo(
+        () => [
+            { value: '__none', label: 'All branches' },
+            ...Object.entries(branches || {}).map(([value, label]) => ({ value, label })),
+        ],
+        [branches],
+    );
 
     const [localCategoryOptions, setLocalCategoryOptions] = useState(() => Object.entries(categories || {}).map(([value, label]) => ({ value, label })));
     const [localBrandOptions, setLocalBrandOptions] = useState(() => Object.entries(brands || {}).map(([value, label]) => ({ value, label })));
@@ -580,13 +586,14 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                     <div className="grid grid-cols-3 gap-3">
                         {isAdmin && (
                             <Field label="Branch" error={form.errors.branch_id}>
-                                <Select value={form.data.branch_id ? String(form.data.branch_id) : '__none'} onValueChange={(v) => form.setData('branch_id', v === '__none' ? null : v)}>
-                                    <SelectTrigger className="h-8 w-full text-xs"><SelectValue placeholder="All branches" /></SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="__none">All branches</SelectItem>
-                                        {branchOptions.map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
-                                    </SelectContent>
-                                </Select>
+                                <SmartSelect
+                                    options={branchSelectOptions}
+                                    value={form.data.branch_id ? String(form.data.branch_id) : '__none'}
+                                    onValueChange={(v) => form.setData('branch_id', v === '__none' ? null : v)}
+                                    placeholder="Search branch…"
+                                    triggerClassName="h-8 text-xs"
+                                    optionsClassName="max-h-52"
+                                />
                             </Field>
                         )}
 

@@ -39,6 +39,29 @@ test('main branch user can find products assigned to operating branches in purch
     expect($ids)->toContain($branchProduct->id);
 });
 
+test('operating branch user sees all-branches products in purchase search', function () {
+    $this->artisan('permissions:sync');
+
+    $operatingBranch = Branch::factory()->create();
+    $branchUser = User::factory()->create(['branch_id' => $operatingBranch->id]);
+    Permission::findOrCreate('inventory.purchase.create', 'web');
+    $branchUser->givePermissionTo('inventory.purchase.create');
+
+    $sharedProduct = Product::factory()->create([
+        'branch_id' => null,
+        'name' => 'Shared Product '.fake()->unique()->numerify('###'),
+    ]);
+
+    $response = $this->actingAs($branchUser)
+        ->getJson('/api/products/for-purchase?search='.urlencode($sharedProduct->name));
+
+    $response->assertOk();
+
+    $ids = collect($response->json())->pluck('id');
+
+    expect($ids)->toContain($sharedProduct->id);
+});
+
 test('operating branch user only sees their own products in purchase search', function () {
     $this->artisan('permissions:sync');
 

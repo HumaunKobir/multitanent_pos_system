@@ -65,7 +65,7 @@ class Product extends Model
 
     public function scopeBranchWise(Builder $query, int $branchId): Builder
     {
-        return $query->where('branch_id', $branchId);
+        return $query->accessibleAtBranch($branchId);
     }
 
     public function scopeForPurchase(Builder $query): Builder
@@ -76,7 +76,7 @@ class Product extends Model
             return $query;
         }
 
-        return $query->where('branch_id', $branchId);
+        return $query->accessibleAtBranch($branchId);
     }
 
     public function branch(): BelongsTo

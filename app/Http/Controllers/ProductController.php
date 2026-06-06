@@ -33,8 +33,8 @@ class ProductController extends Controller
         $products = Product::ownBranch()
             ->active()
             ->with(['category', 'brand'])
-            ->withSum(['variations as variations_sum_stock' => fn ($q) => $q->when($branchId, fn ($q) => $q->where('branch_id', $branchId))], 'stock')
-            ->withSum(['batches as batches_sum_available' => fn ($q) => $q->when($branchId, fn ($q) => $q->where('branch_id', $branchId))], 'available')
+            ->withSum(['variations as variations_sum_stock' => fn ($q) => $q->when($branchId, fn ($q) => $q->where(fn ($q) => $q->where('branch_id', $branchId)->orWhereNull('branch_id')))], 'stock')
+            ->withSum(['batches as batches_sum_available' => fn ($q) => $q->when($branchId, fn ($q) => $q->where(fn ($q) => $q->where('branch_id', $branchId)->orWhereNull('branch_id')))], 'available')
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('name', 'like', "%{$s}%")
                     ->orWhere('code', 'like', "%{$s}%");

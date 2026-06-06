@@ -12,6 +12,7 @@ export default function BrandProducts({ brand, products, filters }) {
                 products={products}
                 filters={filters}
                 baseUrl={`/brand/${brand.slug}/products`}
+                currentBrandSlug={brand.slug}
             />
         </FrontendLayout>
     );

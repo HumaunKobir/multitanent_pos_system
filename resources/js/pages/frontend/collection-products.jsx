@@ -12,6 +12,7 @@ export default function CollectionProducts({ collectionName, products, filters, 
                 products={products}
                 filters={filters}
                 baseUrl={`/collection/${encodeURIComponent(collectionName)}`}
+                currentTagName={collectionName}
             />
         </FrontendLayout>
     );

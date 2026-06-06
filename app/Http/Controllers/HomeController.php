@@ -162,7 +162,12 @@ class HomeController extends Controller
         $products = $query->paginate(12)->through(fn ($p) => $this->formatProduct($p));
 
         return Inertia::render('frontend/category-products', [
-            'category' => $category->only(['id', 'name', 'slug', 'image']),
+            'category' => [
+                'id' => $category->id,
+                'name' => $category->name,
+                'slug' => $category->slug,
+                'image' => StorageUrl::public($category->image),
+            ],
             'products' => $products,
             'filters' => $request->only(['min_price', 'max_price', 'brands', 'sort_by']),
             'allBrands' => Brand::active()->pluck('name'),

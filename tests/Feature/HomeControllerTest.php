@@ -40,9 +40,10 @@ test('home page shares storefront navigation filters', function () {
 
 test('home page contains product sections', function () {
     $product = Product::factory()->create();
+    $name = 'Test Section '.fake()->unique()->numerify('####');
 
     ProductSection::create([
-        'name' => 'Test Section',
+        'name' => $name,
         'description' => 'desc',
         'button_text' => 'View',
         'block_per_line' => 4,
@@ -50,14 +51,135 @@ test('home page contains product sections', function () {
         'block_type' => 2,
         'items' => [$product->id],
         'status' => 1,
-        'serial' => 1,
+        'serial' => 9998,
     ]);
 
     $this->get(route('home'))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('frontend/home')
-            ->has('productSections', 1)
+            ->where('productSections', fn ($sections) => collect($sections)->contains('name', $name))
+        );
+});
+
+test('home page product section includes formatted products in admin order', function () {
+    $first = Product::factory()->create([
+        'name' => 'Section First '.fake()->unique()->numerify('####'),
+        'status' => 1,
+        'visible' => 'yes',
+    ]);
+    $second = Product::factory()->create([
+        'name' => 'Section Second '.fake()->unique()->numerify('####'),
+        'status' => 1,
+        'visible' => 'yes',
+    ]);
+    $inactive = Product::factory()->create([
+        'name' => 'Section Inactive '.fake()->unique()->numerify('####'),
+        'status' => 0,
+        'visible' => 'yes',
+    ]);
+    $name = 'Ordered Section '.fake()->unique()->numerify('####');
+
+    ProductSection::create([
+        'name' => $name,
+        'description' => 'Featured picks',
+        'button_text' => 'View All',
+        'block_per_line' => 4,
+        'layout_type' => 1,
+        'block_type' => 2,
+        'items' => [$second->id, $first->id, $inactive->id],
+        'status' => 1,
+        'serial' => 9997,
+    ]);
+
+    $this->get(route('home'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('productSections', fn ($sections) => ($section = collect($sections)->firstWhere('name', $name)) !== null
+                && $section['layout_type'] === 1
+                && $section['block_type'] === 2
+                && count($section['products']) === 2
+                && $section['products'][0]['slug'] === $second->slug
+                && $section['products'][1]['slug'] === $first->slug
+            )
+        );
+});
+
+test('home page product section slider layout is exposed to frontend', function () {
+    $product = Product::factory()->create(['status' => 1, 'visible' => 'yes']);
+    $name = 'Slider Section '.fake()->unique()->numerify('####');
+
+    ProductSection::create([
+        'name' => $name,
+        'block_per_line' => 3,
+        'layout_type' => 2,
+        'block_type' => 2,
+        'items' => [$product->id],
+        'status' => 1,
+        'serial' => 9996,
+    ]);
+
+    $this->get(route('home'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('productSections', fn ($sections) => ($section = collect($sections)->firstWhere('name', $name)) !== null
+                && $section['layout_type'] === 2
+                && $section['products'][0]['slug'] === $product->slug
+            )
+        );
+});
+
+test('home page image section includes banner metadata', function () {
+    $name = 'Banner Section '.fake()->unique()->numerify('####');
+
+    ProductSection::create([
+        'name' => $name,
+        'block_per_line' => 2,
+        'layout_type' => 1,
+        'block_type' => 1,
+        'images' => [
+            [
+                'image_name' => 'Summer Sale',
+                'image' => 'product-sections/summer.jpg',
+                'button_text' => 'Shop Now',
+                'link' => '/products',
+                'description' => 'Up to 50% off',
+            ],
+        ],
+        'status' => 1,
+        'serial' => 9995,
+    ]);
+
+    $this->get(route('home'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('productSections', fn ($sections) => ($section = collect($sections)->firstWhere('name', $name)) !== null
+                && $section['block_type'] === 1
+                && $section['images'][0]['image_name'] === 'Summer Sale'
+                && $section['images'][0]['button_text'] === 'Shop Now'
+                && $section['images'][0]['link'] === '/products'
+                && str_contains($section['images'][0]['image'], '/storage/product-sections/summer.jpg')
+            )
+        );
+});
+
+test('home page excludes inactive product sections', function () {
+    $name = 'Hidden Section '.fake()->unique()->numerify('####');
+
+    ProductSection::create([
+        'name' => $name,
+        'block_per_line' => 4,
+        'layout_type' => 1,
+        'block_type' => 2,
+        'items' => [],
+        'status' => 0,
+        'serial' => 9999,
+    ]);
+
+    $this->get(route('home'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('productSections', fn ($sections) => ! collect($sections)->contains('name', $name))
         );
 });
 

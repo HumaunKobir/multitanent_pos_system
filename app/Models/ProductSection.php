@@ -87,11 +87,20 @@ class ProductSection extends Model
             return collect();
         }
 
-        return Product::with(['photos', 'variations'])
+        $products = Product::with(['photos', 'variations'])
             ->withReviewSummary()
             ->whereIn('id', $this->items)
             ->where('status', 1)
-            ->get();
+            ->get()
+            ->keyBy('id');
+
+        return new Collection(
+            collect($this->items)
+                ->map(fn (int|string $id): ?Product => $products->get((int) $id))
+                ->filter()
+                ->values()
+                ->all()
+        );
     }
 
     /**

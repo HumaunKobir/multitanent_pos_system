@@ -52,7 +52,19 @@ class HomeController extends Controller
                     'block_per_line' => $section->block_per_line,
                     'layout_type' => $section->layout_type?->value,
                     'block_type' => $section->block_type?->value,
-                    'images' => $section->product_images,
+                    'images' => $section->block_type === BlockType::Image
+                        ? collect($section->images ?? [])
+                            ->map(fn (array $image): array => [
+                                'image_name' => $image['image_name'] ?? '',
+                                'image' => StorageUrl::public($image['image'] ?? null),
+                                'button_text' => $image['button_text'] ?? null,
+                                'link' => $image['link'] ?? null,
+                                'description' => $image['description'] ?? null,
+                            ])
+                            ->filter(fn (array $image): bool => filled($image['image']))
+                            ->values()
+                            ->all()
+                        : [],
                     'products' => $section->block_type === BlockType::Item
                         ? $section->product_items->map(fn (Product $p) => $this->formatProduct($p))->values()
                         : [],

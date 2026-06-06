@@ -76,7 +76,7 @@ class SellController extends Controller
 
         $branchId = Auth::user()?->branch_id;
 
-        DB::transaction(function () use ($data, $branchId) {
+        $sell = DB::transaction(function () use ($data, $branchId) {
             $grossAmount = 0;
             $sellProductsData = [];
 
@@ -127,9 +127,11 @@ class SellController extends Controller
             foreach ($sellProductsData as $lineItem) {
                 $sell->products()->create($lineItem);
             }
+
+            return $sell;
         });
 
-        return redirect()->route('inventory.sell.index')
+        return redirect()->to(route('inventory.sell.show', $sell).'?pos_print=1')
             ->with('success', 'Sale created successfully.');
     }
 
@@ -140,6 +142,7 @@ class SellController extends Controller
 
         $sell->load([
             'customer',
+            'branch:id,name',
             'products.product',
             'products.variation',
         ]);

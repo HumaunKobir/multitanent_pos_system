@@ -1,8 +1,9 @@
 import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
+import { buildSellPosPrintPayload, posPrint } from '@/lib/pos-print';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { ArrowLeft, Edit, Printer, ShoppingCart, Trash2 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ArrowLeft, Edit, Printer, Receipt, ShoppingCart, Trash2 } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Can } from '@/components/can';
@@ -11,23 +12,48 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { useCan } from '@/hooks/use-can';
 
 export default function SellShow({ sell }) {
-    const { flash } = usePage().props;
+    const { flash, logo, siteName } = usePage().props;
     const toast = useAppToast();
     const { can } = useCan();
     const [deleting, setDeleting] = useState(false);
+    const autoPrintedRef = useRef(false);
 
     useEffect(() => {
         if (flash.success) toast.success(flash.success);
         if (flash.error) toast.error(flash.error);
     }, [flash.success, flash.error]);
 
-    const invoiceNumber = 'INVS' + String(sell.id).padStart(8, '0');
+    const invoiceNumber = sell.invoice_number ?? 'INVS' + String(sell.id).padStart(8, '0');
     const gross = parseFloat(sell.gross_amount ?? 0);
     const vat = parseFloat(sell.vat ?? 0);
     const discount = parseFloat(sell.discount ?? 0);
     const net = gross + vat - discount;
     const paid = parseFloat(sell.paid_amount ?? 0);
     const due = Math.max(0, net - paid);
+
+    const handlePosPrint = useCallback(() => {
+        posPrint(
+            buildSellPosPrintPayload(sell, {
+                companyName: siteName || 'Coolness Point',
+                logoUrl: logo,
+                branchName: sell.branch?.name,
+            }),
+        );
+    }, [sell, siteName, logo]);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const shouldAutoPrint = params.get('pos_print') === '1' || params.get('pos_print') === 'true';
+
+        if (!shouldAutoPrint || autoPrintedRef.current) {
+            return;
+        }
+
+        autoPrintedRef.current = true;
+        const timer = setTimeout(() => handlePosPrint(), 500);
+
+        return () => clearTimeout(timer);
+    }, [handlePosPrint]);
 
     function handleDelete() {
         router.delete(route('inventory.sell.destroy', sell.id), {
@@ -40,7 +66,7 @@ export default function SellShow({ sell }) {
             <Head title={`Sale — ${invoiceNumber}`} />
 
             <div className="px-2 py-1">
-                <div className="mb-3 flex items-center justify-between rounded-lg bg-blue-950 px-5 py-3">
+                <div className="mb-3 flex items-center justify-between rounded-lg bg-blue-950 px-5 py-3 print:hidden">
                     <div className="flex items-center gap-3">
                         <div className="flex size-8 items-center justify-center rounded-md bg-white/15">
                             <ShoppingCart className="size-4 text-white" />
@@ -57,7 +83,15 @@ export default function SellShow({ sell }) {
                             className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
                         >
                             <Printer className="size-3.5" />
-                            Print
+                            Normal Print
+                        </Button>
+                        <Button
+                            size="sm"
+                            onClick={handlePosPrint}
+                            className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
+                        >
+                            <Receipt className="size-3.5" />
+                            POS Print
                         </Button>
                         <Can permission="inventory.sell.update">
                             <Button
@@ -98,7 +132,11 @@ export default function SellShow({ sell }) {
                 <div className="border border-border p-6 print:border-0 print:p-0">
                     <div className="mb-6 flex justify-between">
                         <div>
-                            <h2 className="text-xl font-bold">Coolness Point</h2>
+                            {logo ? (
+                                <img src={logo} alt={siteName || 'Coolness Point'} className="mb-2 h-12 object-contain" />
+                            ) : null}
+                            <h2 className="text-xl font-bold">{siteName || 'Coolness Point'}</h2>
+                            {sell.branch?.name && <p className="text-sm text-muted-foreground">{sell.branch.name}</p>}
                             <p className="text-sm text-muted-foreground">Sale Invoice</p>
                         </div>
                         <div className="text-right text-sm">

@@ -52,7 +52,7 @@ test('authenticated user can create a sale and stock is deducted', function () {
     $user = sellUser();
     ['product' => $product, 'batch' => $batch] = sellProduct(20);
 
-    $this->actingAs($user)
+    $response = $this->actingAs($user)
         ->post('/inventory/sell', [
             'customer_id' => null,
             'date' => now()->format('Y-m-d'),
@@ -68,13 +68,16 @@ test('authenticated user can create a sale and stock is deducted', function () {
                     'quantity' => '5',
                 ],
             ],
-        ])
-        ->assertRedirect('/inventory/sell');
+        ]);
 
-    expect(Sell::count())->toBe(1);
-    expect(SellProduct::count())->toBe(1);
+    $sell = Sell::query()->latest('id')->first();
+    expect($sell)->not->toBeNull();
 
-    $sell = Sell::first();
+    $response->assertRedirect(route('inventory.sell.show', $sell).'?pos_print=1');
+
+    expect(SellProduct::where('sell_id', $sell->id)->count())->toBe(1);
+
+    $sell->refresh();
     expect((float) $sell->gross_amount)->toBe(2500.0);
     expect((float) $sell->paid_amount)->toBe(500.0);
 

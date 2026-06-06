@@ -6,6 +6,7 @@ use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductSection;
+use App\Models\ProductVariation;
 use App\Models\Tag;
 use App\Services\EcommerceBranchService;
 
@@ -103,6 +104,45 @@ test('category products page renders for valid category slug', function () {
         ->assertInertia(fn ($page) => $page
             ->component('frontend/category-products')
             ->where('category.slug', $category->slug)
+        );
+});
+
+test('category products include variation summary for variant products', function () {
+    $category = Category::factory()->create(['name' => 'Variant Wear']);
+    $product = Product::factory()->create([
+        'category_id' => $category->id,
+        'status' => 1,
+        'visible' => 'yes',
+        'sale_price' => 0,
+    ]);
+
+    ProductVariation::query()->create([
+        'product_id' => $product->id,
+        'sku' => 'VAR-M',
+        'variation_data' => ['Size' => 'M'],
+        'price' => 1200,
+        'stock' => 5,
+        'status' => CommonStatus::Active,
+    ]);
+
+    ProductVariation::query()->create([
+        'product_id' => $product->id,
+        'sku' => 'VAR-L',
+        'variation_data' => ['Size' => 'L'],
+        'price' => 1350,
+        'stock' => 3,
+        'status' => CommonStatus::Active,
+    ]);
+
+    $this->get(route('category.products', $category->slug))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('frontend/category-products')
+            ->where('products.data.0.has_variations', true)
+            ->where('products.data.0.variations_count', 2)
+            ->where('products.data.0.price_min', 1200)
+            ->where('products.data.0.price_max', 1350)
+            ->has('products.data.0.variations', 2)
         );
 });
 

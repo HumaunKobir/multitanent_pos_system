@@ -1,29 +1,49 @@
 import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react';
-import { motion } from 'framer-motion';
-import { X } from 'lucide-react';
-import { useState } from 'react';
+import { Link } from '@inertiajs/react';
+import { Layers, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { StoreButton } from '@/components/frontend/store-button';
 import { useAddToCart } from '@/hooks/use-add-to-cart';
+
+function formatPrice(value) {
+    return Number(value).toLocaleString('en-BD', { maximumFractionDigits: 0 });
+}
+
+function variationLabel(variation) {
+    const values = Object.values(variation.variation_data || {});
+
+    return values.length > 0 ? values.join(' / ') : variation.sku || 'Option';
+}
 
 export function VariantModal({ product, open, onClose }) {
     const [selectedVariation, setSelectedVariation] = useState(null);
     const [loading, setLoading] = useState(false);
     const { addToCart } = useAddToCart();
 
+    useEffect(() => {
+        if (!open) {
+            setSelectedVariation(null);
+            return;
+        }
+
+        const firstAvailable = product?.variations?.find((variation) => variation.stock > 0) ?? null;
+        setSelectedVariation(firstAvailable);
+    }, [open, product]);
+
     if (!product) {
         return null;
     }
 
+    const hasVariations = product.variations?.length > 0;
     const effectivePrice = selectedVariation
         ? selectedVariation.price
-        : product.discount_price > 0
-          ? product.discount_price
-          : product.sale_price;
+        : product.price_min ?? product.price;
 
     const handleAdd = async () => {
-        if (product.variations?.length && !selectedVariation) {
+        if (hasVariations && !selectedVariation) {
             return;
         }
+
         setLoading(true);
         try {
             await addToCart({
@@ -38,66 +58,91 @@ export function VariantModal({ product, open, onClose }) {
     };
 
     return (
-        <Dialog open={open} onClose={onClose} className="relative z-[70]">
-            <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className="fixed inset-0 bg-black/50 backdrop-blur-sm"
-                aria-hidden="true"
-            />
-            <div className="fixed inset-0 flex items-end justify-center p-4 sm:items-center">
-                <DialogPanel
-                    as={motion.div}
-                    initial={{ opacity: 0, y: 40 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="w-full max-w-md rounded-t-xl bg-white p-5 shadow-xl sm:rounded-xl"
-                >
-                    <div className="mb-4 flex items-start justify-between gap-3">
-                        <div className="flex gap-3">
-                            {product.image && (
-                                <img
-                                    src={product.image}
-                                    alt={product.name}
-                                    className="size-16 rounded-md object-cover"
-                                />
-                            )}
-                            <div>
-                                <DialogTitle className="text-sm font-semibold text-store-primary">
-                                    {product.name}
-                                </DialogTitle>
-                                <p className="mt-1 text-lg font-bold text-store-accent">৳{effectivePrice}</p>
-                            </div>
+        <Dialog open={open} onClose={onClose} className="relative z-70">
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
+            <div className="fixed inset-0 flex items-end justify-center p-3 sm:items-center sm:p-4">
+                <DialogPanel className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl">
+                    <div className="flex items-start gap-3 border-b border-gray-100 p-4">
+                        {product.image && (
+                            <img src={product.image} alt="" className="size-14 shrink-0 rounded-xl object-cover ring-1 ring-gray-100" />
+                        )}
+                        <div className="min-w-0 flex-1">
+                            <DialogTitle className="line-clamp-2 text-sm font-semibold text-store-primary">
+                                {product.name}
+                            </DialogTitle>
+                            <p className="mt-1 text-base font-bold text-store-accent">
+                                {selectedVariation ? (
+                                    <>৳{formatPrice(effectivePrice)}</>
+                                ) : product.price_min != null && product.price_max != null && product.price_min !== product.price_max ? (
+                                    <>From ৳{formatPrice(product.price_min)}</>
+                                ) : (
+                                    <>৳{formatPrice(effectivePrice)}</>
+                                )}
+                            </p>
                         </div>
-                        <button onClick={onClose} className="rounded-md p-1 text-gray-400 hover:bg-store-surface">
-                            <X className="size-5" />
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="flex size-7 shrink-0 items-center justify-center rounded-full bg-gray-100 text-store-muted"
+                        >
+                            <X className="size-4" />
                         </button>
                     </div>
 
-                    {product.variations?.length > 0 && (
-                        <div className="mb-4">
-                            <p className="mb-2 text-xs font-medium text-store-muted">Select variation</p>
-                            <div className="flex flex-wrap gap-2">
-                                {product.variations.map((v) => (
-                                    <button
-                                        key={v.id}
-                                        onClick={() => setSelectedVariation(v)}
-                                        disabled={v.stock <= 0}
-                                        className={`rounded-md border px-3 py-1.5 text-xs transition-colors ${
-                                            selectedVariation?.id === v.id
-                                                ? 'border-store-accent bg-store-accent text-white'
-                                                : 'border-gray-200 hover:border-store-accent'
-                                        } ${v.stock <= 0 ? 'cursor-not-allowed opacity-40' : ''}`}
-                                    >
-                                        {Object.values(v.variation_data || {}).join(' / ')}
-                                    </button>
-                                ))}
+                    {hasVariations && (
+                        <div className="p-4">
+                            <p className="mb-2 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-store-muted">
+                                <Layers className="size-3 text-store-accent" aria-hidden />
+                                Choose option
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {product.variations.map((variation) => {
+                                    const selected = selectedVariation?.id === variation.id;
+                                    const outOfStock = variation.stock <= 0;
+
+                                    return (
+                                        <button
+                                            key={variation.id}
+                                            type="button"
+                                            onClick={() => setSelectedVariation(variation)}
+                                            disabled={outOfStock}
+                                            className={`rounded-full px-3 py-1.5 text-[11px] font-semibold transition-all ${
+                                                selected
+                                                    ? 'bg-store-primary text-white shadow-sm'
+                                                    : outOfStock
+                                                      ? 'cursor-not-allowed bg-gray-50 text-gray-300 line-through ring-1 ring-gray-100'
+                                                      : 'bg-store-surface text-store-primary ring-1 ring-gray-200 hover:ring-store-accent/50'
+                                            }`}
+                                        >
+                                            {variationLabel(variation)}
+                                            {!outOfStock && (
+                                                <span className={`ml-1 ${selected ? 'text-white/75' : 'text-store-muted'}`}>
+                                                    ৳{formatPrice(variation.price)}
+                                                </span>
+                                            )}
+                                        </button>
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
 
-                    <StoreButton className="w-full" onClick={handleAdd} disabled={loading}>
-                        {loading ? 'Adding...' : 'Add to Cart'}
-                    </StoreButton>
+                    <div className="space-y-2 border-t border-gray-100 p-4">
+                        <StoreButton
+                            className="w-full rounded-full py-2.5 text-xs"
+                            onClick={handleAdd}
+                            disabled={loading || (hasVariations && !selectedVariation)}
+                        >
+                            {loading ? 'Adding…' : hasVariations ? 'Add selected to bag' : 'Add to bag'}
+                        </StoreButton>
+                        <Link
+                            href={`/products/${product.slug}`}
+                            onClick={onClose}
+                            className="block text-center text-[11px] font-medium text-store-muted hover:text-store-accent"
+                        >
+                            View full details
+                        </Link>
+                    </div>
                 </DialogPanel>
             </div>
         </Dialog>

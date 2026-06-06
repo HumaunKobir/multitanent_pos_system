@@ -84,7 +84,7 @@ class HomeController extends Controller
         $section = ProductSection::findOrFail($id);
         $productIds = $section->items ?? [];
 
-        $query = Product::with(['photos'])->withCount('variations')
+        $query = Product::with(['photos', 'variations'])->withCount('variations')
             ->where('status', 1)
             ->where('visible', 'yes')
             ->whereIn('id', $productIds);
@@ -107,7 +107,7 @@ class HomeController extends Controller
 
     public function collectionProducts(string $name, Request $request): Response
     {
-        $query = Product::with(['photos'])->withCount('variations')
+        $query = Product::with(['photos', 'variations'])->withCount('variations')
             ->where('status', 1)
             ->where('visible', 'yes')
             ->whereJsonContains('tags', $name);
@@ -152,7 +152,7 @@ class HomeController extends Controller
 
     private function renderCategoryProducts(Category $category, Request $request): Response
     {
-        $query = Product::with(['photos'])->withCount('variations')
+        $query = Product::with(['photos', 'variations'])->withCount('variations')
             ->where('status', 1)
             ->where('visible', 'yes')
             ->where('category_id', $category->id);
@@ -176,7 +176,7 @@ class HomeController extends Controller
 
     private function renderBrandProducts(Brand $brand, Request $request): Response
     {
-        $query = Product::with(['photos'])->withCount('variations')
+        $query = Product::with(['photos', 'variations'])->withCount('variations')
             ->where('status', 1)
             ->where('visible', 'yes')
             ->where('brand_id', $brand->id);
@@ -196,7 +196,7 @@ class HomeController extends Controller
     public function search(Request $request): Response
     {
         $query = $request->get('q', '');
-        $products = Product::with(['photos'])->withCount('variations')
+        $products = Product::with(['photos', 'variations'])->withCount('variations')
             ->where('status', 1)
             ->where('visible', 'yes')
             ->where(function ($q) use ($query) {
@@ -282,6 +282,8 @@ class HomeController extends Controller
 
     private function formatProduct(Product $product, bool $withDetails = false): array
     {
+        $variationSummary = $this->variationSummary($product);
+
         $data = [
             'id' => $product->id,
             'name' => $product->name,
@@ -293,7 +295,11 @@ class HomeController extends Controller
             'type' => $product->type,
             'tailor_option' => $product->tailor_option,
             'tailor_price' => (float) $product->tailor_price,
-            'has_variations' => ($product->variations_count ?? $product->variations()->count()) > 0,
+            'has_variations' => $variationSummary['variations_count'] > 0,
+            'variations_count' => $variationSummary['variations_count'],
+            'price_min' => $variationSummary['price_min'],
+            'price_max' => $variationSummary['price_max'],
+            'variations' => $variationSummary['variations'],
             'youtube_link' => $product->youtube_link,
         ];
 
@@ -303,13 +309,6 @@ class HomeController extends Controller
                 ->filter()
                 ->values()
                 ->all();
-            $data['variations'] = $product->variations->map(fn ($v) => [
-                'id' => $v->id,
-                'sku' => $v->sku,
-                'price' => (float) $v->price,
-                'stock' => $v->stock,
-                'variation_data' => $v->variation_data,
-            ]);
             $data['description'] = $product->description;
             $data['delivery_info'] = $product->delivery_info;
             $data['youtube_link'] = $product->youtube_link;
@@ -320,6 +319,53 @@ class HomeController extends Controller
         }
 
         return $data;
+    }
+
+    /**
+     * @return array{
+     *     variations: list<array{id: int, sku: ?string, price: float, stock: int, variation_data: array<string, string>}>,
+     *     variations_count: int,
+     *     price_min: ?float,
+     *     price_max: ?float
+     * }
+     */
+    private function variationSummary(Product $product): array
+    {
+        $variations = $product->relationLoaded('variations')
+            ? $product->variations
+            : collect();
+
+        if ($variations->isEmpty()) {
+            return [
+                'variations' => [],
+                'variations_count' => (int) ($product->variations_count ?? 0),
+                'price_min' => null,
+                'price_max' => null,
+            ];
+        }
+
+        $formatted = $variations
+            ->map(fn ($variation): array => [
+                'id' => $variation->id,
+                'sku' => $variation->sku,
+                'price' => (float) $variation->price,
+                'stock' => (int) $variation->stock,
+                'variation_data' => $variation->variation_data ?? [],
+            ])
+            ->values()
+            ->all();
+
+        $prices = collect($formatted)
+            ->pluck('price')
+            ->filter(fn (float $price): bool => $price > 0)
+            ->values();
+
+        return [
+            'variations' => $formatted,
+            'variations_count' => count($formatted),
+            'price_min' => $prices->isEmpty() ? null : (float) $prices->min(),
+            'price_max' => $prices->isEmpty() ? null : (float) $prices->max(),
+        ];
     }
 
     private function resolveDisplayPrice(Product $product): float

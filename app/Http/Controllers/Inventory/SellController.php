@@ -8,6 +8,7 @@ use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Customer;
+use App\Models\Product;
 use App\Models\ProductExchange;
 use App\Models\ProductVariation;
 use App\Models\SaleReturn;
@@ -91,73 +92,83 @@ class SellController extends Controller
         $branchId = Auth::user()?->branch_id;
         $paymentAccountId = $this->resolvePaymentAccountId($request, (float) $data['paid_amount']);
 
-        $sell = DB::transaction(function () use ($data, $branchId, $paymentAccountId) {
-            $grossAmount = 0;
-            $sellProductsData = [];
+        try {
+            $sell = DB::transaction(function () use ($data, $branchId, $paymentAccountId) {
+                $grossAmount = 0;
+                $sellProductsData = [];
 
-            foreach ($data['items'] as $item) {
-                $qty = (float) $item['quantity'];
-                $unitPrice = (float) $item['unit_price'];
-                $productId = (int) $item['product_id'];
-                $variationId = $item['variation_id'] ? (int) $item['variation_id'] : null;
+                foreach ($data['items'] as $item) {
+                    $qty = (float) $item['quantity'];
+                    $unitPrice = (float) $item['unit_price'];
+                    $productId = (int) $item['product_id'];
+                    $variationId = $item['variation_id'] ? (int) $item['variation_id'] : null;
 
-                $batchMap = [];
+                    $batchMap = [];
 
-                if ($variationId) {
-                    $variation = ProductVariation::whereKey($variationId)->lockForUpdate()->firstOrFail();
-                    if ((float) $variation->stock < $qty) {
-                        throw new \RuntimeException('Insufficient stock for variation.');
+                    if ($variationId) {
+                        $variation = ProductVariation::whereKey($variationId)->lockForUpdate()->firstOrFail();
+                        if ((float) $variation->stock < $qty) {
+                            throw new \RuntimeException('Insufficient stock for variation.');
+                        }
+                        $variation->decrement('stock', $qty);
+                    } else {
+                        $batchMap = $this->deductBatchStock($branchId, $productId, $qty);
                     }
-                    $variation->decrement('stock', $qty);
-                } else {
-                    $batchMap = $this->deductBatchStock($branchId, $productId, $qty);
+
+                    $grossAmount += $qty * $unitPrice;
+
+                    $sellProductsData[] = [
+                        'branch_id' => $branchId,
+                        'product_id' => $productId,
+                        'variation_id' => $variationId,
+                        'quantity' => $qty,
+                        'unit_price' => $unitPrice,
+                        'batches' => $batchMap,
+                    ];
                 }
 
-                $grossAmount += $qty * $unitPrice;
+                $vatAmount = $grossAmount * ((float) $data['vat'] / 100);
 
-                $sellProductsData[] = [
+                $sell = Sell::create([
                     'branch_id' => $branchId,
-                    'product_id' => $productId,
-                    'variation_id' => $variationId,
-                    'quantity' => $qty,
-                    'unit_price' => $unitPrice,
-                    'batches' => $batchMap,
-                ];
-            }
+                    'customer_id' => $data['customer_id'] ?? null,
+                    'date' => $data['date'],
+                    'gross_amount' => $grossAmount,
+                    'discount' => $data['discount'],
+                    'vat' => $vatAmount,
+                    'paid_amount' => $data['paid_amount'],
+                    'type' => SaleType::Sale,
+                    'comment' => $data['comment'] ?? null,
+                ]);
 
-            $vatAmount = $grossAmount * ((float) $data['vat'] / 100);
+                foreach ($sellProductsData as $lineItem) {
+                    $sell->products()->create($lineItem);
+                }
 
-            $sell = Sell::create([
-                'branch_id' => $branchId,
-                'customer_id' => $data['customer_id'] ?? null,
-                'date' => $data['date'],
-                'gross_amount' => $grossAmount,
-                'discount' => $data['discount'],
-                'vat' => $vatAmount,
-                'paid_amount' => $data['paid_amount'],
-                'type' => SaleType::Sale,
-                'comment' => $data['comment'] ?? null,
-            ]);
+                $sell->load('products');
+                $dueAmount = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
 
-            foreach ($sellProductsData as $lineItem) {
-                $sell->products()->create($lineItem);
-            }
+                if ($sell->customer_id && $dueAmount > 0) {
+                    Customer::whereKey($sell->customer_id)->increment('balance', $dueAmount);
+                }
 
-            $sell->load('products');
-            $dueAmount = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
+                $this->accounting->postSale(
+                    $sell->fresh(['customer']),
+                    $paymentAccountId,
+                    $this->costService->costForSell($sell),
+                );
 
-            if ($sell->customer_id && $dueAmount > 0) {
-                Customer::whereKey($sell->customer_id)->increment('balance', $dueAmount);
-            }
-
-            $this->accounting->postSale(
-                $sell->fresh(['customer']),
-                $paymentAccountId,
-                $this->costService->costForSell($sell),
-            );
-
-            return $sell;
-        });
+                return $sell;
+            });
+        } catch (\Throwable $e) {
+            return back()
+                ->withErrors([
+                    'items' => $e instanceof \RuntimeException
+                        ? $e->getMessage()
+                        : 'Unable to create sale.',
+                ])
+                ->withInput();
+        }
 
         return redirect()->to(route('inventory.sell.show', $sell).'?pos_print=1')
             ->with('success', 'Sale created successfully.');
@@ -206,11 +217,14 @@ class SellController extends Controller
         $branchId = Auth::user()?->branch_id;
 
         $items = $sell->products->map(function ($sp) use ($branchId) {
+            $product = $sp->product;
+            $stockBranchId = $product?->resolveStockBranchId($branchId);
+
             if ($sp->variation_id) {
                 $availableStock = (float) ($sp->variation?->stock ?? 0);
             } else {
                 $availableStock = (float) Batch::where('product_id', $sp->product_id)
-                    ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+                    ->when($stockBranchId, fn ($q) => $q->where('branch_id', $stockBranchId))
                     ->sum('available');
             }
 
@@ -435,9 +449,12 @@ class SellController extends Controller
     /** @return array<int|string, float> */
     private function deductBatchStock(?int $branchId, int $productId, float $qty): array
     {
+        $product = Product::query()->whereKey($productId)->first(['id', 'branch_id']);
+        $stockBranchId = $product?->resolveStockBranchId($branchId);
+
         $batches = Batch::where('product_id', $productId)
             ->where('available', '>', 0)
-            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->when($stockBranchId, fn ($q) => $q->where('branch_id', $stockBranchId))
             ->oldest()
             ->lockForUpdate()
             ->get();

@@ -1,11 +1,14 @@
 <?php
 
 use App\Models\Batch;
+use App\Models\Branch;
 use App\Models\Product;
 use App\Models\Sell;
 use App\Models\SellProduct;
+use App\Models\Supplier;
 use App\Models\User;
 use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\Models\Permission;
 
 function sellUser(): User
 {
@@ -110,9 +113,84 @@ test('store fails when stock is insufficient', function () {
                 ],
             ],
         ])
-        ->assertServerError();
+        ->assertSessionHasErrors('items');
 
     expect(SellProduct::query()->where('product_id', $product->id)->count())->toBe($sellProductCount);
+});
+
+test('purchase stores stock on product branch and branch user can sell it', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranch = Branch::factory()->create();
+    $targetBranch = Branch::factory()->create();
+    $admin = User::factory()->create(['branch_id' => $mainBranch->id]);
+    Permission::findOrCreate('inventory.purchase.create', 'web');
+    $admin->givePermissionTo('inventory.purchase.create');
+
+    $branchUser = User::factory()->create(['branch_id' => $targetBranch->id]);
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    $branchUser->givePermissionTo('inventory.sell.create');
+
+    $cash = seedAccountingAccounts();
+    $supplier = Supplier::factory()->create(['branch_id' => $mainBranch->id]);
+    $product = Product::factory()->create(['branch_id' => $targetBranch->id]);
+
+    $this->actingAs($admin)
+        ->post('/inventory/purchase', [
+            'supplier_id' => $supplier->id,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '1000',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '1000',
+                    'quantity' => '10',
+                    'free_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase.index'));
+
+    $batch = Batch::query()->where('product_id', $product->id)->first();
+    expect($batch)->not->toBeNull();
+    expect($batch->branch_id)->toBe($targetBranch->id);
+    expect((float) $batch->available)->toBe(10.0);
+
+    $sellResponse = $this->actingAs($branchUser)
+        ->getJson('/api/products/for-sell?search=');
+
+    $sellResponse->assertOk();
+    $match = collect($sellResponse->json())->firstWhere('id', $product->id);
+    expect($match)->not->toBeNull();
+    expect((float) $match['stock'])->toBe(10.0);
+
+    $this->actingAs($branchUser)
+        ->post('/inventory/sell', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '2000',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '1000',
+                    'quantity' => '2',
+                ],
+            ],
+        ])
+        ->assertRedirect();
+
+    $batch->refresh();
+    expect((float) $batch->available)->toBe(8.0);
 });
 
 test('store requires at least one item', function () {

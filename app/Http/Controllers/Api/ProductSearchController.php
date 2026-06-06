@@ -14,7 +14,7 @@ class ProductSearchController extends Controller
     {
         $this->authorize('inventory.purchase.create');
 
-        $products = Product::ownBranch()
+        $products = Product::forPurchase()
             ->active()
             ->with('variations:id,product_id,sku,variation_data,purchase_price,price,stock')
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
@@ -51,32 +51,40 @@ class ProductSearchController extends Controller
         $products = Product::ownBranch()
             ->active()
             ->with([
-                'variations:id,product_id,sku,variation_data,price,stock',
+                'variations:id,product_id,branch_id,sku,variation_data,price,stock',
                 'batches' => fn ($q) => $q->where('available', '>', 0)
-                    ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
-                    ->select(['id', 'product_id', 'available']),
+                    ->select(['id', 'product_id', 'branch_id', 'available']),
             ])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('name', 'like', "%{$s}%")
                     ->orWhere('code', 'like', "%{$s}%");
             }))
             ->limit(15)
-            ->get(['id', 'name', 'code', 'sale_price', 'discount_price', 'image']);
+            ->get(['id', 'name', 'code', 'branch_id', 'sale_price', 'discount_price', 'image']);
 
-        return response()->json($products->map(fn (Product $product) => [
-            'id' => $product->id,
-            'name' => $product->name,
-            'code' => $product->code,
-            'sale_price' => $product->discount_price > 0 ? (float) $product->discount_price : (float) $product->sale_price,
-            'image' => $product->image,
-            'has_variations' => $product->variations->isNotEmpty(),
-            'stock' => (float) $product->batches->sum('available'),
-            'variations' => $product->variations->map(fn ($v) => [
-                'id' => $v->id,
-                'label' => $v->variation_data['label'] ?? $v->sku,
-                'sale_price' => (float) $v->price,
-                'stock' => (float) $v->stock,
-            ]),
-        ]));
+        return response()->json($products->map(function (Product $product) use ($branchId) {
+            $stockBranchId = $product->resolveStockBranchId($branchId);
+
+            return [
+                'id' => $product->id,
+                'name' => $product->name,
+                'code' => $product->code,
+                'sale_price' => $product->discount_price > 0 ? (float) $product->discount_price : (float) $product->sale_price,
+                'image' => $product->image,
+                'has_variations' => $product->variations->isNotEmpty(),
+                'stock' => (float) $product->batches
+                    ->when($stockBranchId !== null, fn ($batches) => $batches->where('branch_id', $stockBranchId))
+                    ->sum('available'),
+                'variations' => $product->variations
+                    ->when($stockBranchId !== null, fn ($variations) => $variations->where('branch_id', $stockBranchId))
+                    ->map(fn ($v) => [
+                        'id' => $v->id,
+                        'label' => $v->variation_data['label'] ?? $v->sku,
+                        'sale_price' => (float) $v->price,
+                        'stock' => (float) $v->stock,
+                    ])
+                    ->values(),
+            ];
+        }));
     }
 }

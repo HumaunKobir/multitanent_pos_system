@@ -7,6 +7,7 @@ use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
 use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
+use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Models\Purchase;
 use App\Models\PurchaseReturn;
@@ -86,6 +87,10 @@ class PurchaseController extends Controller
         DB::transaction(function () use ($data, $branchId, $paymentAccountId) {
             $grossAmount = 0;
             $purchaseProductsData = [];
+            $productsById = Product::query()
+                ->whereIn('id', collect($data['items'])->pluck('product_id'))
+                ->get(['id', 'branch_id'])
+                ->keyBy('id');
 
             foreach ($data['items'] as $item) {
                 $qty = (float) $item['quantity'];
@@ -95,13 +100,14 @@ class PurchaseController extends Controller
                 $serial = $item['serial'] ?? null;
                 $productId = $item['product_id'];
                 $variationId = $item['variation_id'] ?? null;
+                $stockBranchId = $productsById[$productId]->resolveStockBranchId($branchId);
 
                 $batchMap = [];
 
                 // Batch for free quantity (price = 0)
                 if ($freeQty > 0) {
                     $freeBatch = $this->createOrUpdateBatch(
-                        $branchId, $productId, 0, $expiryDate, $serial, $freeQty
+                        $stockBranchId, $productId, 0, $expiryDate, $serial, $freeQty
                     );
                     $freeBatch->inStock((int) $freeQty);
                     $batchMap[$freeBatch->id] = $freeQty;
@@ -109,7 +115,7 @@ class PurchaseController extends Controller
 
                 // Batch for paid quantity
                 $paidBatch = $this->createOrUpdateBatch(
-                    $branchId, $productId, $unitPrice, $expiryDate, $serial, $qty
+                    $stockBranchId, $productId, $unitPrice, $expiryDate, $serial, $qty
                 );
                 $paidBatch->inStock((int) $qty);
 
@@ -369,6 +375,10 @@ class PurchaseController extends Controller
 
                 $grossAmount = 0;
                 $purchaseProductsData = [];
+                $productsById = Product::query()
+                    ->whereIn('id', collect($data['items'])->pluck('product_id'))
+                    ->get(['id', 'branch_id'])
+                    ->keyBy('id');
 
                 foreach ($data['items'] as $item) {
                     $qty = (float) $item['quantity'];
@@ -378,12 +388,13 @@ class PurchaseController extends Controller
                     $serial = $item['serial'] ?? null;
                     $productId = (int) $item['product_id'];
                     $variationId = $item['variation_id'] ? (int) $item['variation_id'] : null;
+                    $stockBranchId = $productsById[$productId]->resolveStockBranchId($branchId);
 
                     $batchMap = [];
 
                     if ($freeQty > 0) {
                         $freeBatch = $this->createOrUpdateBatch(
-                            $branchId,
+                            $stockBranchId,
                             $productId,
                             0,
                             $expiryDate,
@@ -395,7 +406,7 @@ class PurchaseController extends Controller
                     }
 
                     $paidBatch = $this->createOrUpdateBatch(
-                        $branchId,
+                        $stockBranchId,
                         $productId,
                         $unitPrice,
                         $expiryDate,

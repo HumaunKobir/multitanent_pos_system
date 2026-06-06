@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
 class Product extends Model
@@ -67,6 +68,17 @@ class Product extends Model
         return $query->where('branch_id', $branchId);
     }
 
+    public function scopeForPurchase(Builder $query): Builder
+    {
+        $branchId = Auth::user()?->branch_id;
+
+        if ($branchId === null || Branch::isMainBranch($branchId)) {
+            return $query;
+        }
+
+        return $query->where('branch_id', $branchId);
+    }
+
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
@@ -105,6 +117,11 @@ class Product extends Model
     public function batches(): HasMany
     {
         return $this->hasMany(Batch::class);
+    }
+
+    public function resolveStockBranchId(?int $actingBranchId = null): ?int
+    {
+        return $this->branch_id ?? $actingBranchId;
     }
 
     public function purchaseProducts(): HasMany

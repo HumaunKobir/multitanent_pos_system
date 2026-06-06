@@ -15,6 +15,7 @@ use App\Models\Variation;
 use App\Models\Warranty;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
@@ -27,10 +28,13 @@ class ProductController extends Controller
     {
         $this->authorize('product.view');
 
+        $branchId = Auth::user()?->branch_id;
+
         $products = Product::ownBranch()
+            ->active()
             ->with(['category', 'brand'])
-            ->withSum('variations', 'stock')
-            ->withSum('batches', 'available')
+            ->withSum(['variations as variations_sum_stock' => fn ($q) => $q->when($branchId, fn ($q) => $q->where('branch_id', $branchId))], 'stock')
+            ->withSum(['batches as batches_sum_available' => fn ($q) => $q->when($branchId, fn ($q) => $q->where('branch_id', $branchId))], 'available')
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('name', 'like', "%{$s}%")
                     ->orWhere('code', 'like', "%{$s}%");

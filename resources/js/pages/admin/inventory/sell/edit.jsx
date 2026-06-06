@@ -1,4 +1,4 @@
-import { formatQty } from '@/components/inventory/inventory-form';
+import { clampQuantityInput } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
@@ -450,21 +450,33 @@ export default function SellEdit({ sell, paymentAccounts = [] }) {
     const netAmount = grossAmount + vatAmount - parseFloat(form.data.discount || 0);
     const dueAmount = Math.max(0, netAmount - parseFloat(form.data.paid_amount || 0));
 
+    const dueAmount = Math.max(0, netAmount - parseFloat(form.data.paid_amount || 0));
+    const hasOverStock = items.some((item) => parseFloat(item.quantity || 0) > parseFloat(item.available_stock ?? 0));
+
     function addItem(item) {
         const duplicate = items.find(
             (it) => it.product_id === item.product_id && String(it.variation_id) === String(item.variation_id),
         );
         if (duplicate) {
             setItems((prev) =>
-                prev.map((it) =>
-                    it.product_id === item.product_id && String(it.variation_id) === String(item.variation_id)
-                        ? { ...it, quantity: parseFloat(it.quantity) + 1 }
-                        : it,
-                ),
+                prev.map((it) => {
+                    if (it.product_id !== item.product_id || String(it.variation_id) !== String(item.variation_id)) {
+                        return it;
+                    }
+
+                    const maxStock = parseFloat(it.available_stock ?? 0);
+                    const nextQty = Math.min(parseFloat(it.quantity) + 1, maxStock);
+
+                    return { ...it, quantity: nextQty > 0 ? nextQty : it.quantity };
+                }),
             );
             return;
         }
-        setItems((prev) => [...prev, item]);
+        const maxStock = parseFloat(item.available_stock ?? 0);
+        if (maxStock <= 0) {
+            return;
+        }
+        setItems((prev) => [...prev, { ...item, quantity: 1 }]);
     }
 
     function updateItem(index, field, value) {
@@ -568,7 +580,7 @@ export default function SellEdit({ sell, paymentAccounts = [] }) {
                                         {items.map((item, i) => {
                                             const qty = parseInt(item.quantity || 0, 10);
                                             const stock = parseFloat(item.available_stock ?? 0);
-                                            const remaining = stock - qty;
+                                            const remaining = Math.max(0, stock - qty);
                                             const overStock = item.available_stock !== null && item.available_stock !== undefined && qty > stock;
                                             const subTotal = qty * parseFloat(item.unit_price || 0);
                                             return (
@@ -596,7 +608,13 @@ export default function SellEdit({ sell, paymentAccounts = [] }) {
                                                             min="1"
                                                             step="1"
                                                             value={item.quantity}
-                                                            onChange={(e) => updateItem(i, 'quantity', formatQty(e.target.value))}
+                                                            onChange={(e) =>
+                                                                updateItem(
+                                                                    i,
+                                                                    'quantity',
+                                                                    clampQuantityInput(e.target.value, item.available_stock),
+                                                                )
+                                                            }
                                                             className={`${inputCls} w-full text-right ${overStock ? 'border-destructive' : ''}`}
                                                         />
                                                     </td>
@@ -732,7 +750,7 @@ export default function SellEdit({ sell, paymentAccounts = [] }) {
                         <Button
                             type="submit"
                             size="sm"
-                            disabled={form.processing || items.length === 0}
+                            disabled={form.processing || items.length === 0 || hasOverStock}
                             className="bg-emerald-600 text-white shadow-sm shadow-emerald-500/30 transition-all duration-150 hover:-translate-y-0.5 hover:bg-emerald-600 hover:shadow-md hover:shadow-emerald-500/50"
                         >
                             <Save className="size-3.5" />

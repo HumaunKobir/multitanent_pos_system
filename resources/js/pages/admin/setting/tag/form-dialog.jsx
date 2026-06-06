@@ -27,16 +27,6 @@ function resolveParentId(parentId) {
     return String(parentId);
 }
 
-function FormField({ label, name, error, children }) {
-    return (
-        <div>
-            <Label htmlFor={name}>{label}</Label>
-            {children}
-            {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
-        </div>
-    );
-}
-
 export default function TagFormDialog({ open, onOpenChange, item, routes, parentOptions, statusOptions }) {
     const isEditing = !!item?.id;
 

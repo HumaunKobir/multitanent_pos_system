@@ -22,7 +22,7 @@ return [
         [
             'title' => 'Dashboard',
             'icon' => 'layout-dashboard',
-            'href' => '/admin',
+            'href' => '/dashboard',
             'single' => true,
             'permission' => null,
         ],

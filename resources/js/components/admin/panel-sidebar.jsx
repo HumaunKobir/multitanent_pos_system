@@ -141,7 +141,15 @@ export function PanelSidebar() {
                         const SectionIcon = iconMap[section.icon] ?? LayoutDashboard;
 
                         if (section.single) {
-                            const active = section.href ? isCurrentUrl(section.href) : false;
+                            const dashboardPaths =
+                                panelType === 'branch'
+                                    ? ['/branch-panel']
+                                    : ['/dashboard', '/admin'];
+                            const active = section.href
+                                ? isCurrentUrl(section.href) ||
+                                  (section.title === 'Dashboard' &&
+                                      dashboardPaths.some((path) => isCurrentUrl(path)))
+                                : false;
                             return (
                                 <li key={section.title}>
                                     <NavItem href={section.href} className={navLinkClass(active)} active={active}>

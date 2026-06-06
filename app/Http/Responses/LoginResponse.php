@@ -14,7 +14,7 @@ class LoginResponse implements LoginResponseContract
 
         $redirect = $user?->isBranchUser()
             ? route('branch-panel.dashboard')
-            : route('admin.dashboard');
+            : route('dashboard');
 
         return $request->wantsJson()
             ? new JsonResponse(['two_factor' => false], 200)

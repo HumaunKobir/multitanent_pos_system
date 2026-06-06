@@ -15,7 +15,7 @@ test('authenticated users see the full navigation tree', function () {
 
     $navigation = app(AdminNavigation::class)->build($user);
 
-    expect($navigation)->toHaveCount(9)
+    expect($navigation)->toHaveCount(10)
         ->and(collect($navigation)->pluck('title'))->toContain(
             'Dashboard',
             'Branch',
@@ -55,10 +55,10 @@ test('authenticated admin dashboard shares navigation', function () {
     $user = User::factory()->create();
 
     $this->actingAs($user)
-        ->get('/admin')
+        ->get(route('dashboard'))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/dashboard')
-            ->has('adminNavigation', 9)
+            ->has('adminNavigation', 10)
             ->where('adminNavigation.0.title', 'Dashboard'));
 });

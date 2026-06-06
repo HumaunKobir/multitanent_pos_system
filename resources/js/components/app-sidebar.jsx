@@ -25,7 +25,7 @@ const mainNavItems = [
     },
     {
         title: 'Admin',
-        href: route('admin.dashboard'),
+        href: route('dashboard'),
         icon: Shield,
         activeMatch: 'prefix',
     },

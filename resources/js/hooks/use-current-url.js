@@ -5,10 +5,24 @@ export function useCurrentUrl() {
     const currentUrlPath = new URL(page.url, typeof window !== 'undefined'
         ? window.location.origin
         : 'http://localhost').pathname;
+    const normalizePath = (path) => {
+        if (!path) {
+            return '/';
+        }
+
+        const trimmed = path.replace(/\/+$/, '');
+
+        return trimmed === '' ? '/' : trimmed;
+    };
+
     const isCurrentUrl = (urlToCheck, currentUrl, startsWith = false) => {
-        const urlToCompare = currentUrl ?? currentUrlPath;
+        const urlToCompare = normalizePath(currentUrl ?? currentUrlPath);
         const urlString = toUrl(urlToCheck);
-        const comparePath = (path) => startsWith ? urlToCompare.startsWith(path) : path === urlToCompare;
+        const comparePath = (path) => {
+            const normalized = normalizePath(path);
+
+            return startsWith ? urlToCompare.startsWith(normalized) : normalized === urlToCompare;
+        };
 
         if (!urlString.startsWith('http')) {
             return comparePath(urlString);

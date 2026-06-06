@@ -33,8 +33,12 @@ use App\Http\Controllers\UserController;
 use App\Http\Controllers\VariationController;
 use Illuminate\Support\Facades\Route;
 
-Route::middleware(['auth', 'verified', 'superadmin'])->prefix('admin')->name('admin.')->group(function () {
-    Route::inertia('/', 'admin/dashboard')->name('dashboard');
+Route::middleware(['auth', 'verified'])->get('/admin', function () {
+    if (auth()->user()?->isBranchUser()) {
+        return redirect()->route('branch-panel.dashboard');
+    }
+
+    return redirect()->route('dashboard');
 });
 
 Route::middleware(['auth', 'verified', 'superadmin'])->group(function () {

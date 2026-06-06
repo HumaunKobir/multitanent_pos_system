@@ -22,14 +22,13 @@ test('authenticated users see the full admin navigation on dashboard', function 
     $this->actingAs($user)
         ->get(route('dashboard'))
         ->assertOk()
-        ->assertInertia(fn ($page) => $page->has('adminNavigation', 9));
+        ->assertInertia(fn ($page) => $page->has('adminNavigation', 10));
 });
 
-test('admin route still accessible after login', function () {
+test('legacy admin url redirects to dashboard', function () {
     $user = User::factory()->create();
 
     $this->actingAs($user)
         ->get('/admin')
-        ->assertOk()
-        ->assertInertia(fn ($page) => $page->component('admin/dashboard'));
+        ->assertRedirect(route('dashboard'));
 });

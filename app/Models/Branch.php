@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\CommonStatus;
+use Database\Factories\BranchFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -10,8 +11,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Branch extends Model
 {
-    /** @use HasFactory<\Database\Factories\BranchFactory> */
+    /** @use HasFactory<BranchFactory> */
     use HasFactory;
+
+    public const int MAIN_BRANCH_ID = 1;
 
     protected $fillable = ['name', 'phone', 'address', 'status'];
 
@@ -22,6 +25,16 @@ class Branch extends Model
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('status', CommonStatus::Active);
+    }
+
+    public function scopeOperating(Builder $query): Builder
+    {
+        return $query->where('id', '!=', self::MAIN_BRANCH_ID);
+    }
+
+    public static function isMainBranch(?int $branchId): bool
+    {
+        return $branchId === self::MAIN_BRANCH_ID;
     }
 
     public function users(): HasMany

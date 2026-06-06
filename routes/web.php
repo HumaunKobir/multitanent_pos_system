@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\AdminDashboardController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\Customer\Auth\CustomerLoginController;
@@ -70,12 +71,6 @@ Route::prefix('customer')->name('customer.')->group(function () {
     });
 });
 
-Route::middleware(['auth', 'verified'])->get('/dashboard', function () {
-    $user = auth()->user();
-
-    if ($user?->isBranchUser()) {
-        return redirect()->route('branch-panel.dashboard');
-    }
-
-    return redirect()->route('admin.dashboard');
-})->name('dashboard');
+Route::middleware(['auth', 'verified', 'superadmin'])
+    ->get('/dashboard', AdminDashboardController::class)
+    ->name('dashboard');

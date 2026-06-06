@@ -95,8 +95,8 @@ class AdminNavigation
     {
         if ($section['title'] === 'Dashboard') {
             return $user->isBranchUser()
-                ? '/branch-panel'
-                : '/admin';
+                ? route('branch-panel.dashboard')
+                : route('dashboard');
         }
 
         return $section['href'] ?? null;

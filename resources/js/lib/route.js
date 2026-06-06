@@ -1,7 +1,7 @@
 const routes = {
     home: '/',
     dashboard: '/dashboard',
-    'admin.dashboard': '/admin',
+    'admin.dashboard': '/dashboard',
     'branch-panel.dashboard': '/branch-panel',
     login: '/login',
     register: '/register',

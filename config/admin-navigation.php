@@ -97,6 +97,14 @@ return [
             'permission' => null,
         ],
         [
+            'title' => 'Subscribers',
+            'icon' => 'mail',
+            'href' => '/subscriber-list',
+            'single' => true,
+            'ecommerce_only' => true,
+            'permission' => null,
+        ],
+        [
             'title' => 'Settings',
             'icon' => 'settings',
             'children' => [

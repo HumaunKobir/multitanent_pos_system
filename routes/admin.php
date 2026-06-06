@@ -30,6 +30,7 @@ use App\Http\Controllers\Setting\SliderController;
 use App\Http\Controllers\Setting\TagController;
 use App\Http\Controllers\Setting\UnitController;
 use App\Http\Controllers\Setting\WarrantyController;
+use App\Http\Controllers\SubscriberListController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VariationController;
 use Illuminate\Support\Facades\Route;
@@ -53,6 +54,8 @@ Route::middleware(['auth', 'verified', 'superadmin'])->group(function () {
 Route::middleware(['auth', 'verified', 'ecommerce.panel'])->group(function () {
     Route::get('contact-list', [ContactListController::class, 'index'])->name('contact-list.index');
     Route::delete('contact-list/{contact}', [ContactListController::class, 'destroy'])->name('contact-list.destroy');
+    Route::get('subscriber-list', [SubscriberListController::class, 'index'])->name('subscriber-list.index');
+    Route::delete('subscriber-list/{subscriber}', [SubscriberListController::class, 'destroy'])->name('subscriber-list.destroy');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {

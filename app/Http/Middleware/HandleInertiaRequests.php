@@ -107,6 +107,13 @@ class HandleInertiaRequests extends Middleware
                 'twitter' => ConfigDictionary::get('twit'),
                 'linkedin' => ConfigDictionary::get('linkend'),
             ],
+            'newsletter' => [
+                'enabled' => filter_var(ConfigDictionary::get('newsletter_enabled', '1'), FILTER_VALIDATE_BOOLEAN),
+                'title' => ConfigDictionary::get('newsletter_title', 'Sign Up For Newsletter'),
+                'description' => ConfigDictionary::get('newsletter_description', ''),
+                'placeholder' => ConfigDictionary::get('newsletter_placeholder', 'Your Email Address...'),
+                'button' => ConfigDictionary::get('newsletter_button', 'Subscribe'),
+            ],
             'flash' => [
                 'success' => $request->session()->get('success'),
                 'error' => $request->session()->get('error'),

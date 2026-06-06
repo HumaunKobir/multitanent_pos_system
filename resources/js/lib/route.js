@@ -73,6 +73,9 @@ const routes = {
     'role.permissions.update': '/role/:role/permissions',
     'contact-list.index': '/contact-list',
     'contact-list.destroy': '/contact-list/:contact',
+    'subscriber-list.index': '/subscriber-list',
+    'subscriber-list.destroy': '/subscriber-list/:subscriber',
+    'subscribe.store': '/subscribe',
     'product.index': '/product',
     'product.create': '/product/create',
     'product.store': '/product',
@@ -277,6 +280,8 @@ const methods = {
     'accounts.vouchers.update': 'put',
     'accounts.vouchers.destroy': 'delete',
     'contact-list.destroy': 'delete',
+    'subscriber-list.destroy': 'delete',
+    'subscribe.store': 'post',
 };
 
 const aliases = {

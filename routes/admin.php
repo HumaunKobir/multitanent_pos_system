@@ -127,9 +127,13 @@ Route::middleware(['auth', 'verified'])->prefix('report')->name('report.')->grou
 });
 
 Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->group(function () {
-    Route::resource('category', CategoryController::class)->except(['create', 'edit']);
+    Route::resource('category', CategoryController::class)
+        ->except(['create', 'edit'])
+        ->parameters(['category' => 'category:id']);
     Route::resource('tag', TagController::class)->except(['create', 'edit']);
-    Route::resource('brand', BrandController::class)->except(['create', 'edit']);
+    Route::resource('brand', BrandController::class)
+        ->except(['create', 'edit'])
+        ->parameters(['brand' => 'brand:id']);
     Route::resource('unit', UnitController::class)->except(['create', 'edit']);
     Route::resource('warranty', WarrantyController::class)->except(['create', 'edit']);
     Route::resource('slider', SliderController::class)->except(['create', 'edit', 'show']);

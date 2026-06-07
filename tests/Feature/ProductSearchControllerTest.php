@@ -2,6 +2,7 @@
 
 use App\Models\Batch;
 use App\Models\Branch;
+use App\Models\Category;
 use App\Models\Product;
 use App\Models\User;
 use Spatie\Permission\Models\Permission;
@@ -83,6 +84,74 @@ test('operating branch user only sees their own products in purchase search', fu
 
     expect($ids)->toContain($ownProduct->id);
     expect($ids)->not->toContain($otherProduct->id);
+});
+
+test('sell search can filter products by category', function () {
+    $this->artisan('permissions:sync');
+
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    $mainUser = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    $mainUser->givePermissionTo('inventory.sell.create');
+
+    $categoryA = Category::factory()->create(['name' => 'Electronics '.fake()->unique()->numerify('###')]);
+    $categoryB = Category::factory()->create(['name' => 'Groceries '.fake()->unique()->numerify('###')]);
+
+    $productA = Product::factory()->create([
+        'category_id' => $categoryA->id,
+        'name' => 'Category A Product '.fake()->unique()->numerify('###'),
+    ]);
+    $productB = Product::factory()->create([
+        'category_id' => $categoryB->id,
+        'name' => 'Category B Product '.fake()->unique()->numerify('###'),
+    ]);
+
+    Batch::factory()->for($productA)->withStock(5)->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    Batch::factory()->for($productB)->withStock(5)->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+
+    $response = $this->actingAs($mainUser)
+        ->getJson('/api/products/for-sell?category_id='.$categoryA->id);
+
+    $response->assertOk();
+
+    $ids = collect($response->json())->pluck('id');
+
+    expect($ids)->toContain($productA->id);
+    expect($ids)->not->toContain($productB->id);
+
+    $match = collect($response->json())->firstWhere('id', $productA->id);
+
+    expect($match['category_id'])->toBe($categoryA->id);
+    expect($match['category_name'])->toBe($categoryA->name);
+});
+
+test('sell browse returns products when no search or category filter', function () {
+    $this->artisan('permissions:sync');
+
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    $mainUser = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    $mainUser->givePermissionTo('inventory.sell.create');
+
+    $product = Product::factory()->create([
+        'name' => 'Browse All Product '.fake()->unique()->numerify('###'),
+    ]);
+    Batch::factory()->for($product)->withStock(8)->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+
+    $response = $this->actingAs($mainUser)
+        ->getJson('/api/products/for-sell');
+
+    $response->assertOk();
+
+    expect(collect($response->json())->pluck('id'))->toContain($product->id);
 });
 
 test('main branch user can find products with main branch stock in sell search', function () {

@@ -93,7 +93,7 @@ class ProductExchangeController extends Controller
                     ->lockForUpdate()
                     ->findOrFail($data['sell_id']);
 
-                if ((float) $parent->discount > 0) {
+                if ($parent->hasAnyDiscount()) {
                     throw new \RuntimeException('Sales with a discount cannot be exchanged.');
                 }
 
@@ -247,7 +247,7 @@ class ProductExchangeController extends Controller
 
         $parent = $productExchange->sell;
 
-        if (! $parent || (float) $parent->discount > 0) {
+        if (! $parent || $parent->hasAnyDiscount()) {
             abort(403, 'This exchange cannot be edited.');
         }
 
@@ -321,7 +321,7 @@ class ProductExchangeController extends Controller
                     ->lockForUpdate()
                     ->findOrFail($productExchange->sell_id);
 
-                if ((float) $parent->discount > 0) {
+                if ($parent->hasAnyDiscount()) {
                     throw new \RuntimeException('Sales with a discount cannot be exchanged.');
                 }
 

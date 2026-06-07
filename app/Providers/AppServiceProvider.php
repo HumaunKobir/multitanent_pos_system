@@ -29,6 +29,7 @@ class AppServiceProvider extends ServiceProvider
     {
         Schema::defaultStringLength(191);
         $this->configureDefaults();
+        $this->ensurePublicUploadDirectories();
 
         Gate::before(function (User $user, string $ability): ?bool {
             if ($user->isSuperAdmin()) {
@@ -59,5 +60,16 @@ class AppServiceProvider extends ServiceProvider
                 ->uncompromised()
             : null,
         );
+    }
+
+    protected function ensurePublicUploadDirectories(): void
+    {
+        foreach (['categories', 'brands', 'tags', 'sliders', 'products', 'website'] as $directory) {
+            $path = storage_path('app/public/'.$directory);
+
+            if (! is_dir($path)) {
+                mkdir($path, 0775, true);
+            }
+        }
     }
 }

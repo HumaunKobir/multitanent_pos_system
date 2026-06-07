@@ -99,9 +99,9 @@ export default function SettingFormDialog({ open, onOpenChange, title, item, rou
                                 </div>
                             ) : field.type === 'file' ? (
                                 <>
-                                    {isEditing && item?.[field.name] && (
+                                    {isEditing && (item?.image_url || item?.[field.name]) && (
                                         <div className="mt-1 mb-2">
-                                            <img src={`/storage/${item[field.name]}`} alt="Current" className="h-16 w-16 rounded object-cover" />
+                                            <img src={item.image_url ?? `/storage/${item[field.name]}`} alt="Current" className="h-16 w-16 rounded object-cover" />
                                             <p className="mt-1 text-xs text-muted-foreground">Upload a new image to replace the current one.</p>
                                         </div>
                                     )}

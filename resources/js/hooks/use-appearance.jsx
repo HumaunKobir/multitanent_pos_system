@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from 'react';
 const listeners = new Set();
-let currentAppearance = 'system';
+let currentAppearance = 'light';
 const prefersDark = () => {
     if (typeof window === 'undefined') {
         return false;
@@ -18,10 +18,10 @@ const setCookie = (name, value, days = 365) => {
 };
 const getStoredAppearance = () => {
     if (typeof window === 'undefined') {
-        return 'system';
+        return 'light';
     }
 
-    return localStorage.getItem('appearance') || 'system';
+    return localStorage.getItem('appearance') || 'light';
 };
 const isDarkMode = (appearance) => {
     return appearance === 'dark' || (appearance === 'system' && prefersDark());
@@ -55,8 +55,8 @@ export function initializeTheme() {
     }
 
     if (!localStorage.getItem('appearance')) {
-        localStorage.setItem('appearance', 'system');
-        setCookie('appearance', 'system');
+        localStorage.setItem('appearance', 'light');
+        setCookie('appearance', 'light');
     }
 
     currentAppearance = getStoredAppearance();
@@ -65,7 +65,7 @@ export function initializeTheme() {
     mediaQuery()?.addEventListener('change', handleSystemThemeChange);
 }
 export function useAppearance() {
-    const appearance = useSyncExternalStore(subscribe, () => currentAppearance, () => 'system');
+    const appearance = useSyncExternalStore(subscribe, () => currentAppearance, () => 'light');
     const resolvedAppearance = isDarkMode(appearance)
         ? 'dark'
         : 'light';

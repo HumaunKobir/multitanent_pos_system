@@ -2,17 +2,19 @@
 
 namespace App\Http\Controllers\Setting;
 
+use App\Concerns\StoresPublicImages;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class CategoryController extends Controller
 {
+    use StoresPublicImages;
+
     public function index(Request $request): Response
     {
         $this->authorize('setting.category.view');
@@ -21,7 +23,15 @@ class CategoryController extends Controller
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->latest()
             ->paginate(20)
-            ->withQueryString();
+            ->withQueryString()
+            ->through(fn (Category $category): array => [
+                'id' => $category->id,
+                'name' => $category->name,
+                'slug' => $category->slug,
+                'status' => $category->status,
+                'image' => $this->isStoredPublicImage($category->image) ? $category->image : null,
+                'image_url' => $this->publicImageUrl($category->image),
+            ]);
 
         return Inertia::render('admin/setting/category/index', [
             'categories' => $categories,
@@ -39,8 +49,8 @@ class CategoryController extends Controller
             'status' => ['required', 'in:0,1'],
         ]);
 
-        if ($request->hasFile('image')) {
-            $data['image'] = $request->file('image')->store('categories', 'public');
+        if ($storedImage = $this->storePublicImage($request, 'image', 'categories')) {
+            $data['image'] = $storedImage;
         }
 
         $category = Category::create($data);
@@ -63,11 +73,9 @@ class CategoryController extends Controller
             'status' => ['required', 'in:0,1'],
         ]);
 
-        if ($request->hasFile('image')) {
-            if ($category->image) {
-                Storage::disk('public')->delete($category->image);
-            }
-            $data['image'] = $request->file('image')->store('categories', 'public');
+        if ($storedImage = $this->storePublicImage($request, 'image', 'categories')) {
+            $this->deletePublicImage($this->isStoredPublicImage($category->image) ? $category->image : null);
+            $data['image'] = $storedImage;
         } else {
             unset($data['image']);
         }
@@ -82,9 +90,7 @@ class CategoryController extends Controller
     {
         $this->authorize('setting.category.delete');
 
-        if ($category->image) {
-            Storage::disk('public')->delete($category->image);
-        }
+        $this->deletePublicImage($this->isStoredPublicImage($category->image) ? $category->image : null);
 
         $category->delete();
 

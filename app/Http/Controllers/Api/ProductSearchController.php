@@ -5,9 +5,11 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\Product;
+use App\Support\StorageUrl;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class ProductSearchController extends Controller
 {
@@ -47,11 +49,19 @@ class ProductSearchController extends Controller
     {
         $this->authorize('inventory.sell.create');
 
+        $request->validate([
+            'category_id' => ['nullable', 'integer', Rule::exists('categories', 'id')],
+        ]);
+
         $branchId = Auth::user()?->branch_id;
+        $hasSearch = filled($request->search);
+
+        $limit = $hasSearch ? 15 : 48;
 
         $products = Product::forPurchase()
             ->active()
             ->with([
+                'category:id,name',
                 'variations:id,product_id,branch_id,sku,variation_data,price,stock',
                 'batches' => fn ($q) => $q->where('available', '>', 0)
                     ->select(['id', 'product_id', 'branch_id', 'available']),
@@ -60,8 +70,9 @@ class ProductSearchController extends Controller
                 $q->where('name', 'like', "%{$s}%")
                     ->orWhere('code', 'like', "%{$s}%");
             }))
-            ->limit(15)
-            ->get(['id', 'name', 'code', 'branch_id', 'sale_price', 'discount_price', 'image']);
+            ->when($request->category_id, fn ($q, $id) => $q->where('category_id', $id))
+            ->limit($limit)
+            ->get(['id', 'name', 'code', 'category_id', 'branch_id', 'sale_price', 'discount_price', 'image']);
 
         return response()->json($products->map(function (Product $product) use ($branchId) {
             $branchVariations = $product->variations
@@ -73,8 +84,10 @@ class ProductSearchController extends Controller
                 'id' => $product->id,
                 'name' => $product->name,
                 'code' => $product->code,
+                'category_id' => $product->category_id,
+                'category_name' => $product->category?->name,
                 'sale_price' => $product->discount_price > 0 ? (float) $product->discount_price : (float) $product->sale_price,
-                'image' => $product->image,
+                'image' => StorageUrl::public($product->image),
                 'has_variations' => $branchVariations->isNotEmpty(),
                 'stock' => (float) $product->batches
                     ->when($branchId !== null, fn ($batches) => $batches->filter(

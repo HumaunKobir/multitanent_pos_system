@@ -131,8 +131,8 @@ export default function TagIndex({ tags, filters, parentOptions, statusOptions, 
             id: 'image',
             header: 'Image',
             render: (row) =>
-                row.image ? (
-                    <img src={`/storage/${row.image}`} alt={row.name} className="h-8 w-8 rounded-none object-cover" />
+                row.image_url ? (
+                    <img src={row.image_url} alt={row.name} className="h-8 w-8 rounded-none object-cover" />
                 ) : (
                     <span className="text-xs text-muted-foreground">—</span>
                 ),

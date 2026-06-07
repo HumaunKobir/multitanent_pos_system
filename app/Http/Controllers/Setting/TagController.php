@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Setting;
 
+use App\Concerns\StoresPublicImages;
 use App\Enums\CommonStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Tag;
@@ -9,13 +10,14 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class TagController extends Controller
 {
+    use StoresPublicImages;
+
     public function index(Request $request): Response
     {
         $this->authorize('setting.tag.view');
@@ -31,7 +33,8 @@ class TagController extends Controller
                 'id' => $tag->id,
                 'parent_id' => $tag->parent_id,
                 'name' => $tag->name,
-                'image' => $tag->image,
+                'image' => $this->isStoredPublicImage($tag->image) ? $tag->image : null,
+                'image_url' => $this->publicImageUrl($tag->image),
                 'status' => $tag->status->value,
                 'status_label' => $tag->status->name,
                 'parent' => $tag->parent ? [
@@ -55,8 +58,8 @@ class TagController extends Controller
 
         $data = $this->validatedData($request);
 
-        if ($request->hasFile('image')) {
-            $data['image'] = $request->file('image')->store('tags', 'public');
+        if ($storedImage = $this->storePublicImage($request, 'image', 'tags')) {
+            $data['image'] = $storedImage;
         }
 
         $tag = Tag::create($data);
@@ -76,11 +79,9 @@ class TagController extends Controller
         $tag = $this->resolveTag($tag);
         $data = $this->validatedData($request, $tag);
 
-        if ($request->hasFile('image')) {
-            if ($tag->image) {
-                Storage::disk('public')->delete($tag->image);
-            }
-            $data['image'] = $request->file('image')->store('tags', 'public');
+        if ($storedImage = $this->storePublicImage($request, 'image', 'tags')) {
+            $this->deletePublicImage($this->isStoredPublicImage($tag->image) ? $tag->image : null);
+            $data['image'] = $storedImage;
         } else {
             unset($data['image']);
         }
@@ -102,9 +103,7 @@ class TagController extends Controller
                 ->with('error', 'Cannot delete a tag that has child tags.');
         }
 
-        if ($tag->image) {
-            Storage::disk('public')->delete($tag->image);
-        }
+        $this->deletePublicImage($this->isStoredPublicImage($tag->image) ? $tag->image : null);
 
         $tag->delete();
 

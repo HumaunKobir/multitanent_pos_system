@@ -92,7 +92,7 @@ class SaleReturnController extends Controller
                     ->lockForUpdate()
                     ->findOrFail($data['sell_id']);
 
-                if ((float) $parent->discount > 0) {
+                if ($parent->hasAnyDiscount()) {
                     throw new \RuntimeException('Sales with a discount cannot be returned.');
                 }
 
@@ -222,7 +222,7 @@ class SaleReturnController extends Controller
             ->with(['products.product'])
             ->findOrFail($saleReturn->sell_id);
 
-        if ((float) $parent->discount > 0) {
+        if ($parent->hasAnyDiscount()) {
             abort(403, 'Sales with a discount cannot be returned.');
         }
 
@@ -302,7 +302,7 @@ class SaleReturnController extends Controller
                     ->lockForUpdate()
                     ->findOrFail($saleReturn->sell_id);
 
-                if ((float) $parent->discount > 0) {
+                if ($parent->hasAnyDiscount()) {
                     throw new \RuntimeException('Sales with a discount cannot be returned.');
                 }
 

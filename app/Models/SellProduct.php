@@ -9,12 +9,13 @@ class SellProduct extends Model
 {
     protected $fillable = [
         'branch_id', 'sell_id', 'product_id', 'variation_id',
-        'quantity', 'unit_price', 'batches',
+        'quantity', 'unit_price', 'discount', 'batches',
     ];
 
     protected $casts = [
         'quantity' => 'decimal:2',
         'unit_price' => 'decimal:2',
+        'discount' => 'decimal:2',
         'batches' => 'array',
     ];
 

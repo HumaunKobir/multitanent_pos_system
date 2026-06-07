@@ -2,17 +2,19 @@
 
 namespace App\Http\Controllers\Setting;
 
+use App\Concerns\StoresPublicImages;
 use App\Http\Controllers\Controller;
 use App\Models\Brand;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class BrandController extends Controller
 {
+    use StoresPublicImages;
+
     public function index(Request $request): Response
     {
         $this->authorize('setting.brand.view');
@@ -21,7 +23,15 @@ class BrandController extends Controller
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->latest()
             ->paginate(20)
-            ->withQueryString();
+            ->withQueryString()
+            ->through(fn (Brand $brand): array => [
+                'id' => $brand->id,
+                'name' => $brand->name,
+                'slug' => $brand->slug,
+                'status' => $brand->status,
+                'image' => $this->isStoredPublicImage($brand->image) ? $brand->image : null,
+                'image_url' => $this->publicImageUrl($brand->image),
+            ]);
 
         return Inertia::render('admin/setting/brand/index', [
             'brands' => $brands,
@@ -39,8 +49,8 @@ class BrandController extends Controller
             'status' => ['required', 'in:0,1'],
         ]);
 
-        if ($request->hasFile('image')) {
-            $data['image'] = $request->file('image')->store('brands', 'public');
+        if ($storedImage = $this->storePublicImage($request, 'image', 'brands')) {
+            $data['image'] = $storedImage;
         }
 
         $brand = Brand::create($data);
@@ -63,11 +73,9 @@ class BrandController extends Controller
             'status' => ['required', 'in:0,1'],
         ]);
 
-        if ($request->hasFile('image')) {
-            if ($brand->image) {
-                Storage::disk('public')->delete($brand->image);
-            }
-            $data['image'] = $request->file('image')->store('brands', 'public');
+        if ($storedImage = $this->storePublicImage($request, 'image', 'brands')) {
+            $this->deletePublicImage($this->isStoredPublicImage($brand->image) ? $brand->image : null);
+            $data['image'] = $storedImage;
         } else {
             unset($data['image']);
         }
@@ -82,9 +90,7 @@ class BrandController extends Controller
     {
         $this->authorize('setting.brand.delete');
 
-        if ($brand->image) {
-            Storage::disk('public')->delete($brand->image);
-        }
+        $this->deletePublicImage($this->isStoredPublicImage($brand->image) ? $brand->image : null);
 
         $brand->delete();
 

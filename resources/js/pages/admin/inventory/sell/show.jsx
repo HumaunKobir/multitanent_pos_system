@@ -29,10 +29,11 @@ export default function SellShow({ sell }) {
     }, [flash.success, flash.error]);
 
     const invoiceNumber = sell.invoice_number ?? `INVS${String(sell.id).padStart(8, '0')}`;
+    const lineDiscount = (sell.products ?? []).reduce((sum, line) => sum + parseFloat(line.discount ?? 0), 0);
     const gross = parseFloat(sell.gross_amount ?? 0);
     const vat = parseFloat(sell.vat ?? 0);
     const discount = parseFloat(sell.discount ?? 0);
-    const net = gross + vat - discount;
+    const net = gross + vat - discount - lineDiscount;
     const paid = parseFloat(sell.paid_amount ?? 0);
     const due = Math.max(0, net - paid);
     const actionClass = headerActionClassName();
@@ -110,7 +111,7 @@ export default function SellShow({ sell }) {
                     date={sell.date}
                     branchName={sell.branch?.name}
                     items={sell.products ?? []}
-                    totals={{ gross, vat, discount, net, paid, due }}
+                    totals={{ gross, vat, discount, lineDiscount, net, paid, due }}
                     comment={sell.comment}
                     partySection={
                         <PartyInfoCard

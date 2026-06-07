@@ -36,9 +36,26 @@ class Sell extends Model
         'type' => SaleType::class,
     ];
 
+    public function hasAnyDiscount(): bool
+    {
+        return (float) $this->discount > 0 || $this->lineDiscountTotal() > 0;
+    }
+
+    public function lineDiscountTotal(): float
+    {
+        if ($this->relationLoaded('products')) {
+            return (float) $this->products->sum(fn (SellProduct $line) => (float) $line->discount);
+        }
+
+        return (float) $this->products()->sum('discount');
+    }
+
     public function getNetAmountAttribute(): float
     {
-        return (float) $this->gross_amount + (float) $this->vat - (float) $this->discount;
+        return (float) $this->gross_amount
+            + (float) $this->vat
+            - (float) $this->discount
+            - $this->lineDiscountTotal();
     }
 
     public function getInvoiceNumberAttribute(): string

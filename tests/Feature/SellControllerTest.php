@@ -90,7 +90,44 @@ test('authenticated user can create a sale and stock is deducted', function () {
     expect((float) $batch->available)->toBe(15.0);
 });
 
-test('store fails when stock is insufficient', function () {
+test('authenticated user can create a sale with per-line product discount', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product, 'batch' => $batch] = sellProduct(10, $user->branch_id);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '900',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '500',
+                    'quantity' => '2',
+                    'discount' => '100',
+                ],
+            ],
+        ])
+        ->assertRedirect();
+
+    $sell = Sell::query()->latest('id')->first();
+    $line = SellProduct::query()->where('sell_id', $sell->id)->first();
+
+    expect((float) $line->discount)->toBe(100.0);
+    expect((float) $sell->gross_amount)->toBe(1000.0);
+    expect((float) $sell->net_amount)->toBe(900.0);
+
+    $batch->refresh();
+    expect((float) $batch->available)->toBe(8.0);
+});
+
+test('sale fails when quantity exceeds available stock', function () {
     $user = sellUser();
     ['product' => $product] = sellProduct(2, $user->branch_id);
 
@@ -210,7 +247,7 @@ test('purchase stores stock on product branch and branch user can sell it', func
     expect((float) $batch->available)->toBe(10.0);
 
     $sellResponse = $this->actingAs($branchUser)
-        ->getJson('/api/products/for-sell?search=');
+        ->getJson('/api/products/for-sell?search='.urlencode($product->name));
 
     $sellResponse->assertOk();
     $match = collect($sellResponse->json())->firstWhere('id', $product->id);

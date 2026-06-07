@@ -66,7 +66,8 @@ export default function SellIndex({ sells, filters }) {
                 const gross = parseFloat(row.gross_amount ?? 0);
                 const vat = parseFloat(row.vat ?? 0);
                 const discount = parseFloat(row.discount ?? 0);
-                return <span className="font-medium">৳{(gross + vat - discount).toFixed(2)}</span>;
+                const lineDiscount = parseFloat(row.line_discount_total ?? 0);
+                return <span className="font-medium">৳{(gross + vat - discount - lineDiscount).toFixed(2)}</span>;
             },
         },
         {
@@ -83,7 +84,8 @@ export default function SellIndex({ sells, filters }) {
                 const gross = parseFloat(row.gross_amount ?? 0);
                 const vat = parseFloat(row.vat ?? 0);
                 const discount = parseFloat(row.discount ?? 0);
-                const net = gross + vat - discount;
+                const lineDiscount = parseFloat(row.line_discount_total ?? 0);
+                const net = gross + vat - discount - lineDiscount;
                 const due = Math.max(0, net - parseFloat(row.paid_amount ?? 0));
                 return (
                     <span className={due > 0 ? 'font-semibold text-destructive' : 'font-semibold text-green-700 dark:text-green-400'}>

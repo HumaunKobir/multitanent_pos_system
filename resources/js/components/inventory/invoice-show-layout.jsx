@@ -35,14 +35,31 @@ const lineItemColumns = [
         render: (row) => parseFloat(row.quantity ?? 0),
     },
     {
+        id: 'discount',
+        header: 'Discount',
+        align: 'right',
+        render: (row) => {
+            const discount = parseFloat(row.discount ?? 0);
+
+            return discount > 0 ? (
+                <span className="font-medium text-green-600">-৳{discount.toFixed(2)}</span>
+            ) : (
+                <span className="text-muted-foreground">—</span>
+            );
+        },
+    },
+    {
         id: 'subtotal',
         header: 'Sub Total',
         align: 'right',
-        render: (row) => (
-            <span className="font-semibold text-primary">
-                ৳{(parseFloat(row.unit_price ?? 0) * parseFloat(row.quantity ?? 0)).toFixed(2)}
-            </span>
-        ),
+        render: (row) => {
+            const subtotal =
+                parseFloat(row.unit_price ?? 0) * parseFloat(row.quantity ?? 0) - parseFloat(row.discount ?? 0);
+
+            return (
+                <span className="font-semibold text-primary">৳{subtotal.toFixed(2)}</span>
+            );
+        },
     },
 ];
 
@@ -60,10 +77,11 @@ function LineItemsTable({ items }) {
     );
 }
 
-function TotalsSummary({ gross, vat, discount, net, paid, due }) {
+function TotalsSummary({ gross, vat, discount, lineDiscount = 0, net, paid, due }) {
     const rows = [
         { label: 'Gross Amount', value: `৳${gross.toFixed(2)}`, muted: true },
-        ...(discount > 0 ? [{ label: 'Discount', value: `-৳${discount.toFixed(2)}`, accent: 'text-green-600' }] : []),
+        ...(lineDiscount > 0 ? [{ label: 'Line Discounts', value: `-৳${lineDiscount.toFixed(2)}`, accent: 'text-green-600' }] : []),
+        ...(discount > 0 ? [{ label: 'Invoice Discount', value: `-৳${discount.toFixed(2)}`, accent: 'text-green-600' }] : []),
         ...(vat > 0 ? [{ label: 'VAT', value: `৳${vat.toFixed(2)}`, muted: true }] : []),
         { label: 'Net Amount', value: `৳${net.toFixed(2)}`, bold: true, divider: true },
         { label: 'Paid', value: `৳${paid.toFixed(2)}`, accent: 'text-green-700 dark:text-green-400' },
@@ -130,7 +148,8 @@ export function InvoiceDocument({
     const gross = parseFloat(totals.gross ?? 0);
     const vat = parseFloat(totals.vat ?? 0);
     const discount = parseFloat(totals.discount ?? 0);
-    const net = parseFloat(totals.net ?? gross + vat - discount);
+    const lineDiscount = parseFloat(totals.lineDiscount ?? 0);
+    const net = parseFloat(totals.net ?? gross + vat - discount - lineDiscount);
     const paid = parseFloat(totals.paid ?? 0);
     const due = parseFloat(totals.due ?? Math.max(0, net - paid));
 
@@ -159,7 +178,7 @@ export function InvoiceDocument({
 
                 <LineItemsTable items={items} />
 
-                <TotalsSummary gross={gross} vat={vat} discount={discount} net={net} paid={paid} due={due} />
+                <TotalsSummary gross={gross} vat={vat} discount={discount} lineDiscount={lineDiscount} net={net} paid={paid} due={due} />
 
                 <div className="mt-4 flex items-center gap-2 print:hidden">
                     <Badge className={due > 0 ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}>

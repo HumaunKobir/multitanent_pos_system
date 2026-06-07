@@ -68,8 +68,8 @@ export default function CategoryIndex({ categories, filters }) {
             id: 'image',
             header: 'Image',
             render: (row) =>
-                row.image ? (
-                    <img src={`/storage/${row.image}`} alt={row.name} className="h-10 w-10 rounded object-cover" />
+                row.image_url ? (
+                    <img src={row.image_url} alt={row.name} className="h-10 w-10 rounded object-cover" />
                 ) : (
                     <span className="text-xs text-muted-foreground">—</span>
                 ),

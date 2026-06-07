@@ -7,6 +7,7 @@ use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
 use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
+use App\Models\Category;
 use App\Models\Customer;
 use App\Models\ProductExchange;
 use App\Models\ProductVariation;
@@ -14,6 +15,7 @@ use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
+use App\Support\StorageUrl;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -37,6 +39,7 @@ class SellController extends Controller
 
         $sells = Sell::query()->ownBranch()
             ->sale()
+            ->withSum('products as line_discount_total', 'discount')
             ->with('customer:id,name,phone')
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('id', 'like', "%{$s}%")
@@ -66,6 +69,15 @@ class SellController extends Controller
             'today' => now()->format('Y-m-d'),
             'defaultCustomer' => $defaultCustomer,
             'paymentAccounts' => $this->paymentAccounts(),
+            'categories' => Category::active()
+                ->orderBy('name')
+                ->get(['id', 'name', 'image'])
+                ->map(fn (Category $category) => [
+                    'id' => $category->id,
+                    'name' => $category->name,
+                    'image' => StorageUrl::public($category->image),
+                ])
+                ->values(),
         ]);
     }
 
@@ -85,6 +97,7 @@ class SellController extends Controller
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
+            'items.*.discount' => ['nullable', 'numeric', 'min:0'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
         ]);
 
@@ -93,40 +106,11 @@ class SellController extends Controller
 
         try {
             $sell = DB::transaction(function () use ($data, $branchId, $paymentAccountId) {
-                $grossAmount = 0;
-                $sellProductsData = [];
-
-                foreach ($data['items'] as $item) {
-                    $qty = (float) $item['quantity'];
-                    $unitPrice = (float) $item['unit_price'];
-                    $productId = (int) $item['product_id'];
-                    $variationId = $item['variation_id'] ? (int) $item['variation_id'] : null;
-
-                    $batchMap = [];
-
-                    if ($variationId) {
-                        $variation = ProductVariation::whereKey($variationId)->lockForUpdate()->firstOrFail();
-                        if ((float) $variation->stock < $qty) {
-                            throw new \RuntimeException('Insufficient stock for variation.');
-                        }
-                        $variation->decrement('stock', $qty);
-                    } else {
-                        $batchMap = $this->deductBatchStock($branchId, $productId, $qty);
-                    }
-
-                    $grossAmount += $qty * $unitPrice;
-
-                    $sellProductsData[] = [
-                        'branch_id' => $branchId,
-                        'product_id' => $productId,
-                        'variation_id' => $variationId,
-                        'quantity' => $qty,
-                        'unit_price' => $unitPrice,
-                        'batches' => $batchMap,
-                    ];
-                }
-
-                $vatAmount = $grossAmount * ((float) $data['vat'] / 100);
+                ['grossAmount' => $grossAmount, 'vatAmount' => $vatAmount, 'sellProductsData' => $sellProductsData] = $this->processSellItems(
+                    $data['items'],
+                    $branchId,
+                    (float) $data['vat'],
+                );
 
                 $sell = Sell::create([
                     'branch_id' => $branchId,
@@ -235,6 +219,7 @@ class SellController extends Controller
                 'variation_id' => $sp->variation_id,
                 'variation_label' => $sp->variation?->variation_data['label'] ?? null,
                 'unit_price' => (float) $sp->unit_price,
+                'discount' => (float) $sp->discount,
                 'sell_price' => $sp->variation_id
                     ? (float) ($sp->variation?->price ?? $sp->unit_price)
                     : (float) ($sp->product?->sale_price ?? $sp->unit_price),
@@ -244,7 +229,8 @@ class SellController extends Controller
         })->values();
 
         $grossAmount = (float) $sell->gross_amount;
-        $vatPercent = $grossAmount > 0 ? ((float) $sell->vat / $grossAmount) * 100 : 0;
+        $taxableBase = max(0, $grossAmount - $sell->lineDiscountTotal());
+        $vatPercent = $taxableBase > 0 ? ((float) $sell->vat / $taxableBase) * 100 : 0;
 
         return Inertia::render('admin/inventory/sell/edit', [
             'sell' => [
@@ -289,6 +275,7 @@ class SellController extends Controller
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
+            'items.*.discount' => ['nullable', 'numeric', 'min:0'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
         ]);
 
@@ -326,40 +313,11 @@ class SellController extends Controller
 
                 $sell->products()->delete();
 
-                $grossAmount = 0;
-                $sellProductsData = [];
-
-                foreach ($data['items'] as $item) {
-                    $qty = (float) $item['quantity'];
-                    $unitPrice = (float) $item['unit_price'];
-                    $productId = (int) $item['product_id'];
-                    $variationId = $item['variation_id'] ? (int) $item['variation_id'] : null;
-
-                    $batchMap = [];
-
-                    if ($variationId) {
-                        $variation = ProductVariation::whereKey($variationId)->lockForUpdate()->firstOrFail();
-                        if ((float) $variation->stock < $qty) {
-                            throw new \RuntimeException('Insufficient stock for variation.');
-                        }
-                        $variation->decrement('stock', $qty);
-                    } else {
-                        $batchMap = $this->deductBatchStock($branchId, $productId, $qty);
-                    }
-
-                    $grossAmount += $qty * $unitPrice;
-
-                    $sellProductsData[] = [
-                        'branch_id' => $branchId,
-                        'product_id' => $productId,
-                        'variation_id' => $variationId,
-                        'quantity' => $qty,
-                        'unit_price' => $unitPrice,
-                        'batches' => $batchMap,
-                    ];
-                }
-
-                $vatAmount = $grossAmount * ((float) $data['vat'] / 100);
+                ['grossAmount' => $grossAmount, 'vatAmount' => $vatAmount, 'sellProductsData' => $sellProductsData] = $this->processSellItems(
+                    $data['items'],
+                    $branchId,
+                    (float) $data['vat'],
+                );
 
                 $sell->update([
                     'customer_id' => $data['customer_id'] ?? null,
@@ -444,6 +402,57 @@ class SellController extends Controller
 
         return redirect()->route('inventory.sell.index')
             ->with('success', 'Sale deleted successfully.');
+    }
+
+    /** @return array{grossAmount: float, vatAmount: float, sellProductsData: array<int, array<string, mixed>>} */
+    private function processSellItems(array $items, ?int $branchId, float $vatPercent): array
+    {
+        $grossAmount = 0.0;
+        $lineDiscountTotal = 0.0;
+        $sellProductsData = [];
+
+        foreach ($items as $item) {
+            $qty = (float) $item['quantity'];
+            $unitPrice = (float) $item['unit_price'];
+            $lineGross = $qty * $unitPrice;
+            $lineDiscount = min(max(0, (float) ($item['discount'] ?? 0)), $lineGross);
+            $productId = (int) $item['product_id'];
+            $variationId = $item['variation_id'] ? (int) $item['variation_id'] : null;
+
+            $batchMap = [];
+
+            if ($variationId) {
+                $variation = ProductVariation::whereKey($variationId)->lockForUpdate()->firstOrFail();
+                if ((float) $variation->stock < $qty) {
+                    throw new \RuntimeException('Insufficient stock for variation.');
+                }
+                $variation->decrement('stock', $qty);
+            } else {
+                $batchMap = $this->deductBatchStock($branchId, $productId, $qty);
+            }
+
+            $grossAmount += $lineGross;
+            $lineDiscountTotal += $lineDiscount;
+
+            $sellProductsData[] = [
+                'branch_id' => $branchId,
+                'product_id' => $productId,
+                'variation_id' => $variationId,
+                'quantity' => $qty,
+                'unit_price' => $unitPrice,
+                'discount' => $lineDiscount,
+                'batches' => $batchMap,
+            ];
+        }
+
+        $taxableBase = max(0, $grossAmount - $lineDiscountTotal);
+        $vatAmount = $taxableBase * ($vatPercent / 100);
+
+        return [
+            'grossAmount' => $grossAmount,
+            'vatAmount' => $vatAmount,
+            'sellProductsData' => $sellProductsData,
+        ];
     }
 
     /** @return array<int|string, float> */

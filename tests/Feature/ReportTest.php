@@ -2,8 +2,10 @@
 
 use App\Enums\SaleType;
 use App\Http\Controllers\Reports\ReportController;
+use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Customer;
+use App\Models\Product;
 use App\Models\Sell;
 use App\Models\User;
 use App\Support\AdminNavigation;
@@ -54,6 +56,11 @@ function reportRoutes(): array
             'path' => '/report/date-wise-stock',
             'permission' => ReportController::PERMISSION_DATE_WISE_STOCK,
             'component' => 'admin/reports/date-wise-stock',
+        ],
+        'stock-ledger' => [
+            'path' => '/report/stock-ledger',
+            'permission' => ReportController::PERMISSION_STOCK_LEDGER,
+            'component' => 'admin/reports/stock-ledger',
         ],
         'daily-summary' => [
             'path' => '/report/daily-summary',
@@ -176,6 +183,7 @@ test('reports navigation includes all report links for superadmin', function () 
         'Cash Flow Summary',
         'Daily Transactions',
         'Date Wise Stock',
+        'Stock Ledger',
         'Daily Summary',
         'Account Ledger',
         'A/C Transactions',
@@ -244,4 +252,105 @@ test('branch user customer ledger options exclude other branches', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->has('customers', 1)
             ->where('customers.0.id', $ownCustomer->id));
+});
+
+test('branch user stock ledger only includes their branch movements', function () {
+    $this->artisan('permissions:sync');
+
+    $branchA = Branch::factory()->create();
+    $branchB = Branch::factory()->create();
+    $userA = reportUser([ReportController::PERMISSION_STOCK_LEDGER]);
+    $userA->update(['branch_id' => $branchA->id]);
+
+    $product = Product::factory()->create(['branch_id' => $branchA->id]);
+    $date = '2026-06-05';
+
+    $batchA = Batch::factory()->for($product)->withStock(10)->create(['branch_id' => $branchA->id]);
+    $batchB = Batch::factory()->for($product)->withStock(20)->create(['branch_id' => $branchB->id]);
+
+    $this->travelTo($date.' 10:00:00');
+    $batchA->inStock(5);
+    $batchB->inStock(8);
+    $this->travelBack();
+
+    $this->actingAs($userA)
+        ->get('/report/stock-ledger?product_id='.$product->id.'&date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/stock-ledger')
+            ->where('isBranchScoped', true)
+            ->where('mode', 'ledger')
+            ->where('product.id', $product->id)
+            ->has('entries', 1)
+            ->where('entries.0.in', 5)
+            ->where('totals.in', 5)
+            ->where('totals.out', 0));
+});
+
+test('superadmin stock ledger shows all movements by default', function () {
+    $this->artisan('permissions:sync');
+
+    $admin = User::factory()->create(['branch_id' => null]);
+    $branch = Branch::factory()->create();
+    $product = Product::factory()->create();
+    $batch = Batch::factory()->for($product)->withStock(12)->create(['branch_id' => $branch->id]);
+
+    $this->travelTo('2026-06-05 10:00:00');
+    $batch->inStock(4);
+    $this->travelBack();
+
+    $this->actingAs($admin)
+        ->get('/report/stock-ledger')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/stock-ledger')
+            ->where('mode', 'overview')
+            ->where('product', null)
+            ->has('entries'));
+
+    $this->actingAs($admin)
+        ->get('/report/stock-ledger?product_id='.$product->id)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('mode', 'ledger')
+            ->where('product.id', $product->id)
+            ->where('product.current_stock', 12)
+            ->has('entries', 1)
+            ->where('entries.0.in', 4));
+
+    $this->actingAs($admin)
+        ->get('/report/stock-ledger?product_id='.$product->id.'&branch_id='.$branch->id)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('product.current_stock', 12)
+            ->has('entries', 1));
+});
+
+test('stock ledger calculates opening balance before date range', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = reportUser([ReportController::PERMISSION_STOCK_LEDGER]);
+    $user->update(['branch_id' => $branch->id]);
+
+    $product = Product::factory()->create(['branch_id' => $branch->id]);
+    $batch = Batch::factory()->for($product)->withStock(0)->create(['branch_id' => $branch->id]);
+
+    $this->travelTo('2026-06-01 10:00:00');
+    $batch->inStock(10);
+
+    $this->travelTo('2026-06-05 11:00:00');
+    $batch->outStock(3);
+
+    $this->travelBack();
+
+    $this->actingAs($user)
+        ->get('/report/stock-ledger?product_id='.$product->id.'&date_from=2026-06-05&date_to=2026-06-05')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('opening_stock', 10)
+            ->has('entries', 1)
+            ->where('entries.0.out', 3)
+            ->where('entries.0.balance', 7)
+            ->where('totals.balance', 7));
 });

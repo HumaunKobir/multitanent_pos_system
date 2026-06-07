@@ -1,7 +1,8 @@
 import { route } from '@/lib/route';
 import { router } from '@inertiajs/react';
-import { BarChart2, Calendar, SlidersHorizontal } from 'lucide-react';
+import { BarChart2, Calendar, RotateCcw, SlidersHorizontal } from 'lucide-react';
 
+import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -28,7 +29,7 @@ export function useLiveReportFilters(routeName, query, deps) {
     );
 }
 
-export function ReportPage({ title, description, filterBar, children }) {
+export function ReportPage({ title, description, filterBar, filterGridClassName, filterActions, children }) {
     return (
         <div className="px-2 py-1">
             <div className="mb-3 flex items-center justify-between rounded-lg bg-blue-950 px-5 py-3 shadow-sm">
@@ -43,14 +44,18 @@ export function ReportPage({ title, description, filterBar, children }) {
                 </div>
             </div>
 
-            {filterBar ? <ReportFilterPanel>{filterBar}</ReportFilterPanel> : null}
+            {filterBar ? (
+                <ReportFilterPanel className={filterGridClassName} actions={filterActions}>
+                    {filterBar}
+                </ReportFilterPanel>
+            ) : null}
 
             {children}
         </div>
     );
 }
 
-export function ReportFilterPanel({ children }) {
+export function ReportFilterPanel({ children, className, actions }) {
     return (
         <div className="mb-4 overflow-hidden rounded-lg border border-blue-950/10 bg-card shadow-sm">
             <div className="flex items-center gap-2.5 bg-blue-950 px-4 py-2.5">
@@ -58,14 +63,36 @@ export function ReportFilterPanel({ children }) {
                     <SlidersHorizontal className="size-3.5 text-white" />
                 </div>
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-white">Report Filters</h2>
-                <span className="ml-auto text-[10px] font-medium uppercase tracking-wider text-white/50">
-                    Live update
-                </span>
+                <div className="ml-auto flex items-center gap-2">
+                    {actions}
+                    <span className="text-[10px] font-medium uppercase tracking-wider text-white/50">Live update</span>
+                </div>
             </div>
-            <div className="grid gap-4 bg-gradient-to-br from-slate-50 via-white to-blue-50/40 p-4 dark:from-slate-900/40 dark:via-card dark:to-blue-950/10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            <div
+                className={cn(
+                    'grid gap-4 bg-gradient-to-br from-slate-50 via-white to-blue-50/40 p-4 dark:from-slate-900/40 dark:via-card dark:to-blue-950/10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+                    className,
+                )}
+            >
                 {children}
             </div>
         </div>
+    );
+}
+
+export function ReportFilterReset({ onClick, disabled = false }) {
+    return (
+        <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onClick}
+            disabled={disabled}
+            className="h-7 border-white/25 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+        >
+            <RotateCcw className="size-3.5" />
+            Reset
+        </Button>
     );
 }
 

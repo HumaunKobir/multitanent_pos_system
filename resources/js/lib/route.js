@@ -155,6 +155,7 @@ const routes = {
     'report.cash-flow-summary': '/report/cash-flow-summary',
     'report.daily-transactions': '/report/daily-transactions',
     'report.date-wise-stock': '/report/date-wise-stock',
+    'report.stock-ledger': '/report/stock-ledger',
     'report.daily-summary': '/report/daily-summary',
     'report.account-ledger': '/report/account-ledger',
     'report.account-transactions': '/report/account-transactions',

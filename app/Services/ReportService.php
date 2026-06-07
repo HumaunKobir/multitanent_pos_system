@@ -6,6 +6,8 @@ use App\Enums\AccountType;
 use App\Enums\ProductLogType;
 use App\Enums\PurchaseType;
 use App\Enums\VoucherType;
+use App\Models\Batch;
+use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Models\Customer;
 use App\Models\Damage;
@@ -214,6 +216,195 @@ class ReportService
                 'reference' => $ledger->transaction
                     ? class_basename($ledger->transaction->source_type).' #'.$ledger->transaction->source_id
                     : '—',
+            ])
+            ->all();
+    }
+
+    /**
+     * @return array{
+     *     mode: string,
+     *     product: array<string, mixed>|null,
+     *     opening_stock: float,
+     *     entries: list<array<string, mixed>>,
+     *     totals: array{in: float, out: float, balance: float},
+     *     current_stock: float
+     * }
+     */
+    public function stockLedger(?int $productId, ?int $branchId, ?string $dateFrom, ?string $dateTo): array
+    {
+        if ($productId === null) {
+            return $this->buildStockLedgerOverview($branchId, $dateFrom, $dateTo);
+        }
+
+        $effectiveBranchId = $this->branchId() ?? $branchId;
+
+        return $this->buildSingleProductStockLedger($productId, $effectiveBranchId, $dateFrom, $dateTo);
+    }
+
+    /**
+     * @return array{
+     *     mode: string,
+     *     product: null,
+     *     opening_stock: float,
+     *     entries: list<array<string, mixed>>,
+     *     totals: array{in: float, out: float, balance: float},
+     *     current_stock: float
+     * }
+     */
+    private function buildStockLedgerOverview(?int $branchId, ?string $dateFrom, ?string $dateTo): array
+    {
+        $scopeBranchId = $this->branchId() ?? $branchId;
+
+        $logs = $this->stockLedgerLogQuery($scopeBranchId, null, $dateFrom, $dateTo)
+            ->with(['product:id,name,code', 'branch:id,name'])
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit(500)
+            ->get();
+
+        $totalIn = 0.0;
+        $totalOut = 0.0;
+
+        $entries = $logs->map(function (ProductInOutLog $log) use (&$totalIn, &$totalOut) {
+            $quantity = (float) $log->quantity;
+            $isIn = $this->isStockInMovement($log->type);
+
+            if ($isIn) {
+                $totalIn += $quantity;
+            } else {
+                $totalOut += $quantity;
+            }
+
+            return [
+                'date' => $log->created_at->format('Y-m-d'),
+                'branch' => $log->branch?->name ?? 'Main Branch',
+                'product' => $log->product?->name ?? '—',
+                'product_code' => $log->product?->code,
+                'type' => $this->productLogLabel($log->type),
+                'reference' => $log->remark ?? '—',
+                'in' => $isIn ? $quantity : 0.0,
+                'out' => $isIn ? 0.0 : $quantity,
+            ];
+        })->all();
+
+        return [
+            'mode' => 'overview',
+            'product' => null,
+            'opening_stock' => 0,
+            'entries' => $entries,
+            'totals' => [
+                'in' => round($totalIn, 2),
+                'out' => round($totalOut, 2),
+                'balance' => round($totalIn - $totalOut, 2),
+            ],
+            'current_stock' => 0,
+        ];
+    }
+
+    /**
+     * @return array{
+     *     mode: string,
+     *     product: array<string, mixed>|null,
+     *     opening_stock: float,
+     *     entries: list<array<string, mixed>>,
+     *     totals: array{in: float, out: float, balance: float},
+     *     current_stock: float
+     * }
+     */
+    private function buildSingleProductStockLedger(int $productId, ?int $branchId, ?string $dateFrom, ?string $dateTo): array
+    {
+        $product = Product::query()
+            ->ownBranch()
+            ->find($productId);
+
+        if ($product === null) {
+            return [
+                'mode' => 'ledger',
+                'product' => null,
+                'opening_stock' => 0,
+                'entries' => [],
+                'totals' => ['in' => 0, 'out' => 0, 'balance' => 0],
+                'current_stock' => 0,
+            ];
+        }
+
+        $openingStock = $dateFrom
+            ? ($branchId !== null
+                ? $this->productStockBalanceBefore($productId, $branchId, $dateFrom)
+                : $this->productStockBalanceBeforeAllBranches($productId, $dateFrom))
+            : 0.0;
+
+        $logs = $this->stockLedgerLogQuery($branchId, $productId, $dateFrom, $dateTo)
+            ->when($branchId === null, fn (Builder $q) => $q->with('branch:id,name'))
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
+
+        $balance = $openingStock;
+        $totalIn = 0.0;
+        $totalOut = 0.0;
+
+        $entries = $logs->map(function (ProductInOutLog $log) use (&$balance, &$totalIn, &$totalOut, $branchId) {
+            $quantity = (float) $log->quantity;
+            $isIn = $this->isStockInMovement($log->type);
+
+            if ($isIn) {
+                $totalIn += $quantity;
+                $balance += $quantity;
+            } else {
+                $totalOut += $quantity;
+                $balance -= $quantity;
+            }
+
+            $entry = [
+                'date' => $log->created_at->format('Y-m-d'),
+                'type' => $this->productLogLabel($log->type),
+                'reference' => $log->remark ?? '—',
+                'in' => $isIn ? $quantity : 0.0,
+                'out' => $isIn ? 0.0 : $quantity,
+                'balance' => round($balance, 2),
+            ];
+
+            if ($branchId === null) {
+                $entry['branch'] = $log->branch?->name ?? 'Main Branch';
+            }
+
+            return $entry;
+        })->all();
+
+        $currentStock = $this->productCurrentStock($productId, $branchId);
+
+        return [
+            'mode' => 'ledger',
+            'product' => [
+                'id' => $product->id,
+                'name' => $product->name,
+                'code' => $product->code,
+                'current_stock' => round($currentStock, 2),
+            ],
+            'opening_stock' => round($openingStock, 2),
+            'entries' => $entries,
+            'totals' => [
+                'in' => round($totalIn, 2),
+                'out' => round($totalOut, 2),
+                'balance' => round($balance, 2),
+            ],
+            'current_stock' => round($currentStock, 2),
+        ];
+    }
+
+    /**
+     * @return list<array{id: int, label: string}>
+     */
+    public function branchOptions(): array
+    {
+        return Branch::query()
+            ->active()
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->map(fn (Branch $branch) => [
+                'id' => $branch->id,
+                'label' => $branch->name,
             ])
             ->all();
     }
@@ -726,6 +917,120 @@ class ReportService
             Supplier::class => Supplier::class,
             Customer::class => Customer::class,
         ];
+    }
+
+    private function stockLedgerLogQuery(?int $branchId, ?int $productId, ?string $dateFrom, ?string $dateTo): Builder
+    {
+        return ProductInOutLog::query()
+            ->when($branchId !== null, fn (Builder $q) => $this->scopeProductInOutLogForBranch($q, $branchId))
+            ->when($productId !== null, fn (Builder $q) => $q->where('product_id', $productId))
+            ->when($dateFrom, fn (Builder $q, string $date) => $q->whereDate('created_at', '>=', $date))
+            ->when($dateTo, fn (Builder $q, string $date) => $q->whereDate('created_at', '<=', $date));
+    }
+
+    private function productCurrentStock(int $productId, ?int $branchId): float
+    {
+        $query = Batch::query()->where('product_id', $productId);
+
+        if ($branchId === null) {
+            return (float) $query->sum('available');
+        }
+
+        return (float) $this->scopeBatchForBranch($query, $branchId)->sum('available');
+    }
+
+    private function scopeBatchForBranch(Builder $query, int $branchId): Builder
+    {
+        if (Branch::isMainBranch($branchId)) {
+            return $query->where(function (Builder $q) {
+                $q->where('branch_id', Branch::MAIN_BRANCH_ID)
+                    ->orWhereNull('branch_id');
+            });
+        }
+
+        return $query->where(function (Builder $q) use ($branchId) {
+            $q->where('branch_id', $branchId)
+                ->orWhereNull('branch_id');
+        });
+    }
+
+    private function productStockBalanceBeforeAllBranches(int $productId, string $dateFrom): float
+    {
+        $balance = 0.0;
+
+        ProductInOutLog::query()
+            ->where('product_id', $productId)
+            ->whereDate('created_at', '<', $dateFrom)
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get(['type', 'quantity'])
+            ->each(function (ProductInOutLog $log) use (&$balance) {
+                $quantity = (float) $log->quantity;
+
+                if ($this->isStockInMovement($log->type)) {
+                    $balance += $quantity;
+                } else {
+                    $balance -= $quantity;
+                }
+            });
+
+        return $balance;
+    }
+
+    private function productStockBalanceBefore(int $productId, int $branchId, string $dateFrom): float
+    {
+        $balance = 0.0;
+
+        $this->scopeProductInOutLogForBranch(ProductInOutLog::query(), $branchId)
+            ->where('product_id', $productId)
+            ->whereDate('created_at', '<', $dateFrom)
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get(['type', 'quantity'])
+            ->each(function (ProductInOutLog $log) use (&$balance) {
+                $quantity = (float) $log->quantity;
+
+                if ($this->isStockInMovement($log->type)) {
+                    $balance += $quantity;
+                } else {
+                    $balance -= $quantity;
+                }
+            });
+
+        return $balance;
+    }
+
+    private function scopeProductInOutLogForBranch(Builder $query, int $branchId): Builder
+    {
+        if (Branch::isMainBranch($branchId)) {
+            return $query->where(function (Builder $q) {
+                $q->where('branch_id', Branch::MAIN_BRANCH_ID)
+                    ->orWhereNull('branch_id');
+            });
+        }
+
+        return $query->where('branch_id', $branchId);
+    }
+
+    private function isStockInMovement(int $type): bool
+    {
+        try {
+            $movement = ProductLogType::from($type);
+        } catch (\ValueError) {
+            return false;
+        }
+
+        return match ($movement) {
+            ProductLogType::Purchase,
+            ProductLogType::Sale_Return,
+            ProductLogType::InitialStock,
+            ProductLogType::Distribution_In => true,
+            ProductLogType::Sale,
+            ProductLogType::Damage,
+            ProductLogType::Purchase_Return,
+            ProductLogType::Exchange,
+            ProductLogType::Distribution_Out => false,
+        };
     }
 
     private function productLogLabel(int $type): string

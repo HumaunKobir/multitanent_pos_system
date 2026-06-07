@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Reports;
 use App\Http\Controllers\Controller;
 use App\Services\ReportService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -25,6 +26,8 @@ class ReportController extends Controller
     public const PERMISSION_ACCOUNT_LEDGER = 'report.account-ledger.view';
 
     public const PERMISSION_ACCOUNT_TRANSACTIONS = 'report.account-transactions.view';
+
+    public const PERMISSION_STOCK_LEDGER = 'report.stock-ledger.view';
 
     public const PERMISSION_BALANCE_SHEET = 'report.balance-sheet.view';
 
@@ -196,6 +199,35 @@ class ReportController extends Controller
             'filters' => $filters,
             'transactions' => $this->reports->accountTransactions(
                 isset($filters['account_id']) ? (int) $filters['account_id'] : null,
+                $filters['date_from'] ?? null,
+                $filters['date_to'] ?? null,
+            ),
+        ]);
+    }
+
+    public function stockLedger(Request $request): Response
+    {
+        $this->authorize(self::PERMISSION_STOCK_LEDGER);
+
+        $filters = $request->validate([
+            'product_id' => ['nullable', 'integer', 'exists:products,id'],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date'],
+        ]);
+
+        $userBranchId = Auth::user()?->branch_id;
+        $branchId = $userBranchId ?? (isset($filters['branch_id']) ? (int) $filters['branch_id'] : null);
+        $productId = isset($filters['product_id']) ? (int) $filters['product_id'] : null;
+
+        return Inertia::render('admin/reports/stock-ledger', [
+            'products' => $this->reports->productOptions(),
+            'branches' => $userBranchId === null ? $this->reports->branchOptions() : [],
+            'isBranchScoped' => $userBranchId !== null,
+            'filters' => $filters,
+            ...$this->reports->stockLedger(
+                $productId,
+                $branchId,
                 $filters['date_from'] ?? null,
                 $filters['date_to'] ?? null,
             ),

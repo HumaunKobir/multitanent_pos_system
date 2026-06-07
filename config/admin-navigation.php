@@ -144,6 +144,7 @@ return [
                 ['title' => 'Cash Flow Summary', 'href' => '/report/cash-flow-summary', 'permission' => 'report.cash-flow-summary.view'],
                 ['title' => 'Daily Transactions', 'href' => '/report/daily-transactions', 'permission' => 'report.daily-transactions.view'],
                 ['title' => 'Date Wise Stock', 'href' => '/report/date-wise-stock', 'permission' => 'report.date-wise-stock.view'],
+                ['title' => 'Stock Ledger', 'href' => '/report/stock-ledger', 'permission' => 'report.stock-ledger.view'],
                 ['title' => 'Daily Summary', 'href' => '/report/daily-summary', 'permission' => 'report.daily-summary.view'],
             ],
         ],

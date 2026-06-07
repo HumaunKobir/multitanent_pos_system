@@ -337,6 +337,14 @@ return [
             ],
         ],
 
+        'report.stock-ledger' => [
+            'label' => 'Stock Ledger',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.stock-ledger.view' => 'View Stock Ledger',
+            ],
+        ],
+
         'report.daily-summary' => [
             'label' => 'Daily Summary',
             'group' => 'Reports',

@@ -8,10 +8,7 @@ export function CartDrawerProvider({ children, initialCart = {} }) {
     const [toast, setToast] = useState(null);
     const [removedItem, setRemovedItem] = useState(null);
 
-    const cartCount = useMemo(
-        () => Object.values(localCart).reduce((sum, item) => sum + (item.quantity || 0), 0),
-        [localCart],
-    );
+    const cartCount = useMemo(() => Object.keys(localCart || {}).length, [localCart]);
 
     const openDrawer = useCallback(() => setIsOpen(true), []);
     const closeDrawer = useCallback(() => setIsOpen(false), []);

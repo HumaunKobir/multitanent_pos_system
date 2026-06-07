@@ -20,6 +20,18 @@ test('can add product to cart', function () {
     expect(session('cart', []))->toHaveCount(1);
 });
 
+test('cart count reflects line items not total quantity', function () {
+    $product = Product::factory()->create(['sale_price' => 1000, 'discount_price' => 0]);
+
+    $this->post(route('cart.add'), [
+        'product_id' => $product->id,
+        'quantity' => 100,
+    ])->assertOk()
+        ->assertJson(['cart_count' => 1]);
+
+    expect(session('cart', []))->toHaveCount(1);
+});
+
 test('adding same product increments quantity', function () {
     $product = Product::factory()->create(['sale_price' => 1000, 'discount_price' => 0]);
 

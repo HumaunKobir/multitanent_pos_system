@@ -67,7 +67,7 @@ class HandleInertiaRequests extends Middleware
             'panelType' => $user instanceof User && $user->isBranchUser() ? 'branch' : 'admin',
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'cart' => $cart,
-            'cartCount' => collect($cart)->sum('quantity'),
+            'cartCount' => count($cart),
             'categories' => Category::active()
                 ->orderBy('name')
                 ->get(['id', 'name', 'slug', 'image'])

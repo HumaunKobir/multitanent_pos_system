@@ -26,7 +26,7 @@ class CartController extends Controller
 
         return response()->json([
             'cart' => $cart,
-            'cart_count' => collect($cart)->sum('quantity'),
+            'cart_count' => count($cart),
         ]);
     }
 
@@ -83,7 +83,7 @@ class CartController extends Controller
         return response()->json([
             'message' => 'Product added to cart',
             'cart' => $cart,
-            'cart_count' => collect($cart)->sum('quantity'),
+            'cart_count' => count($cart),
         ]);
     }
 
@@ -102,7 +102,7 @@ class CartController extends Controller
         if ($request->wantsJson()) {
             return response()->json([
                 'cart' => $cart,
-                'cart_count' => collect($cart)->sum('quantity'),
+                'cart_count' => count($cart),
             ]);
         }
 
@@ -118,7 +118,7 @@ class CartController extends Controller
         if ($request->wantsJson()) {
             return response()->json([
                 'cart' => $cart,
-                'cart_count' => collect($cart)->sum('quantity'),
+                'cart_count' => count($cart),
             ]);
         }
 

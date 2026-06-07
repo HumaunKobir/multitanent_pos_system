@@ -226,7 +226,7 @@ test('full checkout flow from cart add through success page', function () {
         'product_id' => $product->id,
         'quantity' => 2,
     ])->assertSuccessful()
-        ->assertJsonPath('cart_count', 2);
+        ->assertJsonPath('cart_count', 1);
 
     $this->get(route('checkout'))
         ->assertOk()

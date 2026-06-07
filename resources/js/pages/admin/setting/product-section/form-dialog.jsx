@@ -114,9 +114,11 @@ export default function ProductSectionFormDialog({
         const options = { forceFormData: true, onSuccess: () => onOpenChange(false) };
 
         if (isEditing) {
-            form.transform(() => buildPayload()).post(routes.update(item.id), { ...options, _method: 'patch' });
+            form.transform(() => buildPayload());
+            form.post(routes.update(item.id), { ...options, _method: 'patch' });
         } else {
-            form.transform(() => buildPayload()).post(routes.store, options);
+            form.transform(() => buildPayload());
+            form.post(routes.store, options);
         }
     }
 

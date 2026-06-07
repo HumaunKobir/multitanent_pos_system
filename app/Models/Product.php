@@ -131,9 +131,9 @@ class Product extends Model
         return $this->hasMany(Batch::class);
     }
 
-    public function resolveStockBranchId(?int $actingBranchId = null): ?int
+    public function resolveStockBranchId(?int $actingBranchId = null): int
     {
-        return $this->branch_id ?? $actingBranchId;
+        return Branch::MAIN_BRANCH_ID;
     }
 
     public function purchaseProducts(): HasMany

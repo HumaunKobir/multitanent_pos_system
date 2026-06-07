@@ -127,8 +127,7 @@ class PurchaseController extends Controller
 
                 // Update variation stock
                 if ($variationId) {
-                    ProductVariation::whereKey($variationId)
-                        ->increment('stock', $qty + $freeQty);
+                    $this->adjustPurchaseVariationStock((int) $variationId, $qty + $freeQty);
                 }
 
                 $grossAmount += $qty * $unitPrice;
@@ -358,8 +357,10 @@ class PurchaseController extends Controller
                     }
 
                     if ($purchaseProduct->variation_id) {
-                        ProductVariation::whereKey($purchaseProduct->variation_id)
-                            ->decrement('stock', (int) $totalLineQuantity);
+                        $this->adjustPurchaseVariationStock(
+                            (int) $purchaseProduct->variation_id,
+                            -$totalLineQuantity
+                        );
                     }
                 }
 
@@ -422,8 +423,7 @@ class PurchaseController extends Controller
                     }
 
                     if ($variationId) {
-                        ProductVariation::whereKey($variationId)
-                            ->increment('stock', $qty + $freeQty);
+                        $this->adjustPurchaseVariationStock($variationId, $qty + $freeQty);
                     }
 
                     $grossAmount += $qty * $unitPrice;
@@ -519,8 +519,10 @@ class PurchaseController extends Controller
                     }
 
                     if ($purchaseProduct->variation_id) {
-                        ProductVariation::whereKey($purchaseProduct->variation_id)
-                            ->decrement('stock', (int) $totalLineQuantity);
+                        $this->adjustPurchaseVariationStock(
+                            (int) $purchaseProduct->variation_id,
+                            -$totalLineQuantity
+                        );
                     }
                 }
 
@@ -539,6 +541,21 @@ class PurchaseController extends Controller
 
         return redirect()->route('inventory.purchase.index')
             ->with('success', 'Purchase deleted successfully.');
+    }
+
+    private function adjustPurchaseVariationStock(int $variationId, float $quantity): void
+    {
+        $mainVariation = ProductVariation::mainWarehouseFor($variationId);
+
+        if (! $mainVariation) {
+            return;
+        }
+
+        if ($quantity >= 0) {
+            $mainVariation->increment('stock', (int) $quantity);
+        } else {
+            $mainVariation->decrement('stock', (int) abs($quantity));
+        }
     }
 
     private function createOrUpdateBatch(

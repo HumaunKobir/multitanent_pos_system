@@ -203,24 +203,30 @@ test('main branch user can sell products with stock at main branch', function ()
     expect((float) $batch->available)->toBe(13.0);
 });
 
-test('purchase stores stock on product branch and branch user can sell it', function () {
+test('purchase stores stock in main warehouse until manually distributed', function () {
     $this->artisan('permissions:sync');
 
-    $mainBranch = Branch::factory()->create();
-    $targetBranch = Branch::factory()->create();
-    $admin = User::factory()->create(['branch_id' => $mainBranch->id]);
-    Permission::findOrCreate('inventory.purchase.create', 'web');
-    $admin->givePermissionTo('inventory.purchase.create');
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
 
+    $mainUser = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    Permission::findOrCreate('inventory.purchase.create', 'web');
+    $mainUser->givePermissionTo('inventory.purchase.create');
+    Permission::findOrCreate('inventory.stock-distribution.create', 'web');
+    $mainUser->givePermissionTo('inventory.stock-distribution.create');
+
+    $targetBranch = Branch::factory()->create();
     $branchUser = User::factory()->create(['branch_id' => $targetBranch->id]);
     Permission::findOrCreate('inventory.sell.create', 'web');
     $branchUser->givePermissionTo('inventory.sell.create');
 
     $cash = seedAccountingAccounts();
-    $supplier = Supplier::factory()->create(['branch_id' => $mainBranch->id]);
+    $supplier = Supplier::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
     $product = Product::factory()->create(['branch_id' => $targetBranch->id]);
 
-    $this->actingAs($admin)
+    $this->actingAs($mainUser)
         ->post('/inventory/purchase', [
             'supplier_id' => $supplier->id,
             'date' => now()->format('Y-m-d'),
@@ -243,8 +249,31 @@ test('purchase stores stock on product branch and branch user can sell it', func
 
     $batch = Batch::query()->where('product_id', $product->id)->first();
     expect($batch)->not->toBeNull();
-    expect($batch->branch_id)->toBe($targetBranch->id);
+    expect($batch->branch_id)->toBe(Branch::MAIN_BRANCH_ID);
     expect((float) $batch->available)->toBe(10.0);
+
+    $sellResponse = $this->actingAs($branchUser)
+        ->getJson('/api/products/for-sell?search='.urlencode($product->name));
+
+    $sellResponse->assertOk();
+    $match = collect($sellResponse->json())->firstWhere('id', $product->id);
+    expect($match)->not->toBeNull();
+    expect((float) $match['stock'])->toBe(0.0);
+
+    $this->actingAs($mainUser)
+        ->post('/inventory/stock-distribution', [
+            'to_branch_id' => $targetBranch->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => null,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'quantity' => '10',
+                ],
+            ],
+        ])
+        ->assertRedirect();
 
     $sellResponse = $this->actingAs($branchUser)
         ->getJson('/api/products/for-sell?search='.urlencode($product->name));
@@ -274,8 +303,13 @@ test('purchase stores stock on product branch and branch user can sell it', func
         ])
         ->assertRedirect();
 
-    $batch->refresh();
-    expect((float) $batch->available)->toBe(8.0);
+    $destinationBatch = Batch::query()
+        ->where('product_id', $product->id)
+        ->where('branch_id', $targetBranch->id)
+        ->first();
+
+    expect($destinationBatch)->not->toBeNull();
+    expect((float) $destinationBatch->available)->toBe(8.0);
 });
 
 test('store requires at least one item', function () {

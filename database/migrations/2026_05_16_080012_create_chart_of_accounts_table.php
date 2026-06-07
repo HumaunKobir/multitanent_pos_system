@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\CommonStatus;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -17,7 +18,7 @@ return new class extends Migration
             $table->unsignedTinyInteger('type')->index();
             $table->decimal('current_balance', 15, 2)->default(0);
             $table->text('description')->nullable();
-            $table->tinyInteger('status')->default(\App\Enums\CommonStatus::Active);
+            $table->tinyInteger('status')->default(CommonStatus::Active);
             $table->boolean('is_system')->default(false);
             $table->softDeletes();
             $table->timestamps();

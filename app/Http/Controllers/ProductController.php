@@ -259,6 +259,18 @@ class ProductController extends Controller
     {
         $this->authorize('product.delete');
 
+        if ($product->batches()->exists()) {
+            return back()->with('error', 'Cannot delete product with existing batches.');
+        }
+
+        if ($product->purchaseProducts()->exists()) {
+            return back()->with('error', 'Cannot delete product with purchase history.');
+        }
+
+        if ($product->sellProducts()->exists()) {
+            return back()->with('error', 'Cannot delete product with sales history.');
+        }
+
         foreach ($product->photos as $photo) {
             Storage::disk('public')->delete($photo->image);
         }

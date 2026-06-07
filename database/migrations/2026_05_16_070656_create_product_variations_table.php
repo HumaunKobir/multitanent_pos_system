@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\CommonStatus;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -21,7 +22,7 @@ return new class extends Migration
             $table->decimal('purchase_price', 10, 2)->default(0);
             $table->integer('stock')->default(0);
             $table->json('variation_data')->nullable();
-            $table->tinyInteger('status')->default(\App\Enums\CommonStatus::Active->value);
+            $table->tinyInteger('status')->default(CommonStatus::Active->value);
             $table->timestamps();
         });
     }

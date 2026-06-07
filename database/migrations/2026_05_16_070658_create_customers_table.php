@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\CommonStatus;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -20,11 +21,11 @@ return new class extends Migration
             $table->string('email')->nullable();
             $table->string('password')->nullable();
             $table->string('address')->nullable();
-            $table->decimal('balance', 15,2)->default(0);
-            $table->boolean('is_membership', )->default(0);
-            $table->decimal('point',15,2)->default(0);
+            $table->decimal('balance', 15, 2)->default(0);
+            $table->boolean('is_membership')->default(0);
+            $table->decimal('point', 15, 2)->default(0);
             $table->boolean('is_default')->default(false);
-            $table->tinyInteger('status')->default(\App\Enums\CommonStatus::Active);
+            $table->tinyInteger('status')->default(CommonStatus::Active);
             $table->rememberToken();
             $table->timestamps();
         });

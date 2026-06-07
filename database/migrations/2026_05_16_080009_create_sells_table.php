@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\SaleType;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -17,7 +18,7 @@ return new class extends Migration
             $table->decimal('discount', 12, 2)->default(0);
             $table->decimal('vat', 12, 2)->default(0);
             $table->decimal('paid_amount', 12, 2)->default(0);
-            $table->tinyInteger('type')->default(\App\Enums\SaleType::Sale->value);
+            $table->tinyInteger('type')->default(SaleType::Sale->value);
             $table->text('comment')->nullable();
             $table->timestamps();
         });

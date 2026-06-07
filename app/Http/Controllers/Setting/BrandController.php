@@ -90,6 +90,10 @@ class BrandController extends Controller
     {
         $this->authorize('setting.brand.delete');
 
+        if ($brand->products()->exists()) {
+            return back()->with('error', 'Cannot delete brand with existing products.');
+        }
+
         $this->deletePublicImage($this->isStoredPublicImage($brand->image) ? $brand->image : null);
 
         $brand->delete();

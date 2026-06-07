@@ -90,6 +90,10 @@ class CategoryController extends Controller
     {
         $this->authorize('setting.category.delete');
 
+        if ($category->products()->exists()) {
+            return back()->with('error', 'Cannot delete category with existing products.');
+        }
+
         $this->deletePublicImage($this->isStoredPublicImage($category->image) ? $category->image : null);
 
         $category->delete();

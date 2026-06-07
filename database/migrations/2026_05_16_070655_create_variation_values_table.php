@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\CommonStatus;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -15,7 +16,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('variation_id')->constrained('variations')->cascadeOnDelete();
             $table->string('value');
-            $table->tinyInteger('status')->default(\App\Enums\CommonStatus::Active);
+            $table->tinyInteger('status')->default(CommonStatus::Active);
             $table->timestamps();
         });
     }

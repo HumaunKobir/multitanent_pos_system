@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Setting;
 use App\Concerns\StoresPublicImages;
 use App\Enums\CommonStatus;
 use App\Http\Controllers\Controller;
+use App\Models\Product;
 use App\Models\Tag;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -101,6 +102,11 @@ class TagController extends Controller
         if ($tag->children()->exists()) {
             return redirect()->route('setting.tag.index')
                 ->with('error', 'Cannot delete a tag that has child tags.');
+        }
+
+        if (Product::whereJsonContains('tags', $tag->name)->exists()) {
+            return redirect()->route('setting.tag.index')
+                ->with('error', 'Cannot delete tag that is used in products.');
         }
 
         $this->deletePublicImage($this->isStoredPublicImage($tag->image) ? $tag->image : null);

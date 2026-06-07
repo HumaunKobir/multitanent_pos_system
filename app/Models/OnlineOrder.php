@@ -11,7 +11,7 @@ class OnlineOrder extends Model
 {
     protected $fillable = [
         'customer_id', 'name', 'email', 'phone', 'address',
-        'payment_method', 'delivery_charge', 'subtotal', 'total',
+        'payment_method', 'transaction_id', 'delivery_charge', 'subtotal', 'total',
         'payment_status', 'courier', 'status',
     ];
 

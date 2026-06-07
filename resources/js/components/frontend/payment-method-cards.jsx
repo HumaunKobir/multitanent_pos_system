@@ -11,9 +11,8 @@ const methods = [
     {
         value: 'sslcommerz',
         label: 'SSLCommerz',
-        desc: 'Coming soon',
+        desc: 'Cards, bKash, Nagad & more',
         icon: CreditCard,
-        disabled: true,
     },
 ];
 

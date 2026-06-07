@@ -29,6 +29,8 @@ final class WebsiteSettings
             'support_time' => self::DEFAULT_SUPPORT_TIME,
             'delivery_charge_inside_dhaka' => '60',
             'delivery_charge_outside_dhaka' => '120',
+            'online_sslcommerz_payment_account_id' => '',
+            'online_cod_payment_account_id' => '',
             'meta_tags' => '',
             'meta_description' => '',
             'newsletter_enabled' => '1',
@@ -72,6 +74,33 @@ final class WebsiteSettings
         }
 
         return $cityId === 1 ? $insideDhaka : $outsideDhaka;
+    }
+
+    public static function onlineSslCommerzPaymentAccountId(): ?int
+    {
+        return self::resolvePaymentAccountId('online_sslcommerz_payment_account_id', 'ONLINE_SSLCOMMERZ_PAYMENT_ACCOUNT_ID');
+    }
+
+    public static function onlineCodPaymentAccountId(): ?int
+    {
+        return self::resolvePaymentAccountId('online_cod_payment_account_id', 'ONLINE_COD_PAYMENT_ACCOUNT_ID');
+    }
+
+    private static function resolvePaymentAccountId(string $settingKey, string $envKey): ?int
+    {
+        $value = self::get($settingKey);
+
+        if ($value !== null && $value !== '') {
+            return (int) $value;
+        }
+
+        $envValue = env($envKey);
+
+        if ($envValue !== null && $envValue !== '') {
+            return (int) $envValue;
+        }
+
+        return null;
     }
 
     /**

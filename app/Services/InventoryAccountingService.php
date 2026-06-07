@@ -9,6 +9,7 @@ use App\Models\ChartOfAccount;
 use App\Models\Customer;
 use App\Models\CustomerPayment;
 use App\Models\Damage;
+use App\Models\OnlineOrder;
 use App\Models\ProductExchange;
 use App\Models\Purchase;
 use App\Models\SaleReturn;
@@ -249,6 +250,110 @@ class InventoryAccountingService
             "Customer Due Collection {$serial}",
             $lines,
         );
+    }
+
+    public function postOnlineOrderPrepayment(OnlineOrder $order, int $paymentAccountId): Transaction
+    {
+        $amount = round((float) $order->total, 2);
+        $label = $this->onlineOrderLabel($order);
+
+        $lines = [
+            $this->debitPaymentAccount($paymentAccountId, $amount, "Online prepayment received — {$label}"),
+            $this->creditLine(SystemAccountKey::CustomerDeposits, $amount, "Customer deposit — {$label}"),
+        ];
+
+        return $this->postOnlineOrderJournal($order, 'prepayment', $lines);
+    }
+
+    public function postOnlineOrderFulfillment(OnlineOrder $order, ?int $paymentAccountId, float $cogs): Transaction
+    {
+        $subtotal = round((float) $order->subtotal, 2);
+        $deliveryCharge = round((float) $order->delivery_charge, 2);
+        $total = round((float) $order->total, 2);
+        $label = $this->onlineOrderLabel($order);
+        $lines = [];
+
+        if ($order->payment_method === 'sslcommerz' && $order->payment_status === 'Paid') {
+            if ($total > 0) {
+                $lines[] = $this->debitLine(SystemAccountKey::CustomerDeposits, $total, "Revenue recognition — {$label}");
+            }
+        } elseif ($order->payment_method === 'cod') {
+            if ($total > 0) {
+                $lines[] = $this->debitPaymentAccount($paymentAccountId, $total, "COD collection — {$label}");
+            }
+        } else {
+            throw new \RuntimeException('Unsupported online order payment method for fulfillment.');
+        }
+
+        if ($subtotal > 0) {
+            $lines[] = $this->creditLine(SystemAccountKey::SalesRevenue, $subtotal, "Product sales — {$label}");
+        }
+
+        if ($deliveryCharge > 0) {
+            $lines[] = $this->creditLine(SystemAccountKey::SalesRevenue, $deliveryCharge, "Delivery revenue — {$label}");
+        }
+
+        if ($cogs > 0) {
+            $lines[] = $this->debitLine(SystemAccountKey::CostOfGoodsSold, $cogs, "COGS — {$label}");
+            $lines[] = $this->creditLine(SystemAccountKey::Inventory, $cogs, "Inventory reduced — {$label}");
+        }
+
+        return $this->postOnlineOrderJournal($order, 'fulfillment', $lines);
+    }
+
+    public function reverseOnlineOrderPrepayment(OnlineOrder $order, int $paymentAccountId): Transaction
+    {
+        $amount = round((float) $order->total, 2);
+        $label = $this->onlineOrderLabel($order);
+
+        $lines = [
+            $this->debitLine(SystemAccountKey::CustomerDeposits, $amount, "Prepayment reversed — {$label}"),
+            $this->creditPaymentAccount($paymentAccountId, $amount, "Prepayment refunded — {$label}"),
+        ];
+
+        return $this->postOnlineOrderJournal($order, 'prepayment_reversal', $lines);
+    }
+
+    public function findOnlineOrderTransaction(OnlineOrder $order, string $phase): ?Transaction
+    {
+        $prefix = match ($phase) {
+            'prepayment' => 'Online order prepayment —',
+            'fulfillment' => 'Online order fulfillment —',
+            'prepayment_reversal' => 'Online order prepayment reversal —',
+            default => throw new \InvalidArgumentException("Unknown online order accounting phase: {$phase}"),
+        };
+
+        return Transaction::query()
+            ->where('source_type', OnlineOrder::class)
+            ->where('source_id', $order->id)
+            ->where('description', 'like', $prefix.'%')
+            ->first();
+    }
+
+    /**
+     * @param  array<int, array{account_id: int, debit: float, credit: float, decrease: bool, description?: ?string}>  $lines
+     */
+    private function postOnlineOrderJournal(OnlineOrder $order, string $phase, array $lines): Transaction
+    {
+        $description = match ($phase) {
+            'prepayment' => 'Online order prepayment — '.$this->onlineOrderLabel($order),
+            'fulfillment' => 'Online order fulfillment — '.$this->onlineOrderLabel($order),
+            'prepayment_reversal' => 'Online order prepayment reversal — '.$this->onlineOrderLabel($order),
+            default => throw new \InvalidArgumentException("Unknown online order accounting phase: {$phase}"),
+        };
+
+        return $this->postJournal(
+            OnlineOrder::class,
+            $order->id,
+            now()->format('Y-m-d'),
+            $description,
+            $lines,
+        );
+    }
+
+    private function onlineOrderLabel(OnlineOrder $order): string
+    {
+        return 'Order #'.$order->id;
     }
 
     public function postExchange(ProductExchange $exchange, ?int $paymentAccountId): Transaction

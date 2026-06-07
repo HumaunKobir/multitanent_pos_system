@@ -21,6 +21,7 @@ use App\Http\Controllers\Inventory\SellController;
 use App\Http\Controllers\Inventory\StockDistributionController;
 use App\Http\Controllers\Inventory\SupplierController;
 use App\Http\Controllers\Inventory\SupplierPaymentController;
+use App\Http\Controllers\OnlineOrderController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\RoleController;
@@ -60,6 +61,8 @@ Route::middleware(['auth', 'verified', 'ecommerce.panel'])->group(function () {
     Route::delete('subscriber-list/{subscriber}', [SubscriberListController::class, 'destroy'])->name('subscriber-list.destroy');
     Route::get('setting/website', [WebsiteSettingController::class, 'edit'])->name('setting.website.edit');
     Route::put('setting/website', [WebsiteSettingController::class, 'update'])->name('setting.website.update');
+    Route::patch('online-order/{onlineOrder}/fulfill', [OnlineOrderController::class, 'fulfill'])->name('online-order.fulfill');
+    Route::patch('online-order/{onlineOrder}/status', [OnlineOrderController::class, 'updateStatus'])->name('online-order.update-status');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {

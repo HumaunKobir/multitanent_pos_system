@@ -49,6 +49,10 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);
+
+        $middleware->validateCsrfTokens(except: [
+            'sslcommerz/*',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(function (AuthenticationException $e, Request $request) {

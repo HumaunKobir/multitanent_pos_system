@@ -101,6 +101,23 @@ class InventoryCostService
         return round($total, 2);
     }
 
+    public function costForOnlineOrder(OnlineOrder $order): float
+    {
+        $order->loadMissing('products');
+
+        $total = 0.0;
+
+        foreach ($order->products as $line) {
+            $total += $this->costForLine(
+                $line->variation_id ? (int) $line->variation_id : null,
+                (float) $line->quantity,
+                $line->batches ?? [],
+            );
+        }
+
+        return round($total, 2);
+    }
+
     public function costForSell(Sell $sell): float
     {
         $sell->loadMissing('products');

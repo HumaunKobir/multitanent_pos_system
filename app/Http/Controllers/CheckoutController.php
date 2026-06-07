@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Actions\Checkout\InitiateSslCommerzPayment;
 use App\Actions\Checkout\PlaceCodOnlineOrder;
 use App\Http\Requests\StoreCheckoutRequest;
 use App\Models\OnlineOrder;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Response as HttpResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 use InvalidArgumentException;
@@ -25,14 +27,13 @@ class CheckoutController extends Controller
         ]);
     }
 
-    public function store(StoreCheckoutRequest $request, PlaceCodOnlineOrder $placeCodOnlineOrder): RedirectResponse
-    {
+    public function store(
+        StoreCheckoutRequest $request,
+        PlaceCodOnlineOrder $placeCodOnlineOrder,
+        InitiateSslCommerzPayment $initiateSslCommerzPayment,
+    ): RedirectResponse|HttpResponse {
         if (! auth('customer')->check()) {
             return back()->with('error', 'Please log in to place your order.');
-        }
-
-        if ($request->validated('payment_method') === 'sslcommerz') {
-            return back()->with('error', 'Online payment is coming soon. Please choose Cash on Delivery.');
         }
 
         $cart = session('cart', []);
@@ -40,12 +41,15 @@ class CheckoutController extends Controller
             return redirect()->route('cart')->with('error', 'Your cart is empty.');
         }
 
+        $customer = auth('customer')->user();
+        $checkoutData = $request->validated();
+
         try {
-            $order = $placeCodOnlineOrder->execute(
-                auth('customer')->user(),
-                $cart,
-                $request->validated(),
-            );
+            if ($checkoutData['payment_method'] === 'sslcommerz') {
+                return $initiateSslCommerzPayment->execute($customer, $cart, $checkoutData);
+            }
+
+            $order = $placeCodOnlineOrder->execute($customer, $cart, $checkoutData);
         } catch (InvalidArgumentException $exception) {
             return back()->with('error', $exception->getMessage());
         }

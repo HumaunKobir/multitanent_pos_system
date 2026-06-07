@@ -123,7 +123,11 @@ function CheckoutSteps({ currentStep, steps }) {
     );
 }
 
-function OrderSummaryPanel({ items, subtotal, deliveryCharge, total, processing }) {
+function OrderSummaryPanel({ items, subtotal, deliveryCharge, total, processing, paymentMethod }) {
+    const isOnlinePayment = paymentMethod === 'sslcommerz';
+    const submitLabel = isOnlinePayment
+        ? `Pay Now — ৳${formatPrice(total)}`
+        : `Place Order — ৳${formatPrice(total)}`;
     const assurances = [
         { icon: Truck, title: 'Cash on delivery', desc: 'Inside & outside Dhaka' },
         { icon: ShieldCheck, title: 'Secure checkout', desc: 'SSLCommerz · COD' },
@@ -190,7 +194,7 @@ function OrderSummaryPanel({ items, subtotal, deliveryCharge, total, processing 
 
             <div className="border-t border-gray-200 px-4 py-3">
                 <StoreButton type="submit" variant="accent" className="w-full rounded-xl py-3 text-sm font-bold" disabled={processing}>
-                    {processing ? 'Processing...' : `Place Order — ৳${formatPrice(total)}`}
+                    {processing ? 'Processing...' : submitLabel}
                 </StoreButton>
             </div>
         </div>
@@ -337,6 +341,7 @@ export default function Checkout({ cart, customer }) {
                                 deliveryCharge={deliveryCharge}
                                 total={total}
                                 processing={processing}
+                                paymentMethod={data.payment_method}
                             />
                         </div>
                     </form>
@@ -351,7 +356,7 @@ export default function Checkout({ cart, customer }) {
                     className="w-full rounded-xl py-2.5 text-xs font-bold"
                     disabled={processing}
                 >
-                    {processing ? 'Processing...' : `Place Order — ৳${formatPrice(total)}`}
+                    {processing ? 'Processing...' : (data.payment_method === 'sslcommerz' ? `Pay Now — ৳${formatPrice(total)}` : `Place Order — ৳${formatPrice(total)}`)}
                 </StoreButton>
             </div>
         </FrontendLayout>

@@ -270,6 +270,15 @@ return [
             ],
         ],
 
+        'online-order' => [
+            'label' => 'Online Orders',
+            'group' => 'Ecommerce',
+            'permissions' => [
+                'online-order.view' => 'View Online Orders',
+                'online-order.update' => 'Update Online Orders',
+            ],
+        ],
+
         // ── Administration ────────────────────────────────────────────────────
 
         'branch' => [

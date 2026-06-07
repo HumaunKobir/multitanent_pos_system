@@ -9,12 +9,13 @@ class OnlineOrderProduct extends Model
 {
     protected $fillable = [
         'online_order_id', 'product_id', 'variation_id', 'name', 'sku',
-        'price', 'quantity', 'total_price',
+        'price', 'quantity', 'total_price', 'batches',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'total_price' => 'decimal:2',
+        'batches' => 'array',
     ];
 
     public function order(): BelongsTo

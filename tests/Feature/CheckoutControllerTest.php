@@ -4,7 +4,9 @@ use App\Enums\OrderStatus;
 use App\Models\Customer;
 use App\Models\OnlineOrder;
 use App\Models\Product;
+use App\Services\SslCommerzGateway;
 use App\Support\WebsiteSettings;
+use Mockery\MockInterface;
 
 function uniqueCheckoutPhone(): string
 {
@@ -92,23 +94,36 @@ test('can place cod order and create order products', function () {
     expect(session('cart'))->toBeNull();
 });
 
-test('sslcommerz checkout is not available yet', function () {
+test('sslcommerz checkout initiates online payment', function () {
     $customer = Customer::factory()->create();
     $phone = uniqueCheckoutPhone();
     session(['cart' => cartWithProduct()]);
 
-    $this->actingAs($customer, 'customer')
+    $this->mock(SslCommerzGateway::class, function (MockInterface $mock): void {
+        $mock->shouldReceive('initiatePayment')
+            ->once()
+            ->andReturn(['url' => 'https://sandbox.sslcommerz.com/EasyCheckOut/test', 'error' => null]);
+    });
+
+    $this->withInertiaHeaders()
+        ->actingAs($customer, 'customer')
         ->post(route('checkout.store'), [
             'name' => 'Karim Ahmed',
             'phone' => $phone,
             'address' => 'Dhaka',
             'payment_method' => 'sslcommerz',
+            'delivery_zone' => 1,
         ])
-        ->assertRedirect()
-        ->assertSessionHas('error', 'Online payment is coming soon. Please choose Cash on Delivery.');
+        ->assertStatus(409)
+        ->assertHeader('X-Inertia-Location', 'https://sandbox.sslcommerz.com/EasyCheckOut/test');
 
-    $this->assertDatabaseMissing('online_orders', ['phone' => $phone]);
-    expect(session('cart'))->not->toBeNull();
+    $this->assertDatabaseHas('online_orders', [
+        'phone' => $phone,
+        'payment_method' => 'sslcommerz',
+        'payment_status' => 'Pending',
+    ]);
+
+    expect(session('cart'))->toBeNull();
 });
 
 test('order calculates inside dhaka delivery charge as 60', function () {

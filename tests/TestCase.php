@@ -13,4 +13,12 @@ abstract class TestCase extends BaseTestCase
             $this->markTestSkipped($message ?? "Fortify feature [{$feature}] is not enabled.");
         }
     }
+
+    protected function withInertiaHeaders(): static
+    {
+        return $this->withHeaders([
+            'X-Inertia' => 'true',
+            'X-Requested-With' => 'XMLHttpRequest',
+        ]);
+    }
 }

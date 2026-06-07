@@ -12,6 +12,7 @@ enum SystemAccountKey: string
     case CurrentLiabilities = 'current_liabilities';
     case AccountsPayable = 'accounts_payable';
     case OutputVat = 'output_vat';
+    case CustomerDeposits = 'customer_deposits';
     case Equity = 'equity';
     case OpeningBalanceEquity = 'opening_balance_equity';
     case Income = 'income';
@@ -37,6 +38,7 @@ enum SystemAccountKey: string
             self::CurrentLiabilities => 'Current Liabilities',
             self::AccountsPayable => 'Accounts Payable',
             self::OutputVat => 'Output VAT',
+            self::CustomerDeposits => 'Customer Deposits (Deferred Revenue)',
             self::Equity => 'Equity',
             self::OpeningBalanceEquity => 'Opening Balance Equity',
             self::Income => 'Income',
@@ -53,6 +55,7 @@ enum SystemAccountKey: string
         return match ($this) {
             self::CurrentAssets, self::Inventory, self::BranchInventory, self::InputVat, self::AccountsReceivable => AccountType::Asset,
             self::CurrentLiabilities, self::AccountsPayable, self::OutputVat => AccountType::Liability,
+            self::CustomerDeposits => AccountType::Liability,
             self::Equity, self::OpeningBalanceEquity => AccountType::Equity,
             self::Income, self::SalesRevenue, self::SalesReturns => AccountType::Income,
             self::Expenses, self::CostOfGoodsSold, self::InventoryDamage => AccountType::Expenses,
@@ -71,7 +74,7 @@ enum SystemAccountKey: string
     {
         return match ($this) {
             self::Inventory, self::BranchInventory, self::InputVat, self::AccountsReceivable => self::CurrentAssets,
-            self::AccountsPayable, self::OutputVat => self::CurrentLiabilities,
+            self::AccountsPayable, self::OutputVat, self::CustomerDeposits => self::CurrentLiabilities,
             self::OpeningBalanceEquity => self::Equity,
             self::SalesRevenue, self::SalesReturns => self::Income,
             self::CostOfGoodsSold, self::InventoryDamage => self::Expenses,

@@ -52,7 +52,13 @@ export default function OrderSuccess({ order }) {
                         <div className="flex justify-between">
                             <span className="text-store-muted">Payment</span>
                             <span className="rounded-full bg-store-warm px-2 py-0.5 text-xs capitalize">
-                                {order.payment_method === 'cod' ? 'Cash on Delivery' : order.payment_status}
+                                {order.payment_method === 'cod'
+                                    ? 'Cash on Delivery'
+                                    : order.payment_method === 'sslcommerz' && order.payment_status === 'Paid'
+                                      ? 'SSLCommerz · Paid'
+                                      : order.payment_method === 'sslcommerz'
+                                        ? 'SSLCommerz · Pending'
+                                        : order.payment_status}
                             </span>
                         </div>
                     </div>

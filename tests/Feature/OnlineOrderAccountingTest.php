@@ -99,7 +99,7 @@ test('sslcommerz prepayment posts cash debit and customer deposits credit', func
 
     $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
     $cashAccountId = $cash->id;
-    $depositsAccountId = SystemAccountService::resolve(SystemAccountKey::CustomerDeposits)->id;
+    $depositsAccountId = SystemAccountService::resolve(SystemAccountKey::AdvanceFromCustomer)->id;
 
     expect($ledgers->firstWhere('account_id', $cashAccountId)?->debit)->toBe('1260.00')
         ->and($ledgers->firstWhere('account_id', $depositsAccountId)?->credit)->toBe('1260.00');
@@ -125,11 +125,13 @@ test('sslcommerz fulfillment recognizes revenue and cogs from customer deposits'
     $batch->refresh();
     expect((float) $batch->available)->toBe(9.0);
 
-    $revenueAccountId = SystemAccountService::resolve(SystemAccountKey::SalesRevenue)->id;
+    $revenueAccountId = SystemAccountService::resolve(SystemAccountKey::ProductSales)->id;
+    $otherIncomeAccountId = SystemAccountService::resolve(SystemAccountKey::OtherIncome)->id;
     $cogsAccountId = SystemAccountService::resolve(SystemAccountKey::CostOfGoodsSold)->id;
     $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
 
-    expect(round($ledgers->where('account_id', $revenueAccountId)->sum('credit'), 2))->toBe(1260.0)
+    expect(round($ledgers->where('account_id', $revenueAccountId)->sum('credit'), 2))->toBe(1200.0)
+        ->and(round($ledgers->where('account_id', $otherIncomeAccountId)->sum('credit'), 2))->toBe(60.0)
         ->and(round($ledgers->where('account_id', $cogsAccountId)->sum('debit'), 2))->toBe(800.0);
 });
 

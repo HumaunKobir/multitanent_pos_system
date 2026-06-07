@@ -4,9 +4,12 @@ namespace App\Http\Controllers\Account;
 
 use App\Enums\AccountType;
 use App\Enums\CommonStatus;
+use App\Enums\SystemAccountKey;
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Services\InventoryAccountingService;
+use App\Services\SystemAccountService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -22,7 +25,12 @@ class AccountController extends Controller
     {
         $this->authorize('accounts.view');
 
+        $branchId = $request->user()?->branch_id;
+
+        SystemAccountService::ensureConfigured($branchId);
+
         $accounts = ChartOfAccount::query()
+            ->forPanel()
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('name', 'like', "%{$s}%")
                     ->orWhere('code', 'like', "%{$s}%");
@@ -32,6 +40,7 @@ class AccountController extends Controller
             ->get(['id', 'parent_id', 'code', 'account_number', 'name', 'type', 'current_balance', 'description', 'status', 'is_system']);
 
         $parentAccounts = ChartOfAccount::query()
+            ->forPanel()
             ->orderBy('code')
             ->get(['id', 'name', 'code', 'type']);
 
@@ -39,6 +48,7 @@ class AccountController extends Controller
             'accounts' => $accounts,
             'parentAccounts' => $parentAccounts,
             'accountTypes' => AccountType::getAccountTypes(),
+            'cashAndBankParentId' => SystemAccountService::id(SystemAccountKey::CashAndBank, $branchId),
             'filters' => $request->only('search', 'type'),
         ]);
     }
@@ -49,7 +59,7 @@ class AccountController extends Controller
 
         $request->validate([
             'type' => ['required', Rule::enum(AccountType::class)],
-            'parent_id' => ['nullable', 'exists:chart_of_accounts,id'],
+            'parent_id' => ['nullable', Rule::exists('chart_of_accounts', 'id')->where(fn ($query) => $this->applyPanelScope($query))],
         ]);
 
         $type = AccountType::from((int) $request->type);
@@ -64,11 +74,15 @@ class AccountController extends Controller
     {
         $this->authorize('accounts.create');
 
+        $branchId = $request->user()?->branch_id;
+
         $data = $request->validate([
-            'parent_id' => ['nullable', 'exists:chart_of_accounts,id'],
+            'parent_id' => ['nullable', Rule::exists('chart_of_accounts', 'id')->where(fn ($query) => $this->applyPanelScope($query))],
             'type' => ['required', Rule::enum(AccountType::class)],
             'name' => ['required', 'string', 'max:191'],
-            'code' => ['nullable', 'string', 'max:50', Rule::unique('chart_of_accounts', 'code')->whereNull('deleted_at')],
+            'code' => ['nullable', 'string', 'max:50', Rule::unique('chart_of_accounts', 'code')->where(
+                fn ($query) => $this->applyPanelSourceToUniqueRule($query, $branchId),
+            )],
             'account_number' => ['nullable', 'string', 'max:50'],
             'description' => ['nullable', 'string', 'max:500'],
             'status' => ['required', Rule::enum(CommonStatus::class)],
@@ -78,6 +92,7 @@ class AccountController extends Controller
         $openingBalance = (float) ($data['opening_balance'] ?? 0);
 
         $account = ChartOfAccount::create([
+            ...ChartOfAccount::panelSourceAttributes($branchId),
             'parent_id' => $data['parent_id'] ?? null,
             'type' => $data['type'],
             'name' => $data['name'],
@@ -104,11 +119,22 @@ class AccountController extends Controller
     {
         $this->authorize('accounts.update');
 
+        $chartOfAccount = $this->resolvePanelAccount($chartOfAccount);
+
+        if ($chartOfAccount->is_system) {
+            return redirect()->route('accounts.index')
+                ->with('error', 'System accounts cannot be updated.');
+        }
+
+        $branchId = $request->user()?->branch_id;
+
         $data = $request->validate([
-            'parent_id' => ['nullable', Rule::notIn([$chartOfAccount->id]), 'exists:chart_of_accounts,id'],
+            'parent_id' => ['nullable', Rule::notIn([$chartOfAccount->id]), Rule::exists('chart_of_accounts', 'id')->where(fn ($query) => $this->applyPanelScope($query))],
             'type' => ['required', Rule::enum(AccountType::class)],
             'name' => ['required', 'string', 'max:191'],
-            'code' => ['nullable', 'string', 'max:50', Rule::unique('chart_of_accounts', 'code')->ignore($chartOfAccount->id)->whereNull('deleted_at')],
+            'code' => ['nullable', 'string', 'max:50', Rule::unique('chart_of_accounts', 'code')->ignore($chartOfAccount->id)->where(
+                fn ($query) => $this->applyPanelSourceToUniqueRule($query, $branchId),
+            )],
             'account_number' => ['nullable', 'string', 'max:50'],
             'description' => ['nullable', 'string', 'max:500'],
             'status' => ['required', Rule::enum(CommonStatus::class)],
@@ -132,6 +158,8 @@ class AccountController extends Controller
     {
         $this->authorize('accounts.delete');
 
+        $chartOfAccount = $this->resolvePanelAccount($chartOfAccount);
+
         if ($chartOfAccount->is_system) {
             return redirect()->route('accounts.index')
                 ->with('error', 'System accounts cannot be deleted.');
@@ -141,5 +169,36 @@ class AccountController extends Controller
 
         return redirect()->route('accounts.index')
             ->with('success', 'Account deleted successfully.');
+    }
+
+    private function resolvePanelAccount(ChartOfAccount $chartOfAccount): ChartOfAccount
+    {
+        return ChartOfAccount::query()->forPanel()->whereKey($chartOfAccount->id)->firstOrFail();
+    }
+
+    private function applyPanelScope($query): void
+    {
+        $branchId = auth()->user()?->branch_id;
+
+        if ($branchId === null) {
+            $query->whereNull('source_type')->whereNull('source_id');
+
+            return;
+        }
+
+        $query->where('source_type', Branch::class)->where('source_id', $branchId);
+    }
+
+    private function applyPanelSourceToUniqueRule($query, ?int $branchId): void
+    {
+        $query->whereNull('deleted_at');
+
+        if ($branchId === null) {
+            $query->whereNull('source_type')->whereNull('source_id');
+
+            return;
+        }
+
+        $query->where('source_type', Branch::class)->where('source_id', $branchId);
     }
 }

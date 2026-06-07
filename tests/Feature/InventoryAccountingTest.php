@@ -14,6 +14,7 @@ use App\Models\Supplier;
 use App\Models\SupplierPayment;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\InventoryAccountingService;
 use App\Services\SystemAccountService;
 use Spatie\Permission\Models\Permission;
 
@@ -30,11 +31,11 @@ function accountingUser(array $permissions = []): User
     return $user;
 }
 
-test('purchase posts balanced journal with inventory input vat and payable lines', function () {
+test('purchase posts balanced journal with inventory and payable lines', function () {
     $this->artisan('permissions:sync');
 
     $user = accountingUser(['inventory.purchase.create']);
-    $cash = seedAccountingAccounts();
+    $cash = seedAccountingAccounts(branchId: $user->branch_id);
 
     $supplier = Supplier::factory()->create([
         'branch_id' => $user->branch_id,
@@ -93,21 +94,28 @@ test('supplier payment posts payable debit and cash credit', function () {
         'party.supplier-payment.view',
         'party.supplier-payment.create',
     ]);
-    $cash = seedAccountingAccounts();
+    $cash = seedAccountingAccounts(branchId: $user->branch_id);
 
     $supplier = Supplier::factory()->create([
         'branch_id' => $user->branch_id,
         'balance' => 2000,
     ]);
 
-    $this->actingAs($user)
-        ->post('/party/supplier-payment', [
-            'supplier_id' => $supplier->id,
-            'date' => now()->format('Y-m-d'),
-            'amount' => 500,
-            'payment_account_id' => $cash->id,
-            'comment' => 'GL payment',
-        ])
+    $this->actingAs($user);
+
+    app(InventoryAccountingService::class)->postSupplierOpeningBalance(
+        $supplier,
+        2000,
+        now()->format('Y-m-d'),
+    );
+
+    $this->post('/party/supplier-payment', [
+        'supplier_id' => $supplier->id,
+        'date' => now()->format('Y-m-d'),
+        'amount' => 500,
+        'payment_account_id' => $cash->id,
+        'comment' => 'GL payment',
+    ])
         ->assertRedirect()
         ->assertSessionHas('success');
 
@@ -127,9 +135,9 @@ test('supplier payment posts payable debit and cash credit', function () {
 
 test('supplier opening balance creates payable journal entry', function () {
     $this->artisan('permissions:sync');
-    seedAccountingAccounts();
 
     $user = accountingUser(['party.supplier.create']);
+    seedAccountingAccounts(user: $user);
 
     $this->actingAs($user)
         ->post('/party/supplier', [
@@ -155,9 +163,9 @@ test('supplier opening balance creates payable journal entry', function () {
 
 test('customer opening balance creates receivable journal entry', function () {
     $this->artisan('permissions:sync');
-    seedAccountingAccounts();
 
     $user = accountingUser(['party.customer.create']);
+    seedAccountingAccounts(user: $user);
 
     $this->actingAs($user)
         ->post('/party/customer', [
@@ -185,13 +193,13 @@ test('customer opening balance creates receivable journal entry', function () {
 
 test('account opening balance posts ledger entry instead of direct balance only', function () {
     $this->artisan('permissions:sync');
-    seedAccountingAccounts();
 
     $user = accountingUser(['accounts.create']);
+    seedAccountingAccounts(user: $user);
 
     $this->actingAs($user)
         ->post('/accounts', [
-            'parent_id' => SystemAccountService::resolve(SystemAccountKey::CurrentAssets)->id,
+            'parent_id' => SystemAccountService::resolve(SystemAccountKey::CashAndBank, $user->branch_id)->id,
             'type' => AccountType::Asset->value,
             'name' => 'Petty Cash '.fake()->unique()->word(),
             'status' => CommonStatus::Active->value,
@@ -216,7 +224,7 @@ test('purchase delete reverses accounting transaction', function () {
     $this->artisan('permissions:sync');
 
     $user = accountingUser(['inventory.purchase.create', 'inventory.purchase.delete']);
-    $cash = seedAccountingAccounts();
+    $cash = seedAccountingAccounts(branchId: $user->branch_id);
 
     $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id]);
     $product = Product::factory()->create(['branch_id' => $user->branch_id]);
@@ -257,7 +265,7 @@ test('inventory purchase journal remains balanced', function () {
     $this->artisan('permissions:sync');
 
     $user = accountingUser(['inventory.purchase.create']);
-    $cash = seedAccountingAccounts();
+    $cash = seedAccountingAccounts(branchId: $user->branch_id);
 
     $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id]);
     $product = Product::factory()->create(['branch_id' => $user->branch_id]);

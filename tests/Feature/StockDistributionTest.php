@@ -19,6 +19,8 @@ function mainBranchUser(array $permissions = []): User
         Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
     );
 
+    seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+
     $user = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
 
     foreach ($permissions as $permission) {
@@ -158,8 +160,6 @@ test('edit form includes current main branch stock for line items', function () 
 
 test('main branch user can update and delete a distribution', function () {
     $this->artisan('permissions:sync');
-
-    seedAccountingAccounts();
 
     $user = mainBranchUser([
         'inventory.stock-distribution.create',

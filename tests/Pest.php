@@ -1,10 +1,9 @@
 <?php
 
-use App\Enums\AccountType;
-use App\Enums\CommonStatus;
 use App\Enums\SystemAccountKey;
 use App\Models\ChartOfAccount;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Services\InventoryAccountingService;
 use App\Services\SystemAccountService;
 use Tests\TestCase;
@@ -54,24 +53,13 @@ function something()
     // ..
 }
 
-function seedAccountingAccounts(float $minimumBalance = 100000): ChartOfAccount
+function seedAccountingAccounts(float $minimumBalance = 100000, ?int $branchId = null, ?User $user = null): ChartOfAccount
 {
-    SystemAccountService::seed();
+    $branchId ??= $user?->branch_id ?? auth()->user()?->branch_id;
 
-    ChartOfAccount::$skipCodeGeneration = true;
+    SystemAccountService::seed($branchId);
 
-    $cash = ChartOfAccount::query()->firstOrCreate(
-        ['code' => 'A001-99'],
-        [
-            'parent_id' => SystemAccountService::resolve(SystemAccountKey::CurrentAssets)->id,
-            'name' => 'Test Cash Account',
-            'type' => AccountType::Asset,
-            'status' => CommonStatus::Active,
-            'current_balance' => 0,
-        ],
-    );
-
-    ChartOfAccount::$skipCodeGeneration = false;
+    $cash = SystemAccountService::resolve(SystemAccountKey::CashInHand, $branchId);
 
     if (! Transaction::query()
         ->where('source_type', ChartOfAccount::class)
@@ -97,7 +85,7 @@ function seedAccountingAccounts(float $minimumBalance = 100000): ChartOfAccount
         $cash->refresh();
     }
 
-    $inventory = SystemAccountService::resolve(SystemAccountKey::Inventory);
+    $inventory = SystemAccountService::resolve(SystemAccountKey::ProductInventory, $branchId);
     $inventoryShortfall = round($minimumBalance - (float) $inventory->current_balance, 2);
 
     if ($inventoryShortfall > 0) {

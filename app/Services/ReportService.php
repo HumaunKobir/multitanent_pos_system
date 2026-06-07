@@ -786,8 +786,7 @@ class ReportService
     public function cashAccountOptions(): array
     {
         return ChartOfAccount::query()
-            ->where('type', AccountType::Asset)
-            ->whereNotNull('parent_id')
+            ->paymentAccount()
             ->orderBy('code')
             ->get(['id', 'code', 'name'])
             ->map(fn (ChartOfAccount $a) => [
@@ -836,8 +835,7 @@ class ReportService
         }
 
         return ChartOfAccount::query()
-            ->where('type', AccountType::Asset)
-            ->whereNotNull('parent_id')
+            ->paymentAccount()
             ->pluck('id')
             ->all();
     }

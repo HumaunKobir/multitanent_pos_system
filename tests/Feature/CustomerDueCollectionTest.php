@@ -11,10 +11,14 @@ use Spatie\Permission\Models\Permission;
 
 function customerWithReceivable(User $user, float $due): Customer
 {
+    seedAccountingAccounts(user: $user);
+
     $customer = Customer::factory()->create([
         'branch_id' => $user->branch_id,
         'balance' => $due,
     ]);
+
+    test()->actingAs($user);
 
     app(InventoryAccountingService::class)->postCustomerOpeningBalance(
         $customer,
@@ -59,7 +63,7 @@ test('user can record customer due collection and reduce customer due', function
         'party.customer-due-collection.view',
         'party.customer-due-collection.create',
     ]);
-    $cash = seedAccountingAccounts();
+    $cash = seedAccountingAccounts(user: $user);
     $customer = customerWithReceivable($user, 5000);
 
     $this->actingAs($user)
@@ -92,7 +96,7 @@ test('collection amount cannot exceed customer due balance', function () {
         'party.customer-due-collection.view',
         'party.customer-due-collection.create',
     ]);
-    $cash = seedAccountingAccounts();
+    $cash = seedAccountingAccounts(user: $user);
 
     $customer = Customer::factory()->create([
         'branch_id' => $user->branch_id,
@@ -171,7 +175,7 @@ test('customer due collection posts cash debit and receivable credit', function 
         'party.customer-due-collection.view',
         'party.customer-due-collection.create',
     ]);
-    $cash = seedAccountingAccounts();
+    $cash = seedAccountingAccounts(user: $user);
     $customer = customerWithReceivable($user, 2000);
 
     $this->actingAs($user)

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Branch;
 use App\Models\User;
+use App\Services\SystemAccountService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -38,6 +39,9 @@ class UserController extends Controller
         return Inertia::render('admin/user/index', [
             'users' => $users,
             'branches' => Branch::active()->orderBy('name')->pluck('name', 'id'),
+            'assignedBranchIds' => User::query()
+                ->whereNotNull('branch_id')
+                ->pluck('branch_id'),
             'roles' => Role::orderBy('name')->pluck('name', 'id'),
         ]);
     }
@@ -47,7 +51,7 @@ class UserController extends Controller
         $this->authorize('user.create');
 
         $data = $request->validate([
-            'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')],
+            'branch_id' => ['required', 'integer', Rule::exists('branches', 'id'), Rule::unique('users', 'branch_id')],
             'name' => ['required', 'string', 'max:191'],
             'email' => ['required', 'email', 'max:191', 'unique:users,email'],
             'phone' => ['required', 'string', 'max:20', 'unique:users,phone'],
@@ -57,13 +61,15 @@ class UserController extends Controller
         ]);
 
         $user = User::create([
-            'branch_id' => $data['branch_id'] ?? null,
+            'branch_id' => (int) $data['branch_id'],
             'name' => $data['name'],
             'email' => $data['email'],
             'phone' => $data['phone'],
             'password' => $data['password'],
             'status' => (int) $data['status'],
         ]);
+
+        SystemAccountService::seed((int) $data['branch_id']);
 
         if (! empty($data['role_id'])) {
             $user->syncRoles([$data['role_id']]);
@@ -81,8 +87,12 @@ class UserController extends Controller
             abort(403);
         }
 
+        $branchRules = $user->isSuperAdmin()
+            ? ['nullable', 'integer', Rule::exists('branches', 'id')]
+            : ['required', 'integer', Rule::exists('branches', 'id'), Rule::unique('users', 'branch_id')->ignore($user->id)];
+
         $data = $request->validate([
-            'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')],
+            'branch_id' => $branchRules,
             'name' => ['required', 'string', 'max:191'],
             'email' => ['required', 'email', 'max:191', Rule::unique('users', 'email')->ignore($user->id)],
             'phone' => ['required', 'string', 'max:20', Rule::unique('users', 'phone')->ignore($user->id)],
@@ -91,8 +101,10 @@ class UserController extends Controller
             'role_id' => ['nullable', 'integer', Rule::exists('roles', 'id')],
         ]);
 
+        $branchId = isset($data['branch_id']) ? (int) $data['branch_id'] : null;
+
         $payload = [
-            'branch_id' => $data['branch_id'] ?? null,
+            'branch_id' => $branchId,
             'name' => $data['name'],
             'email' => $data['email'],
             'phone' => $data['phone'],
@@ -104,6 +116,10 @@ class UserController extends Controller
         }
 
         $user->update($payload);
+
+        if ($branchId !== null) {
+            SystemAccountService::seed($branchId);
+        }
         $user->syncRoles(isset($data['role_id']) ? [$data['role_id']] : []);
 
         return redirect()->route('user.index')

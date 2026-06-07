@@ -1,4 +1,3 @@
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -14,14 +13,6 @@ import { ChevronDown, ChevronRight, Pencil, Plus, Search, Trash2, Wallet } from 
 import { useEffect, useMemo, useState } from 'react';
 import AccountFormDialog from './form-dialog';
 
-const TYPE_COLORS = {
-    Asset: 'bg-blue-100 text-blue-700 hover:bg-blue-100',
-    Liability: 'bg-orange-100 text-orange-700 hover:bg-orange-100',
-    Equity: 'bg-purple-100 text-purple-700 hover:bg-purple-100',
-    Income: 'bg-green-100 text-green-700 hover:bg-green-100',
-    Expenses: 'bg-red-100 text-red-700 hover:bg-red-100',
-};
-
 function buildTree(accounts) {
     const map = {};
     accounts.forEach((a) => (map[a.id] = { ...a, children: [] }));
@@ -36,11 +27,21 @@ function buildTree(accounts) {
     return roots;
 }
 
-function AccountRow({ node, depth, accountTypes, onEdit, onDelete, expandedIds, toggleExpand }) {
+function groupTreesByType(accounts, accountTypes) {
+    const roots = buildTree(accounts);
+
+    return accountTypes
+        .map((type) => ({
+            type,
+            nodes: roots.filter((node) => node.type === type.id),
+        }))
+        .filter((group) => group.nodes.length > 0);
+}
+
+function AccountRow({ node, depth, onEdit, onDelete, expandedIds, toggleExpand }) {
     const { can } = useCan();
     const hasChildren = node.children.length > 0;
     const isExpanded = expandedIds.has(node.id);
-    const typeLabel = accountTypes.find((t) => t.id === node.type)?.name ?? '';
     const indent = depth * 28;
 
     return (
@@ -74,11 +75,6 @@ function AccountRow({ node, depth, accountTypes, onEdit, onDelete, expandedIds, 
                                 System
                             </span>
                         )}
-                        {depth === 0 && typeLabel && (
-                            <Badge className={`text-[10px] ${TYPE_COLORS[typeLabel] ?? 'bg-muted text-muted-foreground'}`}>
-                                {typeLabel}
-                            </Badge>
-                        )}
                     </div>
                     {node.description && (
                         <p className="mt-0.5 text-xs text-muted-foreground">{node.description}</p>
@@ -97,7 +93,7 @@ function AccountRow({ node, depth, accountTypes, onEdit, onDelete, expandedIds, 
 
                 {/* Actions */}
                 <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    {can('accounts.update') && (
+                    {can('accounts.update') && !node.is_system && (
                         <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => onEdit(node)}>
                             <Pencil className="size-3" />
                         </Button>
@@ -117,7 +113,6 @@ function AccountRow({ node, depth, accountTypes, onEdit, onDelete, expandedIds, 
                         key={child.id}
                         node={child}
                         depth={depth + 1}
-                        accountTypes={accountTypes}
                         onEdit={onEdit}
                         onDelete={onDelete}
                         expandedIds={expandedIds}
@@ -128,7 +123,39 @@ function AccountRow({ node, depth, accountTypes, onEdit, onDelete, expandedIds, 
     );
 }
 
-export default function AccountIndex({ accounts, parentAccounts, accountTypes, filters }) {
+function AccountTypeSection({ group, onEdit, onDelete, expandedIds, toggleExpand }) {
+    const typeLabel = group.type.name;
+
+    return (
+        <div className="overflow-hidden rounded-lg border border-border bg-card">
+            <div className="border-b border-blue-900/80 bg-blue-950 px-4 py-2.5">
+                <h2 className="text-sm font-semibold text-white">{typeLabel} List</h2>
+            </div>
+
+            <div className="flex items-center gap-3 border-b border-border/60 bg-muted/40 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                <div className="size-5 shrink-0" />
+                <span className="flex-1">Account</span>
+                <span className="w-24 shrink-0">Acc. Number</span>
+                <span className="w-28 shrink-0 text-right">Balance</span>
+                <span className="w-16 shrink-0" />
+            </div>
+
+            {group.nodes.map((node) => (
+                <AccountRow
+                    key={node.id}
+                    node={node}
+                    depth={0}
+                    onEdit={onEdit}
+                    onDelete={onDelete}
+                    expandedIds={expandedIds}
+                    toggleExpand={toggleExpand}
+                />
+            ))}
+        </div>
+    );
+}
+
+export default function AccountIndex({ accounts, parentAccounts, accountTypes, cashAndBankParentId, filters }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const { can } = useCan();
@@ -143,6 +170,18 @@ export default function AccountIndex({ accounts, parentAccounts, accountTypes, f
         if (flash.success) toast.success(flash.success);
         if (flash.error) toast.error(flash.error);
     }, [flash.success, flash.error]);
+
+    useEffect(() => {
+        const rootIds = accounts.filter((account) => !account.parent_id).map((account) => account.id);
+
+        setExpandedIds((previous) => {
+            if (previous.size > 0) {
+                return previous;
+            }
+
+            return new Set(rootIds);
+        });
+    }, [accounts]);
 
 
     useDebouncedEffect(
@@ -183,7 +222,7 @@ export default function AccountIndex({ accounts, parentAccounts, accountTypes, f
         setFormOpen(true);
     }
 
-    const tree = useMemo(() => buildTree(accounts), [accounts]);
+    const groupedTrees = useMemo(() => groupTreesByType(accounts, accountTypes), [accounts, accountTypes]);
 
     return (
         <>
@@ -236,28 +275,17 @@ export default function AccountIndex({ accounts, parentAccounts, accountTypes, f
                     </Select>
                 </div>
 
-                {/* Tree */}
-                <div className="rounded-lg border border-border bg-card">
-                    {/* Table header */}
-                    <div className="flex items-center gap-3 border-b-2 border-blue-900/80 bg-blue-950 px-3 py-3.5 text-xs font-semibold uppercase tracking-wider text-blue-50">
-                        <div className="size-5 shrink-0" />
-                        <span className="flex-1">Account</span>
-                        <span className="w-24 shrink-0">Acc. Number</span>
-                        <span className="w-28 shrink-0 text-right">Balance</span>
-                        <span className="w-16 shrink-0" />
-                    </div>
-
-                    {tree.length === 0 ? (
-                        <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">
+                {/* Accounts grouped by type */}
+                <div className="space-y-4">
+                    {groupedTrees.length === 0 ? (
+                        <div className="flex items-center justify-center rounded-lg border border-border bg-card py-16 text-sm text-muted-foreground">
                             No accounts found.
                         </div>
                     ) : (
-                        tree.map((node) => (
-                            <AccountRow
-                                key={node.id}
-                                node={node}
-                                depth={0}
-                                accountTypes={accountTypes}
+                        groupedTrees.map((group) => (
+                            <AccountTypeSection
+                                key={group.type.id}
+                                group={group}
                                 onEdit={openEdit}
                                 onDelete={setDeleting}
                                 expandedIds={expandedIds}
@@ -301,6 +329,7 @@ export default function AccountIndex({ accounts, parentAccounts, accountTypes, f
                     item={editing}
                     accountTypes={accountTypes}
                     parentAccounts={parentAccounts}
+                    cashAndBankParentId={cashAndBankParentId}
                 />
             </Can>
         </>

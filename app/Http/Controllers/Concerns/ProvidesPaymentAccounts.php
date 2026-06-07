@@ -2,8 +2,6 @@
 
 namespace App\Http\Controllers\Concerns;
 
-use App\Enums\AccountType;
-use App\Enums\CommonStatus;
 use App\Models\ChartOfAccount;
 
 trait ProvidesPaymentAccounts
@@ -14,9 +12,7 @@ trait ProvidesPaymentAccounts
     protected function paymentAccounts(): array
     {
         return ChartOfAccount::query()
-            ->where('type', AccountType::Asset)
-            ->whereNotNull('parent_id')
-            ->where('status', CommonStatus::Active)
+            ->paymentAccount()
             ->orderBy('code')
             ->get(['id', 'code', 'name'])
             ->map(fn (ChartOfAccount $account) => [

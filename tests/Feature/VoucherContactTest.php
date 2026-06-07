@@ -75,7 +75,7 @@ test('income voucher can be saved with a customer contact', function () {
 
     $user = voucherUser(['accounts.create']);
     $cash = seedAccountingAccounts();
-    $incomeAccount = voucherLeafAccount(SystemAccountKey::Income, AccountType::Income, 'income-voucher');
+    $incomeAccount = voucherLeafAccount(SystemAccountKey::SalesRevenue, AccountType::Income, 'income-voucher');
     $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
 
     $this->actingAs($user)
@@ -145,7 +145,7 @@ test('voucher rejects contact from another branch', function () {
 
     $user = voucherUser(['accounts.create']);
     $cash = seedAccountingAccounts();
-    $incomeAccount = voucherLeafAccount(SystemAccountKey::Income, AccountType::Income, 'income-branch-check');
+    $incomeAccount = voucherLeafAccount(SystemAccountKey::SalesRevenue, AccountType::Income, 'income-branch-check');
     $otherBranch = Branch::factory()->create();
     $customer = Customer::factory()->create(['branch_id' => $otherBranch->id]);
 

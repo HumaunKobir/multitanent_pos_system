@@ -11,7 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 
 const DEFAULT_TYPE = '1'; // Asset
 
-export default function AccountFormDialog({ open, onOpenChange, item, accountTypes, parentAccounts }) {
+export default function AccountFormDialog({ open, onOpenChange, item, accountTypes, parentAccounts, cashAndBankParentId }) {
     const isEditing = !!item?.id;
     const [codeLoading, setCodeLoading] = useState(false);
     const abortRef = useRef(null);
@@ -28,8 +28,14 @@ export default function AccountFormDialog({ open, onOpenChange, item, accountTyp
     });
 
     useEffect(() => {
+        const defaultParentId = item?.parent_id
+            ? String(item.parent_id)
+            : cashAndBankParentId
+              ? String(cashAndBankParentId)
+              : '';
+
         form.setData({
-            parent_id: item?.parent_id ? String(item.parent_id) : '',
+            parent_id: defaultParentId,
             type: item?.type ? String(item.type) : DEFAULT_TYPE,
             name: item?.name ?? '',
             code: item?.code ?? '',
@@ -39,7 +45,7 @@ export default function AccountFormDialog({ open, onOpenChange, item, accountTyp
             opening_balance: '',
         });
         form.clearErrors();
-    }, [item, open]);
+    }, [item, open, cashAndBankParentId]);
 
     // Fetch next code when type or parent_id changes (create mode only)
     useEffect(() => {
@@ -101,7 +107,13 @@ export default function AccountFormDialog({ open, onOpenChange, item, accountTyp
                         </Label>
                         <Select
                             value={form.data.type}
-                            onValueChange={(v) => form.setData((prev) => ({ ...prev, type: v, parent_id: '' }))}
+                            onValueChange={(v) =>
+                                form.setData((prev) => ({
+                                    ...prev,
+                                    type: v,
+                                    parent_id: v === DEFAULT_TYPE && cashAndBankParentId ? String(cashAndBankParentId) : '',
+                                }))
+                            }
                         >
                             <SelectTrigger id="type" className="mt-1 w-full" aria-invalid={!!form.errors.type}>
                                 <SelectValue placeholder="Select type" />

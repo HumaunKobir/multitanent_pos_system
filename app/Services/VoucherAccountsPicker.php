@@ -29,9 +29,7 @@ class VoucherAccountsPicker
     public static function assetLeafAccounts(): array
     {
         return ChartOfAccount::query()
-            ->where('type', AccountType::Asset)
-            ->whereNotNull('parent_id')
-            ->where('status', CommonStatus::Active)
+            ->paymentAccount()
             ->orderBy('code')
             ->get(['id', 'code', 'name'])
             ->map(fn (ChartOfAccount $account) => [
@@ -78,6 +76,7 @@ class VoucherAccountsPicker
     private static function leafAccountsQuery()
     {
         return ChartOfAccount::query()
+            ->forPanel()
             ->whereNotNull('parent_id')
             ->where('status', CommonStatus::Active)
             ->orderBy('code');
@@ -90,6 +89,7 @@ class VoucherAccountsPicker
     private static function buildGroupedPicker(Collection $accounts): array
     {
         $parents = ChartOfAccount::query()
+            ->forPanel()
             ->whereIn('id', $accounts->pluck('parent_id')->unique()->filter())
             ->get(['id', 'code', 'name', 'type'])
             ->keyBy('id');

@@ -161,8 +161,8 @@ class StoreVoucherRequest extends FormRequest
         }
 
         $account = ChartOfAccount::query()->find($id);
-        if (! $account || $account->type !== AccountType::Asset || $account->parent_id === null) {
-            $validator->errors()->add($field, 'Account must be an active asset posting account.');
+        if (! $account || ! $account->isPaymentAccount()) {
+            $validator->errors()->add($field, 'Account must be an active cash or bank account.');
         }
     }
 

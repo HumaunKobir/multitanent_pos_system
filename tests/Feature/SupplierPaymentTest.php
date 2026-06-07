@@ -41,7 +41,7 @@ test('user can record supplier payment and reduce supplier due', function () {
         'party.supplier-payment.create',
         'party.supplier.create',
     ]);
-    $cash = seedAccountingAccounts();
+    $cash = seedAccountingAccounts(user: $user);
 
     $this->actingAs($user)->post('/party/supplier', [
         'name' => 'Payable Supplier '.fake()->unique()->numerify('####'),
@@ -81,7 +81,7 @@ test('payment amount cannot exceed supplier due balance', function () {
         'party.supplier-payment.view',
         'party.supplier-payment.create',
     ]);
-    $cash = seedAccountingAccounts();
+    $cash = seedAccountingAccounts(user: $user);
 
     $supplier = Supplier::factory()->create([
         'branch_id' => $user->branch_id,

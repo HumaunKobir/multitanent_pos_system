@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Concerns;
 
+use App\Models\ChartOfAccount;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
@@ -13,15 +14,7 @@ trait UsesInventoryAccounting
             return null;
         }
 
-        $paymentAccountId = $request->integer('payment_account_id');
-
-        if ($paymentAccountId <= 0) {
-            throw ValidationException::withMessages([
-                'payment_account_id' => 'Payment account is required when paid amount is greater than zero.',
-            ]);
-        }
-
-        return $paymentAccountId;
+        return $this->requirePaymentAccountId($request);
     }
 
     protected function requirePaymentAccountId(Request $request): int
@@ -31,6 +24,17 @@ trait UsesInventoryAccounting
         if ($paymentAccountId <= 0) {
             throw ValidationException::withMessages([
                 'payment_account_id' => 'Payment account is required.',
+            ]);
+        }
+
+        $isValidPaymentAccount = ChartOfAccount::query()
+            ->paymentAccount()
+            ->whereKey($paymentAccountId)
+            ->exists();
+
+        if (! $isValidPaymentAccount) {
+            throw ValidationException::withMessages([
+                'payment_account_id' => 'Account must be an active cash or bank account.',
             ]);
         }
 

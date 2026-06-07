@@ -15,7 +15,7 @@ import UserFormDialog from './form-dialog';
 
 const routes = resourceRoutes('user');
 
-export default function UserIndex({ users, branches, roles }) {
+export default function UserIndex({ users, branches, assignedBranchIds, roles }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const { can } = useCan();
@@ -154,7 +154,15 @@ export default function UserIndex({ users, branches, roles }) {
                 )}
 
                 <Can permission={['user.create', 'user.update']}>
-                    <UserFormDialog open={formOpen} onOpenChange={setFormOpen} item={editing} routes={routes} branches={branches} roles={roles} />
+                    <UserFormDialog
+                        open={formOpen}
+                        onOpenChange={setFormOpen}
+                        item={editing}
+                        routes={routes}
+                        branches={branches}
+                        assignedBranchIds={assignedBranchIds}
+                        roles={roles}
+                    />
                 </Can>
             </div>
         </>

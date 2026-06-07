@@ -9,6 +9,6 @@ class ChartOfAccountsSeeder extends Seeder
 {
     public function run(): void
     {
-        SystemAccountService::seed();
+        SystemAccountService::seed(null);
     }
 }

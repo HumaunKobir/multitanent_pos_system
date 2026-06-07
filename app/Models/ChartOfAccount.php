@@ -4,17 +4,23 @@ namespace App\Models;
 
 use App\Enums\AccountType;
 use App\Enums\CommonStatus;
+use App\Enums\SystemAccountKey;
+use App\Services\SystemAccountService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\Auth;
 
 class ChartOfAccount extends Model
 {
     use SoftDeletes;
 
     protected $fillable = [
+        'source_type',
+        'source_id',
         'parent_id',
         'code',
         'account_number',
@@ -77,9 +83,53 @@ class ChartOfAccount extends Model
             ->where('source_id', $id);
     }
 
+    public function scopeForPanel(Builder $query): Builder
+    {
+        $branchId = Auth::user()?->branch_id;
+
+        if ($branchId === null) {
+            return $query->whereNull('source_type')->whereNull('source_id');
+        }
+
+        return $query->where('source_type', Branch::class)->where('source_id', $branchId);
+    }
+
+    /**
+     * @return array{source_type: class-string<Model>|null, source_id: int|null}
+     */
+    public static function panelSourceAttributes(?int $branchId = null): array
+    {
+        if ($branchId === null) {
+            return [
+                'source_type' => null,
+                'source_id' => null,
+            ];
+        }
+
+        return [
+            'source_type' => Branch::class,
+            'source_id' => $branchId,
+        ];
+    }
+
     public function scopeAccount($query)
     {
         return $query->whereNotNull('parent_id');
+    }
+
+    public function scopePaymentAccount($query)
+    {
+        return $query
+            ->forPanel()
+            ->where('type', AccountType::Asset)
+            ->where('parent_id', SystemAccountService::id(SystemAccountKey::CashAndBank, Auth::user()?->branch_id))
+            ->where('status', CommonStatus::Active);
+    }
+
+    public function isPaymentAccount(): bool
+    {
+        return $this->type === AccountType::Asset
+            && $this->parent_id === SystemAccountService::id(SystemAccountKey::CashAndBank, Auth::user()?->branch_id);
     }
 
     /*
@@ -136,6 +186,7 @@ class ChartOfAccount extends Model
     protected static function nextParentCode(string $prefix): string
     {
         $last = static::query()
+            ->forPanel()
             ->whereNull('parent_id')
             ->where('code', 'like', $prefix.'%')
             ->orderByDesc('code')
@@ -157,6 +208,7 @@ class ChartOfAccount extends Model
         $base = $parent->code;
 
         $lastChild = static::query()
+            ->forPanel()
             ->where('parent_id', $parent->id)
             ->where('code', 'like', $base.'-%')
             ->orderByDesc('code')

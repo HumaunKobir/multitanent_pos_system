@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Enums\CommonStatus;
 use App\Models\Branch;
+use App\Services\SystemAccountService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -37,10 +38,12 @@ class BranchController extends Controller
             'address' => ['required', 'string'],
         ]);
 
-        Branch::create([
+        $branch = Branch::create([
             ...$data,
             'status' => CommonStatus::Active,
         ]);
+
+        SystemAccountService::seed($branch->id);
 
         return redirect()->route('branch.index')
             ->with('success', 'Branch created successfully.');

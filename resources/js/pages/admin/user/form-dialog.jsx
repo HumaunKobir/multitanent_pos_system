@@ -8,19 +8,23 @@ import { useForm } from '@inertiajs/react';
 import { UserRound } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 
-export default function UserFormDialog({ open, onOpenChange, item, routes, branches, roles }) {
+export default function UserFormDialog({ open, onOpenChange, item, routes, branches, assignedBranchIds, roles }) {
     const isEditing = !!item?.id;
     const roleOptions = Object.entries(roles ?? {});
-    const branchSelectOptions = useMemo(
-        () => [
-            { value: '', label: 'All Branches' },
-            ...Object.entries(branches ?? {}).map(([id, name]) => ({
+    const branchSelectOptions = useMemo(() => {
+        const assigned = new Set((assignedBranchIds ?? []).map(String));
+
+        if (isEditing && item?.branch_id) {
+            assigned.delete(String(item.branch_id));
+        }
+
+        return Object.entries(branches ?? {})
+            .filter(([id]) => !assigned.has(String(id)))
+            .map(([id, name]) => ({
                 value: String(id),
                 label: name,
-            })),
-        ],
-        [branches],
-    );
+            }));
+    }, [branches, assignedBranchIds, isEditing, item?.branch_id]);
 
     const form = useForm({
         branch_id: item?.branch_id ? String(item.branch_id) : '',
@@ -85,7 +89,7 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                 </div>
 
                 <form onSubmit={handleSubmit} className="max-h-[75vh] space-y-3 overflow-y-auto p-4">
-                    <FormField label="Branch" name="branch_id" error={form.errors.branch_id}>
+                    <FormField label="Branch" name="branch_id" required error={form.errors.branch_id}>
                         <div className="mt-1">
                             <SmartSelect
                                 key={open ? 'open' : 'closed'}
@@ -93,11 +97,15 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                                 options={branchSelectOptions}
                                 value={form.data.branch_id === '' ? '' : String(form.data.branch_id)}
                                 onValueChange={(value) => form.setData('branch_id', value ?? '')}
-                                placeholder="Search branch…"
+                                placeholder={branchSelectOptions.length === 0 ? 'No available branch' : 'Search branch…'}
+                                disabled={branchSelectOptions.length === 0}
                                 autoComplete="one-time-code"
                                 triggerClassName="rounded-md"
                             />
                         </div>
+                        {!isEditing && branchSelectOptions.length === 0 ? (
+                            <p className="mt-1 text-xs text-muted-foreground">Every branch already has a user assigned.</p>
+                        ) : null}
                     </FormField>
 
                     <FormField label="Name" name="name" error={form.errors.name}>

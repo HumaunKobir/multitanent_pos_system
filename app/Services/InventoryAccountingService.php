@@ -32,14 +32,14 @@ class InventoryAccountingService
 
         $inventoryBase = round((float) $purchase->gross_amount - (float) $purchase->discount, 2);
         $vatAmount = round((float) $purchase->vat, 2);
+        $inventoryTotal = round($inventoryBase + $vatAmount, 2);
         $paidAmount = round((float) $purchase->paid_amount, 2);
         $dueAmount = round(max(0, (float) $purchase->net_amount - $paidAmount), 2);
         $supplierName = $purchase->supplier?->name ?? 'Supplier';
         $serial = $purchase->serial ?? ('#'.$purchase->id);
 
         $lines = [
-            $this->debitLine(SystemAccountKey::Inventory, $inventoryBase, "Inventory increased — Purchase {$serial}, Supplier: {$supplierName}"),
-            $this->debitLine(SystemAccountKey::InputVat, $vatAmount, "Input VAT — Purchase {$serial}"),
+            $this->debitLine(SystemAccountKey::ProductInventory, $inventoryTotal, "Inventory increased — Purchase {$serial}, Supplier: {$supplierName}"),
         ];
 
         if ($paidAmount > 0) {
@@ -47,7 +47,7 @@ class InventoryAccountingService
         }
 
         if ($dueAmount > 0) {
-            $lines[] = $this->creditLine(SystemAccountKey::AccountsPayable, $dueAmount, "Supplier payable — Purchase {$serial}, {$supplierName}");
+            $lines[] = $this->creditLine(SystemAccountKey::SupplierPayables, $dueAmount, "Supplier payable — Purchase {$serial}, {$supplierName}");
         }
 
         return $this->postJournal(
@@ -77,11 +77,11 @@ class InventoryAccountingService
         }
 
         if ($dueAmount > 0) {
-            $lines[] = $this->debitLine(SystemAccountKey::AccountsReceivable, $dueAmount, "Receivable — Sale {$invoice}, {$customerName}");
+            $lines[] = $this->debitLine(SystemAccountKey::CustomerReceivables, $dueAmount, "Receivable — Sale {$invoice}, {$customerName}");
         }
 
         if ($salesBase > 0) {
-            $lines[] = $this->creditLine(SystemAccountKey::SalesRevenue, $salesBase, "Sales revenue — Sale {$invoice}");
+            $lines[] = $this->creditLine(SystemAccountKey::ProductSales, $salesBase, "Sales revenue — Sale {$invoice}");
         }
 
         if ($vatAmount > 0) {
@@ -90,7 +90,7 @@ class InventoryAccountingService
 
         if ($cogs > 0) {
             $lines[] = $this->debitLine(SystemAccountKey::CostOfGoodsSold, $cogs, "COGS — Sale {$invoice}");
-            $lines[] = $this->creditLine(SystemAccountKey::Inventory, $cogs, "Inventory reduced — Sale {$invoice}");
+            $lines[] = $this->creditLine(SystemAccountKey::ProductInventory, $cogs, "Inventory reduced — Sale {$invoice}");
         }
 
         return $this->postJournal(
@@ -152,11 +152,11 @@ class InventoryAccountingService
         }
 
         if ($arCredit > 0) {
-            $lines[] = $this->creditLine(SystemAccountKey::AccountsReceivable, $arCredit, "Receivable reduced — Sale Return {$invoice}, {$customerName}");
+            $lines[] = $this->creditLine(SystemAccountKey::CustomerReceivables, $arCredit, "Receivable reduced — Sale Return {$invoice}, {$customerName}");
         }
 
         if ($returnCost > 0) {
-            $lines[] = $this->debitLine(SystemAccountKey::Inventory, $returnCost, "Inventory restored — Sale Return {$invoice}");
+            $lines[] = $this->debitLine(SystemAccountKey::ProductInventory, $returnCost, "Inventory restored — Sale Return {$invoice}");
             $lines[] = $this->creditLine(SystemAccountKey::CostOfGoodsSold, $returnCost, "COGS reversed — Sale Return {$invoice}");
         }
 
@@ -175,7 +175,7 @@ class InventoryAccountingService
 
         $lines = [
             $this->debitLine(SystemAccountKey::InventoryDamage, $totalCost, "Inventory write-off — Damage {$serial}"),
-            $this->creditLine(SystemAccountKey::Inventory, $totalCost, "Inventory reduced — Damage {$serial}"),
+            $this->creditLine(SystemAccountKey::ProductInventory, $totalCost, "Inventory reduced — Damage {$serial}"),
         ];
 
         return $this->postJournal(
@@ -191,12 +191,23 @@ class InventoryAccountingService
     {
         $distribution->loadMissing('toBranch:id,name');
 
+        $fromBranchId = $distribution->from_branch_id;
+        $toBranchId = $distribution->to_branch_id;
+
         $serial = $distribution->serial ?? $distribution->invoice_number;
         $branchName = $distribution->toBranch?->name ?? 'Branch';
 
         $lines = [
-            $this->debitLine(SystemAccountKey::BranchInventory, $totalCost, "Branch inventory increased — Distribution {$serial}, {$branchName}"),
-            $this->creditLine(SystemAccountKey::Inventory, $totalCost, "Main inventory reduced — Distribution {$serial}, to {$branchName}"),
+            $this->debitAccount(
+                SystemAccountService::resolve(SystemAccountKey::ProductInventory, $toBranchId),
+                $totalCost,
+                "Branch inventory increased — Distribution {$serial}, {$branchName}",
+            ),
+            $this->creditAccount(
+                SystemAccountService::resolve(SystemAccountKey::ProductInventory, $fromBranchId),
+                $totalCost,
+                "Main inventory reduced — Distribution {$serial}, to {$branchName}",
+            ),
         ];
 
         return $this->postJournal(
@@ -212,12 +223,14 @@ class InventoryAccountingService
     {
         $payment->loadMissing('supplier:id,name');
 
+        $branchId = $payment->branch_id;
+
         $amount = round((float) $payment->amount, 2);
         $serial = $payment->serial ?? $payment->invoice_number;
         $supplierName = $payment->supplier?->name ?? 'Supplier';
 
         $lines = [
-            $this->debitLine(SystemAccountKey::AccountsPayable, $amount, "Payable reduced — Payment {$serial}, {$supplierName}"),
+            $this->debitLine(SystemAccountKey::SupplierPayables, $amount, "Payable reduced — Payment {$serial}, {$supplierName}", $branchId),
             $this->creditPaymentAccount($paymentAccountId, $amount, "Cash paid — Payment {$serial}"),
         ];
 
@@ -234,13 +247,15 @@ class InventoryAccountingService
     {
         $payment->loadMissing('customer:id,name');
 
+        $branchId = $payment->branch_id;
+
         $amount = round((float) $payment->amount, 2);
         $serial = $payment->serial ?? $payment->invoice_number;
         $customerName = $payment->customer?->name ?? 'Customer';
 
         $lines = [
             $this->debitPaymentAccount($paymentAccountId, $amount, "Cash received — Collection {$serial}"),
-            $this->creditLine(SystemAccountKey::AccountsReceivable, $amount, "Receivable reduced — Collection {$serial}, {$customerName}"),
+            $this->creditLine(SystemAccountKey::CustomerReceivables, $amount, "Receivable reduced — Collection {$serial}, {$customerName}", $branchId),
         ];
 
         return $this->postJournal(
@@ -259,7 +274,7 @@ class InventoryAccountingService
 
         $lines = [
             $this->debitPaymentAccount($paymentAccountId, $amount, "Online prepayment received — {$label}"),
-            $this->creditLine(SystemAccountKey::CustomerDeposits, $amount, "Customer deposit — {$label}"),
+            $this->creditLine(SystemAccountKey::AdvanceFromCustomer, $amount, "Customer deposit — {$label}"),
         ];
 
         return $this->postOnlineOrderJournal($order, 'prepayment', $lines);
@@ -275,7 +290,7 @@ class InventoryAccountingService
 
         if ($order->payment_method === 'sslcommerz' && $order->payment_status === 'Paid') {
             if ($total > 0) {
-                $lines[] = $this->debitLine(SystemAccountKey::CustomerDeposits, $total, "Revenue recognition — {$label}");
+                $lines[] = $this->debitLine(SystemAccountKey::AdvanceFromCustomer, $total, "Revenue recognition — {$label}");
             }
         } elseif ($order->payment_method === 'cod') {
             if ($total > 0) {
@@ -286,16 +301,16 @@ class InventoryAccountingService
         }
 
         if ($subtotal > 0) {
-            $lines[] = $this->creditLine(SystemAccountKey::SalesRevenue, $subtotal, "Product sales — {$label}");
+            $lines[] = $this->creditLine(SystemAccountKey::ProductSales, $subtotal, "Product sales — {$label}");
         }
 
         if ($deliveryCharge > 0) {
-            $lines[] = $this->creditLine(SystemAccountKey::SalesRevenue, $deliveryCharge, "Delivery revenue — {$label}");
+            $lines[] = $this->creditLine(SystemAccountKey::OtherIncome, $deliveryCharge, "Delivery revenue — {$label}");
         }
 
         if ($cogs > 0) {
             $lines[] = $this->debitLine(SystemAccountKey::CostOfGoodsSold, $cogs, "COGS — {$label}");
-            $lines[] = $this->creditLine(SystemAccountKey::Inventory, $cogs, "Inventory reduced — {$label}");
+            $lines[] = $this->creditLine(SystemAccountKey::ProductInventory, $cogs, "Inventory reduced — {$label}");
         }
 
         return $this->postOnlineOrderJournal($order, 'fulfillment', $lines);
@@ -307,7 +322,7 @@ class InventoryAccountingService
         $label = $this->onlineOrderLabel($order);
 
         $lines = [
-            $this->debitLine(SystemAccountKey::CustomerDeposits, $amount, "Prepayment reversed — {$label}"),
+            $this->debitLine(SystemAccountKey::AdvanceFromCustomer, $amount, "Prepayment reversed — {$label}"),
             $this->creditPaymentAccount($paymentAccountId, $amount, "Prepayment refunded — {$label}"),
         ];
 
@@ -375,7 +390,7 @@ class InventoryAccountingService
         }
 
         if ($amounts['new_base'] > 0) {
-            $lines[] = $this->creditLine(SystemAccountKey::SalesRevenue, $amounts['new_base'], "Exchange new revenue — {$invoice}");
+            $lines[] = $this->creditLine(SystemAccountKey::ProductSales, $amounts['new_base'], "Exchange new revenue — {$invoice}");
         }
 
         if ($amounts['new_vat'] > 0) {
@@ -383,13 +398,13 @@ class InventoryAccountingService
         }
 
         if ($amounts['old_cost'] > 0) {
-            $lines[] = $this->debitLine(SystemAccountKey::Inventory, $amounts['old_cost'], "Inventory restored — Exchange {$invoice}");
+            $lines[] = $this->debitLine(SystemAccountKey::ProductInventory, $amounts['old_cost'], "Inventory restored — Exchange {$invoice}");
             $lines[] = $this->creditLine(SystemAccountKey::CostOfGoodsSold, $amounts['old_cost'], "COGS reversed — Exchange {$invoice}");
         }
 
         if ($amounts['new_cost'] > 0) {
             $lines[] = $this->debitLine(SystemAccountKey::CostOfGoodsSold, $amounts['new_cost'], "COGS — Exchange {$invoice}");
-            $lines[] = $this->creditLine(SystemAccountKey::Inventory, $amounts['new_cost'], "Inventory reduced — Exchange {$invoice}");
+            $lines[] = $this->creditLine(SystemAccountKey::ProductInventory, $amounts['new_cost'], "Inventory reduced — Exchange {$invoice}");
         }
 
         $paidAmount = round((float) $amounts['paid_amount'], 2);
@@ -397,9 +412,9 @@ class InventoryAccountingService
 
         if ($exchange->payment_type === ReceivedPaymentMethod::Customer_Account) {
             if ($priceDifference > 0) {
-                $lines[] = $this->debitLine(SystemAccountKey::AccountsReceivable, $priceDifference, "Receivable — Exchange {$invoice}, {$customerName}");
+                $lines[] = $this->debitLine(SystemAccountKey::CustomerReceivables, $priceDifference, "Receivable — Exchange {$invoice}, {$customerName}");
             } elseif ($priceDifference < 0) {
-                $lines[] = $this->creditLine(SystemAccountKey::AccountsReceivable, abs($priceDifference), "Receivable reduced — Exchange {$invoice}, {$customerName}");
+                $lines[] = $this->creditLine(SystemAccountKey::CustomerReceivables, abs($priceDifference), "Receivable reduced — Exchange {$invoice}, {$customerName}");
             }
         } else {
             if ($paidAmount > 0) {
@@ -493,7 +508,7 @@ class InventoryAccountingService
         }
 
         $amount = round($amount, 2);
-        $equity = SystemAccountKey::OpeningBalanceEquity;
+        $equity = SystemAccountKey::OpeningBalanceClearing;
 
         $lines = match ($account->type) {
             AccountType::Asset => [
@@ -530,11 +545,13 @@ class InventoryAccountingService
             return null;
         }
 
+        $branchId = $supplier->branch_id;
+
         $amount = round($amount, 2);
 
         $lines = [
-            $this->debitLine(SystemAccountKey::OpeningBalanceEquity, $amount, "Opening balance offset — Supplier {$supplier->name}"),
-            $this->creditLine(SystemAccountKey::AccountsPayable, $amount, "Supplier opening payable — {$supplier->name}"),
+            $this->debitLine(SystemAccountKey::OpeningBalanceClearing, $amount, "Opening balance offset — Supplier {$supplier->name}", $branchId),
+            $this->creditLine(SystemAccountKey::SupplierPayables, $amount, "Supplier opening payable — {$supplier->name}", $branchId),
         ];
 
         return $this->postJournal(
@@ -553,11 +570,13 @@ class InventoryAccountingService
             return null;
         }
 
+        $branchId = $customer->branch_id;
+
         $amount = round($amount, 2);
 
         $lines = [
-            $this->debitLine(SystemAccountKey::AccountsReceivable, $amount, "Customer opening receivable — {$customer->name}"),
-            $this->creditLine(SystemAccountKey::OpeningBalanceEquity, $amount, "Opening balance offset — Customer {$customer->name}"),
+            $this->debitLine(SystemAccountKey::CustomerReceivables, $amount, "Customer opening receivable — {$customer->name}", $branchId),
+            $this->creditLine(SystemAccountKey::OpeningBalanceClearing, $amount, "Opening balance offset — Customer {$customer->name}", $branchId),
         ];
 
         return $this->postJournal(
@@ -626,14 +645,14 @@ class InventoryAccountingService
         ];
     }
 
-    private function debitLine(SystemAccountKey $key, float $amount, string $description): array
+    private function debitLine(SystemAccountKey $key, float $amount, string $description, ?int $branchId = null): array
     {
-        return $this->line(SystemAccountService::resolve($key), $amount, 0.0, true, $description);
+        return $this->line(SystemAccountService::resolve($key, $branchId), $amount, 0.0, true, $description);
     }
 
-    private function creditLine(SystemAccountKey $key, float $amount, string $description): array
+    private function creditLine(SystemAccountKey $key, float $amount, string $description, ?int $branchId = null): array
     {
-        return $this->line(SystemAccountService::resolve($key), 0.0, $amount, false, $description);
+        return $this->line(SystemAccountService::resolve($key, $branchId), 0.0, $amount, false, $description);
     }
 
     private function debitAccount(ChartOfAccount $account, float $amount, string $description): array
@@ -663,9 +682,8 @@ class InventoryAccountingService
         }
 
         $account = ChartOfAccount::query()
+            ->paymentAccount()
             ->whereKey($paymentAccountId)
-            ->whereNotNull('parent_id')
-            ->where('type', AccountType::Asset)
             ->first();
 
         if ($account === null) {

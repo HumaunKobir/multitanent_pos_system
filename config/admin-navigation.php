@@ -61,7 +61,7 @@ return [
             'branch_only' => true,
             'children' => [
                 ['title' => 'Customer', 'href' => '/party/customer', 'permission' => 'party.customer.view'],
-                ['title' => 'Due Collection', 'href' => '/party/customer-due-collection', 'permission' => 'party.customer.view'],
+                ['title' => 'Due Collection', 'href' => '/party/customer-due-collection', 'permission' => 'party.customer-due-collection.view'],
             ],
         ],
         [

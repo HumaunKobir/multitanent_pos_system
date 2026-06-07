@@ -4,6 +4,7 @@ import { Link } from '@inertiajs/react';
 import {
     ArrowLeftRight,
     CircleDollarSign,
+    Coins,
     HandCoins,
     Plus,
     UsersRound,
@@ -34,6 +35,12 @@ const actions = [
         href: () => route('party.supplier-payment.index'),
         permission: 'party.supplier-payment.view',
         icon: Wallet,
+    },
+    {
+        label: 'Due Collection',
+        href: () => route('party.customer-due-collection.index'),
+        permission: 'party.customer-due-collection.view',
+        icon: Coins,
     },
     {
         label: 'Customers',

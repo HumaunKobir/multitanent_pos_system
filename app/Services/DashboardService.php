@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\PurchaseType;
 use App\Models\Branch;
 use App\Models\Customer;
+use App\Models\CustomerPayment;
 use App\Models\Purchase;
 use App\Models\SaleReturn;
 use App\Models\Sell;
@@ -121,6 +122,15 @@ class DashboardService
             $sections['customers'] = [
                 'count' => (clone $customers)->count(),
                 'total_due' => round((float) (clone $customers)->where('balance', '>', 0)->sum('balance'), 2),
+            ];
+        }
+
+        if ($user->can('party.customer-due-collection.view')) {
+            $sections['customer_collections'] = [
+                'month_amount' => round((float) CustomerPayment::query()
+                    ->where('branch_id', $branchId)
+                    ->whereBetween('date', [$monthStart->toDateString(), $today->toDateString()])
+                    ->sum('amount'), 2),
             ];
         }
 

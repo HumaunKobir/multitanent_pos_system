@@ -7,6 +7,7 @@ use App\Enums\ReceivedPaymentMethod;
 use App\Enums\SystemAccountKey;
 use App\Models\ChartOfAccount;
 use App\Models\Customer;
+use App\Models\CustomerPayment;
 use App\Models\Damage;
 use App\Models\ProductExchange;
 use App\Models\Purchase;
@@ -224,6 +225,28 @@ class InventoryAccountingService
             $payment->id,
             $payment->date->format('Y-m-d'),
             "Supplier Payment {$serial}",
+            $lines,
+        );
+    }
+
+    public function postCustomerPayment(CustomerPayment $payment, int $paymentAccountId): Transaction
+    {
+        $payment->loadMissing('customer:id,name');
+
+        $amount = round((float) $payment->amount, 2);
+        $serial = $payment->serial ?? $payment->invoice_number;
+        $customerName = $payment->customer?->name ?? 'Customer';
+
+        $lines = [
+            $this->debitPaymentAccount($paymentAccountId, $amount, "Cash received — Collection {$serial}"),
+            $this->creditLine(SystemAccountKey::AccountsReceivable, $amount, "Receivable reduced — Collection {$serial}, {$customerName}"),
+        ];
+
+        return $this->postJournal(
+            CustomerPayment::class,
+            $payment->id,
+            $payment->date->format('Y-m-d'),
+            "Customer Due Collection {$serial}",
             $lines,
         );
     }

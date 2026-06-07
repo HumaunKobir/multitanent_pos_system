@@ -159,6 +159,16 @@ return [
             ],
         ],
 
+        'party.customer-due-collection' => [
+            'label' => 'Customer Due Collection',
+            'group' => 'Parties',
+            'permissions' => [
+                'party.customer-due-collection.view' => 'View Due Collections',
+                'party.customer-due-collection.create' => 'Create Due Collection',
+                'party.customer-due-collection.delete' => 'Delete Due Collection',
+            ],
+        ],
+
         // ── Accounts ──────────────────────────────────────────────────────────
 
         'accounts' => [

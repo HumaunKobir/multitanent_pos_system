@@ -11,6 +11,7 @@ use App\Http\Controllers\BarcodeController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\ContactListController;
 use App\Http\Controllers\Customer\CustomerController;
+use App\Http\Controllers\Inventory\CustomerDueCollectionController;
 use App\Http\Controllers\Inventory\DamageController;
 use App\Http\Controllers\Inventory\ProductExchangeController;
 use App\Http\Controllers\Inventory\PurchaseController;
@@ -81,6 +82,9 @@ Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')
 Route::middleware(['auth', 'verified'])->prefix('party')->name('party.')->group(function () {
     Route::resource('supplier', SupplierController::class)->except(['create', 'edit', 'show']);
     Route::resource('supplier-payment', SupplierPaymentController::class)->only(['index', 'store', 'destroy']);
+    Route::resource('customer-due-collection', CustomerDueCollectionController::class)
+        ->only(['index', 'store', 'destroy'])
+        ->parameters(['customer-due-collection' => 'customerPayment']);
     Route::resource('customer', CustomerController::class)->except(['create', 'edit', 'show']);
 });
 

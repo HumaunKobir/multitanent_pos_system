@@ -65,6 +65,19 @@ const sections = [
         ],
     },
     {
+        key: 'customer_collections',
+        title: 'Customer Collections',
+        icon: HandCoins,
+        headerClass: 'bg-teal-600',
+        bodyClass: 'from-teal-50/90 to-white dark:from-teal-950/30 dark:to-card',
+        accentClass: 'text-teal-700 dark:text-teal-300',
+        ringClass: 'ring-teal-500/20',
+        rows: (s) => [
+            { label: 'Collections', value: s.customer_collections?.count ?? 0, plain: true },
+            { label: 'Total collected', value: <MoneyCell value={s.customer_collections?.amount} />, highlight: true },
+        ],
+    },
+    {
         key: 'sale_returns',
         title: 'Sale Returns',
         icon: ArrowLeftRight,

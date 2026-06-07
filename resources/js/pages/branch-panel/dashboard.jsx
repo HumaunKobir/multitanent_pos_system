@@ -11,6 +11,7 @@ import { Head, Link } from '@inertiajs/react';
 import {
     BarChart2,
     CircleDollarSign,
+    Coins,
     HandCoins,
     UsersRound,
     Wallet,
@@ -134,6 +135,15 @@ export default function BranchDashboard({ today, branchName, sections }) {
                                         <MoneyCell value={sections?.supplier_payments?.month_amount} />
                                     </p>
                                     <p className="mt-1 text-xs text-muted-foreground">Paid this month</p>
+                                </ModuleWidget>
+                            </Can>
+
+                            <Can permission="party.customer-due-collection.view">
+                                <ModuleWidget title="Due Collections" icon={Coins} accentClass="border-l-teal-600">
+                                    <p className="font-mono text-xl font-bold tabular-nums">
+                                        <MoneyCell value={sections?.customer_collections?.month_amount} />
+                                    </p>
+                                    <p className="mt-1 text-xs text-muted-foreground">Collected this month</p>
                                 </ModuleWidget>
                             </Can>
 

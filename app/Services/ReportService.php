@@ -10,6 +10,7 @@ use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Models\Customer;
+use App\Models\CustomerPayment;
 use App\Models\Damage;
 use App\Models\Ledger;
 use App\Models\Product;
@@ -90,6 +91,26 @@ class ReportService
                     'description' => $return->comment ?: 'Sale return',
                     'debit' => round($paid, 2),
                     'credit' => round($gross, 2),
+                ]);
+            });
+
+        CustomerPayment::query()
+            ->where('customer_id', $customerId)
+            ->when($this->branchId(), fn (Builder $q, int $id) => $q->where('branch_id', $id))
+            ->when($dateFrom, fn (Builder $q, string $d) => $q->whereDate('date', '>=', $d))
+            ->when($dateTo, fn (Builder $q, string $d) => $q->whereDate('date', '<=', $d))
+            ->orderBy('date')
+            ->orderBy('id')
+            ->get()
+            ->each(function (CustomerPayment $payment) use ($entries) {
+                $entries->push([
+                    'sort_key' => $payment->date->format('Y-m-d').'-3-'.$payment->id,
+                    'date' => $payment->date->format('Y-m-d'),
+                    'type' => 'Due Collection',
+                    'reference' => $payment->invoice_number,
+                    'description' => $payment->comment ?: 'Customer due collection',
+                    'debit' => 0.0,
+                    'credit' => round((float) $payment->amount, 2),
                 ]);
             });
 
@@ -446,6 +467,7 @@ class ReportService
         $salesQuery = Sell::query()->sale()->whereDate('date', $date);
         $purchasesQuery = Purchase::query()->where('purchase_type', PurchaseType::Purchase)->whereDate('date', $date);
         $paymentsQuery = SupplierPayment::query()->whereDate('date', $date);
+        $collectionsQuery = CustomerPayment::query()->whereDate('date', $date);
         $returnsQuery = SaleReturn::query()->whereDate('date', $date);
         $damagesQuery = Damage::query()->whereDate('date', $date);
         $vouchersQuery = Voucher::query()->whereDate('date', $date);
@@ -454,6 +476,7 @@ class ReportService
             $salesQuery->where('branch_id', $branchId);
             $purchasesQuery->where('branch_id', $branchId);
             $paymentsQuery->where('branch_id', $branchId);
+            $collectionsQuery->where('branch_id', $branchId);
             $returnsQuery->where('branch_id', $branchId);
             $damagesQuery->where('branch_id', $branchId);
             $vouchersQuery->where('branch_id', $branchId);
@@ -485,6 +508,10 @@ class ReportService
             'supplier_payments' => [
                 'count' => $paymentsQuery->count(),
                 'amount' => round((float) $paymentsQuery->sum('amount'), 2),
+            ],
+            'customer_collections' => [
+                'count' => $collectionsQuery->count(),
+                'amount' => round((float) $collectionsQuery->sum('amount'), 2),
             ],
             'sale_returns' => [
                 'count' => $returnsQuery->count(),
@@ -913,6 +940,7 @@ class ReportService
             Damage::class => Damage::class,
             StockDistribution::class => StockDistribution::class,
             SupplierPayment::class => SupplierPayment::class,
+            CustomerPayment::class => CustomerPayment::class,
             ProductExchange::class => ProductExchange::class,
             Supplier::class => Supplier::class,
             Customer::class => Customer::class,

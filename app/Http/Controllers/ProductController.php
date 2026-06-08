@@ -79,7 +79,7 @@ class ProductController extends Controller
             'unit_id' => ['required', Rule::exists('units', 'id')],
             'warranty_id' => ['nullable', Rule::exists('warranties', 'id')],
             'name' => ['required', 'string', 'max:255', 'unique:products,name'],
-            'code' => $hasVariations ? ['nullable', 'string', 'max:100'] : ['required', 'string', 'max:100', 'unique:products,code'],
+            'code' => ['nullable', 'string', 'max:100', 'unique:products,code'],
             'purchase_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'sale_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric'],
@@ -126,6 +126,10 @@ class ProductController extends Controller
             $data['visible'] = $data['visible'] ?? 'yes';
             $data['status'] = (int) ($data['status'] ?? 1);
             $data['discount_price'] = $data['discount_price'] ?? 0;
+
+            if (blank(trim((string) ($data['code'] ?? '')))) {
+                $data['code'] = null;
+            }
 
             $product = Product::create($data);
 

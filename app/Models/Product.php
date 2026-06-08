@@ -153,6 +153,30 @@ class Product extends Model
                 $product->slug = static::generateUniqueSlug($product->name);
             }
         });
+
+        static::creating(function (Product $product) {
+            if (blank(trim((string) ($product->code ?? '')))) {
+                $product->code = static::generateUniqueCode();
+            }
+        });
+    }
+
+    public static function generateUniqueCode(): string
+    {
+        $prefix = 'PRD-';
+
+        $maxNumber = static::query()
+            ->where('code', 'like', $prefix.'%')
+            ->pluck('code')
+            ->map(fn (string $code): int => (int) Str::after($code, $prefix))
+            ->max() ?? 0;
+
+        do {
+            $maxNumber++;
+            $code = $prefix.$maxNumber;
+        } while (static::where('code', $code)->exists());
+
+        return $code;
     }
 
     public static function generateUniqueSlug(string $name): string

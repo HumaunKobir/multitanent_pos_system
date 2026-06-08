@@ -773,13 +773,13 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                             <Input className="h-8 text-xs" value={form.data.name} onChange={(e) => form.setData('name', e.target.value)} placeholder="Product name" />
                         </Field>
 
-                        <Field label="Product Code" required={!hasVariations} error={form.errors.code}>
+                        <Field label="Product Code" error={form.errors.code}>
                             <Input
                                 className="h-8 text-xs"
                                 value={form.data.code}
                                 onChange={(e) => form.setData('code', e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
-                                placeholder={hasVariations ? 'Set per variant' : 'SKU / barcode'}
+                                placeholder={hasVariations ? 'Auto-generated if empty' : 'Leave empty for auto code'}
                                 disabled={hasVariations}
                             />
                         </Field>

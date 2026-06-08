@@ -216,6 +216,7 @@ class InventoryAccountingService
             $distribution->date->format('Y-m-d'),
             "Stock Distribution {$serial}",
             $lines,
+            validateBalance: false,
         );
     }
 

@@ -63,7 +63,13 @@ class InventoryAccountingService
     {
         $sell->loadMissing('customer:id,name');
 
-        $salesBase = round((float) $sell->gross_amount - (float) $sell->discount - $sell->lineDiscountTotal(), 2);
+        $salesBase = round(
+            (float) $sell->gross_amount
+            - (float) $sell->discount
+            - (float) $sell->special_discount_amount
+            - $sell->lineDiscountTotal(),
+            2,
+        );
         $vatAmount = round((float) $sell->vat, 2);
         $paidAmount = round((float) $sell->paid_amount, 2);
         $dueAmount = round(max(0, (float) $sell->net_amount - $paidAmount), 2);

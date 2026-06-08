@@ -1,4 +1,9 @@
 import { clampQuantityInput } from '@/components/inventory/inventory-form';
+import {
+    computeDiscountAmount,
+    findBestSpecialDiscount,
+    formatDiscountLabel,
+} from '@/lib/pos-discount';
 import { route } from '@/lib/route';
 import { cn } from '@/lib/utils';
 import { Head, Link, useForm } from '@inertiajs/react';
@@ -693,11 +698,20 @@ function clampLineDiscount(value, item) {
     return String(Math.min(parsed, lineGross(item)));
 }
 
-export default function SellCreate({ today, defaultCustomer, paymentAccounts = [], categories = [] }) {
+export default function SellCreate({
+    today,
+    defaultCustomer,
+    paymentAccounts = [],
+    categories = [],
+    specialDiscounts = [],
+    discountTypes = [],
+}) {
     const form = useForm({
         customer_id: defaultCustomer ? String(defaultCustomer.id) : '',
         date: today,
-        discount: '0',
+        discount_type: 'flat',
+        discount_value: '0',
+        special_discount_id: '',
         vat: '0',
         paid_amount: '0',
         payment_account_id: '',
@@ -706,12 +720,31 @@ export default function SellCreate({ today, defaultCustomer, paymentAccounts = [
     });
 
     const [items, setItems] = useState([]);
+    const [matchedSpecialDiscount, setMatchedSpecialDiscount] = useState(null);
 
     const grossAmount = items.reduce((sum, it) => sum + lineGross(it), 0);
     const lineDiscountTotal = items.reduce((sum, it) => sum + parseFloat(it.discount || 0), 0);
     const taxableAmount = Math.max(0, grossAmount - lineDiscountTotal);
     const vatAmount = taxableAmount * (parseFloat(form.data.vat || 0) / 100);
-    const netAmount = taxableAmount + vatAmount - parseFloat(form.data.discount || 0);
+    const invoiceDiscountAmount = computeDiscountAmount(
+        form.data.discount_type,
+        form.data.discount_value,
+        taxableAmount,
+    );
+    const specialDiscountAmount = matchedSpecialDiscount
+        ? computeDiscountAmount(
+              matchedSpecialDiscount.discount_type,
+              matchedSpecialDiscount.discount_value,
+              taxableAmount,
+          )
+        : 0;
+    const netAmount = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
+
+    useEffect(() => {
+        const match = findBestSpecialDiscount(specialDiscounts, taxableAmount);
+        setMatchedSpecialDiscount(match);
+        form.setData('special_discount_id', match ? String(match.id) : '');
+    }, [taxableAmount, specialDiscounts]);
     const dueAmount = Math.max(0, netAmount - parseFloat(form.data.paid_amount || 0));
     const hasOverStock = items.some((item) => parseFloat(item.quantity || 0) > parseFloat(item.available_stock ?? 0));
     const itemCount = items.reduce((sum, item) => sum + parseFloat(item.quantity || 0), 0);
@@ -912,15 +945,47 @@ export default function SellCreate({ today, defaultCustomer, paymentAccounts = [
                                     </div>
                                 )}
 
-                                <div className="grid grid-cols-2 gap-2">
+                                {matchedSpecialDiscount && specialDiscountAmount > 0 && (
+                                    <div className="border border-amber-200 bg-amber-50/80 px-2 py-1.5">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="text-amber-900">Special: {matchedSpecialDiscount.name}</span>
+                                            <span className="font-medium tabular-nums text-amber-800">
+                                                -৳{specialDiscountAmount.toFixed(2)}
+                                            </span>
+                                        </div>
+                                        <p className="mt-0.5 text-[10px] text-amber-700/80">
+                                            {formatDiscountLabel(
+                                                matchedSpecialDiscount.discount_type,
+                                                matchedSpecialDiscount.discount_value,
+                                            )}{' '}
+                                            applied automatically
+                                        </p>
+                                    </div>
+                                )}
+
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div>
+                                        <Label className="mb-0.5 block text-[10px] text-muted-foreground">Inv. Disc. Type</Label>
+                                        <select
+                                            className="h-8 w-full rounded-none border border-blue-200 bg-white px-2 text-xs outline-none focus:border-blue-600"
+                                            value={form.data.discount_type}
+                                            onChange={(e) => form.setData('discount_type', e.target.value)}
+                                        >
+                                            {discountTypes.map((type) => (
+                                                <option key={type.value} value={type.value}>
+                                                    {type.label}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
                                     <div>
                                         <Label className="mb-0.5 block text-[10px] text-muted-foreground">Inv. Discount</Label>
                                         <Input
                                             type="number"
                                             min="0"
                                             step="0.01"
-                                            value={form.data.discount}
-                                            onChange={(e) => form.setData('discount', e.target.value)}
+                                            value={form.data.discount_value}
+                                            onChange={(e) => form.setData('discount_value', e.target.value)}
                                             className={cn(inputCls, 'text-right')}
                                         />
                                     </div>
@@ -936,6 +1001,15 @@ export default function SellCreate({ today, defaultCustomer, paymentAccounts = [
                                         />
                                     </div>
                                 </div>
+
+                                {invoiceDiscountAmount > 0 && (
+                                    <div className="flex items-center justify-between gap-2 px-1">
+                                        <span className="text-muted-foreground">Inv. Disc. Amount</span>
+                                        <span className="font-medium tabular-nums text-green-700">
+                                            -৳{invoiceDiscountAmount.toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
 
                                 {parseFloat(form.data.vat || 0) > 0 && (
                                     <div className="flex items-center justify-between gap-2 px-1">

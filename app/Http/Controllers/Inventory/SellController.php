@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\Enums\DiscountType;
 use App\Enums\SaleType;
 use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
 use App\Http\Controllers\Concerns\UsesInventoryAccounting;
@@ -13,13 +14,16 @@ use App\Models\ProductExchange;
 use App\Models\ProductVariation;
 use App\Models\SaleReturn;
 use App\Models\Sell;
+use App\Models\SpecialDiscount;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
+use App\Services\SpecialDiscountService;
 use App\Support\StorageUrl;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -31,6 +35,7 @@ class SellController extends Controller
     public function __construct(
         private InventoryAccountingService $accounting,
         private InventoryCostService $costService,
+        private SpecialDiscountService $specialDiscountService,
     ) {}
 
     public function index(Request $request): Response
@@ -69,6 +74,11 @@ class SellController extends Controller
             'today' => now()->format('Y-m-d'),
             'defaultCustomer' => $defaultCustomer,
             'paymentAccounts' => $this->paymentAccounts(),
+            'specialDiscounts' => $this->activeSpecialDiscounts($branchId),
+            'discountTypes' => collect(DiscountType::cases())->map(fn (DiscountType $type) => [
+                'value' => $type->value,
+                'label' => $type->label(),
+            ])->values(),
             'categories' => Category::active()
                 ->orderBy('name')
                 ->get(['id', 'name', 'image'])
@@ -89,7 +99,9 @@ class SellController extends Controller
             'customer_id' => ['nullable', 'exists:customers,id'],
             'date' => ['required', 'date'],
             'comment' => ['nullable', 'string'],
-            'discount' => ['required', 'numeric', 'min:0'],
+            'discount_type' => ['required', Rule::enum(DiscountType::class)],
+            'discount_value' => ['required', 'numeric', 'min:0'],
+            'special_discount_id' => ['nullable', 'integer', 'exists:special_discounts,id'],
             'vat' => ['required', 'numeric', 'min:0'],
             'paid_amount' => ['required', 'numeric', 'min:0'],
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
@@ -106,18 +118,24 @@ class SellController extends Controller
 
         try {
             $sell = DB::transaction(function () use ($data, $branchId, $paymentAccountId) {
-                ['grossAmount' => $grossAmount, 'vatAmount' => $vatAmount, 'sellProductsData' => $sellProductsData] = $this->processSellItems(
+                ['grossAmount' => $grossAmount, 'lineDiscountTotal' => $lineDiscountTotal, 'vatAmount' => $vatAmount, 'sellProductsData' => $sellProductsData] = $this->processSellItems(
                     $data['items'],
                     $branchId,
                     (float) $data['vat'],
                 );
+
+                $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId);
 
                 $sell = Sell::create([
                     'branch_id' => $branchId,
                     'customer_id' => $data['customer_id'] ?? null,
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
-                    'discount' => $data['discount'],
+                    'discount' => $discountFields['discount'],
+                    'discount_type' => $discountFields['discount_type'],
+                    'discount_value' => $discountFields['discount_value'],
+                    'special_discount_id' => $discountFields['special_discount_id'],
+                    'special_discount_amount' => $discountFields['special_discount_amount'],
                     'vat' => $vatAmount,
                     'paid_amount' => $data['paid_amount'],
                     'type' => SaleType::Sale,
@@ -165,6 +183,7 @@ class SellController extends Controller
         $sell->load([
             'customer',
             'branch:id,name',
+            'specialDiscount:id,name,discount_type,discount_value',
             'products.product',
             'products.variation',
         ]);
@@ -193,6 +212,7 @@ class SellController extends Controller
 
         $sell->load([
             'customer:id,name,phone',
+            'specialDiscount:id,name,discount_type,discount_value',
             'products.product:id,name,code,sale_price,discount_price',
             'products.variation:id,variation_data,price,stock',
         ]);
@@ -240,6 +260,16 @@ class SellController extends Controller
                 'date' => optional($sell->date)->format('Y-m-d'),
                 'gross_amount' => $grossAmount,
                 'discount' => (float) $sell->discount,
+                'discount_type' => $sell->discount_type?->value ?? DiscountType::Flat->value,
+                'discount_value' => (float) ($sell->discount_value ?? $sell->discount),
+                'special_discount_id' => $sell->special_discount_id,
+                'special_discount_amount' => (float) $sell->special_discount_amount,
+                'special_discount' => $sell->specialDiscount ? [
+                    'id' => $sell->specialDiscount->id,
+                    'name' => $sell->specialDiscount->name,
+                    'discount_type' => $sell->specialDiscount->discount_type->value,
+                    'discount_value' => (float) $sell->specialDiscount->discount_value,
+                ] : null,
                 'vat_percent' => round($vatPercent, 6),
                 'paid_amount' => (float) $sell->paid_amount,
                 'comment' => $sell->comment,
@@ -247,6 +277,11 @@ class SellController extends Controller
                 'items' => $items,
             ],
             'paymentAccounts' => $this->paymentAccounts(),
+            'specialDiscounts' => $this->activeSpecialDiscounts($branchId),
+            'discountTypes' => collect(DiscountType::cases())->map(fn (DiscountType $type) => [
+                'value' => $type->value,
+                'label' => $type->label(),
+            ])->values(),
         ]);
     }
 
@@ -267,7 +302,9 @@ class SellController extends Controller
             'customer_id' => ['nullable', 'exists:customers,id'],
             'date' => ['required', 'date'],
             'comment' => ['nullable', 'string'],
-            'discount' => ['required', 'numeric', 'min:0'],
+            'discount_type' => ['required', Rule::enum(DiscountType::class)],
+            'discount_value' => ['required', 'numeric', 'min:0'],
+            'special_discount_id' => ['nullable', 'integer', 'exists:special_discounts,id'],
             'vat' => ['required', 'numeric', 'min:0'],
             'paid_amount' => ['required', 'numeric', 'min:0'],
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
@@ -313,17 +350,23 @@ class SellController extends Controller
 
                 $sell->products()->delete();
 
-                ['grossAmount' => $grossAmount, 'vatAmount' => $vatAmount, 'sellProductsData' => $sellProductsData] = $this->processSellItems(
+                ['grossAmount' => $grossAmount, 'lineDiscountTotal' => $lineDiscountTotal, 'vatAmount' => $vatAmount, 'sellProductsData' => $sellProductsData] = $this->processSellItems(
                     $data['items'],
                     $branchId,
                     (float) $data['vat'],
                 );
 
+                $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId);
+
                 $sell->update([
                     'customer_id' => $data['customer_id'] ?? null,
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
-                    'discount' => $data['discount'],
+                    'discount' => $discountFields['discount'],
+                    'discount_type' => $discountFields['discount_type'],
+                    'discount_value' => $discountFields['discount_value'],
+                    'special_discount_id' => $discountFields['special_discount_id'],
+                    'special_discount_amount' => $discountFields['special_discount_amount'],
                     'vat' => $vatAmount,
                     'paid_amount' => $data['paid_amount'],
                     'comment' => $data['comment'] ?? null,
@@ -404,7 +447,69 @@ class SellController extends Controller
             ->with('success', 'Sale deleted successfully.');
     }
 
-    /** @return array{grossAmount: float, vatAmount: float, sellProductsData: array<int, array<string, mixed>>} */
+    /** @return array<int, array<string, mixed>> */
+    private function activeSpecialDiscounts(?int $branchId): array
+    {
+        return SpecialDiscount::query()
+            ->active()
+            ->when($branchId, fn ($query) => $query->accessibleAtBranch($branchId))
+            ->orderBy('min_amount')
+            ->get(['id', 'name', 'min_amount', 'max_amount', 'discount_type', 'discount_value'])
+            ->map(fn (SpecialDiscount $discount) => [
+                'id' => $discount->id,
+                'name' => $discount->name,
+                'min_amount' => (float) $discount->min_amount,
+                'max_amount' => $discount->max_amount !== null ? (float) $discount->max_amount : null,
+                'discount_type' => $discount->discount_type->value,
+                'discount_value' => (float) $discount->discount_value,
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{discount: float, discount_type: DiscountType, discount_value: float, special_discount_id: ?int, special_discount_amount: float}
+     */
+    private function resolveSaleDiscounts(array $data, float $grossAmount, float $lineDiscountTotal, ?int $branchId): array
+    {
+        $taxableBase = max(0, $grossAmount - $lineDiscountTotal);
+        $discountType = $data['discount_type'] instanceof DiscountType
+            ? $data['discount_type']
+            : DiscountType::from($data['discount_type']);
+        $discountValue = (float) $data['discount_value'];
+
+        if ($discountType === DiscountType::Percent && $discountValue > 100) {
+            throw new \RuntimeException('Invoice discount percent cannot exceed 100.');
+        }
+
+        $invoiceDiscount = $this->specialDiscountService->computeAmount($discountType, $discountValue, $taxableBase);
+        $specialResolved = $this->specialDiscountService->resolveForSale(
+            $this->normalizedSpecialDiscountId($data),
+            $taxableBase,
+            $branchId,
+        );
+
+        return [
+            'discount' => $invoiceDiscount,
+            'discount_type' => $discountType,
+            'discount_value' => $discountValue,
+            'special_discount_id' => $specialResolved['id'] ?? null,
+            'special_discount_amount' => $specialResolved['amount'] ?? 0.0,
+        ];
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private function normalizedSpecialDiscountId(array $data): ?int
+    {
+        if (empty($data['special_discount_id'])) {
+            return null;
+        }
+
+        return (int) $data['special_discount_id'];
+    }
+
+    /** @return array{grossAmount: float, lineDiscountTotal: float, vatAmount: float, sellProductsData: array<int, array<string, mixed>>} */
     private function processSellItems(array $items, ?int $branchId, float $vatPercent): array
     {
         $grossAmount = 0.0;
@@ -450,6 +555,7 @@ class SellController extends Controller
 
         return [
             'grossAmount' => $grossAmount,
+            'lineDiscountTotal' => $lineDiscountTotal,
             'vatAmount' => $vatAmount,
             'sellProductsData' => $sellProductsData,
         ];

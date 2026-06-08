@@ -60,7 +60,9 @@ test('authenticated user can create a sale and stock is deducted', function () {
         ->post('/inventory/sell', [
             'customer_id' => null,
             'date' => now()->format('Y-m-d'),
-            'discount' => '0',
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
             'vat' => '0',
             'paid_amount' => '500',
             'payment_account_id' => $cash->id,
@@ -99,7 +101,9 @@ test('authenticated user can create a sale with per-line product discount', func
         ->post('/inventory/sell', [
             'customer_id' => null,
             'date' => now()->format('Y-m-d'),
-            'discount' => '0',
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
             'vat' => '0',
             'paid_amount' => '900',
             'payment_account_id' => $cash->id,
@@ -137,7 +141,9 @@ test('sale fails when quantity exceeds available stock', function () {
         ->post('/inventory/sell', [
             'customer_id' => null,
             'date' => now()->format('Y-m-d'),
-            'discount' => '0',
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
             'vat' => '0',
             'paid_amount' => '0',
             'comment' => null,
@@ -183,7 +189,9 @@ test('main branch user can sell products with stock at main branch', function ()
         ->post('/inventory/sell', [
             'customer_id' => null,
             'date' => now()->format('Y-m-d'),
-            'discount' => '0',
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
             'vat' => '0',
             'paid_amount' => '500',
             'payment_account_id' => $cash->id,
@@ -230,7 +238,9 @@ test('purchase stores stock in main warehouse until manually distributed', funct
         ->post('/inventory/purchase', [
             'supplier_id' => $supplier->id,
             'date' => now()->format('Y-m-d'),
-            'discount' => '0',
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
             'vat' => '0',
             'paid_amount' => '1000',
             'payment_account_id' => $cash->id,
@@ -287,7 +297,9 @@ test('purchase stores stock in main warehouse until manually distributed', funct
         ->post('/inventory/sell', [
             'customer_id' => null,
             'date' => now()->format('Y-m-d'),
-            'discount' => '0',
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
             'vat' => '0',
             'paid_amount' => '2000',
             'payment_account_id' => $cash->id,
@@ -319,7 +331,9 @@ test('store requires at least one item', function () {
         ->post('/inventory/sell', [
             'customer_id' => null,
             'date' => now()->format('Y-m-d'),
-            'discount' => '0',
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
             'vat' => '0',
             'paid_amount' => '0',
             'items' => [],
@@ -361,12 +375,14 @@ test('authenticated user can update a sale and stock is adjusted', function () {
     $this->actingAs($user)->post('/inventory/sell', [
         'customer_id' => null,
         'date' => now()->format('Y-m-d'),
-        'discount' => '0',
+        'discount_type' => 'flat',
+        'discount_value' => '0',
+        'special_discount_id' => null,
         'vat' => '0',
-        'paid_amount' => '1000',
+        'paid_amount' => '200',
         'payment_account_id' => $cash->id,
-        'items' => [['product_id' => $product->id, 'variation_id' => null, 'unit_price' => '500', 'quantity' => '2']],
-    ])->assertRedirect();
+        'items' => [['product_id' => $product->id, 'variation_id' => null, 'unit_price' => '100', 'quantity' => '2']],
+    ])->assertSessionDoesntHaveErrors()->assertRedirect();
 
     $batch->refresh();
     expect((float) $batch->available)->toBe(18.0);
@@ -378,12 +394,15 @@ test('authenticated user can update a sale and stock is adjusted', function () {
         ->put("/inventory/sell/{$sell->id}", [
             'customer_id' => null,
             'date' => now()->format('Y-m-d'),
-            'discount' => '0',
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
             'vat' => '0',
-            'paid_amount' => '500',
+            'paid_amount' => '300',
             'payment_account_id' => $cash->id,
-            'items' => [['product_id' => $product->id, 'variation_id' => null, 'unit_price' => '500', 'quantity' => '3']],
+            'items' => [['product_id' => $product->id, 'variation_id' => null, 'unit_price' => '100', 'quantity' => '3']],
         ])
+        ->assertSessionDoesntHaveErrors()
         ->assertRedirect('/inventory/sell');
 
     $batch->refresh();
@@ -391,7 +410,7 @@ test('authenticated user can update a sale and stock is adjusted', function () {
     expect((float) $batch->available)->toBe(17.0);
 
     $sell->refresh();
-    expect((float) $sell->gross_amount)->toBe(1500.0);
+    expect((float) $sell->gross_amount)->toBe(300.0);
 });
 
 // ── Destroy ───────────────────────────────────────────────────────────────────
@@ -404,7 +423,9 @@ test('authenticated user can delete a sale and stock is restored', function () {
     $this->actingAs($user)->post('/inventory/sell', [
         'customer_id' => null,
         'date' => now()->format('Y-m-d'),
-        'discount' => '0',
+        'discount_type' => 'flat',
+        'discount_value' => '0',
+        'special_discount_id' => null,
         'vat' => '0',
         'paid_amount' => '500',
         'payment_account_id' => $cash->id,

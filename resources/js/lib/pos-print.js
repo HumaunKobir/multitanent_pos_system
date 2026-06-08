@@ -176,8 +176,9 @@ export function buildSellPosPrintPayload(sell, { companyName, logoUrl, branchNam
     const gross = parseFloat(sell.gross_amount ?? 0);
     const vat = parseFloat(sell.vat ?? 0);
     const discount = parseFloat(sell.discount ?? 0);
+    const specialDiscount = parseFloat(sell.special_discount_amount ?? 0);
     const lineDiscount = (sell.products ?? []).reduce((sum, item) => sum + parseFloat(item.discount ?? 0), 0);
-    const net = gross + vat - discount - lineDiscount;
+    const net = gross + vat - discount - specialDiscount - lineDiscount;
     const paid = parseFloat(sell.paid_amount ?? 0);
     const due = Math.max(0, net - paid);
 
@@ -204,10 +205,11 @@ export function buildSellPosPrintPayload(sell, { companyName, logoUrl, branchNam
         totals: {
             gross,
             vat,
-            discount: discount + lineDiscount,
+            discount: discount + specialDiscount + lineDiscount,
             net,
             paid,
             due,
+            specialDiscountName: sell.special_discount?.name ?? null,
         },
     };
 }

@@ -1,5 +1,10 @@
 import { clampQuantityInput } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
+import {
+    computeDiscountAmount,
+    findBestSpecialDiscount,
+    formatDiscountLabel,
+} from '@/lib/pos-discount';
 import { route } from '@/lib/route';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Save, Search, ShoppingCart, Trash2, User } from 'lucide-react';
@@ -430,13 +435,15 @@ function ProductSearchBox({ onAdd }) {
     );
 }
 
-export default function SellEdit({ sell, paymentAccounts = [] }) {
+export default function SellEdit({ sell, paymentAccounts = [], specialDiscounts = [], discountTypes = [] }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const form = useForm({
         customer_id: sell.customer_id ? String(sell.customer_id) : '',
         date: sell.date ?? '',
-        discount: String(sell.discount ?? '0'),
+        discount_type: sell.discount_type ?? 'flat',
+        discount_value: String(sell.discount_value ?? sell.discount ?? '0'),
+        special_discount_id: sell.special_discount_id ? String(sell.special_discount_id) : '',
         vat: String(sell.vat_percent ?? '0'),
         paid_amount: String(sell.paid_amount ?? '0'),
         payment_account_id: '',
@@ -445,11 +452,32 @@ export default function SellEdit({ sell, paymentAccounts = [] }) {
     });
 
     const [items, setItems] = useState(sell.items ?? []);
+    const [matchedSpecialDiscount, setMatchedSpecialDiscount] = useState(sell.special_discount ?? null);
 
     const grossAmount = items.reduce((sum, it) => sum + parseFloat(it.quantity || 0) * parseFloat(it.unit_price || 0), 0);
-    const vatAmount = grossAmount * (parseFloat(form.data.vat || 0) / 100);
-    const netAmount = grossAmount + vatAmount - parseFloat(form.data.discount || 0);
+    const lineDiscountTotal = items.reduce((sum, it) => sum + parseFloat(it.discount || 0), 0);
+    const taxableAmount = Math.max(0, grossAmount - lineDiscountTotal);
+    const vatAmount = taxableAmount * (parseFloat(form.data.vat || 0) / 100);
+    const invoiceDiscountAmount = computeDiscountAmount(
+        form.data.discount_type,
+        form.data.discount_value,
+        taxableAmount,
+    );
+    const specialDiscountAmount = matchedSpecialDiscount
+        ? computeDiscountAmount(
+              matchedSpecialDiscount.discount_type,
+              matchedSpecialDiscount.discount_value,
+              taxableAmount,
+          )
+        : 0;
+    const netAmount = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
     const dueAmount = Math.max(0, netAmount - parseFloat(form.data.paid_amount || 0));
+
+    useEffect(() => {
+        const match = findBestSpecialDiscount(specialDiscounts, taxableAmount);
+        setMatchedSpecialDiscount(match);
+        form.setData('special_discount_id', match ? String(match.id) : '');
+    }, [taxableAmount, specialDiscounts]);
     const hasOverStock = items.some((item) => parseFloat(item.quantity || 0) > parseFloat(item.available_stock ?? 0));
 
     function addItem(item) {
@@ -663,17 +691,62 @@ export default function SellEdit({ sell, paymentAccounts = [] }) {
                                     <span className="font-semibold">৳{grossAmount.toFixed(2)}</span>
                                 </div>
 
+                                {lineDiscountTotal > 0 && (
+                                    <div className="flex justify-between text-green-700">
+                                        <span>Line Discounts</span>
+                                        <span className="font-semibold">-৳{lineDiscountTotal.toFixed(2)}</span>
+                                    </div>
+                                )}
+
+                                {matchedSpecialDiscount && specialDiscountAmount > 0 && (
+                                    <div className="rounded border border-amber-200 bg-amber-50/80 px-2 py-1.5">
+                                        <div className="flex justify-between gap-2">
+                                            <span className="text-amber-900">Special: {matchedSpecialDiscount.name}</span>
+                                            <span className="font-semibold text-amber-800">-৳{specialDiscountAmount.toFixed(2)}</span>
+                                        </div>
+                                        <p className="mt-0.5 text-[10px] text-amber-700/80">
+                                            {formatDiscountLabel(
+                                                matchedSpecialDiscount.discount_type,
+                                                matchedSpecialDiscount.discount_value,
+                                            )}{' '}
+                                            applied automatically
+                                        </p>
+                                    </div>
+                                )}
+
                                 <div className="flex items-center justify-between gap-4">
-                                    <Label className="text-xs text-muted-foreground">Discount</Label>
+                                    <Label className="text-xs text-muted-foreground">Inv. Disc. Type</Label>
+                                    <select
+                                        className="h-7 w-28 rounded-md border border-input bg-background px-2 text-xs"
+                                        value={form.data.discount_type}
+                                        onChange={(e) => form.setData('discount_type', e.target.value)}
+                                    >
+                                        {discountTypes.map((type) => (
+                                            <option key={type.value} value={type.value}>
+                                                {type.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+
+                                <div className="flex items-center justify-between gap-4">
+                                    <Label className="text-xs text-muted-foreground">Inv. Discount</Label>
                                     <Input
                                         type="number"
                                         min="0"
                                         step="0.01"
-                                        value={form.data.discount}
-                                        onChange={(e) => form.setData('discount', e.target.value)}
+                                        value={form.data.discount_value}
+                                        onChange={(e) => form.setData('discount_value', e.target.value)}
                                         className={`${inputCls} w-28 text-right`}
                                     />
                                 </div>
+
+                                {invoiceDiscountAmount > 0 && (
+                                    <div className="flex justify-between text-green-700">
+                                        <span>Inv. Disc. Amount</span>
+                                        <span className="font-semibold">-৳{invoiceDiscountAmount.toFixed(2)}</span>
+                                    </div>
+                                )}
 
                                 <div className="flex items-center justify-between gap-4">
                                     <Label className="text-xs text-muted-foreground">VAT %</Label>

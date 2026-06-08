@@ -312,6 +312,17 @@ return [
             ],
         ],
 
+        'setting.special-discount' => [
+            'label' => 'Special Discounts',
+            'group' => 'Sales',
+            'permissions' => [
+                'setting.special-discount.view' => 'View Special Discounts',
+                'setting.special-discount.create' => 'Create Special Discount',
+                'setting.special-discount.update' => 'Update Special Discount',
+                'setting.special-discount.delete' => 'Delete Special Discount',
+            ],
+        ],
+
         'online-order' => [
             'label' => 'Online Orders',
             'group' => 'Ecommerce',

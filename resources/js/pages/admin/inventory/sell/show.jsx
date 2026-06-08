@@ -33,7 +33,8 @@ export default function SellShow({ sell }) {
     const gross = parseFloat(sell.gross_amount ?? 0);
     const vat = parseFloat(sell.vat ?? 0);
     const discount = parseFloat(sell.discount ?? 0);
-    const net = gross + vat - discount - lineDiscount;
+    const specialDiscount = parseFloat(sell.special_discount_amount ?? 0);
+    const net = gross + vat - discount - specialDiscount - lineDiscount;
     const paid = parseFloat(sell.paid_amount ?? 0);
     const due = Math.max(0, net - paid);
     const actionClass = headerActionClassName();
@@ -111,7 +112,21 @@ export default function SellShow({ sell }) {
                     date={sell.date}
                     branchName={sell.branch?.name}
                     items={sell.products ?? []}
-                    totals={{ gross, vat, discount, lineDiscount, net, paid, due }}
+                    totals={{
+                        gross,
+                        vat,
+                        discount,
+                        discountType: sell.discount_type,
+                        discountValue: sell.discount_value,
+                        specialDiscount,
+                        specialDiscountName: sell.special_discount?.name,
+                        specialDiscountType: sell.special_discount?.discount_type,
+                        specialDiscountValue: sell.special_discount?.discount_value,
+                        lineDiscount,
+                        net,
+                        paid,
+                        due,
+                    }}
                     comment={sell.comment}
                     partySection={
                         <PartyInfoCard

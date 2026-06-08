@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\DiscountType;
 use App\Enums\SaleType;
 use App\Traits\HasBranch;
 use Illuminate\Database\Eloquent\Builder;
@@ -21,24 +22,36 @@ class Sell extends Model
         'date',
         'gross_amount',
         'discount',
+        'discount_type',
+        'discount_value',
+        'special_discount_id',
+        'special_discount_amount',
         'vat',
         'paid_amount',
         'type',
         'comment',
     ];
 
-    protected $casts = [
-        'date' => 'date',
-        'gross_amount' => 'decimal:2',
-        'discount' => 'decimal:2',
-        'vat' => 'decimal:2',
-        'paid_amount' => 'decimal:2',
-        'type' => SaleType::class,
-    ];
+    protected function casts(): array
+    {
+        return [
+            'date' => 'date',
+            'gross_amount' => 'decimal:2',
+            'discount' => 'decimal:2',
+            'discount_type' => DiscountType::class,
+            'discount_value' => 'decimal:2',
+            'special_discount_amount' => 'decimal:2',
+            'vat' => 'decimal:2',
+            'paid_amount' => 'decimal:2',
+            'type' => SaleType::class,
+        ];
+    }
 
     public function hasAnyDiscount(): bool
     {
-        return (float) $this->discount > 0 || $this->lineDiscountTotal() > 0;
+        return (float) $this->discount > 0
+            || (float) $this->special_discount_amount > 0
+            || $this->lineDiscountTotal() > 0;
     }
 
     public function lineDiscountTotal(): float
@@ -55,6 +68,7 @@ class Sell extends Model
         return (float) $this->gross_amount
             + (float) $this->vat
             - (float) $this->discount
+            - (float) $this->special_discount_amount
             - $this->lineDiscountTotal();
     }
 
@@ -66,6 +80,11 @@ class Sell extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function specialDiscount(): BelongsTo
+    {
+        return $this->belongsTo(SpecialDiscount::class);
     }
 
     public function branch(): BelongsTo

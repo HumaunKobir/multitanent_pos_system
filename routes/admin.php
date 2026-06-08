@@ -33,6 +33,7 @@ use App\Http\Controllers\Setting\PageContentController;
 use App\Http\Controllers\Setting\ProductSectionController;
 use App\Http\Controllers\Setting\SizeController;
 use App\Http\Controllers\Setting\SliderController;
+use App\Http\Controllers\Setting\SpecialDiscountController;
 use App\Http\Controllers\Setting\TagController;
 use App\Http\Controllers\Setting\UnitController;
 use App\Http\Controllers\Setting\WarrantyController;
@@ -170,4 +171,7 @@ Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->gr
     Route::resource('productsection', ProductSectionController::class)->except(['create', 'edit', 'show']);
     Route::post('productsection/update-order', [ProductSectionController::class, 'updateOrder'])
         ->name('productsection.update-order');
+    Route::resource('special-discount', SpecialDiscountController::class)
+        ->except(['create', 'edit', 'show'])
+        ->parameters(['special-discount' => 'specialDiscount']);
 });

@@ -77,11 +77,48 @@ function LineItemsTable({ items }) {
     );
 }
 
-function TotalsSummary({ gross, vat, discount, lineDiscount = 0, net, paid, due }) {
+function formatStoredDiscountLabel(type, value) {
+    const parsed = parseFloat(value ?? 0);
+
+    if (type === 'percent') {
+        return `${parsed.toFixed(2)}%`;
+    }
+
+    return `৳${parsed.toFixed(2)}`;
+}
+
+function TotalsSummary({
+    gross,
+    vat,
+    discount,
+    discountType,
+    discountValue,
+    specialDiscount = 0,
+    specialDiscountName,
+    specialDiscountType,
+    specialDiscountValue,
+    lineDiscount = 0,
+    net,
+    paid,
+    due,
+}) {
     const rows = [
         { label: 'Gross Amount', value: `৳${gross.toFixed(2)}`, muted: true },
         ...(lineDiscount > 0 ? [{ label: 'Line Discounts', value: `-৳${lineDiscount.toFixed(2)}`, accent: 'text-green-600' }] : []),
-        ...(discount > 0 ? [{ label: 'Invoice Discount', value: `-৳${discount.toFixed(2)}`, accent: 'text-green-600' }] : []),
+        ...(specialDiscount > 0
+            ? [{
+                label: specialDiscountName ? `Special Discount (${specialDiscountName})` : 'Special Discount',
+                value: `-৳${specialDiscount.toFixed(2)} (${formatStoredDiscountLabel(specialDiscountType, specialDiscountValue)})`,
+                accent: 'text-amber-700',
+            }]
+            : []),
+        ...(discount > 0
+            ? [{
+                label: 'Invoice Discount',
+                value: `-৳${discount.toFixed(2)}${discountType === 'percent' ? ` (${formatStoredDiscountLabel(discountType, discountValue)})` : ''}`,
+                accent: 'text-green-600',
+            }]
+            : []),
         ...(vat > 0 ? [{ label: 'VAT', value: `৳${vat.toFixed(2)}`, muted: true }] : []),
         { label: 'Net Amount', value: `৳${net.toFixed(2)}`, bold: true, divider: true },
         { label: 'Paid', value: `৳${paid.toFixed(2)}`, accent: 'text-green-700 dark:text-green-400' },

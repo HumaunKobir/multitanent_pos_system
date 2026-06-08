@@ -20,13 +20,6 @@ const supportPerks = [
     { icon: Headphones, text: 'Friendly support' },
 ];
 
-const quickLinks = [
-    { href: '/refund-policy', label: 'Refund Policy' },
-    { href: '/cancellation-policy', label: 'Cancellation Policy' },
-    { href: '/size-guide', label: 'Size Guide' },
-    { href: '/contact', label: 'Contact Us' },
-];
-
 export default function Faq({ items }) {
     const { siteName, contact = {}, supportTime } = usePage().props;
     const brand = siteName ?? 'Coolness Point';
@@ -144,25 +137,6 @@ export default function Faq({ items }) {
                                     </li>
                                 ))}
                             </ul>
-
-                            <div className="mt-4 border-t border-white/10 pt-4">
-                                <p className="text-[10px] font-semibold uppercase tracking-wider text-white/45">
-                                    Related pages
-                                </p>
-                                <ul className="mt-2.5 space-y-1">
-                                    {quickLinks.map((link) => (
-                                        <li key={link.href}>
-                                            <Link
-                                                href={link.href}
-                                                className="inline-flex items-center gap-1.5 text-xs font-medium text-white/75 transition-colors hover:text-white"
-                                            >
-                                                <ChevronRight className="size-3 text-store-accent" aria-hidden />
-                                                {link.label}
-                                            </Link>
-                                        </li>
-                                    ))}
-                                </ul>
-                            </div>
 
                             <div className="mt-5">
                                 <Link href="/contact">

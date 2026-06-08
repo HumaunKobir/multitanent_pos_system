@@ -320,16 +320,61 @@ function TagInput({ tags, onChange, placeholder = 'Type value, press Space or En
     );
 }
 
-function VariationBuilder({ productCode, variationNames = [], onChange, onEnabledChange, errors = {} }) {
+const DEFAULT_VARIANT_ROWS = [
+    { id: 1, name: 'Color', values: [] },
+    { id: 2, name: 'Size', values: [] },
+];
+
+const VARIANT_NAME_OPTIONS = [
+    { value: 'Color', label: 'Color' },
+    { value: 'Size', label: 'Size' },
+];
+
+const VARIANT_ROW_ORDER = ['Color', 'Size'];
+
+function sortParsedVariantRows(rows) {
+    return [...rows].sort((a, b) => {
+        const aIndex = VARIANT_ROW_ORDER.indexOf(a.name);
+        const bIndex = VARIANT_ROW_ORDER.indexOf(b.name);
+
+        if (aIndex === -1 && bIndex === -1) {
+            return 0;
+        }
+
+        if (aIndex === -1) {
+            return 1;
+        }
+
+        if (bIndex === -1) {
+            return -1;
+        }
+
+        return aIndex - bIndex;
+    });
+}
+
+function formatVariantSummary(variationData = {}) {
+    return Object.entries(variationData)
+        .filter(([key]) => key !== 'label')
+        .map(([key, value]) => `${key}: ${value}`)
+        .join(' · ');
+}
+
+function VariationBuilder({ productCode, colorOptions = [], sizeOptions = [], onChange, onEnabledChange, errors = {} }) {
     const [enabled, setEnabled] = useState(false);
-    const [varOptions, setVarOptions] = useState(() => variationNames.map((n) => ({ value: n, label: n })));
-    const [rows, setRows] = useState([{ id: 1, name: '', values: [] }]);
+    const [varOptions, setVarOptions] = useState(() => VARIANT_NAME_OPTIONS.map((option) => ({ ...option })));
+    const [rows, setRows] = useState(() => DEFAULT_VARIANT_ROWS.map((row) => ({ ...row })));
     const [combinations, setCombinations] = useState([]);
+    const [buildError, setBuildError] = useState('');
 
     function toggleEnabled(val) {
         setEnabled(val);
         onEnabledChange?.(val);
+        if (val) {
+            setRows(DEFAULT_VARIANT_ROWS.map((row) => ({ ...row, values: [] })));
+        }
         if (!val) {
+            setBuildError('');
             setCombinations([]);
             onChange([]);
         }
@@ -344,34 +389,64 @@ function VariationBuilder({ productCode, variationNames = [], onChange, onEnable
     }
 
     function setRowName(id, name) {
-        setRows((prev) => prev.map((r) => (r.id === id ? { ...r, name } : r)));
+        setRows((prev) => prev.map((r) => (r.id === id ? { ...r, name: name ?? '', values: [] } : r)));
     }
 
     function setRowValues(id, values) {
         setRows((prev) => prev.map((r) => (r.id === id ? { ...r, values } : r)));
     }
 
+    function getValueOptions(name) {
+        if (name === 'Color') {
+            return colorOptions;
+        }
+
+        if (name === 'Size') {
+            return sizeOptions;
+        }
+
+        return [];
+    }
+
+    function usesPresetValues(name) {
+        return name === 'Color' || name === 'Size';
+    }
+
     function buildCombinations() {
-        const parsed = rows
-            .map((r) => ({ name: r.name.trim(), values: r.values }))
-            .filter((r) => r.name && r.values.length > 0);
+        setBuildError('');
 
-        if (!parsed.length) return;
+        const namedRows = rows.filter((r) => r.name.trim());
+        const missingValues = namedRows.filter((r) => r.values.length === 0);
 
-        const product = parsed.map((r) => r.values).reduce((acc, cur) => {
+        if (missingValues.length > 0) {
+            setBuildError(`Add values for: ${missingValues.map((r) => r.name).join(', ')}`);
+            return;
+        }
+
+        const parsed = sortParsedVariantRows(
+            namedRows.map((r) => ({ name: r.name.trim(), values: r.values })),
+        );
+
+        if (!parsed.length) {
+            return;
+        }
+
+        const cartesian = parsed.map((r) => r.values).reduce((acc, cur) => {
             const res = [];
             acc.forEach((a) => cur.forEach((b) => res.push([...a, b])));
+
             return res;
         }, [[]]);
 
-        const combos = product.map((combo) => {
-            const variantText = combo.join('-');
+        const newCombos = cartesian.map((combo) => {
+            const variation_data = buildVariationDataFromRows(parsed, combo);
+            const variantText = variation_data.label ?? combo.join('-');
             const skuPart = variantText.replace(/[^A-Za-z0-9]+/g, '-').toUpperCase();
             const sku = [productCode, skuPart].filter(Boolean).join('-');
 
             return {
                 variant: variantText,
-                variation_data: buildVariationDataFromRows(parsed, combo),
+                variation_data,
                 sale_price: '',
                 purchase_price: '',
                 sku,
@@ -379,8 +454,28 @@ function VariationBuilder({ productCode, variationNames = [], onChange, onEnable
             };
         });
 
-        setCombinations(combos);
-        onChange(combos);
+        setCombinations((prev) => {
+            const prevMap = new Map(prev.map((combo) => [combo.variant, combo]));
+            const next = newCombos.map((combo) => {
+                const existing = prevMap.get(combo.variant);
+
+                if (!existing) {
+                    return combo;
+                }
+
+                return {
+                    ...combo,
+                    sale_price: existing.sale_price ?? '',
+                    purchase_price: existing.purchase_price ?? '',
+                    sku: existing.sku || combo.sku,
+                    stock: existing.stock ?? combo.stock,
+                };
+            });
+
+            onChange(next);
+
+            return next;
+        });
     }
 
     function updateCombo(idx, field, val) {
@@ -419,13 +514,12 @@ function VariationBuilder({ productCode, variationNames = [], onChange, onEnable
                     <div className="flex items-center gap-2 px-3">
                         <Label className="w-1/3 text-xs">Variation Name</Label>
                         <Label className="flex-1 text-xs">Value (Tags)</Label>
-                        <div className="w-8" />
+                        <div className="w-16" />
                     </div>
 
                     <div className="space-y-2">
                         {rows.map((row, idx) => (
                             <div key={row.id} className="flex items-center gap-2 border bg-muted/30 p-3">
-                                {/* Variation name — SmartSelect with creatable */}
                                 <div className="w-1/3 min-w-0">
                                     <SmartSelect
                                         options={varOptions}
@@ -436,18 +530,27 @@ function VariationBuilder({ productCode, variationNames = [], onChange, onEnable
                                         creatable
                                         createMode="inline"
                                         createRowLabel={(q) => `Add "${q}"`}
+                                        triggerClassName="h-8 text-xs"
                                     />
                                 </div>
 
-                                {/* Values — tag pill input */}
                                 <div className="flex-1 min-w-0">
-                                    <TagInput
-                                        tags={row.values}
-                                        onChange={(v) => setRowValues(row.id, v)}
-                                    />
+                                    {usesPresetValues(row.name) ? (
+                                        <SmartMultiSelect
+                                            options={getValueOptions(row.name)}
+                                            value={row.values}
+                                            onValueChange={(v) => setRowValues(row.id, v)}
+                                            placeholder={`Select ${row.name.toLowerCase()} values…`}
+                                            triggerClassName="min-h-8 text-xs"
+                                        />
+                                    ) : (
+                                        <TagInput
+                                            tags={row.values}
+                                            onChange={(v) => setRowValues(row.id, v)}
+                                        />
+                                    )}
                                 </div>
 
-                                {/* Actions: + on last row, X if multiple */}
                                 <div className="flex shrink-0 items-center gap-1">
                                     {idx === rows.length - 1 && (
                                         <button
@@ -483,6 +586,10 @@ function VariationBuilder({ productCode, variationNames = [], onChange, onEnable
                         Build Combinations
                     </Button>
 
+                    {buildError && (
+                        <p className="text-xs text-destructive">{buildError}</p>
+                    )}
+
                     {combinations.length > 0 && (
                         <div className="overflow-x-auto rounded border">
                             <table className="w-full text-xs">
@@ -502,7 +609,12 @@ function VariationBuilder({ productCode, variationNames = [], onChange, onEnable
                                         <tr key={idx} className="border-b last:border-0">
                                             <td className="p-2 text-muted-foreground">{idx + 1}</td>
                                             <td className="p-2 font-medium">
-                                                {combo.variant}
+                                                <div>{combo.variant}</div>
+                                                {formatVariantSummary(combo.variation_data) && (
+                                                    <p className="mt-0.5 text-[10px] font-normal text-muted-foreground">
+                                                        {formatVariantSummary(combo.variation_data)}
+                                                    </p>
+                                                )}
                                                 {errors[`combinations.${idx}.variant`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.variant`]}</p>}
                                             </td>
                                             <td className="p-2">
@@ -538,7 +650,7 @@ function VariationBuilder({ productCode, variationNames = [], onChange, onEnable
     );
 }
 
-export default function ProductForm({ form, categories, brands, units, warranties, branches, variationNames = [], tagOptions = [], isEditing = false, processing = false, cancelHref = '' }) {
+export default function ProductForm({ form, categories, brands, units, warranties, branches, colorOptions = [], sizeOptions = [], tagOptions = [], isEditing = false, processing = false, cancelHref = '' }) {
     const { auth } = usePage().props;
     const isAdmin = !auth.user?.branch_id;
 
@@ -720,7 +832,8 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                     <Card title="Variations" icon={GitBranch}>
                         <VariationBuilder
                             productCode={form.data.code}
-                            variationNames={variationNames}
+                            colorOptions={colorOptions}
+                            sizeOptions={sizeOptions}
                             onChange={(combos) => form.setData('combinations', combos)}
                             onEnabledChange={handleVariationsToggle}
                             errors={form.errors}

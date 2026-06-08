@@ -48,13 +48,6 @@ final class PageContent
                 'section_title' => 'Terms details',
                 'default_content' => 'By accessing and using this website, you agree to comply with these terms of service. Please read them carefully before placing an order or using our services.',
             ],
-            'faq' => [
-                'key' => 'faq',
-                'title' => 'FAQ',
-                'subtitle' => 'Frequently asked questions about shopping with us.',
-                'section_title' => 'FAQ content',
-                'default_content' => '<h3>How do I place an order?</h3><p>Browse our products, add items to your cart, and proceed to checkout.</p>',
-            ],
         ];
     }
 

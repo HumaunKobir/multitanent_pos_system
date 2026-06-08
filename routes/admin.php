@@ -27,8 +27,11 @@ use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Setting\BrandController;
 use App\Http\Controllers\Setting\CategoryController;
+use App\Http\Controllers\Setting\ColorController;
+use App\Http\Controllers\Setting\FaqController;
 use App\Http\Controllers\Setting\PageContentController;
 use App\Http\Controllers\Setting\ProductSectionController;
+use App\Http\Controllers\Setting\SizeController;
 use App\Http\Controllers\Setting\SliderController;
 use App\Http\Controllers\Setting\TagController;
 use App\Http\Controllers\Setting\UnitController;
@@ -69,6 +72,11 @@ Route::middleware(['auth', 'verified', 'ecommerce.panel'])->group(function () {
     Route::put('setting/page-content/{page}', [PageContentController::class, 'update'])
         ->whereIn('page', PageContent::slugs())
         ->name('setting.page-content.update');
+    Route::prefix('setting')->name('setting.')->group(function () {
+        Route::resource('faq', FaqController::class)
+            ->except(['create', 'edit', 'show'])
+            ->parameters(['faq' => 'faq']);
+    });
     Route::get('online-order', [OnlineOrderController::class, 'index'])->name('online-order.index');
     Route::get('online-order/{onlineOrder}', [OnlineOrderController::class, 'show'])->name('online-order.show');
     Route::post('online-order/{onlineOrder}/steadfast', [OnlineOrderController::class, 'sendToSteadfast'])->name('online-order.send-steadfast');
@@ -155,6 +163,8 @@ Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->gr
         ->except(['create', 'edit'])
         ->parameters(['brand' => 'brand:id']);
     Route::resource('unit', UnitController::class)->except(['create', 'edit']);
+    Route::resource('color', ColorController::class)->except(['create', 'edit']);
+    Route::resource('size', SizeController::class)->except(['create', 'edit']);
     Route::resource('warranty', WarrantyController::class)->except(['create', 'edit']);
     Route::resource('slider', SliderController::class)->except(['create', 'edit', 'show']);
     Route::resource('productsection', ProductSectionController::class)->except(['create', 'edit', 'show']);

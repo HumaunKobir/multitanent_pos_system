@@ -228,6 +228,28 @@ return [
             ],
         ],
 
+        'setting.color' => [
+            'label' => 'Colors',
+            'group' => 'Settings',
+            'permissions' => [
+                'setting.color.view' => 'View Colors',
+                'setting.color.create' => 'Create Color',
+                'setting.color.update' => 'Update Color',
+                'setting.color.delete' => 'Delete Color',
+            ],
+        ],
+
+        'setting.size' => [
+            'label' => 'Sizes',
+            'group' => 'Settings',
+            'permissions' => [
+                'setting.size.view' => 'View Sizes',
+                'setting.size.create' => 'Create Size',
+                'setting.size.update' => 'Update Size',
+                'setting.size.delete' => 'Delete Size',
+            ],
+        ],
+
         'setting.warranty' => [
             'label' => 'Warranties',
             'group' => 'Settings',
@@ -276,6 +298,17 @@ return [
             'permissions' => [
                 'setting.page-content.view' => 'View Website Pages',
                 'setting.page-content.update' => 'Update Website Pages',
+            ],
+        ],
+
+        'setting.faq' => [
+            'label' => 'FAQ',
+            'group' => 'Settings',
+            'permissions' => [
+                'setting.faq.view' => 'View FAQ',
+                'setting.faq.create' => 'Create FAQ',
+                'setting.faq.update' => 'Update FAQ',
+                'setting.faq.delete' => 'Delete FAQ',
             ],
         ],
 

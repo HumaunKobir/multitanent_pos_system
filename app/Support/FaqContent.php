@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\ConfigDictionary;
+use App\Models\Faq;
 use DOMDocument;
 use DOMElement;
 use DOMXPath;
@@ -14,6 +15,20 @@ final class FaqContent
      */
     public static function items(): array
     {
+        $dbItems = Faq::query()
+            ->active()
+            ->ordered()
+            ->get(['question', 'answer'])
+            ->map(static fn (Faq $faq): array => [
+                'question' => $faq->question,
+                'answer' => $faq->answer,
+            ])
+            ->all();
+
+        if ($dbItems !== []) {
+            return $dbItems;
+        }
+
         $html = (string) ConfigDictionary::get('faq', '');
         $parsed = self::parse($html);
 

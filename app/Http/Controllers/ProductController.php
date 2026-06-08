@@ -6,12 +6,13 @@ use App\Models\Barcode;
 use App\Models\Branch;
 use App\Models\Brand;
 use App\Models\Category;
+use App\Models\Color;
 use App\Models\Product;
 use App\Models\ProductPhoto;
 use App\Models\ProductVariation;
+use App\Models\Size;
 use App\Models\Tag;
 use App\Models\Unit;
-use App\Models\Variation;
 use App\Models\Warranty;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -298,7 +299,12 @@ class ProductController extends Controller
             'units' => Unit::active()->pluck('name', 'id'),
             'warranties' => Warranty::active()->pluck('name', 'id'),
             'branches' => Branch::active()->orderBy('name')->pluck('name', 'id'),
-            'variationNames' => Variation::where('status', 1)->pluck('name'),
+            'colorOptions' => Color::active()->orderBy('name')->get(['id', 'name'])
+                ->map(fn (Color $color): array => ['value' => $color->name, 'label' => $color->name])
+                ->all(),
+            'sizeOptions' => Size::active()->orderBy('name')->get(['id', 'name'])
+                ->map(fn (Size $size): array => ['value' => $size->name, 'label' => $size->name])
+                ->all(),
             'tagOptions' => Tag::query()
                 ->selectableForProduct()
                 ->with('parent:id,name')

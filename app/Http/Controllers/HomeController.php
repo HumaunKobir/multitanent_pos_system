@@ -13,6 +13,7 @@ use App\Models\ProductReview;
 use App\Models\ProductSection;
 use App\Models\Slider;
 use App\Services\EcommerceBranchService;
+use App\Support\FaqContent;
 use App\Support\PageContent;
 use App\Support\StorageUrl;
 use Illuminate\Database\Eloquent\Builder;
@@ -334,6 +335,13 @@ class HomeController extends Controller
         return Inertia::render('frontend/content-page', $this->contentPageProps('about-us'));
     }
 
+    public function faq(): Response
+    {
+        return Inertia::render('frontend/faq', [
+            'items' => FaqContent::items(),
+        ]);
+    }
+
     public function staticPage(string $page): Response
     {
         $contentPages = [
@@ -348,7 +356,6 @@ class HomeController extends Controller
         }
 
         $keyMap = [
-            'faq' => 'faq',
             'size-guide' => 'size_guide',
         ];
 

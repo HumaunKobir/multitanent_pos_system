@@ -63,7 +63,9 @@ export default function PageContentEdit({ page }) {
                         <div className="border-b bg-muted/30 px-5 py-3">
                             <h2 className="text-sm font-semibold text-foreground">Page content</h2>
                             <p className="mt-0.5 text-xs text-muted-foreground">
-                                This content appears in the main section of the public {page.title} page.
+                                {page.slug === 'faq'
+                                    ? 'Use headings (H3) for questions and paragraphs for answers. Each heading starts a new FAQ item on the public page.'
+                                    : `This content appears in the main section of the public ${page.title} page.`}
                             </p>
                         </div>
                         <div className="px-5 py-4">

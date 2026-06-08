@@ -501,8 +501,12 @@ test('about page loads', function () {
         );
 });
 
-test('faq static page loads', function () {
+test('faq page loads with accordion items', function () {
     $this->get(route('faq'))
         ->assertOk()
-        ->assertInertia(fn ($page) => $page->component('frontend/static-page'));
+        ->assertInertia(fn ($page) => $page
+            ->component('frontend/faq')
+            ->has('items', 6)
+            ->where('items.0.question', 'How do I place an order?')
+        );
 });

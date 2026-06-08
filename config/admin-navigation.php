@@ -118,6 +118,7 @@ return [
             'ecommerce_only' => true,
             'children' => [
                 ['title' => 'About Us', 'href' => '/setting/page-content/about-us', 'permission' => 'setting.page-content.view'],
+                ['title' => 'FAQ', 'href' => '/setting/page-content/faq', 'permission' => 'setting.page-content.view'],
                 ['title' => 'Refund Policy', 'href' => '/setting/page-content/refund-policy', 'permission' => 'setting.page-content.view'],
                 ['title' => 'Cancellation Policy', 'href' => '/setting/page-content/cancellation-policy', 'permission' => 'setting.page-content.view'],
                 ['title' => 'Privacy Policy', 'href' => '/setting/page-content/privacy-policy', 'permission' => 'setting.page-content.view'],

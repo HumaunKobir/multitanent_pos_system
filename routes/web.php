@@ -28,7 +28,7 @@ Route::get('/search/suggestions', [HomeController::class, 'searchSuggestions'])-
 
 // Static pages
 Route::get('/about', [HomeController::class, 'about'])->name('about');
-Route::get('/faq', [HomeController::class, 'staticPage'])->defaults('page', 'faq')->name('faq');
+Route::get('/faq', [HomeController::class, 'faq'])->name('faq');
 Route::get('/size-guide', [HomeController::class, 'staticPage'])->defaults('page', 'size-guide')->name('size-guide');
 Route::get('/refund-policy', [HomeController::class, 'staticPage'])->defaults('page', 'refund-policy')->name('refund-policy');
 Route::get('/cancellation-policy', [HomeController::class, 'staticPage'])->defaults('page', 'cancellation-policy')->name('cancellation-policy');

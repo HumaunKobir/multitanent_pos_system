@@ -53,7 +53,7 @@ test('creating a branch user seeds default accounts for that branch', function (
     }
 });
 
-test('only one user can be assigned to a branch', function () {
+test('multiple users can be assigned to the same branch', function () {
     $this->artisan('permissions:sync');
 
     $actor = userManagementActor(['user.create']);
@@ -64,17 +64,20 @@ test('only one user can be assigned to a branch', function () {
     $this->actingAs($actor)
         ->post('/user', [
             'branch_id' => $branch->id,
-            'name' => 'Duplicate Branch User',
+            'name' => 'Second Branch User',
             'email' => fake()->unique()->safeEmail(),
             'phone' => fake()->unique()->numerify('01#########'),
             'password' => 'password123',
             'password_confirmation' => 'password123',
             'status' => 1,
         ])
-        ->assertSessionHasErrors('branch_id');
+        ->assertRedirect(route('user.index'))
+        ->assertSessionHas('success');
+
+    expect(User::query()->where('branch_id', $branch->id)->count())->toBe(2);
 });
 
-test('user index exposes branches that already have a user assigned', function () {
+test('user index exposes all active branches for assignment', function () {
     $this->artisan('permissions:sync');
 
     $actor = userManagementActor(['user.view']);
@@ -87,6 +90,6 @@ test('user index exposes branches that already have a user assigned', function (
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('admin/user/index')
-            ->has('assignedBranchIds')
-            ->where('assignedBranchIds', fn ($ids) => collect($ids)->contains($branch->id)));
+            ->has('branches')
+            ->where('branches', fn ($branches) => collect($branches)->has($branch->id)));
 });

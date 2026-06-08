@@ -8,23 +8,17 @@ import { useForm } from '@inertiajs/react';
 import { UserRound } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 
-export default function UserFormDialog({ open, onOpenChange, item, routes, branches, assignedBranchIds, roles }) {
+export default function UserFormDialog({ open, onOpenChange, item, routes, branches, roles }) {
     const isEditing = !!item?.id;
     const roleOptions = Object.entries(roles ?? {});
-    const branchSelectOptions = useMemo(() => {
-        const assigned = new Set((assignedBranchIds ?? []).map(String));
-
-        if (isEditing && item?.branch_id) {
-            assigned.delete(String(item.branch_id));
-        }
-
-        return Object.entries(branches ?? {})
-            .filter(([id]) => !assigned.has(String(id)))
-            .map(([id, name]) => ({
+    const branchSelectOptions = useMemo(
+        () =>
+            Object.entries(branches ?? {}).map(([id, name]) => ({
                 value: String(id),
                 label: name,
-            }));
-    }, [branches, assignedBranchIds, isEditing, item?.branch_id]);
+            })),
+        [branches],
+    );
 
     const form = useForm({
         branch_id: item?.branch_id ? String(item.branch_id) : '',
@@ -103,9 +97,6 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                                 triggerClassName="rounded-md"
                             />
                         </div>
-                        {!isEditing && branchSelectOptions.length === 0 ? (
-                            <p className="mt-1 text-xs text-muted-foreground">Every branch already has a user assigned.</p>
-                        ) : null}
                     </FormField>
 
                     <FormField label="Name" name="name" error={form.errors.name}>

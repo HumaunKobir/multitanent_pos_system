@@ -39,9 +39,6 @@ class UserController extends Controller
         return Inertia::render('admin/user/index', [
             'users' => $users,
             'branches' => Branch::active()->orderBy('name')->pluck('name', 'id'),
-            'assignedBranchIds' => User::query()
-                ->whereNotNull('branch_id')
-                ->pluck('branch_id'),
             'roles' => Role::orderBy('name')->pluck('name', 'id'),
         ]);
     }
@@ -51,7 +48,7 @@ class UserController extends Controller
         $this->authorize('user.create');
 
         $data = $request->validate([
-            'branch_id' => ['required', 'integer', Rule::exists('branches', 'id'), Rule::unique('users', 'branch_id')],
+            'branch_id' => ['required', 'integer', Rule::exists('branches', 'id')],
             'name' => ['required', 'string', 'max:191'],
             'email' => ['required', 'email', 'max:191', 'unique:users,email'],
             'phone' => ['required', 'string', 'max:20', 'unique:users,phone'],
@@ -89,7 +86,7 @@ class UserController extends Controller
 
         $branchRules = $user->isSuperAdmin()
             ? ['nullable', 'integer', Rule::exists('branches', 'id')]
-            : ['required', 'integer', Rule::exists('branches', 'id'), Rule::unique('users', 'branch_id')->ignore($user->id)];
+            : ['required', 'integer', Rule::exists('branches', 'id')];
 
         $data = $request->validate([
             'branch_id' => $branchRules,

@@ -15,7 +15,7 @@ import UserFormDialog from './form-dialog';
 
 const routes = resourceRoutes('user');
 
-export default function UserIndex({ users, branches, assignedBranchIds, roles }) {
+export default function UserIndex({ users, branches, roles }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const { can } = useCan();
@@ -160,7 +160,6 @@ export default function UserIndex({ users, branches, assignedBranchIds, roles })
                         item={editing}
                         routes={routes}
                         branches={branches}
-                        assignedBranchIds={assignedBranchIds}
                         roles={roles}
                     />
                 </Can>

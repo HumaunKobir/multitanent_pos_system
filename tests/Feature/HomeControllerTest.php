@@ -493,7 +493,9 @@ test('about page loads', function () {
     $this->get(route('about'))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
-            ->component('frontend/about')
+            ->component('frontend/content-page')
+            ->where('title', 'About Us')
+            ->where('showExtras', true)
             ->has('content')
             ->has('heroImage')
         );

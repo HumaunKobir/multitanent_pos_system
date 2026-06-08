@@ -27,6 +27,7 @@ use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Setting\BrandController;
 use App\Http\Controllers\Setting\CategoryController;
+use App\Http\Controllers\Setting\PageContentController;
 use App\Http\Controllers\Setting\ProductSectionController;
 use App\Http\Controllers\Setting\SliderController;
 use App\Http\Controllers\Setting\TagController;
@@ -36,6 +37,7 @@ use App\Http\Controllers\Setting\WebsiteSettingController;
 use App\Http\Controllers\SubscriberListController;
 use App\Http\Controllers\UserController;
 use App\Http\Controllers\VariationController;
+use App\Support\PageContent;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'verified'])->get('/admin', function () {
@@ -61,6 +63,12 @@ Route::middleware(['auth', 'verified', 'ecommerce.panel'])->group(function () {
     Route::delete('subscriber-list/{subscriber}', [SubscriberListController::class, 'destroy'])->name('subscriber-list.destroy');
     Route::get('setting/website', [WebsiteSettingController::class, 'edit'])->name('setting.website.edit');
     Route::put('setting/website', [WebsiteSettingController::class, 'update'])->name('setting.website.update');
+    Route::get('setting/page-content/{page}', [PageContentController::class, 'edit'])
+        ->whereIn('page', PageContent::slugs())
+        ->name('setting.page-content.edit');
+    Route::put('setting/page-content/{page}', [PageContentController::class, 'update'])
+        ->whereIn('page', PageContent::slugs())
+        ->name('setting.page-content.update');
     Route::get('online-order', [OnlineOrderController::class, 'index'])->name('online-order.index');
     Route::get('online-order/{onlineOrder}', [OnlineOrderController::class, 'show'])->name('online-order.show');
     Route::post('online-order/{onlineOrder}/steadfast', [OnlineOrderController::class, 'sendToSteadfast'])->name('online-order.send-steadfast');

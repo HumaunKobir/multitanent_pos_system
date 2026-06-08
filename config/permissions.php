@@ -270,6 +270,15 @@ return [
             ],
         ],
 
+        'setting.page-content' => [
+            'label' => 'Website Pages',
+            'group' => 'Settings',
+            'permissions' => [
+                'setting.page-content.view' => 'View Website Pages',
+                'setting.page-content.update' => 'Update Website Pages',
+            ],
+        ],
+
         'online-order' => [
             'label' => 'Online Orders',
             'group' => 'Ecommerce',

@@ -113,6 +113,18 @@ return [
             'permission' => null,
         ],
         [
+            'title' => 'Website Pages',
+            'icon' => 'file-text',
+            'ecommerce_only' => true,
+            'children' => [
+                ['title' => 'About Us', 'href' => '/setting/page-content/about-us', 'permission' => 'setting.page-content.view'],
+                ['title' => 'Refund Policy', 'href' => '/setting/page-content/refund-policy', 'permission' => 'setting.page-content.view'],
+                ['title' => 'Cancellation Policy', 'href' => '/setting/page-content/cancellation-policy', 'permission' => 'setting.page-content.view'],
+                ['title' => 'Privacy Policy', 'href' => '/setting/page-content/privacy-policy', 'permission' => 'setting.page-content.view'],
+                ['title' => 'Terms of Service', 'href' => '/setting/page-content/terms-policy', 'permission' => 'setting.page-content.view'],
+            ],
+        ],
+        [
             'title' => 'Settings',
             'icon' => 'settings',
             'children' => [

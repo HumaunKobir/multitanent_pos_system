@@ -13,6 +13,7 @@ use App\Models\ProductReview;
 use App\Models\ProductSection;
 use App\Models\Slider;
 use App\Services\EcommerceBranchService;
+use App\Support\PageContent;
 use App\Support\StorageUrl;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -330,30 +331,42 @@ class HomeController extends Controller
 
     public function about(): Response
     {
-        $heroImage = StorageUrl::public(ConfigDictionary::get('meta_banner'))
-            ?? StorageUrl::public(ConfigDictionary::get('logo'));
-
-        return Inertia::render('frontend/about', [
-            'content' => ConfigDictionary::get('about_us', ''),
-            'heroImage' => $heroImage,
-        ]);
+        return Inertia::render('frontend/content-page', $this->contentPageProps('about-us'));
     }
 
     public function staticPage(string $page): Response
     {
+        $contentPages = [
+            'refund-policy' => 'refund-policy',
+            'cancellation-policy' => 'cancellation-policy',
+            'privacy-policy' => 'privacy-policy',
+            'terms-policy' => 'terms-policy',
+        ];
+
+        if (isset($contentPages[$page])) {
+            return Inertia::render('frontend/content-page', $this->contentPageProps($contentPages[$page]));
+        }
+
         $keyMap = [
             'faq' => 'faq',
             'size-guide' => 'size_guide',
-            'refund-policy' => 'refund_policy',
-            'cancellation-policy' => 'cancel_policy',
-            'privacy-policy' => 'privacy_policy',
-            'terms-policy' => 'terms_of_service',
         ];
 
         return Inertia::render('frontend/static-page', [
             'page' => $page,
             'content' => ConfigDictionary::get($keyMap[$page] ?? $page, ''),
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function contentPageProps(string $slug): array
+    {
+        $heroImage = StorageUrl::public(ConfigDictionary::get('meta_banner'))
+            ?? StorageUrl::public(ConfigDictionary::get('logo'));
+
+        return PageContent::forFrontend($slug, $heroImage);
     }
 
     private function storefrontSearchQuery(string $query): Builder

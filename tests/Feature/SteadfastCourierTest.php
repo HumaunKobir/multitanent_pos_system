@@ -247,6 +247,36 @@ test('admin can send order to steadfast from controller', function () {
     expect($order->fresh()->courier_tracking_code)->toBe('15BAEB8A');
 });
 
+test('send order to steadfast surfaces inactive account api errors', function () {
+    steadfastTestConfig();
+
+    $order = createSteadfastReadyOrder();
+
+    Http::fake([
+        'https://portal.packzy.com/api/v1/create_order' => Http::response('Account is not active!', 401),
+    ]);
+
+    app(SendOrderToSteadfast::class)->execute($order);
+})->throws(SteadfastCourierException::class, 'Account is not active!');
+
+test('admin sees steadfast api error when account is inactive', function () {
+    steadfastTestConfig();
+
+    $user = onlineOrderViewer();
+    $order = createSteadfastReadyOrder();
+
+    Http::fake([
+        'https://portal.packzy.com/api/v1/create_order' => Http::response('Account is not active!', 401),
+    ]);
+
+    $this->actingAs($user)
+        ->post(route('online-order.send-steadfast', $order))
+        ->assertRedirect()
+        ->assertSessionHas('error', 'Account is not active!');
+
+    expect($order->fresh()->courier)->toBeNull();
+});
+
 test('admin can sync steadfast status from controller', function () {
     steadfastTestConfig();
 

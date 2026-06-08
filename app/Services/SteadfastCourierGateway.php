@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Exceptions\SteadfastCourierException;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\PendingRequest;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\Http;
 
 class SteadfastCourierGateway
@@ -15,9 +16,10 @@ class SteadfastCourierGateway
      */
     public function createOrder(array $payload): array
     {
-        $response = $this->client()->post('/create_order', $payload);
-
-        return $this->decodeResponse($response->json(), 'Unable to create Steadfast consignment.');
+        return $this->send(
+            fn (PendingRequest $client): Response => $client->post('/create_order', $payload),
+            'Unable to create Steadfast consignment.',
+        );
     }
 
     /**
@@ -25,9 +27,10 @@ class SteadfastCourierGateway
      */
     public function getStatusByInvoice(string $invoice): array
     {
-        $response = $this->client()->get('/status_by_invoice/'.rawurlencode($invoice));
-
-        return $this->decodeResponse($response->json(), 'Unable to fetch Steadfast delivery status.');
+        return $this->send(
+            fn (PendingRequest $client): Response => $client->get('/status_by_invoice/'.rawurlencode($invoice)),
+            'Unable to fetch Steadfast delivery status.',
+        );
     }
 
     /**
@@ -35,9 +38,10 @@ class SteadfastCourierGateway
      */
     public function getStatusByTrackingCode(string $trackingCode): array
     {
-        $response = $this->client()->get('/status_by_trackingcode/'.rawurlencode($trackingCode));
-
-        return $this->decodeResponse($response->json(), 'Unable to fetch Steadfast delivery status.');
+        return $this->send(
+            fn (PendingRequest $client): Response => $client->get('/status_by_trackingcode/'.rawurlencode($trackingCode)),
+            'Unable to fetch Steadfast delivery status.',
+        );
     }
 
     /**
@@ -45,9 +49,10 @@ class SteadfastCourierGateway
      */
     public function getStatusByConsignmentId(int $consignmentId): array
     {
-        $response = $this->client()->get('/status_by_cid/'.$consignmentId);
-
-        return $this->decodeResponse($response->json(), 'Unable to fetch Steadfast delivery status.');
+        return $this->send(
+            fn (PendingRequest $client): Response => $client->get('/status_by_cid/'.$consignmentId),
+            'Unable to fetch Steadfast delivery status.',
+        );
     }
 
     /**
@@ -55,9 +60,10 @@ class SteadfastCourierGateway
      */
     public function getBalance(): array
     {
-        $response = $this->client()->get('/get_balance');
-
-        return $this->decodeResponse($response->json(), 'Unable to fetch Steadfast balance.');
+        return $this->send(
+            fn (PendingRequest $client): Response => $client->get('/get_balance'),
+            'Unable to fetch Steadfast balance.',
+        );
     }
 
     public function isConfigured(): bool
@@ -82,8 +88,39 @@ class SteadfastCourierGateway
             ->connectTimeout((int) config('steadfast.connect_timeout'))
             ->retry(2, 250, function (\Exception $exception): bool {
                 return $exception instanceof ConnectionException;
-            })
-            ->throw();
+            }, throw: false);
+    }
+
+    /**
+     * @param  callable(PendingRequest): Response  $request
+     * @return array<string, mixed>
+     */
+    private function send(callable $request, string $fallbackMessage): array
+    {
+        try {
+            $response = $request($this->client());
+        } catch (ConnectionException $exception) {
+            throw new SteadfastCourierException('Unable to connect to Steadfast. Please try again.', 0, $exception);
+        }
+
+        if ($response->failed()) {
+            throw new SteadfastCourierException($this->extractErrorMessage($response, $fallbackMessage));
+        }
+
+        return $this->decodeResponse($response->json(), $fallbackMessage);
+    }
+
+    private function extractErrorMessage(Response $response, string $fallbackMessage): string
+    {
+        $body = $response->json();
+
+        if (is_array($body) && filled($body['message'] ?? null)) {
+            return (string) $body['message'];
+        }
+
+        $plainBody = trim($response->body());
+
+        return filled($plainBody) ? $plainBody : $fallbackMessage;
     }
 
     /**

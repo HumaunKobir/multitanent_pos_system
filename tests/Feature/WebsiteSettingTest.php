@@ -6,8 +6,6 @@ use App\Models\Customer;
 use App\Models\Product;
 use App\Models\User;
 use App\Services\EcommerceBranchService;
-use Illuminate\Http\UploadedFile;
-use Illuminate\Support\Facades\Storage;
 use Inertia\Testing\AssertableInertia as Assert;
 
 function websiteSettingSuperAdmin(): User
@@ -75,50 +73,16 @@ test('non ecommerce branch users are redirected from website settings', function
         ->assertRedirect(route('branch-panel.dashboard'));
 });
 
-test('superadmin can view website settings page', function () {
-    ConfigDictionary::set('website_name', 'Existing Store');
-
+test('superadmin is redirected from website settings', function () {
     $this->actingAs(websiteSettingSuperAdmin())
         ->get('/setting/website')
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->component('admin/setting/website/index')
-            ->where('settings.website_name', 'Existing Store')
-        );
+        ->assertRedirect(route('dashboard'));
 });
 
-test('superadmin can update website settings', function () {
+test('superadmin is redirected when updating website settings', function () {
     $this->actingAs(websiteSettingSuperAdmin())
         ->put('/setting/website', websiteSettingPayload())
-        ->assertRedirect(route('setting.website.edit'))
-        ->assertSessionHas('success');
-
-    expect(ConfigDictionary::get('website_name'))->toBe('Coolness Point Test');
-    expect(ConfigDictionary::get('delivery_charge_inside_dhaka'))->toBe('80');
-    expect(ConfigDictionary::get('footer_description'))->toBe('Premium fashion delivered nationwide.');
-    expect(ConfigDictionary::get('support_time'))->toBe('Sat–Thu, 9AM–9PM');
-});
-
-test('superadmin can upload logo and favicon', function () {
-    Storage::fake('public');
-
-    $logo = UploadedFile::fake()->image('logo.png');
-    $favicon = UploadedFile::fake()->image('favicon.png');
-
-    $this->actingAs(websiteSettingSuperAdmin())
-        ->put('/setting/website', array_merge(websiteSettingPayload(), [
-            'logo' => $logo,
-            'fav_icon' => $favicon,
-        ]))
-        ->assertRedirect(route('setting.website.edit'));
-
-    $logoPath = ConfigDictionary::get('logo');
-    $faviconPath = ConfigDictionary::get('fav_icon');
-
-    expect($logoPath)->not->toBeNull();
-    expect($faviconPath)->not->toBeNull();
-    Storage::disk('public')->assertExists($logoPath);
-    Storage::disk('public')->assertExists($faviconPath);
+        ->assertRedirect(route('dashboard'));
 });
 
 test('website settings are shared on storefront pages', function () {

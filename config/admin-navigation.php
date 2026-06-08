@@ -89,6 +89,14 @@ return [
             'permission' => 'role.view',
         ],
         [
+            'title' => 'Online Orders',
+            'icon' => 'package',
+            'href' => '/online-order',
+            'single' => true,
+            'ecommerce_only' => true,
+            'permission' => 'online-order.view',
+        ],
+        [
             'title' => 'Contact Messages',
             'icon' => 'phone-call',
             'href' => '/contact-list',
@@ -117,7 +125,7 @@ return [
                 ['title' => 'Barcode', 'href' => '/barcode', 'permission' => 'barcode.view'],
                 ['title' => 'Product Section', 'href' => '/setting/productsection', 'permission' => 'setting.productsection.view'],
                 ['title' => 'Slider', 'href' => '/setting/slider', 'permission' => 'setting.slider.view'],
-                ['title' => 'Website Setting', 'href' => '/setting/website', 'permission' => 'setting.website.view'],
+                ['title' => 'Website Setting', 'href' => '/setting/website', 'permission' => 'setting.website.view', 'ecommerce_only' => true],
                 ['title' => 'Membership', 'permission' => null],
             ],
         ],

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\OrderStatus;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -12,13 +13,15 @@ class OnlineOrder extends Model
     protected $fillable = [
         'customer_id', 'name', 'email', 'phone', 'address',
         'payment_method', 'transaction_id', 'delivery_charge', 'subtotal', 'total',
-        'payment_status', 'courier', 'status',
+        'payment_status', 'courier', 'courier_invoice', 'courier_consignment_id',
+        'courier_tracking_code', 'courier_status', 'courier_sent_at', 'status',
     ];
 
     protected $casts = [
         'delivery_charge' => 'decimal:2',
         'subtotal' => 'decimal:2',
         'total' => 'decimal:2',
+        'courier_sent_at' => 'datetime',
         'status' => OrderStatus::class,
     ];
 
@@ -30,5 +33,96 @@ class OnlineOrder extends Model
     public function products(): HasMany
     {
         return $this->hasMany(OnlineOrderProduct::class);
+    }
+
+    public function courierInvoice(): string
+    {
+        $prefix = (string) config('steadfast.invoice_prefix', 'ORD');
+
+        return $prefix.'-'.$this->id;
+    }
+
+    public function hasSteadfastShipment(): bool
+    {
+        return $this->courier === 'steadfast'
+            && filled($this->courier_consignment_id);
+    }
+
+    public function canSendToSteadfast(): bool
+    {
+        return $this->steadfastSendBlockReason() === null;
+    }
+
+    public function steadfastSendBlockReason(): ?string
+    {
+        if ($this->hasSteadfastShipment()) {
+            return 'This order has already been sent to Steadfast.';
+        }
+
+        if (in_array($this->status, [OrderStatus::Delivered, OrderStatus::Canceled], true)) {
+            return 'Delivered or cancelled orders cannot be sent to Steadfast.';
+        }
+
+        if ($this->payment_method === 'sslcommerz' && ! in_array($this->payment_status, ['Paid', 'paid'], true)) {
+            return 'Prepaid orders must be paid before sending to Steadfast.';
+        }
+
+        if (! filled($this->name) || ! filled($this->phone) || ! filled($this->address)) {
+            return 'Recipient name, phone, and address are required.';
+        }
+
+        return null;
+    }
+
+    public function steadfastCodAmount(): float
+    {
+        if ($this->payment_method === 'cod') {
+            return (float) $this->total;
+        }
+
+        return 0.0;
+    }
+
+    public function steadfastDeliveryNote(): ?string
+    {
+        $parts = array_filter([
+            $this->payment_method === 'cod' ? 'COD order' : 'Prepaid order',
+            filled($this->transaction_id) ? 'Txn: '.$this->transaction_id : null,
+        ]);
+
+        return $parts === [] ? null : implode(' | ', $parts);
+    }
+
+    public function steadfastItemDescription(): ?string
+    {
+        $this->loadMissing('products');
+
+        if ($this->products->isEmpty()) {
+            return null;
+        }
+
+        return $this->products
+            ->map(fn (OnlineOrderProduct $item): string => $item->name.' x'.$item->quantity)
+            ->implode(', ');
+    }
+
+    /**
+     * @param  Builder<OnlineOrder>  $query
+     * @return Builder<OnlineOrder>
+     */
+    public function scopeAwaitingSteadfastStatusSync(Builder $query): Builder
+    {
+        return $query
+            ->where('courier', 'steadfast')
+            ->where('status', OrderStatus::Shipping)
+            ->whereNotNull('courier_consignment_id')
+            ->where(function (Builder $inner): void {
+                $inner->whereNull('courier_status')
+                    ->orWhereNotIn('courier_status', [
+                        'delivered',
+                        'partial_delivered',
+                        'cancelled',
+                    ]);
+            });
     }
 }

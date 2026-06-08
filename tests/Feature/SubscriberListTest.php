@@ -65,32 +65,10 @@ test('ecommerce branch user can view subscribers', function () {
         );
 });
 
-test('superadmin can view subscriber list', function () {
-    $prefix = 'sub-view-'.uniqid();
-    $first = Subscriber::factory()->create(['email' => "{$prefix}-a@example.com"]);
-    $second = Subscriber::factory()->create(['email' => "{$prefix}-b@example.com"]);
-
+test('superadmin is redirected from subscriber list', function () {
     $this->actingAs(subscriberListSuperAdmin())
-        ->get('/subscriber-list?search='.$prefix)
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->component('admin/subscriber-list/index')
-            ->where('filters.search', $prefix)
-            ->has('subscribers.data', 2)
-            ->where('subscribers.data', fn ($rows) => collect($rows)->pluck('id')->sort()->values()->all()
-                === collect([$first->id, $second->id])->sort()->values()->all())
-        );
-});
-
-test('superadmin can delete a subscriber', function () {
-    $subscriber = Subscriber::factory()->create();
-
-    $this->actingAs(subscriberListSuperAdmin())
-        ->delete("/subscriber-list/{$subscriber->id}")
-        ->assertRedirect(route('subscriber-list.index'))
-        ->assertSessionHas('success');
-
-    expect(Subscriber::query()->find($subscriber->id))->toBeNull();
+        ->get('/subscriber-list')
+        ->assertRedirect(route('dashboard'));
 });
 
 test('ecommerce branch user can delete a subscriber', function () {

@@ -83,18 +83,27 @@ test('ecommerce branch user can view contact messages for their branch', functio
         );
 });
 
-test('superadmin can view contact list with messages', function () {
+test('superadmin is redirected from contact list', function () {
+    $this->actingAs(contactListSuperAdmin())
+        ->get('/contact-list')
+        ->assertRedirect(route('dashboard'));
+});
+
+test('ecommerce branch user can view contact list with messages', function () {
     $prefix = 'cl-view-'.uniqid();
+    $branch = contactListEcommerceBranch();
     $first = Contact::factory()->create([
+        'branch_id' => $branch->id,
         'name' => "{$prefix} Alpha",
         'message' => 'First inquiry message',
     ]);
     $second = Contact::factory()->create([
+        'branch_id' => $branch->id,
         'name' => "{$prefix} Beta",
         'message' => 'Second inquiry message',
     ]);
 
-    $this->actingAs(contactListSuperAdmin())
+    $this->actingAs(contactListEcommerceUser())
         ->get('/contact-list?search='.$prefix)
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
@@ -106,11 +115,12 @@ test('superadmin can view contact list with messages', function () {
         );
 });
 
-test('superadmin can search contact list by message', function () {
-    $match = Contact::factory()->create(['message' => 'findme-'.uniqid()]);
-    Contact::factory()->create(['message' => 'other-'.uniqid()]);
+test('ecommerce branch user can search contact list by message', function () {
+    $branch = contactListEcommerceBranch();
+    $match = Contact::factory()->create(['branch_id' => $branch->id, 'message' => 'findme-'.uniqid()]);
+    Contact::factory()->create(['branch_id' => $branch->id, 'message' => 'other-'.uniqid()]);
 
-    $this->actingAs(contactListSuperAdmin())
+    $this->actingAs(contactListEcommerceUser())
         ->get('/contact-list?search='.$match->message)
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
@@ -119,10 +129,11 @@ test('superadmin can search contact list by message', function () {
         );
 });
 
-test('superadmin can delete a contact message', function () {
-    $contact = Contact::factory()->create();
+test('ecommerce branch user can delete a contact message from list', function () {
+    $branch = contactListEcommerceBranch();
+    $contact = Contact::factory()->create(['branch_id' => $branch->id]);
 
-    $this->actingAs(contactListSuperAdmin())
+    $this->actingAs(contactListEcommerceUser())
         ->delete("/contact-list/{$contact->id}")
         ->assertRedirect(route('contact-list.index'))
         ->assertSessionHas('success');

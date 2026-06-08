@@ -22,6 +22,10 @@ class AdminNavigation
         $sections = [];
 
         foreach (config('admin-navigation.sections', []) as $section) {
+            if (! $user->isBranchUser() && ($section['ecommerce_only'] ?? false)) {
+                continue;
+            }
+
             if ($user->isBranchUser() && ($section['admin_only'] ?? false) && ! ($section['ecommerce_only'] ?? false)) {
                 continue;
             }
@@ -56,7 +60,8 @@ class AdminNavigation
             $children = array_values(array_filter(
                 $section['children'],
                 fn (array $child): bool => $this->userCanSee($user, $child['permission'] ?? null)
-                    && $this->userCanSeeBranchScope($user, $child),
+                    && $this->userCanSeeBranchScope($user, $child)
+                    && $this->userCanSeeEcommerceScope($user, $child),
             ));
 
             if (empty($children)) {
@@ -96,6 +101,19 @@ class AdminNavigation
         }
 
         return $user->can($permission);
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    protected function userCanSeeEcommerceScope(User $user, array $item): bool
+    {
+        if (! ($item['ecommerce_only'] ?? false)) {
+            return true;
+        }
+
+        return $user->isBranchUser()
+            && EcommerceBranchService::isEcommerceBranchStatic($user->branch_id);
     }
 
     /**

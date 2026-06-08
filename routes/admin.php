@@ -61,6 +61,10 @@ Route::middleware(['auth', 'verified', 'ecommerce.panel'])->group(function () {
     Route::delete('subscriber-list/{subscriber}', [SubscriberListController::class, 'destroy'])->name('subscriber-list.destroy');
     Route::get('setting/website', [WebsiteSettingController::class, 'edit'])->name('setting.website.edit');
     Route::put('setting/website', [WebsiteSettingController::class, 'update'])->name('setting.website.update');
+    Route::get('online-order', [OnlineOrderController::class, 'index'])->name('online-order.index');
+    Route::get('online-order/{onlineOrder}', [OnlineOrderController::class, 'show'])->name('online-order.show');
+    Route::post('online-order/{onlineOrder}/steadfast', [OnlineOrderController::class, 'sendToSteadfast'])->name('online-order.send-steadfast');
+    Route::patch('online-order/{onlineOrder}/steadfast/sync', [OnlineOrderController::class, 'syncCourierStatus'])->name('online-order.sync-steadfast');
     Route::patch('online-order/{onlineOrder}/fulfill', [OnlineOrderController::class, 'fulfill'])->name('online-order.fulfill');
     Route::patch('online-order/{onlineOrder}/status', [OnlineOrderController::class, 'updateStatus'])->name('online-order.update-status');
 });

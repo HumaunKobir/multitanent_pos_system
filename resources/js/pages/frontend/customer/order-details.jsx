@@ -35,6 +35,17 @@ export default function OrderDetails({ order }) {
                     </p>
                     <p className="mt-2 text-sm text-store-muted">Payment: {order.payment_status}</p>
                     <p className="mt-1 text-sm text-store-muted">Method: {order.payment_method?.toUpperCase()}</p>
+                    {order.courier_tracking_code && (
+                        <div className="mt-3 rounded-lg border border-indigo-100 bg-indigo-50/60 px-3 py-2">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-700">Courier tracking</p>
+                            <p className="mt-1 font-mono text-sm font-semibold text-indigo-900">{order.courier_tracking_code}</p>
+                            {order.courier_status && (
+                                <p className="mt-1 text-xs capitalize text-indigo-700/80">
+                                    {order.courier_status.replace(/_/g, ' ')}
+                                </p>
+                            )}
+                        </div>
+                    )}
                 </div>
             </div>
 

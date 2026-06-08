@@ -1,0 +1,33 @@
+<?php
+
+namespace App\Actions\Steadfast;
+
+use App\Exceptions\SteadfastCourierException;
+use App\Models\OnlineOrder;
+use App\Services\SteadfastCourierGateway;
+
+class SyncSteadfastOrderStatus
+{
+    public function __construct(private SteadfastCourierGateway $gateway) {}
+
+    public function execute(OnlineOrder $order): OnlineOrder
+    {
+        if (! $order->hasSteadfastShipment()) {
+            throw new SteadfastCourierException('This order has not been sent to Steadfast.');
+        }
+
+        $invoice = $order->courier_invoice ?? $order->courierInvoice();
+        $response = $this->gateway->getStatusByInvoice($invoice);
+        $deliveryStatus = (string) ($response['delivery_status'] ?? '');
+
+        if ($deliveryStatus === '') {
+            throw new SteadfastCourierException('Steadfast did not return a delivery status.');
+        }
+
+        $order->update([
+            'courier_status' => $deliveryStatus,
+        ]);
+
+        return $order->fresh(['products']);
+    }
+}

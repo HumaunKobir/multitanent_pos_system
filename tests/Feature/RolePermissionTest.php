@@ -221,7 +221,9 @@ test('superadmin sees full navigation', function () {
     expect($titles)->toContain('Branch');
     expect($titles)->toContain('User');
     expect($titles)->toContain('Roles');
-    expect($titles)->toContain('Contact Messages');
+    expect($titles)->not->toContain('Contact Messages');
+    expect($titles)->not->toContain('Online Orders');
+    expect($titles)->not->toContain('Subscribers');
     expect($titles)->toContain('Dashboard');
 });
 

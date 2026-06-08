@@ -15,10 +15,6 @@ class EnsureEcommercePanel
     {
         $user = $request->user();
 
-        if ($user?->isSuperAdmin()) {
-            return $next($request);
-        }
-
         if ($user?->isBranchUser() && $this->ecommerceBranch->isEcommerceBranch($user->branch_id)) {
             return $next($request);
         }

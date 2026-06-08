@@ -3,6 +3,7 @@
 use App\Enums\OrderStatus;
 use App\Enums\SystemAccountKey;
 use App\Models\Batch;
+use App\Models\Branch;
 use App\Models\ConfigDictionary;
 use App\Models\Ledger;
 use App\Models\OnlineOrder;
@@ -22,7 +23,14 @@ function onlineOrderAdmin(): User
 {
     test()->artisan('permissions:sync');
 
-    $user = User::factory()->create(['branch_id' => null]);
+    EcommerceBranchService::resetResolvedId();
+
+    $branch = Branch::query()->firstOrCreate(
+        ['name' => EcommerceBranchService::BRANCH_NAME],
+        Branch::factory()->make(['name' => EcommerceBranchService::BRANCH_NAME])->toArray(),
+    );
+
+    $user = User::factory()->create(['branch_id' => $branch->id]);
     Permission::findOrCreate('online-order.update', 'web');
     $user->givePermissionTo('online-order.update');
 
@@ -160,11 +168,11 @@ test('cod fulfillment posts cash receipt and revenue at delivery', function () {
 });
 
 test('admin can fulfill online order through route', function () {
-    $cash = seedAccountingAccounts();
-    configureOnlinePaymentAccounts($cash->id, $cash->id);
-    SystemAccountService::seed();
-
     $user = onlineOrderAdmin();
+    $cash = seedAccountingAccounts(branchId: $user->branch_id);
+    configureOnlinePaymentAccounts($cash->id, $cash->id);
+    SystemAccountService::seed($user->branch_id);
+
     ['order' => $order] = onlineOrderWithStock(['payment_method' => 'cod', 'payment_status' => 'Pending', 'transaction_id' => null]);
 
     $this->actingAs($user)

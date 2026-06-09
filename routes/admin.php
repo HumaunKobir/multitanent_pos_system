@@ -103,6 +103,7 @@ Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')
     Route::resource('purchase', PurchaseController::class);
     Route::resource('purchase-return', PurchaseReturnController::class);
     Route::resource('damage', DamageController::class);
+    Route::post('sell/pause', [SellController::class, 'pause'])->name('sell.pause');
     Route::resource('sell', SellController::class);
     Route::resource('sale-return', SaleReturnController::class);
     Route::resource('product-exchange', ProductExchangeController::class);

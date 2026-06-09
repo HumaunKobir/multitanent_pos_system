@@ -19,6 +19,7 @@ use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
 use App\Services\SpecialDiscountService;
 use App\Support\StorageUrl;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -42,7 +43,7 @@ class SellController extends Controller
     {
         $this->authorize('inventory.sell.view');
 
-        $sells = Sell::query()->ownBranch()
+        $sells = $this->forCurrentBranch(Sell::query())
             ->sale()
             ->withSum('products as line_discount_total', 'discount')
             ->with('customer:id,name,phone')
@@ -60,7 +61,7 @@ class SellController extends Controller
         ]);
     }
 
-    public function create(): Response
+    public function create(Request $request): Response
     {
         $this->authorize('inventory.sell.create');
 
@@ -69,6 +70,22 @@ class SellController extends Controller
         $defaultCustomer = Customer::where('is_default', true)
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
             ->first(['id', 'name', 'phone']);
+
+        $resumedSell = null;
+        if ($request->filled('paused')) {
+            $pausedSell = $this->forCurrentBranch(Sell::query())
+                ->paused()
+                ->with([
+                    'customer:id,name,phone',
+                    'specialDiscount:id,name,discount_type,discount_value',
+                    'products.product:id,name,code,sale_price,discount_price',
+                    'products.variation:id,variation_data,price,stock',
+                ])
+                ->findOrFail((int) $request->query('paused'));
+
+            $this->authorizeBranch($pausedSell);
+            $resumedSell = $this->buildPosSellPayload($pausedSell, $branchId);
+        }
 
         return Inertia::render('admin/inventory/sell/create', [
             'today' => now()->format('Y-m-d'),
@@ -88,36 +105,86 @@ class SellController extends Controller
                     'image' => StorageUrl::public($category->image),
                 ])
                 ->values(),
+            'pausedSales' => $this->pausedSalesList($branchId),
+            'resumedSell' => $resumedSell,
         ]);
+    }
+
+    public function pause(Request $request): RedirectResponse
+    {
+        $this->authorize('inventory.sell.create');
+
+        $data = $this->validateSellCart($request);
+        $branchId = Auth::user()?->branch_id;
+        $pausedSellId = $request->integer('paused_sell_id') ?: null;
+
+        try {
+            DB::transaction(function () use ($data, $branchId, $pausedSellId) {
+                ['grossAmount' => $grossAmount, 'lineDiscountTotal' => $lineDiscountTotal, 'vatAmount' => $vatAmount, 'sellProductsData' => $sellProductsData] = $this->processSellItems(
+                    $data['items'],
+                    $branchId,
+                    (float) $data['vat'],
+                    deductStock: false,
+                );
+
+                $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId);
+
+                if ($pausedSellId !== null) {
+                    $sell = $this->forCurrentBranch(Sell::query())->paused()->findOrFail($pausedSellId);
+                    $this->authorizeBranch($sell);
+                    $sell->products()->delete();
+                } else {
+                    $sell = new Sell;
+                    $sell->branch_id = $branchId;
+                    $sell->type = SaleType::Paused;
+                }
+
+                $sell->fill([
+                    'customer_id' => $data['customer_id'] ?? null,
+                    'date' => $data['date'],
+                    'gross_amount' => $grossAmount,
+                    'discount' => $discountFields['discount'],
+                    'discount_type' => $discountFields['discount_type'],
+                    'discount_value' => $discountFields['discount_value'],
+                    'special_discount_id' => $discountFields['special_discount_id'],
+                    'special_discount_amount' => $discountFields['special_discount_amount'],
+                    'vat' => $vatAmount,
+                    'paid_amount' => 0,
+                    'comment' => $data['comment'] ?? null,
+                ]);
+                $sell->type = SaleType::Paused;
+                $sell->save();
+
+                foreach ($sellProductsData as $lineItem) {
+                    $sell->products()->create($lineItem);
+                }
+            });
+        } catch (\Throwable $e) {
+            return back()
+                ->withErrors([
+                    'items' => $e instanceof \RuntimeException
+                        ? $e->getMessage()
+                        : 'Unable to pause sale.',
+                ])
+                ->withInput();
+        }
+
+        return redirect()
+            ->route('inventory.sell.create')
+            ->with('success', 'Sale paused. You can resume it later from the POS screen.');
     }
 
     public function store(Request $request): RedirectResponse
     {
         $this->authorize('inventory.sell.create');
 
-        $data = $request->validate([
-            'customer_id' => ['nullable', 'exists:customers,id'],
-            'date' => ['required', 'date'],
-            'comment' => ['nullable', 'string'],
-            'discount_type' => ['required', Rule::enum(DiscountType::class)],
-            'discount_value' => ['required', 'numeric', 'min:0'],
-            'special_discount_id' => ['nullable', 'integer', 'exists:special_discounts,id'],
-            'vat' => ['required', 'numeric', 'min:0'],
-            'paid_amount' => ['required', 'numeric', 'min:0'],
-            'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
-            'items' => ['required', 'array', 'min:1'],
-            'items.*.product_id' => ['required', 'exists:products,id'],
-            'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
-            'items.*.unit_price' => ['required', 'numeric', 'min:0'],
-            'items.*.discount' => ['nullable', 'numeric', 'min:0'],
-            'items.*.quantity' => ['required', 'integer', 'min:1'],
-        ]);
-
+        $data = $this->validateSellCart($request, requirePayment: true);
         $branchId = Auth::user()?->branch_id;
         $paymentAccountId = $this->resolvePaymentAccountId($request, (float) $data['paid_amount']);
+        $pausedSellId = $request->integer('paused_sell_id') ?: null;
 
         try {
-            $sell = DB::transaction(function () use ($data, $branchId, $paymentAccountId) {
+            $sell = DB::transaction(function () use ($data, $branchId, $paymentAccountId, $pausedSellId) {
                 ['grossAmount' => $grossAmount, 'lineDiscountTotal' => $lineDiscountTotal, 'vatAmount' => $vatAmount, 'sellProductsData' => $sellProductsData] = $this->processSellItems(
                     $data['items'],
                     $branchId,
@@ -126,8 +193,15 @@ class SellController extends Controller
 
                 $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId);
 
-                $sell = Sell::create([
-                    'branch_id' => $branchId,
+                if ($pausedSellId !== null) {
+                    $sell = $this->forCurrentBranch(Sell::query())->paused()->findOrFail($pausedSellId);
+                    $this->authorizeBranch($sell);
+                    $sell->products()->delete();
+                } else {
+                    $sell = new Sell(['branch_id' => $branchId]);
+                }
+
+                $sell->fill([
                     'customer_id' => $data['customer_id'] ?? null,
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
@@ -141,6 +215,7 @@ class SellController extends Controller
                     'type' => SaleType::Sale,
                     'comment' => $data['comment'] ?? null,
                 ]);
+                $sell->save();
 
                 foreach ($sellProductsData as $lineItem) {
                     $sell->products()->create($lineItem);
@@ -197,6 +272,12 @@ class SellController extends Controller
     {
         $this->authorize('inventory.sell.update');
         $this->authorizeBranch($sell);
+
+        if ($sell->type === SaleType::Paused) {
+            return redirect()
+                ->route('inventory.sell.create', ['paused' => $sell->id])
+                ->with('success', 'Paused sale loaded. Add more items or complete the sale.');
+        }
 
         if (SaleReturn::where('sell_id', $sell->id)->exists()) {
             return redirect()
@@ -412,39 +493,45 @@ class SellController extends Controller
 
         try {
             DB::transaction(function () use ($sell) {
-                $this->accounting->reverseFor($sell);
+                if ($sell->type !== SaleType::Paused) {
+                    $this->accounting->reverseFor($sell);
 
-                $dueAmount = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
-                if ($sell->customer_id && $dueAmount > 0) {
-                    Customer::whereKey($sell->customer_id)->decrement('balance', $dueAmount);
-                }
+                    $dueAmount = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
+                    if ($sell->customer_id && $dueAmount > 0) {
+                        Customer::whereKey($sell->customer_id)->decrement('balance', $dueAmount);
+                    }
 
-                foreach ($sell->products as $sp) {
-                    $totalLineQty = (float) $sp->quantity;
+                    foreach ($sell->products as $sp) {
+                        $totalLineQty = (float) $sp->quantity;
 
-                    foreach ($sp->batches ?? [] as $batchId => $quantity) {
-                        $batch = Batch::whereKey($batchId)->lockForUpdate()->first();
-                        if ($batch) {
-                            $batch->increment('available', (float) $quantity);
-                            $batch->refresh();
-                            $batch->saleReturnStock((float) $quantity);
+                        foreach ($sp->batches ?? [] as $batchId => $quantity) {
+                            $batch = Batch::whereKey($batchId)->lockForUpdate()->first();
+                            if ($batch) {
+                                $batch->increment('available', (float) $quantity);
+                                $batch->refresh();
+                                $batch->saleReturnStock((float) $quantity);
+                            }
+                        }
+
+                        if ($sp->variation_id) {
+                            ProductVariation::whereKey($sp->variation_id)
+                                ->increment('stock', $totalLineQty);
                         }
                     }
-
-                    if ($sp->variation_id) {
-                        ProductVariation::whereKey($sp->variation_id)
-                            ->increment('stock', $totalLineQty);
-                    }
                 }
 
+                $sell->products()->delete();
                 Sell::whereKey($sell->id)->delete();
             });
         } catch (\Throwable $e) {
             return back()->with('error', 'Unable to delete sale.');
         }
 
-        return redirect()->route('inventory.sell.index')
-            ->with('success', 'Sale deleted successfully.');
+        $wasPaused = $sell->type === SaleType::Paused;
+
+        return redirect()
+            ->route($wasPaused ? 'inventory.sell.create' : 'inventory.sell.index')
+            ->with('success', $wasPaused ? 'Paused sale removed.' : 'Sale deleted successfully.');
     }
 
     /** @return array<int, array<string, mixed>> */
@@ -509,8 +596,102 @@ class SellController extends Controller
         return (int) $data['special_discount_id'];
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    private function validateSellCart(Request $request, bool $requirePayment = false): array
+    {
+        return $request->validate([
+            'customer_id' => ['nullable', 'exists:customers,id'],
+            'date' => ['required', 'date'],
+            'comment' => ['nullable', 'string'],
+            'discount_type' => ['required', Rule::enum(DiscountType::class)],
+            'discount_value' => ['required', 'numeric', 'min:0'],
+            'special_discount_id' => ['nullable', 'integer', 'exists:special_discounts,id'],
+            'vat' => ['required', 'numeric', 'min:0'],
+            'paid_amount' => [$requirePayment ? 'required' : 'nullable', 'numeric', 'min:0'],
+            'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
+            'paused_sell_id' => ['nullable', 'integer', 'exists:sells,id'],
+            'items' => ['required', 'array', 'min:1'],
+            'items.*.product_id' => ['required', 'exists:products,id'],
+            'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
+            'items.*.unit_price' => ['required', 'numeric', 'min:0'],
+            'items.*.discount' => ['nullable', 'numeric', 'min:0'],
+            'items.*.quantity' => ['required', 'integer', 'min:1'],
+        ]);
+    }
+
+    /** @return list<array<string, mixed>> */
+    private function pausedSalesList(?int $branchId): array
+    {
+        return $this->forCurrentBranch(Sell::query())
+            ->paused()
+            ->with('customer:id,name,phone')
+            ->withSum('products as item_count', 'quantity')
+            ->latest()
+            ->limit(20)
+            ->get()
+            ->map(fn (Sell $sell) => [
+                'id' => $sell->id,
+                'customer_name' => $sell->customer?->name ?? 'Walk-in',
+                'item_count' => (int) ($sell->item_count ?? 0),
+                'net_amount' => round((float) $sell->net_amount, 2),
+                'paused_at' => $sell->updated_at?->toIso8601String(),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /** @return array<string, mixed> */
+    private function buildPosSellPayload(Sell $sell, ?int $branchId): array
+    {
+        $items = $sell->products->map(function ($sp) use ($branchId) {
+            $product = $sp->product;
+            if ($sp->variation_id) {
+                $availableStock = (float) ProductVariation::query()
+                    ->whereKey($sp->variation_id)
+                    ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+                    ->value('stock') ?? 0;
+            } else {
+                $availableStock = (float) Batch::where('product_id', $sp->product_id)
+                    ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+                    ->sum('available');
+            }
+
+            return [
+                'product_id' => $sp->product_id,
+                'product_name' => $sp->product?->name,
+                'product_code' => $sp->product?->code,
+                'variation_id' => $sp->variation_id,
+                'variation_label' => $sp->variation?->variation_data['label'] ?? null,
+                'unit_price' => (float) $sp->unit_price,
+                'discount' => (string) (float) $sp->discount,
+                'quantity' => (float) $sp->quantity,
+                'available_stock' => $availableStock,
+            ];
+        })->values();
+
+        $grossAmount = (float) $sell->gross_amount;
+        $taxableBase = max(0, $grossAmount - $sell->lineDiscountTotal());
+        $vatPercent = $taxableBase > 0 ? ((float) $sell->vat / $taxableBase) * 100 : 0;
+
+        return [
+            'id' => $sell->id,
+            'customer_id' => $sell->customer_id,
+            'customer' => $sell->customer,
+            'date' => optional($sell->date)->format('Y-m-d'),
+            'discount_type' => $sell->discount_type?->value ?? DiscountType::Flat->value,
+            'discount_value' => (string) (float) ($sell->discount_value ?? $sell->discount),
+            'special_discount_id' => $sell->special_discount_id,
+            'vat_percent' => (string) round($vatPercent, 6),
+            'paid_amount' => (string) (float) $sell->paid_amount,
+            'comment' => $sell->comment,
+            'items' => $items,
+        ];
+    }
+
     /** @return array{grossAmount: float, lineDiscountTotal: float, vatAmount: float, sellProductsData: array<int, array<string, mixed>>} */
-    private function processSellItems(array $items, ?int $branchId, float $vatPercent): array
+    private function processSellItems(array $items, ?int $branchId, float $vatPercent, bool $deductStock = true): array
     {
         $grossAmount = 0.0;
         $lineDiscountTotal = 0.0;
@@ -526,14 +707,16 @@ class SellController extends Controller
 
             $batchMap = [];
 
-            if ($variationId) {
-                $variation = ProductVariation::whereKey($variationId)->lockForUpdate()->firstOrFail();
-                if ((float) $variation->stock < $qty) {
-                    throw new \RuntimeException('Insufficient stock for variation.');
+            if ($deductStock) {
+                if ($variationId) {
+                    $variation = ProductVariation::whereKey($variationId)->lockForUpdate()->firstOrFail();
+                    if ((float) $variation->stock < $qty) {
+                        throw new \RuntimeException('Insufficient stock for variation.');
+                    }
+                    $variation->decrement('stock', $qty);
+                } else {
+                    $batchMap = $this->deductBatchStock($branchId, $productId, $qty);
                 }
-                $variation->decrement('stock', $qty);
-            } else {
-                $batchMap = $this->deductBatchStock($branchId, $productId, $qty);
             }
 
             $grossAmount += $lineGross;
@@ -597,10 +780,26 @@ class SellController extends Controller
         return $batchMap;
     }
 
+    private function forCurrentBranch(Builder $query): Builder
+    {
+        $branchId = Auth::user()?->branch_id;
+
+        if ($branchId === null) {
+            return $query;
+        }
+
+        return $query->where('branch_id', $branchId);
+    }
+
     private function authorizeBranch(Sell $sell): void
     {
         $branchId = Auth::user()?->branch_id;
-        if ($branchId !== null && $sell->branch_id !== $branchId) {
+
+        if ($branchId === null) {
+            return;
+        }
+
+        if ($sell->branch_id !== $branchId) {
             abort(404);
         }
     }

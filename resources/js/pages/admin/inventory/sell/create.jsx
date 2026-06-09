@@ -4,9 +4,10 @@ import {
     findBestSpecialDiscount,
     formatDiscountLabel,
 } from '@/lib/pos-discount';
+import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
 import { cn } from '@/lib/utils';
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import {
     ArrowLeft,
     Barcode,
@@ -17,6 +18,8 @@ import {
     LayoutGrid,
     Minus,
     Package,
+    Pause,
+    Play,
     Plus,
     Search,
     ShoppingCart,
@@ -707,6 +710,86 @@ function lineGross(item) {
     return parseFloat(item.quantity || 0) * parseFloat(item.unit_price || 0);
 }
 
+function PausedSalesPanel({ pausedSales = [], currentPausedId, onResume }) {
+    const [open, setOpen] = useState(false);
+
+    if (pausedSales.length === 0) {
+        return null;
+    }
+
+    return (
+        <div className="relative">
+            <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() => setOpen((value) => !value)}
+                className="h-8 border-amber-300/60 bg-amber-500/15 px-2.5 text-xs text-amber-100 hover:bg-amber-500/25 hover:text-white"
+            >
+                <Pause className="size-3.5" />
+                Paused ({pausedSales.length})
+            </Button>
+
+            {open && (
+                <div className="absolute right-0 z-50 mt-1.5 w-80 overflow-hidden rounded-none border border-border bg-popover shadow-lg">
+                    <div className="border-b border-border bg-muted/40 px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-foreground">Paused Sales</p>
+                    </div>
+                    <ul className="max-h-72 overflow-auto">
+                        {pausedSales.map((sale) => (
+                            <li
+                                key={sale.id}
+                                className={cn(
+                                    'flex items-start justify-between gap-2 border-b border-border px-3 py-2.5 last:border-b-0',
+                                    String(currentPausedId) === String(sale.id) && 'bg-amber-50 dark:bg-amber-950/30',
+                                )}
+                            >
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-medium">{sale.customer_name}</p>
+                                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                                        {sale.item_count} item(s) · ৳{parseFloat(sale.net_amount ?? 0).toFixed(2)}
+                                    </p>
+                                </div>
+                                <div className="flex shrink-0 gap-1">
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 px-2 text-[11px]"
+                                        onClick={() => {
+                                            setOpen(false);
+                                            onResume(sale.id);
+                                        }}
+                                    >
+                                        <Play className="size-3" />
+                                        Resume
+                                    </Button>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-7 px-2 text-[11px] text-destructive hover:text-destructive"
+                                        onClick={() => {
+                                            if (!window.confirm('Remove this paused sale?')) {
+                                                return;
+                                            }
+                                            router.delete(route('inventory.sell.destroy', sale.id), {
+                                                preserveScroll: true,
+                                            });
+                                        }}
+                                    >
+                                        <Trash2 className="size-3" />
+                                    </Button>
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+            )}
+        </div>
+    );
+}
+
 function clampLineDiscount(value, item) {
     if (value === '' || value === null || value === undefined) {
         return '0';
@@ -720,15 +803,23 @@ function clampLineDiscount(value, item) {
     return String(Math.min(parsed, lineGross(item)));
 }
 
-export default function SellCreate({
-    today,
-    defaultCustomer,
-    paymentAccounts = [],
-    categories = [],
-    specialDiscounts = [],
-    discountTypes = [],
-}) {
-    const form = useForm({
+function buildInitialFormData({ today, defaultCustomer, resumedSell }) {
+    if (resumedSell) {
+        return {
+            customer_id: resumedSell.customer_id ? String(resumedSell.customer_id) : '',
+            date: resumedSell.date ?? today,
+            discount_type: resumedSell.discount_type ?? 'flat',
+            discount_value: resumedSell.discount_value ?? '0',
+            special_discount_id: resumedSell.special_discount_id ? String(resumedSell.special_discount_id) : '',
+            vat: resumedSell.vat_percent ?? '0',
+            paid_amount: resumedSell.paid_amount ?? '0',
+            payment_account_id: '',
+            comment: resumedSell.comment ?? '',
+            items: [],
+        };
+    }
+
+    return {
         customer_id: defaultCustomer ? String(defaultCustomer.id) : '',
         date: today,
         discount_type: 'flat',
@@ -739,10 +830,37 @@ export default function SellCreate({
         payment_account_id: '',
         comment: '',
         items: [],
-    });
+    };
+}
 
-    const [items, setItems] = useState([]);
+export default function SellCreate({
+    today,
+    defaultCustomer,
+    paymentAccounts = [],
+    categories = [],
+    specialDiscounts = [],
+    discountTypes = [],
+    pausedSales = [],
+    resumedSell = null,
+}) {
+    const { flash } = usePage().props;
+    const toast = useAppToast();
+    const initialCustomer = resumedSell?.customer ?? defaultCustomer;
+
+    const form = useForm(buildInitialFormData({ today, defaultCustomer, resumedSell }));
+
+    const [pausedSellId, setPausedSellId] = useState(resumedSell?.id ?? null);
+    const [items, setItems] = useState(resumedSell?.items ?? []);
     const [matchedSpecialDiscount, setMatchedSpecialDiscount] = useState(null);
+
+    useEffect(() => {
+        if (flash.success) {
+            toast.success(flash.success);
+        }
+        if (flash.error) {
+            toast.error(flash.error);
+        }
+    }, [flash.success, flash.error]);
 
     const grossAmount = items.reduce((sum, it) => sum + lineGross(it), 0);
     const lineDiscountTotal = items.reduce((sum, it) => sum + parseFloat(it.discount || 0), 0);
@@ -832,8 +950,36 @@ export default function SellCreate({
 
     function handleSubmit(e) {
         e.preventDefault();
-        form.transform((data) => ({ ...data, items }));
+        form.transform((data) => ({
+            ...data,
+            items,
+            paused_sell_id: pausedSellId ?? '',
+        }));
         form.post(route('inventory.sell.store'));
+    }
+
+    function handlePause(e) {
+        e.preventDefault();
+        router.post(
+            route('inventory.sell.pause'),
+            {
+                ...form.data,
+                items,
+                paused_sell_id: pausedSellId ?? '',
+                paid_amount: '0',
+            },
+            {
+                onSuccess: () => {
+                    setItems([]);
+                    setPausedSellId(null);
+                    form.reset();
+                },
+            },
+        );
+    }
+
+    function resumePausedSale(saleId) {
+        router.get(route('inventory.sell.create'), { paused: saleId });
     }
 
     const inputCls = 'h-8 rounded-none border-blue-200 bg-white text-xs tabular-nums focus:border-blue-600';
@@ -865,18 +1011,24 @@ export default function SellCreate({
                                 <h1 className="text-sm font-semibold leading-tight text-white">Point of Sale</h1>
                                 <p className="text-[10px] leading-tight text-white/55">
                                     {itemCount} {itemCount === 1 ? 'item' : 'items'} in cart
+                                    {pausedSellId ? ' · Resuming paused sale' : ''}
                                 </p>
                             </div>
                         </div>
 
                         <div className="flex w-full flex-wrap items-end gap-2 sm:ml-auto sm:w-auto">
+                            <PausedSalesPanel
+                                pausedSales={pausedSales}
+                                currentPausedId={pausedSellId}
+                                onResume={resumePausedSale}
+                            />
                             <div className="min-w-0 flex-1 sm:w-44 lg:w-48">
                                 <span className="mb-0.5 block text-[10px] font-medium text-white/60">Customer</span>
                                 <CustomerSearch
                                     value={form.data.customer_id}
                                     onChange={(v) => form.setData('customer_id', v)}
                                     error={form.errors.customer_id}
-                                    initialCustomer={defaultCustomer}
+                                    initialCustomer={initialCustomer}
                                     variant="header"
                                 />
                             </div>
@@ -1083,7 +1235,7 @@ export default function SellCreate({
                                         value={form.data.customer_id}
                                         onChange={(v) => form.setData('customer_id', v)}
                                         error={form.errors.customer_id}
-                                        initialCustomer={defaultCustomer}
+                                        initialCustomer={initialCustomer}
                                     />
                                 </div>
 
@@ -1107,9 +1259,19 @@ export default function SellCreate({
                                 </p>
                             )}
 
-                            <div className="grid grid-cols-2 gap-1.5">
+                            <div className="grid grid-cols-3 gap-1.5">
                                 <Button type="button" variant="outline" size="sm" className="h-8 border-red-400 text-xs text-red-600 hover:bg-red-50" asChild>
                                     <Link href={route('inventory.sell.index')}>Cancel</Link>
+                                </Button>
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={form.processing || items.length === 0 || hasOverStock}
+                                    onClick={handlePause}
+                                    className="h-8 border-amber-400 text-xs text-amber-700 hover:bg-amber-50"
+                                >
+                                    Pause
                                 </Button>
                                 <Button
                                     type="submit"

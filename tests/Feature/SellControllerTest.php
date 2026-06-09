@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\SaleType;
 use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Product;
@@ -159,6 +160,143 @@ test('sale fails when quantity exceeds available stock', function () {
         ->assertSessionHasErrors('items');
 
     expect(SellProduct::query()->where('product_id', $product->id)->count())->toBe($sellProductCount);
+});
+
+test('authenticated user can pause a sale without deducting stock', function () {
+    $user = sellUser();
+    ['product' => $product, 'batch' => $batch] = sellProduct(20, $user->branch_id);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell/pause', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'comment' => 'Customer will return',
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '500',
+                    'quantity' => '3',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('inventory.sell.create'))
+        ->assertSessionHas('success');
+
+    $paused = Sell::query()->latest('id')->first();
+
+    expect($paused)->not->toBeNull();
+    expect($paused->type)->toBe(SaleType::Paused);
+    expect((float) $paused->gross_amount)->toBe(1500.0);
+    expect(SellProduct::where('sell_id', $paused->id)->count())->toBe(1);
+
+    $batch->refresh();
+    expect((float) $batch->available)->toBe(20.0);
+});
+
+test('paused sale can be resumed and completed with stock deduction', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product, 'batch' => $batch] = sellProduct(20, $user->branch_id);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell/pause', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'comment' => null,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '500',
+                    'quantity' => '2',
+                ],
+            ],
+        ])
+        ->assertRedirect();
+
+    $paused = Sell::query()->latest('id')->first();
+
+    $this->actingAs($user)
+        ->get('/inventory/sell/create?paused='.$paused->id)
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/inventory/sell/create')
+            ->where('resumedSell.id', $paused->id)
+            ->has('resumedSell.items', 1));
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '1500',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'paused_sell_id' => $paused->id,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '500',
+                    'quantity' => '3',
+                ],
+            ],
+        ])
+        ->assertRedirect();
+
+    $paused->refresh();
+    expect($paused->type)->toBe(SaleType::Sale);
+    expect((float) $paused->gross_amount)->toBe(1500.0);
+    expect(SellProduct::where('sell_id', $paused->id)->count())->toBe(1);
+
+    $batch->refresh();
+    expect((float) $batch->available)->toBe(17.0);
+});
+
+test('paused sale can be deleted without restoring stock', function () {
+    $user = sellUser();
+    ['product' => $product, 'batch' => $batch] = sellProduct(10, $user->branch_id);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell/pause', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'comment' => null,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '100',
+                    'quantity' => '2',
+                ],
+            ],
+        ]);
+
+    $paused = Sell::query()->latest('id')->first();
+
+    $this->actingAs($user)
+        ->delete('/inventory/sell/'.$paused->id)
+        ->assertRedirect(route('inventory.sell.create'));
+
+    expect(Sell::query()->find($paused->id))->toBeNull();
+    $batch->refresh();
+    expect((float) $batch->available)->toBe(10.0);
 });
 
 test('main branch user can sell products with stock at main branch', function () {
@@ -351,6 +489,53 @@ test('authenticated user can view a sale', function () {
         ->get("/inventory/sell/{$sell->id}")
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page->component('admin/inventory/sell/show')->has('sell'));
+});
+
+test('branch user can open actions for their own branch sale', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    Permission::findOrCreate('inventory.sell.view', 'web');
+    Permission::findOrCreate('inventory.sell.update', 'web');
+    $user->givePermissionTo(['inventory.sell.view', 'inventory.sell.update']);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'type' => SaleType::Sale,
+    ]);
+
+    $this->actingAs($user)
+        ->get("/inventory/sell/{$sell->id}")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->component('admin/inventory/sell/show'));
+
+    $this->actingAs($user)
+        ->get("/inventory/sell/{$sell->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->component('admin/inventory/sell/edit'));
+});
+
+test('branch user does not see sales without a branch on index', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    Permission::findOrCreate('inventory.sell.view', 'web');
+    $user->givePermissionTo('inventory.sell.view');
+    $ownSell = Sell::factory()->create(['branch_id' => $branch->id, 'type' => SaleType::Sale]);
+    $globalSell = Sell::factory()->create(['branch_id' => null, 'type' => SaleType::Sale]);
+
+    $this->actingAs($user)
+        ->get('/inventory/sell')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('sells.data', 1)
+            ->where('sells.data.0.id', $ownSell->id));
+
+    $this->actingAs($user)
+        ->get("/inventory/sell/{$globalSell->id}")
+        ->assertNotFound();
 });
 
 // ── Edit ──────────────────────────────────────────────────────────────────────

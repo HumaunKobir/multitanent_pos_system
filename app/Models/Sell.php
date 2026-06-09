@@ -111,4 +111,14 @@ class Sell extends Model
     {
         return $q->where('type', SaleType::Sale);
     }
+
+    public function scopePaused(Builder $q): Builder
+    {
+        return $q->where('type', SaleType::Paused);
+    }
+
+    public function isPaused(): bool
+    {
+        return $this->type === SaleType::Paused;
+    }
 }

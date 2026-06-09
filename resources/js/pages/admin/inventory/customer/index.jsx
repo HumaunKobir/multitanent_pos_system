@@ -16,7 +16,7 @@ import { Can } from '@/components/can';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { useCan } from '@/hooks/use-can';
 
-function CustomerForm({ form, onSubmit, onCancel, isEditing, memberShipCards, statuses }) {
+function CustomerForm({ form, onSubmit, onCancel, isEditing, statuses }) {
     return (
         <form onSubmit={onSubmit} className="space-y-1.5 px-3 py-2">
             <div className="grid grid-cols-2 gap-3">
@@ -86,24 +86,7 @@ function CustomerForm({ form, onSubmit, onCancel, isEditing, memberShipCards, st
                     />
                 </FormField>
             )}
-            <div className="grid grid-cols-2 gap-3">
-                <FormField label="Membership Card" name="member_ship_id" error={form.errors.member_ship_id}>
-                    <Select
-                        value={String(form.data.member_ship_id ?? '')}
-                        onValueChange={(v) => form.setData('member_ship_id', v === '__none__' ? '' : v)}
-                    >
-                        <SelectTrigger id="member_ship_id" className="mt-1 w-full">
-                            <SelectValue placeholder="— None —" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="__none__">— None —</SelectItem>
-                            {memberShipCards.map((c) => (
-                                <SelectItem key={c.id} value={String(c.id)}>{c.name}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </FormField>
-                <FormField label="Status" required name="status" error={form.errors.status}>
+            <FormField label="Status" required name="status" error={form.errors.status}>
                     <Select
                         value={String(form.data.status)}
                         onValueChange={(v) => form.setData('status', parseInt(v))}
@@ -117,8 +100,7 @@ function CustomerForm({ form, onSubmit, onCancel, isEditing, memberShipCards, st
                             ))}
                         </SelectContent>
                     </Select>
-                </FormField>
-            </div>
+            </FormField>
             <div className="flex items-center justify-between rounded-md border border-input px-3 py-2">
                 <div>
                     <p className="text-sm font-medium">Default Customer</p>
@@ -166,7 +148,7 @@ function CustomerForm({ form, onSubmit, onCancel, isEditing, memberShipCards, st
     );
 }
 
-export default function CustomerIndex({ customers, filters, memberShipCards, statuses }) {
+export default function CustomerIndex({ customers, filters, statuses }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const { can } = useCan();
@@ -175,7 +157,7 @@ export default function CustomerIndex({ customers, filters, memberShipCards, sta
     const [editing, setEditing] = useState(null);
     const [deleting, setDeleting] = useState(null);
 
-    const blankForm = { name: '', phone: '', email: '', address: '', opening_balance: '', member_ship_id: '', password: '', is_default: '0', status: 1 };
+    const blankForm = { name: '', phone: '', email: '', address: '', opening_balance: '', password: '', is_default: '0', status: 1 };
     const createForm = useForm(blankForm);
     const editForm = useForm(blankForm);
 
@@ -199,7 +181,6 @@ export default function CustomerIndex({ customers, filters, memberShipCards, sta
             phone: customer.phone,
             email: customer.email ?? '',
             address: customer.address ?? '',
-            member_ship_id: customer.member_ship_id ?? '',
             password: '',
             is_default: customer.is_default ? '1' : '0',
             status: customer.status,
@@ -241,7 +222,6 @@ export default function CustomerIndex({ customers, filters, memberShipCards, sta
         },
         { id: 'email', header: 'Email', render: (row) => row.email ?? '—' },
         { id: 'address', header: 'Address', render: (row) => row.address ?? '—' },
-        { id: 'membership', header: 'Membership', render: (row) => row.member_ship_card?.name ?? '—' },
         {
             id: 'status', header: 'Status', render: (row) => (
                 <Badge className={row.status === 1 ? 'bg-green-600 text-white hover:bg-green-700' : 'bg-red-600 text-white hover:bg-red-700'}>
@@ -338,7 +318,6 @@ export default function CustomerIndex({ customers, filters, memberShipCards, sta
                         onSubmit={handleCreate}
                         onCancel={() => setCreating(false)}
                         isEditing={false}
-                        memberShipCards={memberShipCards}
                         statuses={statuses}
                     />
                 </DialogContent>
@@ -360,7 +339,6 @@ export default function CustomerIndex({ customers, filters, memberShipCards, sta
                         onSubmit={handleUpdate}
                         onCancel={() => setEditing(null)}
                         isEditing={true}
-                        memberShipCards={memberShipCards}
                         statuses={statuses}
                     />
                 </DialogContent>

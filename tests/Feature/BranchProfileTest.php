@@ -40,13 +40,14 @@ test('branch user can view branch profile without explicit permission', function
 test('branch user can update branch profile and account without explicit permission', function () {
     $user = branchProfileUser();
     $branch = Branch::query()->findOrFail($user->branch_id);
+    $newEmail = fake()->unique()->safeEmail();
 
     $this->actingAs($user)
         ->put('/setting/branch-profile', [
             'name' => 'Updated Branch Name',
             'phone' => '01711111111',
             'address' => '123 Branch Road',
-            'email' => 'branch.updated@example.com',
+            'email' => $newEmail,
             'password' => 'new-password-123',
             'password_confirmation' => 'new-password-123',
         ])
@@ -59,7 +60,7 @@ test('branch user can update branch profile and account without explicit permiss
     expect($branch->name)->toBe('Updated Branch Name')
         ->and($branch->phone)->toBe('01711111111')
         ->and($branch->address)->toBe('123 Branch Road')
-        ->and($user->email)->toBe('branch.updated@example.com')
+        ->and($user->email)->toBe($newEmail)
         ->and(Hash::check('new-password-123', $user->password))->toBeTrue();
 });
 

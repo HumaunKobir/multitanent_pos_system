@@ -20,7 +20,6 @@ class Customer extends Authenticatable
 
     protected $fillable = [
         'branch_id',
-        'member_ship_id',
         'name',
         'email',
         'phone',
@@ -29,7 +28,6 @@ class Customer extends Authenticatable
         'password',
         'status',
         'is_default',
-        'is_membership',
         'point',
         'registration_type',
         'balance',
@@ -43,7 +41,6 @@ class Customer extends Authenticatable
         'status' => CommonStatus::class,
         'registration_type' => CustomerRegistrationType::class,
         'is_default' => 'boolean',
-        'is_membership' => 'boolean',
         'balance' => 'decimal:2',
     ];
 
@@ -55,11 +52,6 @@ class Customer extends Authenticatable
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
-    }
-
-    public function memberShipCard(): BelongsTo
-    {
-        return $this->belongsTo(MemberShipCard::class, 'member_ship_id');
     }
 
     public function sells(): HasMany

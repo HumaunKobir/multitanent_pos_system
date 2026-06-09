@@ -6,7 +6,6 @@ use App\Enums\CommonStatus;
 use App\Enums\CustomerRegistrationType;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
-use App\Models\MemberShipCard;
 use App\Services\InventoryAccountingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -23,7 +22,7 @@ class CustomerController extends Controller
     {
         $this->authorize('party.customer.view');
 
-        $customers = Customer::with(['memberShipCard', 'branch'])
+        $customers = Customer::with('branch')
             ->ownBranch()
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('name', 'like', "%{$s}%")
@@ -37,7 +36,6 @@ class CustomerController extends Controller
         return Inertia::render('admin/inventory/customer/index', [
             'customers' => $customers,
             'filters' => $request->only('search'),
-            'memberShipCards' => MemberShipCard::all(['id', 'name']),
             'statuses' => collect(CommonStatus::cases())->map(fn ($s) => ['value' => $s->value, 'name' => $s->name]),
         ]);
     }
@@ -47,7 +45,6 @@ class CustomerController extends Controller
         $this->authorize('party.customer.create');
 
         $data = $request->validate([
-            'member_ship_id' => ['nullable', 'integer', 'exists:member_ship_cards,id'],
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'min:11', 'max:11', 'unique:customers,phone'],
             'email' => ['nullable', 'string', 'email', 'max:255', 'unique:customers,email'],
@@ -91,7 +88,6 @@ class CustomerController extends Controller
         $this->authorize('party.customer.update');
 
         $data = $request->validate([
-            'member_ship_id' => ['nullable', 'integer', 'exists:member_ship_cards,id'],
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'min:11', 'max:11', Rule::unique('customers', 'phone')->ignore($customer->id)],
             'email' => ['nullable', 'string', 'email', 'max:255', Rule::unique('customers', 'email')->ignore($customer->id)],

@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Branch;
 use App\Models\User;
 use App\Support\AdminNavigation;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -15,7 +16,7 @@ test('authenticated users see the full navigation tree', function () {
 
     $navigation = app(AdminNavigation::class)->build($user);
 
-    expect($navigation)->toHaveCount(10)
+    expect($navigation)->toHaveCount(9)
         ->and(collect($navigation)->pluck('title'))->toContain(
             'Dashboard',
             'Branch',
@@ -38,17 +39,24 @@ test('settings section includes all child links', function () {
             'Tag',
             'Brand',
             'Unit',
-            'Size',
-            'Tailor Measurement',
             'Color',
+            'Size',
             'Warranty',
             'Product',
             'Barcode',
             'Product Section',
             'Slider',
-            'Membership',
-            'Website Setting',
         ]);
+});
+
+test('branch profile appears last for branch users', function () {
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+
+    $titles = collect(app(AdminNavigation::class)->build($user))->pluck('title')->toArray();
+
+    expect($titles)->toContain('Branch Profile')
+        ->and(end($titles))->toBe('Branch Profile');
 });
 
 test('authenticated admin dashboard shares navigation', function () {
@@ -59,6 +67,6 @@ test('authenticated admin dashboard shares navigation', function () {
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/dashboard')
-            ->has('adminNavigation', 10)
+            ->has('adminNavigation', 9)
             ->where('adminNavigation.0.title', 'Dashboard'));
 });

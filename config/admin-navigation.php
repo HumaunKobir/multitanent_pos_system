@@ -66,14 +66,6 @@ return [
             ],
         ],
         [
-            'title' => 'Branch Profile',
-            'icon' => 'building-2',
-            'href' => '/setting/branch-profile',
-            'single' => true,
-            'branch_only' => true,
-            'permission' => null,
-        ],
-        [
             'title' => 'Branch',
             'icon' => 'building-2',
             'href' => '/branch',
@@ -150,7 +142,6 @@ return [
                 ['title' => 'Product Section', 'href' => '/setting/productsection', 'permission' => 'setting.productsection.view'],
                 ['title' => 'Slider', 'href' => '/setting/slider', 'permission' => 'setting.slider.view'],
                 ['title' => 'Website Setting', 'href' => '/setting/website', 'permission' => 'setting.website.view', 'ecommerce_only' => true],
-                ['title' => 'Membership', 'permission' => null],
             ],
         ],
         [
@@ -179,6 +170,14 @@ return [
                 ['title' => 'Stock Ledger', 'href' => '/report/stock-ledger', 'permission' => 'report.stock-ledger.view'],
                 ['title' => 'Daily Summary', 'href' => '/report/daily-summary', 'permission' => 'report.daily-summary.view'],
             ],
+        ],
+        [
+            'title' => 'Branch Profile',
+            'icon' => 'building-2',
+            'href' => '/setting/branch-profile',
+            'single' => true,
+            'branch_only' => true,
+            'permission' => null,
         ],
     ],
 

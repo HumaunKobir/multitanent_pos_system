@@ -3,11 +3,9 @@
 namespace App\Mail;
 
 use App\Models\OnlineOrder;
-use App\Services\OnlineOrderInvoicePdfService;
 use App\Support\WebsiteSettings;
 use Illuminate\Bus\Queueable;
 use Illuminate\Mail\Mailable;
-use Illuminate\Mail\Mailables\Attachment;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
@@ -38,19 +36,6 @@ class OnlineOrderPaymentConfirmedMail extends Mailable
             view: 'emails.online-order-payment-confirmed',
             with: $this->sharedViewData(),
         );
-    }
-
-    /**
-     * @return array<int, Attachment>
-     */
-    public function attachments(): array
-    {
-        $pdf = app(OnlineOrderInvoicePdfService::class)->output($this->order);
-
-        return [
-            Attachment::fromData(fn (): string => $pdf, $this->order->invoiceNumber().'.pdf')
-                ->withMime('application/pdf'),
-        ];
     }
 
     /**

@@ -35,10 +35,7 @@
                             <p style="margin:0 0 4px;font-size:12px;color:#475569;">Phone: {{ $supportPhone }}</p>
                         @endif
                         @if(!empty($supportEmail))
-                            <p style="margin:0 0 4px;font-size:12px;color:#475569;">Email: {{ $supportEmail }}</p>
-                        @endif
-                        @if(!empty($supportTime))
-                            <p style="margin:0;font-size:11px;color:#94a3b8;">Support hours: {{ $supportTime }}</p>
+                            <p style="margin:0;font-size:12px;color:#475569;">Email: {{ $supportEmail }}</p>
                         @endif
                     </td>
                 </tr>

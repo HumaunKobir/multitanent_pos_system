@@ -1,8 +1,8 @@
 @php
     $heading = $isCombined ? 'Order Confirmed & Payment Received!' : 'Payment Received!';
     $subheading = $isCombined
-        ? 'Thank you for your order and payment. Your full invoice is attached below.'
-        : 'Your payment has been confirmed. Full invoice attached below.';
+        ? 'Thank you for your order and payment.'
+        : 'Your payment has been confirmed.';
 @endphp
 
 @component('emails.layouts.online-order', compact('siteName', 'logoUrl', 'supportPhone', 'supportEmail', 'supportTime', 'heading', 'subheading'))
@@ -30,10 +30,6 @@
         <tr>
             <td style="padding:16px 18px;">
                 <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-                    <tr>
-                        <td style="padding:4px 0;font-size:13px;color:#64748b;">Order ID</td>
-                        <td align="right" style="padding:4px 0;font-size:13px;font-weight:700;color:#0f172a;">#{{ $order->id }}</td>
-                    </tr>
                     <tr>
                         <td style="padding:4px 0;font-size:13px;color:#64748b;">Invoice</td>
                         <td align="right" style="padding:4px 0;font-size:13px;font-weight:700;color:#0f172a;">{{ $invoiceNumber }}</td>
@@ -73,7 +69,4 @@
         @endforeach
     </table>
 
-    <p style="margin:0;font-size:13px;line-height:1.6;color:#475569;">
-        Your complete invoice is attached as a PDF. Keep it for your records.
-    </p>
 @endcomponent

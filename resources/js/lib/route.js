@@ -59,12 +59,16 @@ const routes = {
     'setting.productsection.update-order': '/setting/productsection/update-order',
     'setting.website.edit': '/setting/website',
     'setting.website.update': '/setting/website',
+    'setting.website.preview-email.order': '/setting/website/preview/email/order',
+    'setting.website.preview-email.payment': '/setting/website/preview/email/payment',
+    'setting.website.preview-invoice': '/setting/website/preview/invoice',
     'setting.page-content.edit': '/setting/page-content/:page',
     'setting.page-content.update': '/setting/page-content/:page',
     'setting.faq.index': '/setting/faq',
     'setting.faq.store': '/setting/faq',
     'setting.faq.update': '/setting/faq/:faq',
     'setting.faq.destroy': '/setting/faq/:faq',
+    'setting.faq.update-order': '/setting/faq/update-order',
     'setting.special-discount.index': '/setting/special-discount',
     'setting.special-discount.store': '/setting/special-discount',
     'setting.special-discount.update': '/setting/special-discount/:specialDiscount',
@@ -93,6 +97,7 @@ const routes = {
     'online-order.sync-steadfast': '/online-order/:onlineOrder/steadfast/sync',
     'online-order.fulfill': '/online-order/:onlineOrder/fulfill',
     'online-order.update-status': '/online-order/:onlineOrder/status',
+    'online-order.invoice': '/online-order/:onlineOrder/invoice',
     'subscriber-list.index': '/subscriber-list',
     'subscriber-list.destroy': '/subscriber-list/:subscriber',
     'subscribe.store': '/subscribe',
@@ -258,6 +263,7 @@ const methods = {
     'setting.faq.store': 'post',
     'setting.faq.update': 'patch',
     'setting.faq.destroy': 'delete',
+    'setting.faq.update-order': 'post',
     'branch.store': 'post',
     'branch.update': 'patch',
     'branch.destroy': 'delete',
@@ -411,7 +417,7 @@ export function settingRoutes(resource) {
         destroy: (id) => route(`${prefix}.destroy`, { [resource]: id }),
     };
 
-    if (resource === 'productsection') {
+    if (resource === 'productsection' || resource === 'faq') {
         routes.updateOrder = () => route(`${prefix}.update-order`);
     }
 

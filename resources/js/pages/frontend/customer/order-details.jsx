@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, FileDown } from 'lucide-react';
 
 import {
     getOrderStatusLabel,
@@ -10,13 +10,24 @@ import { CustomerPanelLayout } from '@/layouts/frontend/customer-panel-layout';
 export default function OrderDetails({ order }) {
     return (
         <CustomerPanelLayout title={`Order #${order.id}`}>
-            <Link
-                href="/customer/orders"
-                className="mb-3 inline-flex items-center gap-1.5 text-xs font-medium text-store-muted transition hover:text-store-accent"
-            >
-                <ArrowLeft className="size-4" />
-                Back to orders
-            </Link>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <Link
+                    href="/customer/orders"
+                    className="inline-flex items-center gap-1.5 text-xs font-medium text-store-muted transition hover:text-store-accent"
+                >
+                    <ArrowLeft className="size-4" />
+                    Back to orders
+                </Link>
+                <a
+                    href={`/customer/orders/${order.id}/invoice`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center gap-1.5 rounded-xl bg-store-accent px-3 py-1.5 text-xs font-bold text-white transition hover:bg-store-accent/90"
+                >
+                    <FileDown className="size-3.5" />
+                    Download Invoice PDF
+                </a>
+            </div>
 
             <OrderTrackingProgress status={order.status} className="mb-3" />
 

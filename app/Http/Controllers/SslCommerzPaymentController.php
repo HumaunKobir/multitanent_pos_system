@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\OnlineOrder;
 use App\Services\OnlineOrderAccountingService;
+use App\Services\OnlineOrderNotificationService;
 use App\Services\SslCommerzGateway;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -14,6 +15,7 @@ class SslCommerzPaymentController extends Controller
     public function __construct(
         private SslCommerzGateway $sslCommerzGateway,
         private OnlineOrderAccountingService $onlineOrderAccounting,
+        private OnlineOrderNotificationService $notifications,
     ) {}
 
     public function success(Request $request): RedirectResponse|Response
@@ -118,6 +120,8 @@ class SslCommerzPaymentController extends Controller
     private function markOrderPaid(OnlineOrder $order): void
     {
         $order->update(['payment_status' => 'Paid']);
-        $this->onlineOrderAccounting->recordPrepaymentIfNeeded($order->fresh());
+        $freshOrder = $order->fresh(['products']);
+        $this->onlineOrderAccounting->recordPrepaymentIfNeeded($freshOrder);
+        $this->notifications->sendPaymentConfirmedOnce($freshOrder);
     }
 }

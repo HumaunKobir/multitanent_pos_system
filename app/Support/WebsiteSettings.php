@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use App\Models\ConfigDictionary;
+use Illuminate\Support\Facades\Storage;
 
 final class WebsiteSettings
 {
@@ -76,6 +77,52 @@ final class WebsiteSettings
         return $cityId === 1 ? $insideDhaka : $outsideDhaka;
     }
 
+    public static function logoPath(): ?string
+    {
+        $path = ConfigDictionary::get('logo');
+
+        return filled($path) ? (string) $path : null;
+    }
+
+    public static function logoUrl(): ?string
+    {
+        $url = StorageUrl::public(self::logoPath());
+
+        if ($url === null) {
+            return null;
+        }
+
+        if (str_starts_with($url, 'http://') || str_starts_with($url, 'https://')) {
+            return $url;
+        }
+
+        return url($url);
+    }
+
+    public static function logoDataUri(): ?string
+    {
+        $path = self::logoPath();
+
+        if ($path === null || str_starts_with($path, 'http://') || str_starts_with($path, 'https://')) {
+            return null;
+        }
+
+        $fullPath = Storage::disk('public')->path($path);
+
+        if (! is_file($fullPath)) {
+            return null;
+        }
+
+        $mime = mime_content_type($fullPath) ?: 'image/png';
+        $contents = file_get_contents($fullPath);
+
+        if ($contents === false) {
+            return null;
+        }
+
+        return 'data:'.$mime.';base64,'.base64_encode($contents);
+    }
+
     public static function onlineSslCommerzPaymentAccountId(): ?int
     {
         return self::resolvePaymentAccountId('online_sslcommerz_payment_account_id', 'ONLINE_SSLCOMMERZ_PAYMENT_ACCOUNT_ID');
@@ -116,7 +163,7 @@ final class WebsiteSettings
 
         $settings['logo'] = ConfigDictionary::get('logo');
         $settings['fav_icon'] = ConfigDictionary::get('fav_icon');
-        $settings['logo_url'] = StorageUrl::public($settings['logo']);
+        $settings['logo_url'] = self::logoUrl();
         $settings['fav_icon_url'] = StorageUrl::public($settings['fav_icon']);
 
         return $settings;
@@ -128,7 +175,7 @@ final class WebsiteSettings
     public static function shared(): array
     {
         return [
-            'logo' => StorageUrl::public(ConfigDictionary::get('logo')),
+            'logo' => self::logoUrl(),
             'favicon' => StorageUrl::public(ConfigDictionary::get('fav_icon')),
             'siteName' => self::get('website_name'),
             'topNotice' => self::get('topnotice1'),

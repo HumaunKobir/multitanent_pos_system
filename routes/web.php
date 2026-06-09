@@ -78,6 +78,7 @@ Route::prefix('customer')->name('customer.')->group(function () {
         Route::get('profile', [CustomerDashboardController::class, 'dashboard'])->name('profile');
         Route::get('dashboard', [CustomerDashboardController::class, 'dashboard'])->name('dashboard');
         Route::get('orders', [CustomerDashboardController::class, 'orders'])->name('orders');
+        Route::get('orders/{id}/invoice', [CustomerDashboardController::class, 'downloadInvoice'])->name('order.invoice');
         Route::get('orders/{id}', [CustomerDashboardController::class, 'orderDetails'])->name('order.details');
         Route::get('settings', [CustomerProfileController::class, 'edit'])->name('settings');
         Route::patch('settings', [CustomerProfileController::class, 'update'])->name('settings.update');

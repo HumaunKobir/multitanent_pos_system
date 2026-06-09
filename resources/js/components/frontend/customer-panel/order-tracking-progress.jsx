@@ -1,15 +1,16 @@
 import { motion } from 'framer-motion';
-import { Ban, Check, ClipboardList, Package, Truck, PackageCheck } from 'lucide-react';
+import { Ban, BadgeCheck, Check, ClipboardList, Package, Truck, PackageCheck } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const TRACKING_STEPS = [
     { status: 1, label: 'Pending', hint: 'Order placed', icon: ClipboardList },
     { status: 2, label: 'Processing', hint: 'Preparing', icon: Package },
+    { status: 4, label: 'Confirmed', hint: 'Shop confirmed', icon: BadgeCheck },
     { status: 3, label: 'Shipping', hint: 'On the way', icon: Truck },
     { status: 5, label: 'Delivered', hint: 'Completed', icon: PackageCheck },
 ];
 
-const STATUS_INDEX = { 1: 0, 2: 1, 3: 2, 5: 3 };
+const STATUS_INDEX = { 1: 0, 2: 1, 4: 2, 3: 3, 5: 4 };
 
 function normalizeStatus(status) {
     if (status == null) {
@@ -110,7 +111,7 @@ export function OrderTrackingProgress({ status, variant = 'full', className }) {
             </div>
 
             <div className="relative hidden sm:block">
-                <div className="absolute left-[12.5%] right-[12.5%] top-5 h-1 -translate-y-1/2 rounded-full bg-gray-100">
+                <div className="absolute left-[10%] right-[10%] top-5 h-1 -translate-y-1/2 rounded-full bg-gray-100">
                     <motion.div
                         className="h-full rounded-full bg-store-accent"
                         initial={{ width: 0 }}
@@ -119,7 +120,7 @@ export function OrderTrackingProgress({ status, variant = 'full', className }) {
                     />
                 </div>
 
-                <ol className="relative grid grid-cols-4 gap-2">
+                <ol className="relative grid grid-cols-5 gap-2">
                     {TRACKING_STEPS.map((step, index) => {
                         const Icon = step.icon;
                         const isComplete = index < activeIndex;

@@ -5,11 +5,15 @@ namespace App\Actions\Steadfast;
 use App\Enums\OrderStatus;
 use App\Models\OnlineOrder;
 use App\Services\OnlineOrderAccountingService;
+use App\Services\OnlineOrderNotificationService;
 use RuntimeException;
 
 class ApplySteadfastDeliveryStatus
 {
-    public function __construct(private OnlineOrderAccountingService $accountingService) {}
+    public function __construct(
+        private OnlineOrderAccountingService $accountingService,
+        private OnlineOrderNotificationService $notifications,
+    ) {}
 
     public function execute(OnlineOrder $order, string $deliveryStatus): OnlineOrder
     {
@@ -47,7 +51,13 @@ class ApplySteadfastDeliveryStatus
 
             $order->update($updates);
 
-            return $order->fresh(['products']);
+            $freshOrder = $order->fresh(['products']);
+
+            if ($order->payment_method === 'cod') {
+                $this->notifications->sendPaymentConfirmedOnce($freshOrder);
+            }
+
+            return $freshOrder;
         }
     }
 

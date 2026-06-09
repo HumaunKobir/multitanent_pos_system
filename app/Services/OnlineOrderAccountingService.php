@@ -14,6 +14,7 @@ class OnlineOrderAccountingService
     public function __construct(
         private InventoryAccountingService $accounting,
         private OnlineOrderStockService $stockService,
+        private OnlineOrderNotificationService $notifications,
     ) {}
 
     public function recordPrepaymentIfNeeded(OnlineOrder $order): ?Transaction
@@ -71,7 +72,13 @@ class OnlineOrderAccountingService
 
             $order->update($updates);
 
-            return $order->fresh(['products']);
+            $freshOrder = $order->fresh(['products']);
+
+            if ($order->payment_method === 'cod') {
+                $this->notifications->sendPaymentConfirmedOnce($freshOrder);
+            }
+
+            return $freshOrder;
         });
     }
 

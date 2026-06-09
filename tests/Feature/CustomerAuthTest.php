@@ -192,6 +192,48 @@ test('customer cannot view another customers order details', function () {
         ->assertNotFound();
 });
 
+test('authenticated customer can download own order invoice pdf', function () {
+    $customer = Customer::factory()->create();
+
+    $order = OnlineOrder::create([
+        'customer_id' => $customer->id,
+        'name' => $customer->name,
+        'phone' => $customer->phone,
+        'address' => 'Dhaka',
+        'delivery_charge' => 60,
+        'subtotal' => 1000,
+        'total' => 1060,
+        'status' => 1,
+        'payment_status' => 'Pending',
+    ]);
+
+    $this->actingAs($customer, 'customer')
+        ->get(route('customer.order.invoice', $order->id))
+        ->assertOk()
+        ->assertHeader('content-type', 'application/pdf');
+});
+
+test('customer cannot download another customers order invoice pdf', function () {
+    $owner = Customer::factory()->create();
+    $other = Customer::factory()->create();
+
+    $order = OnlineOrder::create([
+        'customer_id' => $owner->id,
+        'name' => $owner->name,
+        'phone' => $owner->phone,
+        'address' => 'Dhaka',
+        'delivery_charge' => 60,
+        'subtotal' => 500,
+        'total' => 560,
+        'status' => 1,
+        'payment_status' => 'Pending',
+    ]);
+
+    $this->actingAs($other, 'customer')
+        ->get(route('customer.order.invoice', $order->id))
+        ->assertNotFound();
+});
+
 test('customer can logout', function () {
     $customer = Customer::factory()->create();
 

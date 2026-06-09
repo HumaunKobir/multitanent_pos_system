@@ -22,7 +22,7 @@ export default function PageContentEdit({ page }) {
         if (flash.error) {
             toast.error(flash.error);
         }
-    }, [flash.success, flash.error, toast]);
+    }, [flash.success, flash.error]);
 
     transform((formData) => ({
         ...formData,

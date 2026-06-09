@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Faq;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -15,14 +16,17 @@ class FaqController extends Controller
     {
         $this->authorize('setting.faq.view');
 
-        $faqs = Faq::query()
+        $items = Faq::query()
             ->when($request->search, fn ($q, $search) => $q->where('question', 'like', "%{$search}%"))
             ->ordered()
-            ->paginate(20)
-            ->withQueryString();
+            ->get();
 
         return Inertia::render('admin/setting/faq/index', [
-            'faqs' => $faqs,
+            'faqs' => [
+                'data' => $items,
+                'from' => $items->isEmpty() ? 0 : 1,
+                'links' => [],
+            ],
             'filters' => $request->only('search'),
         ]);
     }
@@ -34,11 +38,10 @@ class FaqController extends Controller
         $data = $request->validate([
             'question' => ['required', 'string', 'max:500'],
             'answer' => ['required', 'string'],
-            'sort_order' => ['nullable', 'integer', 'min:0'],
             'status' => ['required', 'in:0,1'],
         ]);
 
-        $data['sort_order'] = (int) ($data['sort_order'] ?? 0);
+        $data['sort_order'] = (int) Faq::query()->max('sort_order') + 1;
         $data['status'] = (int) $data['status'];
 
         Faq::create($data);
@@ -54,11 +57,9 @@ class FaqController extends Controller
         $data = $request->validate([
             'question' => ['required', 'string', 'max:500'],
             'answer' => ['required', 'string'],
-            'sort_order' => ['nullable', 'integer', 'min:0'],
             'status' => ['required', 'in:0,1'],
         ]);
 
-        $data['sort_order'] = (int) ($data['sort_order'] ?? 0);
         $data['status'] = (int) $data['status'];
 
         $faq->update($data);
@@ -75,5 +76,24 @@ class FaqController extends Controller
 
         return redirect()->route('setting.faq.index')
             ->with('success', 'FAQ deleted successfully.');
+    }
+
+    public function updateOrder(Request $request): RedirectResponse
+    {
+        $this->authorize('setting.faq.update');
+
+        $validated = $request->validate([
+            'orders' => ['required', 'array'],
+            'orders.*.id' => ['required', 'integer', Rule::exists('faqs', 'id')],
+            'orders.*.sort_order' => ['required', 'integer', 'min:1'],
+        ]);
+
+        foreach ($validated['orders'] as $order) {
+            Faq::query()
+                ->whereKey($order['id'])
+                ->update(['sort_order' => $order['sort_order']]);
+        }
+
+        return redirect()->route('setting.faq.index');
     }
 }

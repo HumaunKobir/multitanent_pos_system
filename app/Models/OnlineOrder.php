@@ -17,6 +17,7 @@ class OnlineOrder extends Model
         'payment_method', 'transaction_id', 'delivery_charge', 'subtotal', 'total',
         'payment_status', 'courier', 'courier_invoice', 'courier_consignment_id',
         'courier_tracking_code', 'courier_status', 'courier_sent_at', 'status',
+        'order_email_sent_at', 'payment_email_sent_at',
     ];
 
     protected $casts = [
@@ -24,6 +25,8 @@ class OnlineOrder extends Model
         'subtotal' => 'decimal:2',
         'total' => 'decimal:2',
         'courier_sent_at' => 'datetime',
+        'order_email_sent_at' => 'datetime',
+        'payment_email_sent_at' => 'datetime',
         'status' => OrderStatus::class,
     ];
 
@@ -42,6 +45,31 @@ class OnlineOrder extends Model
         $prefix = (string) config('steadfast.invoice_prefix', 'ORD');
 
         return $prefix.'-'.$this->id;
+    }
+
+    public function invoiceNumber(): string
+    {
+        return 'INV-'.str_pad((string) $this->id, 6, '0', STR_PAD_LEFT);
+    }
+
+    public function notificationEmail(): ?string
+    {
+        if (filled($this->email)) {
+            return $this->email;
+        }
+
+        $this->loadMissing('customer');
+
+        return filled($this->customer?->email) ? $this->customer->email : null;
+    }
+
+    public function paymentMethodLabel(): string
+    {
+        return match ($this->payment_method) {
+            'cod' => 'Cash on Delivery',
+            'sslcommerz' => 'Online Payment (SSLCommerz)',
+            default => ucfirst((string) $this->payment_method),
+        };
     }
 
     public function hasSteadfastShipment(): bool

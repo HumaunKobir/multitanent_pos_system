@@ -60,6 +60,13 @@ function websiteSettingPayload(array $overrides = []): array
         'newsletter_description' => 'Get offers in your inbox.',
         'newsletter_placeholder' => 'Email here',
         'newsletter_button' => 'Join',
+        'smtp_enabled' => '0',
+        'smtp_host' => '',
+        'smtp_port' => 587,
+        'smtp_username' => '',
+        'smtp_encryption' => 'tls',
+        'mail_from_address' => '',
+        'mail_from_name' => '',
     ], $overrides);
 }
 

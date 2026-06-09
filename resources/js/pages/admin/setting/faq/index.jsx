@@ -8,9 +8,10 @@ import { Input } from '@/components/ui/input';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { useCan } from '@/hooks/use-can';
+import { cn } from '@/lib/utils';
 import { settingRoutes } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { HelpCircle, Plus, Trash2 } from 'lucide-react';
+import { GripVertical, HelpCircle, Plus, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import FaqFormDialog from './form-dialog';
 
@@ -25,6 +26,16 @@ export default function FaqIndex({ faqs, filters }) {
     const [deleting, setDeleting] = useState(null);
     const [editing, setEditing] = useState(null);
     const [formOpen, setFormOpen] = useState(false);
+    const [rows, setRows] = useState(faqs.data ?? []);
+    const [dragIndex, setDragIndex] = useState(null);
+    const [overIndex, setOverIndex] = useState(null);
+    const [savingOrder, setSavingOrder] = useState(false);
+
+    const canReorder = can(`${PERM}.update`) && !search;
+
+    useEffect(() => {
+        setRows(faqs.data ?? []);
+    }, [faqs.data]);
 
     useEffect(() => {
         if (flash.success) {
@@ -34,7 +45,7 @@ export default function FaqIndex({ faqs, filters }) {
         if (flash.error) {
             toast.error(flash.error);
         }
-    }, [flash.success, flash.error, toast]);
+    }, [flash.success, flash.error]);
 
     useDebouncedEffect(
         () => {
@@ -65,20 +76,81 @@ export default function FaqIndex({ faqs, filters }) {
         setFormOpen(true);
     }
 
+    function saveOrder(orderedRows) {
+        setSavingOrder(true);
+
+        router.post(
+            routes.updateOrder(),
+            {
+                orders: orderedRows.map((row, index) => ({
+                    id: row.id,
+                    sort_order: index + 1,
+                })),
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => toast.success('FAQ order updated successfully.'),
+                onFinish: () => setSavingOrder(false),
+            },
+        );
+    }
+
+    function handleDrop(targetIndex) {
+        if (dragIndex === null || dragIndex === targetIndex) {
+            setDragIndex(null);
+            setOverIndex(null);
+
+            return;
+        }
+
+        const next = [...rows];
+        const [moved] = next.splice(dragIndex, 1);
+        next.splice(targetIndex, 0, moved);
+
+        setRows(next);
+        setDragIndex(null);
+        setOverIndex(null);
+        saveOrder(next);
+    }
+
     const columns = [
+        {
+            id: 'drag',
+            header: '',
+            cellClassName: 'w-10',
+            render: (row, index) =>
+                canReorder ? (
+                    <button
+                        type="button"
+                        draggable
+                        aria-label={`Reorder ${row.question}`}
+                        className={cn(
+                            'flex size-8 cursor-grab items-center justify-center rounded-md text-muted-foreground transition-colors',
+                            'hover:bg-accent hover:text-foreground active:cursor-grabbing',
+                            dragIndex === index && 'cursor-grabbing text-foreground',
+                        )}
+                        onDragStart={() => setDragIndex(index)}
+                        onDragEnd={() => {
+                            setDragIndex(null);
+                            setOverIndex(null);
+                        }}
+                    >
+                        <GripVertical className="size-4" />
+                    </button>
+                ) : (
+                    <span className="inline-flex size-8 items-center justify-center text-muted-foreground/40">
+                        <GripVertical className="size-4" />
+                    </span>
+                ),
+        },
         {
             id: 'num',
             header: '#',
-            render: (_, index) => (faqs.from ?? 0) + index,
+            render: (_, index) => index + 1,
         },
         {
             header: 'Question',
             accessorKey: 'question',
-        },
-        {
-            id: 'sort_order',
-            header: 'Order',
-            render: (row) => row.sort_order ?? 0,
         },
         {
             id: 'status',
@@ -111,7 +183,10 @@ export default function FaqIndex({ faqs, filters }) {
                         </div>
                         <div>
                             <h1 className="text-base font-semibold text-white">FAQ</h1>
-                            <p className="text-xs text-white/60">Manage frequently asked questions shown on the storefront.</p>
+                            <p className="text-xs text-white/60">
+                                Manage frequently asked questions shown on the storefront.
+                                {canReorder ? ' Drag rows to reorder.' : ''}
+                            </p>
                         </div>
                     </div>
                     <AdminCreateButton
@@ -123,16 +198,48 @@ export default function FaqIndex({ faqs, filters }) {
                     />
                 </div>
 
-                <div className="mb-4 flex gap-2">
+                <div className="mb-4 flex flex-wrap items-center gap-2">
                     <Input
                         value={search}
                         onChange={(event) => setSearch(event.target.value)}
                         placeholder="Search by question..."
                         className="max-w-xs"
                     />
+                    {search && can(`${PERM}.update`) && (
+                        <p className="text-xs text-muted-foreground">Clear search to reorder FAQs.</p>
+                    )}
+                    {savingOrder && <p className="text-xs text-muted-foreground">Saving order...</p>}
                 </div>
 
-                <DataTable columns={columns} rows={faqs.data} rowKey="id" emptyMessage="No FAQ items found." />
+                <DataTable
+                    columns={columns}
+                    rows={rows}
+                    rowKey="id"
+                    emptyMessage="No FAQ items found."
+                    getRowProps={(_, index) =>
+                        canReorder
+                            ? {
+                                  onDragOver: (event) => {
+                                      event.preventDefault();
+                                      setOverIndex(index);
+                                  },
+                                  onDragLeave: () => {
+                                      if (overIndex === index) {
+                                          setOverIndex(null);
+                                      }
+                                  },
+                                  onDrop: (event) => {
+                                      event.preventDefault();
+                                      handleDrop(index);
+                                  },
+                                  className: cn(
+                                      dragIndex === index && 'opacity-50',
+                                      overIndex === index && dragIndex !== null && dragIndex !== index && 'bg-blue-950/10',
+                                  ),
+                              }
+                            : {}
+                    }
+                />
 
                 {faqs.links?.length > 3 && (
                     <div className="mt-4 flex flex-wrap gap-1">

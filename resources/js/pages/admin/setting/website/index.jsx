@@ -36,7 +36,7 @@ function FilePreview({ label, currentUrl, file, onChange, error, accept }) {
     );
 }
 
-export default function WebsiteSettingsIndex({ settings }) {
+export default function WebsiteSettingsIndex({ settings, mailSettings = {} }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
 
@@ -61,6 +61,14 @@ export default function WebsiteSettingsIndex({ settings }) {
         newsletter_description: settings.newsletter_description ?? '',
         newsletter_placeholder: settings.newsletter_placeholder ?? '',
         newsletter_button: settings.newsletter_button ?? '',
+        smtp_enabled: String(mailSettings.smtp_enabled ?? '0'),
+        smtp_host: mailSettings.smtp_host ?? '',
+        smtp_port: mailSettings.smtp_port ?? '587',
+        smtp_username: mailSettings.smtp_username ?? '',
+        smtp_password: '',
+        smtp_encryption: mailSettings.smtp_encryption ?? 'tls',
+        mail_from_address: mailSettings.mail_from_address ?? '',
+        mail_from_name: mailSettings.mail_from_name ?? '',
         logo: null,
         fav_icon: null,
     });
@@ -331,6 +339,114 @@ export default function WebsiteSettingsIndex({ settings }) {
                                 className="mt-1"
                             />
                         </FormField>
+                    </SettingsSection>
+
+                    <SettingsSection title="Email & SMTP" description="Configure outgoing mail for order and payment notifications.">
+                        <FormField label="SMTP enabled" name="smtp_enabled" error={errors.smtp_enabled}>
+                            <select
+                                id="smtp_enabled"
+                                value={data.smtp_enabled}
+                                onChange={(event) => setData('smtp_enabled', event.target.value)}
+                                className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs"
+                            >
+                                <option value="1">Enabled</option>
+                                <option value="0">Disabled</option>
+                            </select>
+                        </FormField>
+
+                        <FormField label="SMTP host" name="smtp_host" error={errors.smtp_host}>
+                            <Input
+                                id="smtp_host"
+                                value={data.smtp_host}
+                                onChange={(event) => setData('smtp_host', event.target.value)}
+                                placeholder="smtp.mailtrap.io"
+                                className="mt-1"
+                            />
+                        </FormField>
+
+                        <FormField label="SMTP port" name="smtp_port" error={errors.smtp_port}>
+                            <Input
+                                id="smtp_port"
+                                type="number"
+                                min="1"
+                                value={data.smtp_port}
+                                onChange={(event) => setData('smtp_port', event.target.value)}
+                                className="mt-1"
+                            />
+                        </FormField>
+
+                        <FormField label="Encryption" name="smtp_encryption" error={errors.smtp_encryption}>
+                            <select
+                                id="smtp_encryption"
+                                value={data.smtp_encryption}
+                                onChange={(event) => setData('smtp_encryption', event.target.value)}
+                                className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs"
+                            >
+                                <option value="tls">TLS</option>
+                                <option value="ssl">SSL</option>
+                                <option value="none">None</option>
+                            </select>
+                        </FormField>
+
+                        <FormField label="SMTP username" name="smtp_username" error={errors.smtp_username}>
+                            <Input
+                                id="smtp_username"
+                                value={data.smtp_username}
+                                onChange={(event) => setData('smtp_username', event.target.value)}
+                                className="mt-1"
+                            />
+                        </FormField>
+
+                        <FormField label="SMTP password" name="smtp_password" error={errors.smtp_password}>
+                            <Input
+                                id="smtp_password"
+                                type="password"
+                                value={data.smtp_password}
+                                onChange={(event) => setData('smtp_password', event.target.value)}
+                                placeholder={mailSettings.smtp_password_configured ? 'Leave blank to keep current password' : 'Enter SMTP password'}
+                                className="mt-1"
+                            />
+                        </FormField>
+
+                        <FormField label="From email address" name="mail_from_address" error={errors.mail_from_address}>
+                            <Input
+                                id="mail_from_address"
+                                type="email"
+                                value={data.mail_from_address}
+                                onChange={(event) => setData('mail_from_address', event.target.value)}
+                                placeholder="noreply@yourstore.com"
+                                className="mt-1"
+                            />
+                        </FormField>
+
+                        <FormField label="From name" name="mail_from_name" error={errors.mail_from_name}>
+                            <Input
+                                id="mail_from_name"
+                                value={data.mail_from_name}
+                                onChange={(event) => setData('mail_from_name', event.target.value)}
+                                placeholder="Coolness Point"
+                                className="mt-1"
+                            />
+                        </FormField>
+
+                        <div className="sm:col-span-2 flex flex-wrap gap-2 rounded-md border bg-muted/20 p-4">
+                            <p className="w-full text-xs text-muted-foreground">Preview email templates and invoice PDF design:</p>
+                            <Button type="button" variant="outline" size="sm" asChild>
+                                <a href={route('setting.website.preview-email.order')} target="_blank" rel="noreferrer">
+                                    Order Email Preview
+                                </a>
+                            </Button>
+                            <Button type="button" variant="outline" size="sm" asChild>
+                                <a href={route('setting.website.preview-email.payment')} target="_blank" rel="noreferrer">
+                                    Payment Email Preview
+                                </a>
+                            </Button>
+                            <Button type="button" variant="outline" size="sm" asChild>
+                                <a href={route('setting.website.preview-invoice')} target="_blank" rel="noreferrer">
+                                    Invoice PDF Preview
+                                </a>
+                            </Button>
+                        </div>
                     </SettingsSection>
                 </form>
             </div>

@@ -67,6 +67,9 @@ Route::middleware(['auth', 'verified', 'ecommerce.panel'])->group(function () {
     Route::delete('subscriber-list/{subscriber}', [SubscriberListController::class, 'destroy'])->name('subscriber-list.destroy');
     Route::get('setting/website', [WebsiteSettingController::class, 'edit'])->name('setting.website.edit');
     Route::put('setting/website', [WebsiteSettingController::class, 'update'])->name('setting.website.update');
+    Route::get('setting/website/preview/email/order', [WebsiteSettingController::class, 'previewOrderEmail'])->name('setting.website.preview-email.order');
+    Route::get('setting/website/preview/email/payment', [WebsiteSettingController::class, 'previewPaymentEmail'])->name('setting.website.preview-email.payment');
+    Route::get('setting/website/preview/invoice', [WebsiteSettingController::class, 'previewInvoice'])->name('setting.website.preview-invoice');
     Route::get('setting/page-content/{page}', [PageContentController::class, 'edit'])
         ->whereIn('page', PageContent::slugs())
         ->name('setting.page-content.edit');
@@ -74,6 +77,8 @@ Route::middleware(['auth', 'verified', 'ecommerce.panel'])->group(function () {
         ->whereIn('page', PageContent::slugs())
         ->name('setting.page-content.update');
     Route::prefix('setting')->name('setting.')->group(function () {
+        Route::post('faq/update-order', [FaqController::class, 'updateOrder'])
+            ->name('faq.update-order');
         Route::resource('faq', FaqController::class)
             ->except(['create', 'edit', 'show'])
             ->parameters(['faq' => 'faq']);
@@ -84,6 +89,7 @@ Route::middleware(['auth', 'verified', 'ecommerce.panel'])->group(function () {
     Route::patch('online-order/{onlineOrder}/steadfast/sync', [OnlineOrderController::class, 'syncCourierStatus'])->name('online-order.sync-steadfast');
     Route::patch('online-order/{onlineOrder}/fulfill', [OnlineOrderController::class, 'fulfill'])->name('online-order.fulfill');
     Route::patch('online-order/{onlineOrder}/status', [OnlineOrderController::class, 'updateStatus'])->name('online-order.update-status');
+    Route::get('online-order/{onlineOrder}/invoice', [OnlineOrderController::class, 'downloadInvoice'])->name('online-order.invoice');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {

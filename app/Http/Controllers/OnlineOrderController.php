@@ -8,6 +8,7 @@ use App\Enums\OrderStatus;
 use App\Exceptions\SteadfastCourierException;
 use App\Models\OnlineOrder;
 use App\Services\OnlineOrderAccountingService;
+use App\Services\OnlineOrderInvoicePdfService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -20,6 +21,7 @@ class OnlineOrderController extends Controller
         private OnlineOrderAccountingService $accountingService,
         private SendOrderToSteadfast $sendOrderToSteadfast,
         private SyncSteadfastOrderStatus $syncSteadfastOrderStatus,
+        private OnlineOrderInvoicePdfService $invoicePdfService,
     ) {}
 
     public function index(Request $request): Response
@@ -137,5 +139,14 @@ class OnlineOrderController extends Controller
         $onlineOrder->update(['status' => $status]);
 
         return back()->with('success', 'Order status updated.');
+    }
+
+    public function downloadInvoice(OnlineOrder $onlineOrder): \Symfony\Component\HttpFoundation\Response
+    {
+        $this->authorize('online-order.view');
+
+        $onlineOrder->load('products');
+
+        return $this->invoicePdfService->download($onlineOrder);
     }
 }

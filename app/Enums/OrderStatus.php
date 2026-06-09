@@ -9,6 +9,7 @@ enum OrderStatus: int
     use Commons;
     case Pending = 1;
     case Processing = 2;
+    case Confirmed = 4;
     case Shipping = 3;
     case Delivered = 5;
     case Canceled = 6;
@@ -18,6 +19,7 @@ enum OrderStatus: int
         return match ($this) {
             self::Pending => 'Pending',
             self::Processing => 'Processing',
+            self::Confirmed => 'Confirmed',
             self::Shipping => 'Shipping',
             self::Delivered => 'Delivered',
             self::Canceled => 'Canceled',

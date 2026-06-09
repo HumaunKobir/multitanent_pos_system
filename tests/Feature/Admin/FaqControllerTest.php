@@ -56,19 +56,20 @@ test('ecommerce branch user can manage faq with permission', function () {
         ->post(route('setting.faq.store'), [
             'question' => "What payment methods do you accept {$suffix}?",
             'answer' => '<p>We accept SSLCommerz and COD.</p>',
-            'sort_order' => 2,
             'status' => '1',
         ])
         ->assertRedirect(route('setting.faq.index'))
         ->assertSessionHas('success');
 
-    expect(Faq::query()->where('question', "What payment methods do you accept {$suffix}?")->exists())->toBeTrue();
+    $createdFaq = Faq::query()->where('question', "What payment methods do you accept {$suffix}?")->first();
+
+    expect($createdFaq)->not->toBeNull()
+        ->and($createdFaq->sort_order)->toBeGreaterThan($faq->sort_order);
 
     $this->actingAs($user)
         ->patch(route('setting.faq.update', $faq), [
             'question' => "How can I track my order {$suffix}?",
             'answer' => '<p>Check My Orders in your account dashboard.</p>',
-            'sort_order' => 3,
             'status' => '0',
         ])
         ->assertRedirect(route('setting.faq.index'))
@@ -76,7 +77,20 @@ test('ecommerce branch user can manage faq with permission', function () {
 
     expect($faq->fresh())
         ->question->toBe("How can I track my order {$suffix}?")
-        ->status->toBe(0);
+        ->status->toBe(0)
+        ->sort_order->toBe(1);
+
+    $this->actingAs($user)
+        ->post(route('setting.faq.update-order'), [
+            'orders' => [
+                ['id' => $createdFaq->id, 'sort_order' => 1],
+                ['id' => $faq->id, 'sort_order' => 2],
+            ],
+        ])
+        ->assertRedirect(route('setting.faq.index'));
+
+    expect($createdFaq->fresh()->sort_order)->toBe(1)
+        ->and($faq->fresh()->sort_order)->toBe(2);
 
     $this->actingAs($user)
         ->delete(route('setting.faq.destroy', $faq))

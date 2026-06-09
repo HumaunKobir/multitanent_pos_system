@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\OnlineOrder;
 use App\Models\OnlineOrderProduct;
 use App\Models\Product;
+use App\Services\OnlineOrderNotificationService;
 use App\Support\WebsiteSettings;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -14,6 +15,8 @@ use InvalidArgumentException;
 
 class PlaceOnlineOrder
 {
+    public function __construct(private OnlineOrderNotificationService $notifications) {}
+
     /**
      * @param  array<string, array<string, mixed>>  $cart
      * @param  array<string, mixed>  $checkoutData
@@ -93,7 +96,13 @@ class PlaceOnlineOrder
                 ]);
             }
 
-            return $order->fresh(['products']);
+            $order = $order->fresh(['products']);
+
+            if ($paymentMethod === 'cod') {
+                $this->notifications->sendOrderPlacedOnce($order);
+            }
+
+            return $order;
         });
     }
 

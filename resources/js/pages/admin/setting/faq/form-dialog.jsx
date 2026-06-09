@@ -15,7 +15,6 @@ export default function FaqFormDialog({ open, onOpenChange, item, routes }) {
     const form = useForm({
         question: item?.question ?? '',
         answer: item?.answer ?? '',
-        sort_order: item?.sort_order ?? 0,
         status: String(item?.status ?? 1),
     });
 
@@ -23,7 +22,6 @@ export default function FaqFormDialog({ open, onOpenChange, item, routes }) {
         form.setData({
             question: item?.question ?? '',
             answer: item?.answer ?? '',
-            sort_order: item?.sort_order ?? 0,
             status: String(item?.status ?? 1),
         });
         form.clearErrors();
@@ -86,37 +84,21 @@ export default function FaqFormDialog({ open, onOpenChange, item, routes }) {
                         {form.errors.answer && <p className="mt-1 text-xs text-destructive">{form.errors.answer}</p>}
                     </div>
 
-                    <div className="grid gap-4 sm:grid-cols-2">
-                        <div>
-                            <Label htmlFor="sort_order">Sort order</Label>
-                            <Input
-                                id="sort_order"
-                                type="number"
-                                min="0"
-                                value={form.data.sort_order}
-                                onChange={(event) => form.setData('sort_order', event.target.value)}
-                                className="mt-1"
-                                aria-invalid={!!form.errors.sort_order}
-                            />
-                            {form.errors.sort_order && <p className="mt-1 text-xs text-destructive">{form.errors.sort_order}</p>}
-                        </div>
-
-                        <div>
-                            <Label htmlFor="status">
-                                Status
-                                <RequiredMark />
-                            </Label>
-                            <Select value={form.data.status} onValueChange={(value) => form.setData('status', value)}>
-                                <SelectTrigger id="status" className="mt-1 w-full" aria-invalid={!!form.errors.status}>
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="1">Active</SelectItem>
-                                    <SelectItem value="0">InActive</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            {form.errors.status && <p className="mt-1 text-xs text-destructive">{form.errors.status}</p>}
-                        </div>
+                    <div>
+                        <Label htmlFor="status">
+                            Status
+                            <RequiredMark />
+                        </Label>
+                        <Select value={form.data.status} onValueChange={(value) => form.setData('status', value)}>
+                            <SelectTrigger id="status" className="mt-1 w-full" aria-invalid={!!form.errors.status}>
+                                <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="1">Active</SelectItem>
+                                <SelectItem value="0">InActive</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        {form.errors.status && <p className="mt-1 text-xs text-destructive">{form.errors.status}</p>}
                     </div>
 
                     <div className="flex justify-end gap-3 border-t pt-4">

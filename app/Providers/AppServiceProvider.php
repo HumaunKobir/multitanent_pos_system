@@ -71,5 +71,11 @@ class AppServiceProvider extends ServiceProvider
                 mkdir($path, 0775, true);
             }
         }
+
+        $fontCache = storage_path('fonts');
+
+        if (! is_dir($fontCache)) {
+            mkdir($fontCache, 0775, true);
+        }
     }
 }

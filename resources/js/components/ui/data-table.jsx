@@ -36,8 +36,19 @@ const alignTd = {
  * @param {string} [props.className]
  * @param {string} [props.tableClassName]
  * @param {string} [props.caption] — screen-reader only table caption (no visible row above the header)
+ * @param {(row: object, rowIndex: number) => import('react').HTMLAttributes<HTMLTableRowElement>} [props.getRowProps]
  */
-export function DataTable({ columns, rows, rowKey, emptyMessage = 'No rows yet.', className, tableClassName, caption, ...props }) {
+export function DataTable({
+    columns,
+    rows,
+    rowKey,
+    emptyMessage = 'No rows yet.',
+    className,
+    tableClassName,
+    caption,
+    getRowProps,
+    ...props
+}) {
     const resolveRowKey = typeof rowKey === 'function' ? rowKey : (row) => row[rowKey];
 
     const cellContent = (column, row, rowIndex) => {
@@ -94,13 +105,18 @@ export function DataTable({ columns, rows, rowKey, emptyMessage = 'No rows yet.'
                             </td>
                         </tr>
                     ) : (
-                        rows.map((row, rowIndex) => (
+                        rows.map((row, rowIndex) => {
+                            const rowProps = getRowProps?.(row, rowIndex) ?? {};
+
+                            return (
                             <tr
                                 key={resolveRowKey(row)}
+                                {...rowProps}
                                 className={cn(
                                     'border-b border-blue-200/85 transition-colors duration-200 last:border-b-0 dark:border-blue-900/55',
                                     'hover:bg-blue-950/6 dark:hover:bg-blue-500/12',
                                     rowIndex % 2 === 1 ? 'bg-blue-950/4 dark:bg-blue-950/30' : 'bg-transparent',
+                                    rowProps.className,
                                 )}
                             >
                                 {columns.map((column, colIndex) => {
@@ -121,7 +137,8 @@ export function DataTable({ columns, rows, rowKey, emptyMessage = 'No rows yet.'
                                     );
                                 })}
                             </tr>
-                        ))
+                            );
+                        })
                     )}
                 </tbody>
             </table>

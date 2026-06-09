@@ -1,7 +1,7 @@
 import { Can } from '@/components/can';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { ArrowLeft, Package, RefreshCw, Truck } from 'lucide-react';
+import { ArrowLeft, FileDown, Package, RefreshCw, Truck } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -12,6 +12,7 @@ const STATUS_COLORS = {
     1: 'bg-amber-100 text-amber-800',
     2: 'bg-blue-100 text-blue-800',
     3: 'bg-indigo-100 text-indigo-800',
+    4: 'bg-cyan-100 text-cyan-800',
     5: 'bg-emerald-100 text-emerald-800',
     6: 'bg-red-100 text-red-800',
 };
@@ -100,13 +101,21 @@ export default function OnlineOrderShow({ order, statuses, canSendToSteadfast, s
                             <p className="text-xs text-white/60">Placed {formatDate(order.created_at)}</p>
                         </div>
                     </div>
-                    <Link
-                        href={route('online-order.index')}
-                        className="inline-flex items-center gap-1.5 text-xs font-medium text-white/80 transition hover:text-white"
-                    >
-                        <ArrowLeft className="size-3.5" />
-                        Back to orders
-                    </Link>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Button variant="secondary" size="sm" asChild>
+                            <a href={route('online-order.invoice', { onlineOrder: order.id })} target="_blank" rel="noreferrer">
+                                <FileDown className="size-3.5" />
+                                Download Invoice
+                            </a>
+                        </Button>
+                        <Link
+                            href={route('online-order.index')}
+                            className="inline-flex items-center gap-1.5 text-xs font-medium text-white/80 transition hover:text-white"
+                        >
+                            <ArrowLeft className="size-3.5" />
+                            Back to orders
+                        </Link>
+                    </div>
                 </div>
 
                 <div className="mb-4 grid gap-3 lg:grid-cols-3">

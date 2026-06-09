@@ -1,7 +1,10 @@
 <?php
 
+use App\Enums\VoucherType;
 use App\Models\Branch;
 use App\Models\User;
+use App\Models\Voucher;
+use Carbon\Carbon;
 use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\Permission\Models\Role;
 
@@ -78,6 +81,52 @@ test('branch dashboard includes reports link with permission', function () {
 
     $user->delete();
     $branch->delete();
+});
+
+test('branch dashboard includes expenses section with permission', function () {
+    $this->artisan('permissions:sync');
+
+    $date = '2099-04-20';
+    $branch = Branch::factory()->create();
+    $otherBranch = Branch::factory()->create();
+    $user = branchDashboardUser($branch->id, ['accounts.view']);
+
+    Voucher::query()->create([
+        'type' => VoucherType::Expense,
+        'voucher_no' => 'EXP-BR-'.uniqid(),
+        'date' => $date,
+        'total_amount' => 600,
+        'branch_id' => $branch->id,
+        'created_by' => $user->id,
+    ]);
+
+    Voucher::query()->create([
+        'type' => VoucherType::Expense,
+        'voucher_no' => 'EXP-OTHER-'.uniqid(),
+        'date' => $date,
+        'total_amount' => 2000,
+        'branch_id' => $otherBranch->id,
+        'created_by' => $user->id,
+    ]);
+
+    Carbon::setTestNow($date);
+
+    $this->actingAs($user)
+        ->get('/branch-panel')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('sections.expenses')
+            ->where('sections.expenses.today.count', 1)
+            ->where('sections.expenses.today.amount', 600)
+            ->where('sections.expenses.month.count', 1)
+            ->where('sections.expenses.month.amount', 600));
+
+    Carbon::setTestNow();
+
+    Voucher::query()->whereIn('branch_id', [$branch->id, $otherBranch->id])->whereDate('date', $date)->delete();
+    $user->delete();
+    $branch->delete();
+    $otherBranch->delete();
 });
 
 test('branch user is redirected from admin dashboard route', function () {

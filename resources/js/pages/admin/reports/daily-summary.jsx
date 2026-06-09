@@ -8,6 +8,7 @@ import {
     CircleDollarSign,
     HandCoins,
     Receipt,
+    ReceiptText,
     Wallet,
 } from 'lucide-react';
 import { useState } from 'react';
@@ -78,6 +79,19 @@ const sections = [
         ],
     },
     {
+        key: 'expenses',
+        title: 'Expenses',
+        icon: ReceiptText,
+        headerClass: 'bg-rose-600',
+        bodyClass: 'from-rose-50/90 to-white dark:from-rose-950/30 dark:to-card',
+        accentClass: 'text-rose-700 dark:text-rose-300',
+        ringClass: 'ring-rose-500/20',
+        rows: (s) => [
+            { label: 'Vouchers', value: s.expenses?.count ?? 0, plain: true },
+            { label: 'Total expense', value: <MoneyCell value={s.expenses?.amount} />, highlight: true },
+        ],
+    },
+    {
         key: 'sale_returns',
         title: 'Sale Returns',
         icon: ArrowLeftRight,
@@ -114,14 +128,6 @@ const sections = [
                 value: (
                     <>
                         {s.vouchers?.income?.count ?? 0} · <MoneyCell value={s.vouchers?.income?.amount} />
-                    </>
-                ),
-            },
-            {
-                label: 'Expense',
-                value: (
-                    <>
-                        {s.vouchers?.expense?.count ?? 0} · <MoneyCell value={s.vouchers?.expense?.amount} />
                     </>
                 ),
             },
@@ -234,10 +240,10 @@ export default function DailySummaryReport({ filters = {}, summary = {} }) {
                         className="border-violet-200/80 bg-violet-50 text-violet-900 dark:border-violet-800 dark:bg-violet-950/40 dark:text-violet-100"
                     />
                     <KpiTile
-                        label="Ledger entries"
-                        value={s.transactions?.count ?? 0}
-                        sub="Accounting transactions"
-                        className="border-cyan-200/80 bg-cyan-50 text-cyan-900 dark:border-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-100"
+                        label="Expense"
+                        value={<MoneyCell value={s.expenses?.amount} />}
+                        sub={`${s.expenses?.count ?? 0} voucher(s)`}
+                        className="border-rose-200/80 bg-rose-50 text-rose-900 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-100"
                     />
                 </div>
 

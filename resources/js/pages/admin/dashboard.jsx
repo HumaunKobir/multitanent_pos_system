@@ -5,22 +5,28 @@ import { SalesTrendChart } from '@/components/dashboard/sales-trend-chart';
 import { StatTile } from '@/components/dashboard/stat-tile';
 import { MoneyCell } from '@/pages/admin/reports/_shared/report-shell';
 import { Head } from '@inertiajs/react';
-import { Building2, CircleDollarSign, TrendingUp } from 'lucide-react';
+import { Building2, CircleDollarSign, ReceiptText, TrendingUp } from 'lucide-react';
 
 function formatCountSub(kpi) {
     return `${kpi?.count ?? 0} invoices · Due ৳${parseFloat(kpi?.due ?? 0).toFixed(2)}`;
 }
 
+function formatExpenseSub(kpi) {
+    return `${kpi?.count ?? 0} voucher(s)`;
+}
+
 export default function AdminDashboard({ today, kpis, branchSales, salesTrend, collection }) {
     const todaySales = kpis?.today_sales ?? {};
     const monthSales = kpis?.month_sales ?? {};
+    const todayExpenses = kpis?.today_expenses ?? {};
+    const monthExpenses = kpis?.month_expenses ?? {};
 
     return (
         <>
             <Head title="Dashboard" />
 
             <DashboardShell title="Admin Dashboard" subtitle="Overview across all branches" today={today}>
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     <StatTile
                         label="Today Sales"
                         value={<MoneyCell value={todaySales.gross} />}
@@ -32,6 +38,18 @@ export default function AdminDashboard({ today, kpis, branchSales, salesTrend, c
                         value={<MoneyCell value={monthSales.gross} />}
                         sub={formatCountSub(monthSales)}
                         accentClass="border-l-blue-600"
+                    />
+                    <StatTile
+                        label="Today Expenses"
+                        value={<MoneyCell value={todayExpenses.amount} />}
+                        sub={formatExpenseSub(todayExpenses)}
+                        accentClass="border-l-rose-600"
+                    />
+                    <StatTile
+                        label="Month Expenses"
+                        value={<MoneyCell value={monthExpenses.amount} />}
+                        sub={formatExpenseSub(monthExpenses)}
+                        accentClass="border-l-orange-600"
                     />
                     <StatTile
                         label="Operating Branches"

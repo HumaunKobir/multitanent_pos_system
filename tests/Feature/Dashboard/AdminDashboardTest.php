@@ -1,9 +1,11 @@
 <?php
 
 use App\Enums\SaleType;
+use App\Enums\VoucherType;
 use App\Models\Branch;
 use App\Models\Sell;
 use App\Models\User;
+use App\Models\Voucher;
 use App\Support\AdminNavigation;
 use Carbon\Carbon;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -61,6 +63,47 @@ test('super admin dashboard returns branch sales and trend props', function () {
 
     Sell::query()->where('branch_id', $branch->id)->delete();
     $branch->delete();
+});
+
+test('super admin dashboard includes expense totals excluding main branch', function () {
+    $date = '2099-03-15';
+    $branch = Branch::factory()->create(['name' => 'Expense Branch '.uniqid()]);
+    $admin = dashboardSuperAdmin();
+
+    Voucher::query()->create([
+        'type' => VoucherType::Expense,
+        'voucher_no' => 'EXP-DASH-'.uniqid(),
+        'date' => $date,
+        'total_amount' => 450,
+        'branch_id' => $branch->id,
+        'created_by' => $admin->id,
+    ]);
+
+    Voucher::query()->create([
+        'type' => VoucherType::Expense,
+        'voucher_no' => 'EXP-MAIN-'.uniqid(),
+        'date' => $date,
+        'total_amount' => 9999,
+        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'created_by' => $admin->id,
+    ]);
+
+    Carbon::setTestNow($date);
+
+    $this->actingAs($admin)
+        ->get(route('dashboard'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('kpis.today_expenses.count', 1)
+            ->where('kpis.today_expenses.amount', 450)
+            ->where('kpis.month_expenses.count', 1)
+            ->where('kpis.month_expenses.amount', 450));
+
+    Carbon::setTestNow();
+
+    Voucher::query()->whereIn('branch_id', [$branch->id, Branch::MAIN_BRANCH_ID])->whereDate('date', $date)->delete();
+    $branch->delete();
+    $admin->delete();
 });
 
 test('branch user dashboard nav link points to branch panel', function () {

@@ -490,6 +490,7 @@ class ReportService
         $salesPaid = $sales->sum(fn (Sell $s) => (float) $s->paid_amount);
         $purchaseNet = $purchases->sum(fn (Purchase $p) => $p->net_amount);
         $purchasePaid = $purchases->sum(fn (Purchase $p) => (float) $p->paid_amount);
+        $expenseVouchers = $vouchers->where('type', VoucherType::Expense);
 
         return [
             'date' => $date,
@@ -512,6 +513,10 @@ class ReportService
             'customer_collections' => [
                 'count' => $collectionsQuery->count(),
                 'amount' => round((float) $collectionsQuery->sum('amount'), 2),
+            ],
+            'expenses' => [
+                'count' => $expenseVouchers->count(),
+                'amount' => round((float) $expenseVouchers->sum('total_amount'), 2),
             ],
             'sale_returns' => [
                 'count' => $returnsQuery->count(),

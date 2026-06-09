@@ -13,12 +13,17 @@ import {
     CircleDollarSign,
     Coins,
     HandCoins,
+    ReceiptText,
     UsersRound,
     Wallet,
 } from 'lucide-react';
 
 function formatCountSub(kpi) {
     return `${kpi?.count ?? 0} invoices · Due ৳${parseFloat(kpi?.due ?? 0).toFixed(2)}`;
+}
+
+function formatExpenseSub(kpi) {
+    return `${kpi?.count ?? 0} voucher(s)`;
 }
 
 export default function BranchDashboard({ today, branchName, sections }) {
@@ -87,6 +92,15 @@ export default function BranchDashboard({ today, branchName, sections }) {
                                     accentClass="border-l-violet-600"
                                 />
                             </Can>
+
+                            <Can permission="accounts.view">
+                                <StatTile
+                                    label="Today Expenses"
+                                    value={<MoneyCell value={sections?.expenses?.today?.amount} />}
+                                    sub={formatExpenseSub(sections?.expenses?.today)}
+                                    accentClass="border-l-rose-600"
+                                />
+                            </Can>
                         </div>
 
                         <Can permission="inventory.sell.view">
@@ -144,6 +158,15 @@ export default function BranchDashboard({ today, branchName, sections }) {
                                         <MoneyCell value={sections?.customer_collections?.month_amount} />
                                     </p>
                                     <p className="mt-1 text-xs text-muted-foreground">Collected this month</p>
+                                </ModuleWidget>
+                            </Can>
+
+                            <Can permission="accounts.view">
+                                <ModuleWidget title="Month Expenses" icon={ReceiptText} accentClass="border-l-rose-600">
+                                    <p className="font-mono text-xl font-bold tabular-nums">
+                                        <MoneyCell value={sections?.expenses?.month?.amount} />
+                                    </p>
+                                    <p className="mt-1 text-xs text-muted-foreground">{formatExpenseSub(sections?.expenses?.month)}</p>
                                 </ModuleWidget>
                             </Can>
 

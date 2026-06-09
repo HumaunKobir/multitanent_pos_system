@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\PurchaseType;
+use App\Enums\VoucherType;
 use App\Models\Branch;
 use App\Models\Customer;
 use App\Models\CustomerPayment;
@@ -11,6 +12,7 @@ use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\SupplierPayment;
 use App\Models\User;
+use App\Models\Voucher;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -39,11 +41,25 @@ class DashboardService
             ),
         );
 
+        $todayExpenses = $this->aggregateExpenses(
+            $this->excludeMainBranch(
+                Voucher::query()->where('type', VoucherType::Expense)->whereDate('date', $today),
+            ),
+        );
+
+        $monthExpenses = $this->aggregateExpenses(
+            $this->excludeMainBranch(
+                Voucher::query()->where('type', VoucherType::Expense)->whereBetween('date', [$monthStart->toDateString(), $today->toDateString()]),
+            ),
+        );
+
         return [
             'today' => $today->format('Y-m-d'),
             'kpis' => [
                 'today_sales' => $todaySales,
                 'month_sales' => $monthSales,
+                'today_expenses' => $todayExpenses,
+                'month_expenses' => $monthExpenses,
                 'active_branches' => Branch::query()->operating()->active()->count(),
                 'total_branches' => Branch::query()->operating()->count(),
             ],
@@ -134,6 +150,23 @@ class DashboardService
             ];
         }
 
+        if ($user->can('accounts.view')) {
+            $sections['expenses'] = [
+                'today' => $this->aggregateExpenses(
+                    Voucher::query()
+                        ->where('type', VoucherType::Expense)
+                        ->where('branch_id', $branchId)
+                        ->whereDate('date', $today),
+                ),
+                'month' => $this->aggregateExpenses(
+                    Voucher::query()
+                        ->where('type', VoucherType::Expense)
+                        ->where('branch_id', $branchId)
+                        ->whereBetween('date', [$monthStart->toDateString(), $today->toDateString()]),
+                ),
+            ];
+        }
+
         if ($user->can('report.daily-summary.view')) {
             $sections['reports'] = [
                 'daily_summary_url' => '/report/daily-summary',
@@ -167,6 +200,22 @@ class DashboardService
             'gross' => $gross,
             'paid' => $paid,
             'due' => round(max(0, $gross - $paid), 2),
+        ];
+    }
+
+    /**
+     * @return array{count: int, amount: float}
+     */
+    private function aggregateExpenses(Builder $query): array
+    {
+        $row = (clone $query)->selectRaw('
+            COUNT(*) as voucher_count,
+            COALESCE(SUM(total_amount), 0) as amount_total
+        ')->first();
+
+        return [
+            'count' => (int) $row->voucher_count,
+            'amount' => round((float) $row->amount_total, 2),
         ];
     }
 
@@ -277,6 +326,11 @@ class DashboardService
     }
 
     private function excludeMainBranchSales(Builder $query): Builder
+    {
+        return $query->where('branch_id', '!=', Branch::MAIN_BRANCH_ID);
+    }
+
+    private function excludeMainBranch(Builder $query): Builder
     {
         return $query->where('branch_id', '!=', Branch::MAIN_BRANCH_ID);
     }

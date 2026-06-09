@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\SaleType;
+use App\Enums\VoucherType;
 use App\Http\Controllers\Reports\ReportController;
 use App\Models\Batch;
 use App\Models\Branch;
@@ -8,6 +9,7 @@ use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Sell;
 use App\Models\User;
+use App\Models\Voucher;
 use App\Support\AdminNavigation;
 use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\Permission\Models\Permission;
@@ -233,6 +235,51 @@ test('branch user daily summary only includes their branch sales', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->where('summary.sales.count', 2)
             ->where('summary.sales.gross', 6000));
+});
+
+test('branch user daily summary only includes their branch expenses', function () {
+    $this->artisan('permissions:sync');
+
+    $date = '2026-06-05';
+    $branchA = Branch::factory()->create();
+    $branchB = Branch::factory()->create();
+    $userA = reportUser([ReportController::PERMISSION_DAILY_SUMMARY]);
+    $userA->update(['branch_id' => $branchA->id]);
+
+    Voucher::query()->create([
+        'type' => VoucherType::Expense,
+        'voucher_no' => 'EXP-TEST-'.uniqid(),
+        'date' => $date,
+        'total_amount' => 300,
+        'branch_id' => $branchA->id,
+        'created_by' => $userA->id,
+    ]);
+
+    Voucher::query()->create([
+        'type' => VoucherType::Expense,
+        'voucher_no' => 'EXP-TEST-'.uniqid(),
+        'date' => $date,
+        'total_amount' => 1200,
+        'branch_id' => $branchB->id,
+        'created_by' => $userA->id,
+    ]);
+
+    $this->actingAs($userA)
+        ->get('/report/daily-summary?date='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/daily-summary')
+            ->where('summary.expenses.count', 1)
+            ->where('summary.expenses.amount', 300));
+
+    $admin = User::factory()->create(['branch_id' => null]);
+
+    $this->actingAs($admin)
+        ->get('/report/daily-summary?date='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('summary.expenses.count', 2)
+            ->where('summary.expenses.amount', 1500));
 });
 
 test('branch user customer ledger options exclude other branches', function () {

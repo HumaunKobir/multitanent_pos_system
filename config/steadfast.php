@@ -7,4 +7,5 @@ return [
     'timeout' => (int) env('STEADFAST_TIMEOUT', 30),
     'connect_timeout' => (int) env('STEADFAST_CONNECT_TIMEOUT', 10),
     'invoice_prefix' => env('STEADFAST_INVOICE_PREFIX', 'ORD'),
+    'webhook_bearer_token' => env('STEADFAST_WEBHOOK_BEARER_TOKEN'),
 ];

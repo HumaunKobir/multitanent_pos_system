@@ -23,7 +23,27 @@ function steadfastTestConfig(): void
         'steadfast.secret_key' => 'test-secret-key',
         'steadfast.base_url' => 'https://portal.packzy.com/api/v1',
         'steadfast.invoice_prefix' => 'ORD',
+        'steadfast.webhook_bearer_token' => 'test-webhook-token',
     ]);
+}
+
+/**
+ * @param  array<string, mixed>  $overrides
+ */
+function steadfastWebhookPayload(OnlineOrder $order, array $overrides = []): array
+{
+    return array_merge([
+        'consignment_id' => $order->courier_consignment_id,
+        'invoice' => $order->courier_invoice ?? $order->courierInvoice(),
+        'status' => 'pending',
+        'cod_amount' => 1060,
+        'updated_at' => '2026-06-09 12:00:00',
+    ], $overrides);
+}
+
+function steadfastWebhookConsignmentId(): int
+{
+    return fake()->unique()->numberBetween(900000000, 999999999);
 }
 
 function steadfastEcommerceBranch(): Branch
@@ -107,6 +127,36 @@ test('steadfast phone normalizes valid bangladeshi numbers', function () {
 test('steadfast phone rejects invalid numbers', function () {
     SteadfastPhone::normalize('12345');
 })->throws(SteadfastCourierException::class);
+
+test('steadfast phone rejects non bangladeshi numbers', function () {
+    SteadfastPhone::normalize('+1 (884) 913-5478');
+})->throws(SteadfastCourierException::class, 'Recipient phone must be an 11-digit Bangladeshi mobile number (e.g. 01712345678).');
+
+test('send order to steadfast surfaces api validation errors', function () {
+    steadfastTestConfig();
+
+    $order = createSteadfastReadyOrder();
+
+    Http::fake([
+        'https://portal.packzy.com/api/v1/create_order' => Http::response([
+            'status' => 400,
+            'errors' => [
+                'recipient_phone' => ['The recipient phone format is invalid.'],
+            ],
+        ], 200),
+    ]);
+
+    app(SendOrderToSteadfast::class)->execute($order);
+})->throws(SteadfastCourierException::class, 'The recipient phone format is invalid.');
+
+test('order with invalid phone is blocked before sending to steadfast', function () {
+    $order = createSteadfastReadyOrder([
+        'phone' => '+1 (884) 913-5478',
+    ]);
+
+    expect($order->canSendToSteadfast())->toBeFalse()
+        ->and($order->steadfastSendBlockReason())->toBe('Recipient phone must be an 11-digit Bangladeshi mobile number (e.g. 01712345678).');
+});
 
 test('send order to steadfast creates consignment and marks order shipping', function () {
     steadfastTestConfig();
@@ -329,6 +379,150 @@ test('steadfast sync command updates awaiting orders', function () {
     Artisan::call('steadfast:sync-statuses');
 
     expect($order->fresh()->courier_status)->toBe('delivered');
+});
+
+test('steadfast webhook rejects missing bearer token', function () {
+    steadfastTestConfig();
+
+    $order = createSteadfastReadyOrder([
+        'courier' => 'steadfast',
+        'courier_consignment_id' => steadfastWebhookConsignmentId(),
+        'status' => OrderStatus::Shipping,
+    ]);
+
+    $order->update(['courier_invoice' => $order->courierInvoice()]);
+
+    $this->postJson(route('steadfast.webhook'), steadfastWebhookPayload($order))
+        ->assertForbidden();
+});
+
+test('steadfast webhook rejects invalid bearer token', function () {
+    steadfastTestConfig();
+
+    $order = createSteadfastReadyOrder([
+        'courier' => 'steadfast',
+        'courier_consignment_id' => steadfastWebhookConsignmentId(),
+        'status' => OrderStatus::Shipping,
+    ]);
+
+    $order->update(['courier_invoice' => $order->courierInvoice()]);
+
+    $this->postJson(route('steadfast.webhook'), steadfastWebhookPayload($order), [
+        'Authorization' => 'Bearer wrong-token',
+    ])->assertForbidden();
+});
+
+test('steadfast webhook updates courier status for shipping orders', function () {
+    steadfastTestConfig();
+
+    $order = createSteadfastReadyOrder([
+        'courier' => 'steadfast',
+        'courier_consignment_id' => steadfastWebhookConsignmentId(),
+        'courier_status' => 'in_review',
+        'status' => OrderStatus::Shipping,
+    ]);
+
+    $order->update(['courier_invoice' => $order->courierInvoice()]);
+
+    $this->postJson(route('steadfast.webhook'), steadfastWebhookPayload($order, [
+        'status' => 'pending',
+    ]), [
+        'Authorization' => 'Bearer test-webhook-token',
+    ])->assertSuccessful()
+        ->assertJson([
+            'status' => 'success',
+        ]);
+
+    expect($order->fresh()->courier_status)->toBe('pending')
+        ->and($order->fresh()->status)->toBe(OrderStatus::Shipping);
+});
+
+test('steadfast webhook marks order delivered when courier reports delivered', function () {
+    steadfastTestConfig();
+
+    $order = createSteadfastReadyOrder([
+        'courier' => 'steadfast',
+        'courier_consignment_id' => steadfastWebhookConsignmentId(),
+        'courier_status' => 'pending',
+        'status' => OrderStatus::Shipping,
+    ]);
+
+    $order->update(['courier_invoice' => $order->courierInvoice()]);
+
+    $this->postJson(route('steadfast.webhook'), steadfastWebhookPayload($order, [
+        'status' => 'delivered',
+    ]), [
+        'Authorization' => 'Bearer test-webhook-token',
+    ])->assertSuccessful();
+
+    expect($order->fresh()->courier_status)->toBe('delivered')
+        ->and($order->fresh()->status)->toBe(OrderStatus::Delivered)
+        ->and($order->fresh()->payment_status)->toBe('Paid');
+});
+
+test('steadfast webhook marks order cancelled when courier reports cancelled', function () {
+    steadfastTestConfig();
+
+    $order = createSteadfastReadyOrder([
+        'courier' => 'steadfast',
+        'courier_consignment_id' => steadfastWebhookConsignmentId(),
+        'courier_status' => 'pending',
+        'status' => OrderStatus::Shipping,
+    ]);
+
+    $order->update(['courier_invoice' => $order->courierInvoice()]);
+
+    $this->postJson(route('steadfast.webhook'), steadfastWebhookPayload($order, [
+        'status' => 'cancelled',
+    ]), [
+        'Authorization' => 'Bearer test-webhook-token',
+    ])->assertSuccessful();
+
+    expect($order->fresh()->courier_status)->toBe('cancelled')
+        ->and($order->fresh()->status)->toBe(OrderStatus::Canceled);
+});
+
+test('steadfast webhook returns not found for unknown consignment', function () {
+    steadfastTestConfig();
+
+    $this->postJson(route('steadfast.webhook'), [
+        'consignment_id' => 9999999,
+        'invoice' => 'ORD-9999999',
+        'status' => 'delivered',
+        'cod_amount' => 0,
+        'updated_at' => '2026-06-09 12:00:00',
+    ], [
+        'Authorization' => 'Bearer test-webhook-token',
+    ])->assertNotFound()
+        ->assertJson([
+            'status' => 'error',
+        ]);
+});
+
+test('sync steadfast order status marks order delivered from api', function () {
+    steadfastTestConfig();
+
+    $order = createSteadfastReadyOrder([
+        'courier' => 'steadfast',
+        'courier_consignment_id' => steadfastWebhookConsignmentId(),
+        'courier_tracking_code' => '15BAEB8A',
+        'courier_status' => 'pending',
+        'status' => OrderStatus::Shipping,
+    ]);
+
+    $order->update(['courier_invoice' => $order->courierInvoice()]);
+
+    Http::fake([
+        'https://portal.packzy.com/api/v1/status_by_invoice/*' => Http::response([
+            'status' => 200,
+            'delivery_status' => 'delivered',
+        ], 200),
+    ]);
+
+    $updated = app(SyncSteadfastOrderStatus::class)->execute($order);
+
+    expect($updated->courier_status)->toBe('delivered')
+        ->and($updated->status)->toBe(OrderStatus::Delivered);
 });
 
 test('customer order details include courier tracking when available', function () {

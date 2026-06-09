@@ -8,7 +8,10 @@ use App\Services\SteadfastCourierGateway;
 
 class SyncSteadfastOrderStatus
 {
-    public function __construct(private SteadfastCourierGateway $gateway) {}
+    public function __construct(
+        private SteadfastCourierGateway $gateway,
+        private ApplySteadfastDeliveryStatus $applySteadfastDeliveryStatus,
+    ) {}
 
     public function execute(OnlineOrder $order): OnlineOrder
     {
@@ -24,10 +27,6 @@ class SyncSteadfastOrderStatus
             throw new SteadfastCourierException('Steadfast did not return a delivery status.');
         }
 
-        $order->update([
-            'courier_status' => $deliveryStatus,
-        ]);
-
-        return $order->fresh(['products']);
+        return $this->applySteadfastDeliveryStatus->execute($order, $deliveryStatus);
     }
 }

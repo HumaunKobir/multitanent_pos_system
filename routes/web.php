@@ -11,6 +11,7 @@ use App\Http\Controllers\HomeController;
 use App\Http\Controllers\PathaoCourierController;
 use App\Http\Controllers\ProductReviewController;
 use App\Http\Controllers\SslCommerzPaymentController;
+use App\Http\Controllers\SteadfastWebhookController;
 use App\Http\Controllers\SubscriptionController;
 use Illuminate\Support\Facades\Route;
 
@@ -55,6 +56,8 @@ Route::post('/sslcommerz/success', [SslCommerzPaymentController::class, 'success
 Route::post('/sslcommerz/failure', [SslCommerzPaymentController::class, 'failure'])->name('payment.failure');
 Route::post('/sslcommerz/cancel', [SslCommerzPaymentController::class, 'cancel'])->name('payment.cancel');
 Route::post('/sslcommerz/ipn', [SslCommerzPaymentController::class, 'ipn'])->name('payment.ipn');
+
+Route::post('/steadfast/webhook', SteadfastWebhookController::class)->name('steadfast.webhook');
 
 // Pathao API stubs (Phase 12 — wire to Pathao package when available)
 Route::get('/pathao/cities', [PathaoCourierController::class, 'getCities'])->name('pathao.cities');

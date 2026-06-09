@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Enums\OrderStatus;
+use App\Exceptions\SteadfastCourierException;
+use App\Support\SteadfastPhone;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -69,6 +71,12 @@ class OnlineOrder extends Model
 
         if (! filled($this->name) || ! filled($this->phone) || ! filled($this->address)) {
             return 'Recipient name, phone, and address are required.';
+        }
+
+        try {
+            SteadfastPhone::normalize($this->phone);
+        } catch (SteadfastCourierException $exception) {
+            return $exception->getMessage();
         }
 
         return null;

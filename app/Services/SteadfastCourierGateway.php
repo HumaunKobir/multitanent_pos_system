@@ -137,10 +137,40 @@ class SteadfastCourierGateway
 
         if ($status !== 200) {
             throw new SteadfastCourierException(
-                (string) ($body['message'] ?? $fallbackMessage),
+                $this->formatApiError($body, $fallbackMessage),
             );
         }
 
         return $body;
+    }
+
+    /**
+     * @param  array<string, mixed>  $body
+     */
+    private function formatApiError(array $body, string $fallbackMessage): string
+    {
+        if (filled($body['message'] ?? null)) {
+            return (string) $body['message'];
+        }
+
+        $errors = $body['errors'] ?? null;
+
+        if (! is_array($errors)) {
+            return $fallbackMessage;
+        }
+
+        $messages = collect($errors)
+            ->flatMap(function (mixed $fieldErrors): array {
+                if (is_array($fieldErrors)) {
+                    return array_map(strval(...), $fieldErrors);
+                }
+
+                return filled($fieldErrors) ? [(string) $fieldErrors] : [];
+            })
+            ->filter()
+            ->values()
+            ->all();
+
+        return $messages !== [] ? implode(' ', $messages) : $fallbackMessage;
     }
 }

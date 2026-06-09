@@ -18,8 +18,8 @@ class SteadfastPhone
             $digits = '0'.$digits;
         }
 
-        if (strlen($digits) !== 11) {
-            throw new SteadfastCourierException('Recipient phone must be an 11-digit Bangladeshi number.');
+        if (strlen($digits) !== 11 || ! preg_match('/^01[3-9]\d{8}$/', $digits)) {
+            throw new SteadfastCourierException('Recipient phone must be an 11-digit Bangladeshi mobile number (e.g. 01712345678).');
         }
 
         return $digits;

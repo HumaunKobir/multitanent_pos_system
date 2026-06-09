@@ -89,10 +89,12 @@ export default function IncomeVoucherModal({ open, onOpenChange, item, accountsP
                     narration: l.narration || null,
                 })),
         };
+        form.transform(() => payload);
+
         if (isEditing) {
-            form.transform(() => payload).put(route('accounts.vouchers.update', item.id), { onSuccess: () => onOpenChange(false) });
+            form.put(route('accounts.vouchers.update', item.id), { onSuccess: () => onOpenChange(false) });
         } else {
-            form.transform(() => payload).post(route('accounts.vouchers.store'), { onSuccess: () => onOpenChange(false) });
+            form.post(route('accounts.vouchers.store'), { onSuccess: () => onOpenChange(false) });
         }
     }
 

@@ -69,10 +69,12 @@ export default function ContraVoucherModal({ open, onOpenChange, item, assetAcco
             debit_description: form.data.debit_description || form.data.narration,
             credit_description: form.data.credit_description || form.data.narration,
         };
+        form.transform(() => payload);
+
         if (isEditing) {
-            form.transform(() => payload).put(route('accounts.vouchers.update', item.id), { onSuccess: () => onOpenChange(false) });
+            form.put(route('accounts.vouchers.update', item.id), { onSuccess: () => onOpenChange(false) });
         } else {
-            form.transform(() => payload).post(route('accounts.vouchers.store'), { onSuccess: () => onOpenChange(false) });
+            form.post(route('accounts.vouchers.store'), { onSuccess: () => onOpenChange(false) });
         }
     }
 

@@ -109,12 +109,14 @@ export default function JournalVoucherModal({ open, onOpenChange, item, accounts
                     narration: l.narration || null,
                 })),
         };
+        form.transform(() => payload);
+
         if (isEditing) {
-            form.transform(() => payload).put(route('accounts.vouchers.update', item.id), {
+            form.put(route('accounts.vouchers.update', item.id), {
                 onSuccess: () => onOpenChange(false),
             });
         } else {
-            form.transform(() => payload).post(route('accounts.vouchers.store'), {
+            form.post(route('accounts.vouchers.store'), {
                 onSuccess: () => onOpenChange(false),
             });
         }

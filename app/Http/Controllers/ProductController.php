@@ -193,12 +193,23 @@ class ProductController extends Controller
         return Inertia::render('admin/product/edit', [
             ...$this->formData(),
             'product' => $product,
+            'variantsLocked' => $this->variantsAreLocked($product),
         ]);
     }
 
     public function update(Request $request, Product $product): RedirectResponse
     {
         $this->authorize('product.update');
+
+        $variantsLocked = $this->variantsAreLocked($product);
+        $rawCombinations = $variantsLocked ? [] : $request->input('combinations', []);
+        $hasVariations = ! empty($rawCombinations);
+
+        $allCombosHavePrices = $hasVariations && collect($rawCombinations)
+            ->every(fn ($c) => isset($c['sale_price']) && (string) $c['sale_price'] !== ''
+                && isset($c['purchase_price']) && (string) $c['purchase_price'] !== '');
+
+        $priceRequired = ! $hasVariations || ! $allCombosHavePrices;
 
         $data = $request->validate([
             'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')],
@@ -208,8 +219,8 @@ class ProductController extends Controller
             'warranty_id' => ['nullable', Rule::exists('warranties', 'id')],
             'name' => ['required', 'string', 'max:255', Rule::unique('products', 'name')->ignore($product->id)],
             'code' => ['required', 'string', 'max:100', Rule::unique('products', 'code')->ignore($product->id)],
-            'purchase_price' => ['required', 'numeric', 'min:0'],
-            'sale_price' => ['required', 'numeric', 'min:0'],
+            'purchase_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
+            'sale_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric'],
             'tags' => ['nullable', 'array'],
             'visible' => ['nullable', 'in:yes,no'],
@@ -221,9 +232,28 @@ class ProductController extends Controller
             'chest_size_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
             'photos' => ['nullable', 'array'],
             'photos.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
+            'combinations' => $variantsLocked ? ['nullable'] : ['nullable', 'array'],
+            'combinations.*.id' => ['nullable', 'integer'],
+            'combinations.*.variant' => ['required_with:combinations', 'string', 'max:255'],
+            'combinations.*.variation_data' => ['nullable', 'array'],
+            'combinations.*.sale_price' => ['nullable', 'numeric', 'min:0'],
+            'combinations.*.purchase_price' => ['nullable', 'numeric', 'min:0'],
+            'combinations.*.sku' => ['required_with:combinations', 'string', 'max:255'],
+            'combinations.*.stock' => ['required_with:combinations', 'integer', 'min:0'],
         ]);
 
-        DB::transaction(function () use ($request, $data, $product) {
+        $combinations = $variantsLocked ? [] : ($data['combinations'] ?? []);
+        unset($data['combinations']);
+
+        $mainPurchasePrice = $data['purchase_price'] ?? 0;
+        $mainSalePrice = $data['sale_price'] ?? 0;
+
+        if ($hasVariations) {
+            $data['purchase_price'] = 0;
+            $data['sale_price'] = 0;
+        }
+
+        DB::transaction(function () use ($request, $data, $product, $combinations, $hasVariations, $variantsLocked, $mainPurchasePrice, $mainSalePrice) {
             if ($request->hasFile('image')) {
                 if ($product->image) {
                     Storage::disk('public')->delete($product->image);
@@ -252,6 +282,14 @@ class ProductController extends Controller
                 foreach ($request->file('photos') as $photo) {
                     $path = $photo->store('products/photos', 'public');
                     ProductPhoto::create(['product_id' => $product->id, 'image' => $path]);
+                }
+            }
+
+            if (! $variantsLocked) {
+                if ($hasVariations) {
+                    $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice);
+                } elseif ($product->variations()->exists()) {
+                    $this->clearProductVariations($product);
                 }
             }
         });
@@ -292,6 +330,99 @@ class ProductController extends Controller
 
         return redirect()->route('product.index')
             ->with('success', 'Product deleted successfully.');
+    }
+
+    private function variantsAreLocked(Product $product): bool
+    {
+        return $product->purchaseProducts()->exists() || $product->sellProducts()->exists();
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $combinations
+     */
+    private function syncProductVariations(Product $product, array $combinations, float $mainPurchasePrice, float $mainSalePrice): void
+    {
+        $keepIds = collect($combinations)->pluck('id')->filter()->map(fn ($id) => (int) $id)->values();
+
+        $product->variations()
+            ->whereNotIn('id', $keepIds)
+            ->get()
+            ->each(function (ProductVariation $variation): void {
+                if ($variation->stock > 0) {
+                    return;
+                }
+
+                $variation->delete();
+            });
+
+        foreach ($combinations as $combo) {
+            $salePrice = (isset($combo['sale_price']) && (string) $combo['sale_price'] !== '')
+                ? $combo['sale_price']
+                : $mainSalePrice;
+
+            $purchasePrice = (isset($combo['purchase_price']) && (string) $combo['purchase_price'] !== '')
+                ? $combo['purchase_price']
+                : $mainPurchasePrice;
+
+            $variationData = $combo['variation_data'] ?? ['label' => $combo['variant']];
+
+            if (! empty($combo['id'])) {
+                $variation = $product->variations()->find((int) $combo['id']);
+
+                if ($variation) {
+                    $variation->update([
+                        'sku' => $combo['sku'],
+                        'price' => $salePrice,
+                        'purchase_price' => $purchasePrice,
+                        'stock' => (int) $combo['stock'],
+                        'variation_data' => $variationData,
+                    ]);
+                }
+
+                continue;
+            }
+
+            $variation = ProductVariation::create([
+                'product_id' => $product->id,
+                'branch_id' => $product->branch_id,
+                'sku' => $combo['sku'],
+                'price' => $salePrice,
+                'purchase_price' => $purchasePrice,
+                'stock' => (int) $combo['stock'],
+                'variation_data' => $variationData,
+            ]);
+
+            Barcode::create([
+                'branch_id' => $product->branch_id,
+                'product_id' => $product->id,
+                'product_variation_id' => $variation->id,
+                'code' => $combo['sku'],
+                'name' => $product->name.' - '.$combo['variant'],
+            ]);
+        }
+    }
+
+    private function clearProductVariations(Product $product): void
+    {
+        $product->variations()
+            ->get()
+            ->each(function (ProductVariation $variation): void {
+                if ($variation->stock > 0) {
+                    return;
+                }
+
+                $variation->delete();
+            });
+
+        if ($product->code && ! Barcode::query()->where('product_id', $product->id)->whereNull('product_variation_id')->exists()) {
+            Barcode::create([
+                'branch_id' => $product->branch_id,
+                'product_id' => $product->id,
+                'product_variation_id' => null,
+                'code' => $product->code,
+                'name' => $product->name,
+            ]);
+        }
     }
 
     /** @return array<string, mixed> */

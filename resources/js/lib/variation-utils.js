@@ -179,6 +179,54 @@ export function selectionsFromVariation(variation, axes) {
  * @param {Array<{ name: string, values: string[] }>} parsedRows
  * @param {string[]} comboValues
  */
+/**
+ * Build initial VariationBuilder state from existing product variations.
+ *
+ * @param {Array<{ id?: number, variation_data?: Record<string, string>, price?: number|string, purchase_price?: number|string, sku?: string, stock?: number|string }>} variations
+ */
+export function buildVariationBuilderState(variations = []) {
+    const defaultRows = [
+        { id: 1, name: 'Color', values: [] },
+        { id: 2, name: 'Size', values: [] },
+    ];
+
+    if (!variations?.length) {
+        return {
+            enabled: false,
+            rows: defaultRows,
+            combinations: [],
+        };
+    }
+
+    const axes = inferVariationAxes(variations);
+    const rows = axes.map((axis, index) => ({
+        id: index + 1,
+        name: axis.labelOnly && axis.name === 'Option' ? '' : axis.name,
+        values: [...axis.options],
+    }));
+
+    if (rows.length === 0) {
+        rows.push({ id: 1, name: '', values: [] });
+    }
+
+    const combinations = variations.map((variation) => ({
+        id: variation.id,
+        _existing: true,
+        variant: variation.variation_data?.label ?? getVariationLabel(variation),
+        variation_data: variation.variation_data ?? {},
+        sale_price: String(variation.price ?? ''),
+        purchase_price: String(variation.purchase_price ?? ''),
+        sku: variation.sku ?? '',
+        stock: String(variation.stock ?? 0),
+    }));
+
+    return {
+        enabled: true,
+        rows,
+        combinations,
+    };
+}
+
 export function buildVariationDataFromRows(parsedRows, comboValues) {
     /** @type {Record<string, string>} */
     const variation_data = {};

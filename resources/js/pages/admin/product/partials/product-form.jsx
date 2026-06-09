@@ -10,7 +10,7 @@ import { route } from '@/lib/route';
 import { Link, usePage } from '@inertiajs/react';
 import { AlignLeft, DollarSign, GitBranch, ImagePlus, Images, Info, Plus, Settings, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { buildVariationDataFromRows } from '@/lib/variation-utils';
+import { buildVariationBuilderState, buildVariationDataFromRows } from '@/lib/variation-utils';
 
 function getXsrf() {
     return decodeURIComponent(document.cookie.split('; ').find((r) => r.startsWith('XSRF-TOKEN='))?.split('=')[1] ?? '');
@@ -275,10 +275,14 @@ function MultiImageUpload({ onChange }) {
     );
 }
 
-function TagInput({ tags, onChange, placeholder = 'Type value, press Space or Enter…' }) {
+function TagInput({ tags, onChange, placeholder = 'Type value, press Space or Enter…', disabled = false }) {
     const [input, setInput] = useState('');
 
     function commit() {
+        if (disabled) {
+            return;
+        }
+
         const v = input.trim();
         if (v && !tags.includes(v)) {
             onChange([...tags, v]);
@@ -297,25 +301,29 @@ function TagInput({ tags, onChange, placeholder = 'Type value, press Space or En
 
     return (
         <div
-            className="flex min-h-9.5 flex-wrap items-center gap-1 border border-input bg-background px-3 py-2 shadow-xs cursor-text focus-within:ring-[3px] focus-within:ring-ring/50"
-            onClick={(e) => e.currentTarget.querySelector('input')?.focus()}
+            className={`flex min-h-9.5 flex-wrap items-center gap-1 border border-input bg-background px-3 py-2 shadow-xs ${disabled ? 'cursor-not-allowed opacity-70' : 'cursor-text focus-within:ring-[3px] focus-within:ring-ring/50'}`}
+            onClick={(e) => !disabled && e.currentTarget.querySelector('input')?.focus()}
         >
             {tags.map((tag) => (
                 <span key={tag} className="flex items-center gap-1 bg-blue-600 px-2 py-0.5 text-[11px] leading-4 text-white shadow shadow-blue-500/50">
                     {tag}
-                    <button type="button" onClick={() => onChange(tags.filter((t) => t !== tag))} className="opacity-80 hover:opacity-100">
-                        <X className="size-2.5" />
-                    </button>
+                    {!disabled && (
+                        <button type="button" onClick={() => onChange(tags.filter((t) => t !== tag))} className="opacity-80 hover:opacity-100">
+                            <X className="size-2.5" />
+                        </button>
+                    )}
                 </span>
             ))}
-            <input
-                className="min-w-20 flex-1 bg-transparent text-xs outline-none"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onBlur={commit}
-                placeholder={tags.length === 0 ? placeholder : ''}
-            />
+            {!disabled && (
+                <input
+                    className="min-w-20 flex-1 bg-transparent text-xs outline-none"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    onBlur={commit}
+                    placeholder={tags.length === 0 ? placeholder : ''}
+                />
+            )}
         </div>
     );
 }
@@ -360,14 +368,44 @@ function formatVariantSummary(variationData = {}) {
         .join(' · ');
 }
 
-function VariationBuilder({ productCode, colorOptions = [], sizeOptions = [], onChange, onEnabledChange, errors = {} }) {
-    const [enabled, setEnabled] = useState(false);
-    const [varOptions, setVarOptions] = useState(() => VARIANT_NAME_OPTIONS.map((option) => ({ ...option })));
-    const [rows, setRows] = useState(() => DEFAULT_VARIANT_ROWS.map((row) => ({ ...row })));
-    const [combinations, setCombinations] = useState([]);
+function VariationBuilder({
+    productCode,
+    colorOptions = [],
+    sizeOptions = [],
+    initialVariations = [],
+    locked = false,
+    onChange,
+    onEnabledChange,
+    errors = {},
+}) {
+    const initialState = useMemo(() => buildVariationBuilderState(initialVariations), []);
+    const [enabled, setEnabled] = useState(initialState.enabled);
+    const [varOptions, setVarOptions] = useState(() => {
+        const names = new Set(VARIANT_NAME_OPTIONS.map((option) => option.value));
+        initialState.rows.forEach((row) => {
+            if (row.name) {
+                names.add(row.name);
+            }
+        });
+
+        return [...names].map((name) => ({ value: name, label: name }));
+    });
+    const [rows, setRows] = useState(() => initialState.rows);
+    const [combinations, setCombinations] = useState(() => initialState.combinations);
     const [buildError, setBuildError] = useState('');
 
+    useEffect(() => {
+        if (initialVariations.length > 0) {
+            onEnabledChange?.(true);
+            onChange(initialState.combinations);
+        }
+    }, []);
+
     function toggleEnabled(val) {
+        if (locked) {
+            return;
+        }
+
         setEnabled(val);
         onEnabledChange?.(val);
         if (val) {
@@ -413,6 +451,10 @@ function VariationBuilder({ productCode, colorOptions = [], sizeOptions = [], on
     }
 
     function buildCombinations() {
+        if (locked) {
+            return;
+        }
+
         setBuildError('');
 
         const namedRows = rows.filter((r) => r.name.trim());
@@ -496,9 +538,15 @@ function VariationBuilder({ productCode, colorOptions = [], sizeOptions = [], on
 
     return (
         <div>
-            <label className="flex cursor-pointer items-center gap-3">
+            {locked && (
+                <p className="mb-3 text-xs text-amber-600">
+                    This product has sales or purchase history — variants cannot be changed.
+                </p>
+            )}
+
+            <label className={`flex items-center gap-3 ${locked ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}>
                 <div className="relative">
-                    <input type="checkbox" className="sr-only" checked={enabled} onChange={(e) => toggleEnabled(e.target.checked)} />
+                    <input type="checkbox" className="sr-only" checked={enabled} disabled={locked} onChange={(e) => toggleEnabled(e.target.checked)} />
                     <div className={`h-6 w-11 rounded-full transition-colors ${enabled ? 'bg-green-600' : 'bg-muted'}`} />
                     <div className={`absolute top-0.5 left-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${enabled ? 'translate-x-5' : ''}`} />
                 </div>
@@ -527,10 +575,11 @@ function VariationBuilder({ productCode, colorOptions = [], sizeOptions = [], on
                                         onValueChange={(v) => setRowName(row.id, v ?? '')}
                                         onOptionsChange={setVarOptions}
                                         placeholder="e.g. Color, Size"
-                                        creatable
+                                        creatable={!locked}
                                         createMode="inline"
                                         createRowLabel={(q) => `Add "${q}"`}
                                         triggerClassName="h-8 text-xs"
+                                        disabled={locked}
                                     />
                                 </div>
 
@@ -542,17 +591,19 @@ function VariationBuilder({ productCode, colorOptions = [], sizeOptions = [], on
                                             onValueChange={(v) => setRowValues(row.id, v)}
                                             placeholder={`Select ${row.name.toLowerCase()} values…`}
                                             triggerClassName="min-h-8 text-xs"
+                                            disabled={locked}
                                         />
                                     ) : (
                                         <TagInput
                                             tags={row.values}
                                             onChange={(v) => setRowValues(row.id, v)}
+                                            disabled={locked}
                                         />
                                     )}
                                 </div>
 
                                 <div className="flex shrink-0 items-center gap-1">
-                                    {idx === rows.length - 1 && (
+                                    {!locked && idx === rows.length - 1 && (
                                         <button
                                             type="button"
                                             onClick={addRow}
@@ -562,7 +613,7 @@ function VariationBuilder({ productCode, colorOptions = [], sizeOptions = [], on
                                             <Plus className="size-3.5" />
                                         </button>
                                     )}
-                                    {rows.length > 1 && (
+                                    {!locked && rows.length > 1 && (
                                         <button
                                             type="button"
                                             onClick={() => removeRow(row.id)}
@@ -577,14 +628,16 @@ function VariationBuilder({ productCode, colorOptions = [], sizeOptions = [], on
                         ))}
                     </div>
 
-                    <Button
-                        type="button"
-                        size="sm"
-                        className="bg-green-600 text-white hover:bg-green-700"
-                        onClick={buildCombinations}
-                    >
-                        Build Combinations
-                    </Button>
+                    {!locked && (
+                        <Button
+                            type="button"
+                            size="sm"
+                            className="bg-green-600 text-white hover:bg-green-700"
+                            onClick={buildCombinations}
+                        >
+                            Build Combinations
+                        </Button>
+                    )}
 
                     {buildError && (
                         <p className="text-xs text-destructive">{buildError}</p>
@@ -618,25 +671,27 @@ function VariationBuilder({ productCode, colorOptions = [], sizeOptions = [], on
                                                 {errors[`combinations.${idx}.variant`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.variant`]}</p>}
                                             </td>
                                             <td className="p-2">
-                                                <Input type="number" min="0" step="0.01" className="h-7 w-24 text-xs" value={combo.sale_price} onChange={(e) => updateCombo(idx, 'sale_price', e.target.value)} />
+                                                <Input type="number" min="0" step="0.01" className="h-7 w-24 text-xs" value={combo.sale_price} onChange={(e) => updateCombo(idx, 'sale_price', e.target.value)} disabled={locked} />
                                                 {errors[`combinations.${idx}.sale_price`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.sale_price`]}</p>}
                                             </td>
                                             <td className="p-2">
-                                                <Input type="number" min="0" step="0.01" className="h-7 w-24 text-xs" value={combo.purchase_price} onChange={(e) => updateCombo(idx, 'purchase_price', e.target.value)} />
+                                                <Input type="number" min="0" step="0.01" className="h-7 w-24 text-xs" value={combo.purchase_price} onChange={(e) => updateCombo(idx, 'purchase_price', e.target.value)} disabled={locked} />
                                                 {errors[`combinations.${idx}.purchase_price`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.purchase_price`]}</p>}
                                             </td>
                                             <td className="p-2">
-                                                <Input className="h-7 w-32 text-xs" value={combo.sku} onChange={(e) => updateCombo(idx, 'sku', e.target.value)} />
+                                                <Input className="h-7 w-32 text-xs" value={combo.sku} onChange={(e) => updateCombo(idx, 'sku', e.target.value)} disabled={locked} />
                                                 {errors[`combinations.${idx}.sku`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.sku`]}</p>}
                                             </td>
                                             <td className="p-2">
-                                                <Input type="number" min="0" className="h-7 w-20 text-xs" value={combo.stock} onChange={(e) => updateCombo(idx, 'stock', e.target.value)} />
+                                                <Input type="number" min="0" className="h-7 w-20 text-xs" value={combo.stock} onChange={(e) => updateCombo(idx, 'stock', e.target.value)} disabled={locked} />
                                                 {errors[`combinations.${idx}.stock`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.stock`]}</p>}
                                             </td>
                                             <td className="p-2">
-                                                <button type="button" onClick={() => removeCombo(idx)} className="text-destructive hover:text-destructive/80">
-                                                    <Trash2 className="size-3.5" />
-                                                </button>
+                                                {!locked && (
+                                                    <button type="button" onClick={() => removeCombo(idx)} className="text-destructive hover:text-destructive/80">
+                                                        <Trash2 className="size-3.5" />
+                                                    </button>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
@@ -650,7 +705,22 @@ function VariationBuilder({ productCode, colorOptions = [], sizeOptions = [], on
     );
 }
 
-export default function ProductForm({ form, categories, brands, units, warranties, branches, colorOptions = [], sizeOptions = [], tagOptions = [], isEditing = false, processing = false, cancelHref = '' }) {
+export default function ProductForm({
+    form,
+    categories,
+    brands,
+    units,
+    warranties,
+    branches,
+    colorOptions = [],
+    sizeOptions = [],
+    tagOptions = [],
+    initialVariations = [],
+    variantsLocked = false,
+    isEditing = false,
+    processing = false,
+    cancelHref = '',
+}) {
     const { auth } = usePage().props;
     const isAdmin = !auth.user?.branch_id;
 
@@ -669,7 +739,7 @@ export default function ProductForm({ form, categories, brands, units, warrantie
     const [localTagOptions, setLocalTagOptions] = useState(() => tagOptions);
 
     const toast = useAppToast();
-    const [hasVariations, setHasVariations] = useState(false);
+    const [hasVariations, setHasVariations] = useState(isEditing && initialVariations.length > 0);
 
     const combinations = form.data.combinations || [];
     const allCombosHavePrices =
@@ -827,19 +897,19 @@ export default function ProductForm({ form, categories, brands, units, warrantie
                     </div>
                 </Card>
 
-                {/* Variations (create only) */}
-                {!isEditing && (
-                    <Card title="Variations" icon={GitBranch}>
-                        <VariationBuilder
-                            productCode={form.data.code}
-                            colorOptions={colorOptions}
-                            sizeOptions={sizeOptions}
-                            onChange={(combos) => form.setData('combinations', combos)}
-                            onEnabledChange={handleVariationsToggle}
-                            errors={form.errors}
-                        />
-                    </Card>
-                )}
+                {/* Variations */}
+                <Card title="Variations" icon={GitBranch}>
+                    <VariationBuilder
+                        productCode={form.data.code}
+                        colorOptions={colorOptions}
+                        sizeOptions={sizeOptions}
+                        initialVariations={initialVariations}
+                        locked={variantsLocked}
+                        onChange={(combos) => form.setData('combinations', combos)}
+                        onEnabledChange={handleVariationsToggle}
+                        errors={form.errors}
+                    />
+                </Card>
 
                 {/* Price */}
                 <Card title="Price" icon={DollarSign}>
@@ -870,8 +940,8 @@ export default function ProductForm({ form, categories, brands, units, warrantie
 
             </div>
 
-            {/* ── RIGHT (sticky) ── */}
-            <div className="space-y-4 lg:sticky lg:top-4 lg:self-start">
+            {/* ── RIGHT ── */}
+            <div className="space-y-4">
 
                 <Card title="Product Image" icon={ImagePlus}>
                     <SingleImageUpload

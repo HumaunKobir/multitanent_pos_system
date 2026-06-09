@@ -16,8 +16,11 @@ import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useCan } from '@/hooks/use-can';
 
+const btnPosPrint =
+    'inline-flex h-8 flex-shrink-0 items-center justify-center gap-1.5 rounded-none border border-cyan-200 bg-white/95 px-2.5 text-xs font-medium text-cyan-700 shadow-sm backdrop-blur-[1px] transition-all duration-200 hover:-translate-y-0.5 hover:bg-cyan-50 hover:shadow-md';
+
 export default function SellShow({ sell }) {
-    const { flash, logo } = usePage().props;
+    const { flash, logo, siteName, contact } = usePage().props;
     const toast = useAppToast();
     const { can } = useCan();
     const [deleting, setDeleting] = useState(false);
@@ -42,12 +45,16 @@ export default function SellShow({ sell }) {
     const handlePosPrint = useCallback(() => {
         posPrint(
             buildSellPosPrintPayload(sell, {
-                companyName: sell.branch?.name || 'Coolness Point',
+                companyName: sell.branch?.name || siteName || 'Coolness Point',
+                companyAddress: sell.branch?.address || contact?.address || '',
+                companyPhone: sell.branch?.phone || contact?.phone || '',
+                companyEmail: contact?.email || '',
                 logoUrl: logo,
-                branchName: sell.branch?.name,
+                branchName: sell.branch?.name || '',
+                change: flash?.pos_change ?? 0,
             }),
         );
-    }, [sell, logo]);
+    }, [sell, logo, siteName, contact, flash?.pos_change]);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -75,10 +82,10 @@ export default function SellShow({ sell }) {
 
             <div className="px-2 py-1">
                 <InvoiceShowHeader icon={ShoppingCart} title="Sale Invoice" invoiceNumber={invoiceNumber}>
-                    <Button size="sm" onClick={handlePosPrint} className={actionClass}>
+                    <button type="button" onClick={handlePosPrint} className={btnPosPrint} title="POS print">
                         <Receipt className="size-3.5" />
                         POS Print
-                    </Button>
+                    </button>
                     <Can permission="inventory.sell.update">
                         <Button size="sm" asChild className={actionClass}>
                             <Link href={route('inventory.sell.edit', sell.id)}>

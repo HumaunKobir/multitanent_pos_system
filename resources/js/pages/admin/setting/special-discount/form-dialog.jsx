@@ -41,12 +41,14 @@ export default function SpecialDiscountFormDialog({ open, onOpenChange, item, ro
             status: form.data.status === '1',
         };
 
+        form.transform(() => payload);
+
         const options = { onSuccess: () => onOpenChange(false) };
 
         if (isEditing) {
-            form.transform(() => payload).submit('patch', routes.update(item.id), options);
+            form.patch(routes.update(item.id), options);
         } else {
-            form.transform(() => payload).post(routes.store, options);
+            form.post(routes.store, options);
         }
     }
 

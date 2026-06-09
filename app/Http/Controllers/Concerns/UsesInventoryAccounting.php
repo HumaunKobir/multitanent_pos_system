@@ -8,6 +8,22 @@ use Illuminate\Validation\ValidationException;
 
 trait UsesInventoryAccounting
 {
+    /**
+     * @return array{effective_paid: float, due_amount: float, change_amount: float}
+     */
+    protected function resolveSalePaymentAmounts(float $netAmount, float $tenderedAmount): array
+    {
+        $netAmount = round(max(0, $netAmount), 2);
+        $tenderedAmount = round(max(0, $tenderedAmount), 2);
+        $effectivePaid = round(min($tenderedAmount, $netAmount), 2);
+
+        return [
+            'effective_paid' => $effectivePaid,
+            'due_amount' => round(max(0, $netAmount - $effectivePaid), 2),
+            'change_amount' => round(max(0, $tenderedAmount - $netAmount), 2),
+        ];
+    }
+
     protected function resolvePaymentAccountId(Request $request, float $paidAmount): ?int
     {
         if ($paidAmount <= 0) {

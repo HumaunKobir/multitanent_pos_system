@@ -4,6 +4,7 @@ import {
     findBestSpecialDiscount,
     formatDiscountLabel,
 } from '@/lib/pos-discount';
+import { computeSalePayment, dueSaleCustomerError } from '@/lib/sale-payment';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
 import { cn } from '@/lib/utils';
@@ -885,7 +886,8 @@ export default function SellCreate({
         setMatchedSpecialDiscount(match);
         form.setData('special_discount_id', match ? String(match.id) : '');
     }, [taxableAmount, specialDiscounts]);
-    const dueAmount = Math.max(0, netAmount - parseFloat(form.data.paid_amount || 0));
+    const { effectivePaid, dueAmount, changeAmount } = computeSalePayment(netAmount, form.data.paid_amount);
+    const dueCustomerError = dueSaleCustomerError(form.data.customer_id, defaultCustomer?.id ?? null, dueAmount);
     const hasOverStock = items.some((item) => parseFloat(item.quantity || 0) > parseFloat(item.available_stock ?? 0));
     const itemCount = items.reduce((sum, item) => sum + parseFloat(item.quantity || 0), 0);
 
@@ -950,6 +952,17 @@ export default function SellCreate({
 
     function handleSubmit(e) {
         e.preventDefault();
+
+        if (dueCustomerError) {
+            toast.error(dueCustomerError);
+            return;
+        }
+
+        if (effectivePaid > 0 && !form.data.payment_account_id) {
+            toast.error('Select a payment account for the received amount.');
+            return;
+        }
+
         form.transform((data) => ({
             ...data,
             items,
@@ -1104,6 +1117,9 @@ export default function SellCreate({
                             {dueAmount > 0 && (
                                 <p className="mt-0.5 text-xs font-medium text-red-300">Due ৳{dueAmount.toFixed(2)}</p>
                             )}
+                            {changeAmount > 0 && (
+                                <p className="mt-0.5 text-xs font-medium text-emerald-300">Change ৳{changeAmount.toFixed(2)}</p>
+                            )}
                         </div>
 
                         <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
@@ -1194,7 +1210,7 @@ export default function SellCreate({
                                 )}
 
                                 <div>
-                                    <Label className="mb-0.5 block text-[10px] text-muted-foreground">Paid Amount</Label>
+                                    <Label className="mb-0.5 block text-[10px] text-muted-foreground">Cash Received</Label>
                                     <Input
                                         type="number"
                                         min="0"
@@ -1206,9 +1222,14 @@ export default function SellCreate({
                                     {form.errors.paid_amount && (
                                         <p className="mt-0.5 text-[10px] text-destructive">{form.errors.paid_amount}</p>
                                     )}
+                                    {effectivePaid > 0 && effectivePaid < parseFloat(form.data.paid_amount || 0) && (
+                                        <p className="mt-0.5 text-[10px] text-muted-foreground">
+                                            Applied to sale: ৳{effectivePaid.toFixed(2)}
+                                        </p>
+                                    )}
                                 </div>
 
-                                {parseFloat(form.data.paid_amount || 0) > 0 && (
+                                {effectivePaid > 0 && (
                                     <div>
                                         <Label className="mb-0.5 block text-[10px] text-muted-foreground">Payment Account</Label>
                                         <select

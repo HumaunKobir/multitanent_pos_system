@@ -1,13 +1,18 @@
 <?php
 
 use App\Enums\SaleType;
+use App\Enums\SystemAccountKey;
 use App\Models\Batch;
 use App\Models\Branch;
+use App\Models\Customer;
+use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\Sell;
 use App\Models\SellProduct;
 use App\Models\Supplier;
+use App\Models\Transaction;
 use App\Models\User;
+use App\Services\SystemAccountService;
 use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\Permission\Models\Permission;
 
@@ -65,7 +70,7 @@ test('authenticated user can create a sale and stock is deducted', function () {
             'discount_value' => '0',
             'special_discount_id' => null,
             'vat' => '0',
-            'paid_amount' => '500',
+            'paid_amount' => '5000',
             'payment_account_id' => $cash->id,
             'comment' => null,
             'items' => [
@@ -87,7 +92,7 @@ test('authenticated user can create a sale and stock is deducted', function () {
 
     $sell->refresh();
     expect((float) $sell->gross_amount)->toBe(2500.0);
-    expect((float) $sell->paid_amount)->toBe(500.0);
+    expect((float) $sell->paid_amount)->toBe((float) $sell->net_amount);
 
     $batch->refresh();
     expect((float) $batch->available)->toBe(15.0);
@@ -138,6 +143,8 @@ test('sale fails when quantity exceeds available stock', function () {
 
     $sellProductCount = SellProduct::query()->where('product_id', $product->id)->count();
 
+    $cash = seedAccountingAccounts();
+
     $this->actingAs($user)
         ->post('/inventory/sell', [
             'customer_id' => null,
@@ -146,7 +153,8 @@ test('sale fails when quantity exceeds available stock', function () {
             'discount_value' => '0',
             'special_discount_id' => null,
             'vat' => '0',
-            'paid_amount' => '0',
+            'paid_amount' => '2000',
+            'payment_account_id' => $cash->id,
             'comment' => null,
             'items' => [
                 [
@@ -331,7 +339,7 @@ test('main branch user can sell products with stock at main branch', function ()
             'discount_value' => '0',
             'special_discount_id' => null,
             'vat' => '0',
-            'paid_amount' => '500',
+            'paid_amount' => '2000',
             'payment_account_id' => $cash->id,
             'comment' => null,
             'items' => [
@@ -460,6 +468,132 @@ test('purchase stores stock in main warehouse until manually distributed', funct
 
     expect($destinationBatch)->not->toBeNull();
     expect((float) $destinationBatch->available)->toBe(8.0);
+});
+
+test('due sale records customer balance and receivable accounting', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'is_default' => false,
+        'balance' => 0,
+    ]);
+
+    $balanceBefore = (float) $customer->balance;
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '200',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [[
+                'product_id' => $product->id,
+                'variation_id' => null,
+                'unit_price' => '500',
+                'quantity' => '1',
+            ]],
+        ])
+        ->assertRedirect();
+
+    $sell = Sell::query()->latest('id')->first();
+    $dueAmount = round((float) $sell->net_amount - (float) $sell->paid_amount, 2);
+
+    expect((float) $sell->paid_amount)->toBe(200.0);
+    expect($dueAmount)->toBeGreaterThan(0);
+
+    $customer->refresh();
+    expect(round((float) $customer->balance - $balanceBefore, 2))->toBe($dueAmount);
+
+    $transaction = Transaction::query()
+        ->where('source_type', Sell::class)
+        ->where('source_id', $sell->id)
+        ->first();
+
+    $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
+    $receivableAccountId = SystemAccountService::resolve(SystemAccountKey::CustomerReceivables, $user->branch_id)->id;
+
+    expect(round($ledgers->where('account_id', $cash->id)->sum('debit'), 2))->toBe(200.0);
+    expect(round($ledgers->where('account_id', $receivableAccountId)->sum('debit'), 2))->toBe($dueAmount);
+    expect(round($ledgers->sum('debit'), 2))->toBe(round($ledgers->sum('credit'), 2));
+});
+
+test('due sale requires a registered customer', function () {
+    $user = sellUser();
+    seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $walkIn = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'is_default' => true,
+        'balance' => 0,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $walkIn->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '0',
+            'comment' => null,
+            'items' => [[
+                'product_id' => $product->id,
+                'variation_id' => null,
+                'unit_price' => '500',
+                'quantity' => '1',
+            ]],
+        ])
+        ->assertSessionHasErrors('customer_id');
+});
+
+test('overpayment stores effective paid amount for accounting', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $response = $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '1000',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [[
+                'product_id' => $product->id,
+                'variation_id' => null,
+                'unit_price' => '500',
+                'quantity' => '1',
+            ]],
+        ])
+        ->assertRedirect();
+
+    $sell = Sell::query()->latest('id')->first();
+    $netAmount = round((float) $sell->net_amount, 2);
+
+    expect((float) $sell->paid_amount)->toBe($netAmount);
+    $response->assertSessionHas('pos_change', 1000 - $netAmount);
+
+    $transaction = Transaction::query()
+        ->where('source_type', Sell::class)
+        ->where('source_id', $sell->id)
+        ->first();
+
+    $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
+    expect(round($ledgers->where('account_id', $cash->id)->sum('debit'), 2))->toBe($netAmount);
 });
 
 test('store requires at least one item', function () {
@@ -612,7 +746,7 @@ test('authenticated user can delete a sale and stock is restored', function () {
         'discount_value' => '0',
         'special_discount_id' => null,
         'vat' => '0',
-        'paid_amount' => '500',
+        'paid_amount' => '5000',
         'payment_account_id' => $cash->id,
         'items' => [['product_id' => $product->id, 'variation_id' => null, 'unit_price' => '500', 'quantity' => '4']],
     ])->assertRedirect();

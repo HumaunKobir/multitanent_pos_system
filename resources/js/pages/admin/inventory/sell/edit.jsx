@@ -5,6 +5,7 @@ import {
     findBestSpecialDiscount,
     formatDiscountLabel,
 } from '@/lib/pos-discount';
+import { computeSalePayment, dueSaleCustomerError } from '@/lib/sale-payment';
 import { route } from '@/lib/route';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Save, Search, ShoppingCart, Trash2, User } from 'lucide-react';
@@ -435,7 +436,7 @@ function ProductSearchBox({ onAdd }) {
     );
 }
 
-export default function SellEdit({ sell, paymentAccounts = [], specialDiscounts = [], discountTypes = [] }) {
+export default function SellEdit({ sell, walkInCustomerId = null, paymentAccounts = [], specialDiscounts = [], discountTypes = [] }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const form = useForm({
@@ -446,7 +447,7 @@ export default function SellEdit({ sell, paymentAccounts = [], specialDiscounts 
         special_discount_id: sell.special_discount_id ? String(sell.special_discount_id) : '',
         vat: String(sell.vat_percent ?? '0'),
         paid_amount: String(sell.paid_amount ?? '0'),
-        payment_account_id: '',
+        payment_account_id: parseFloat(sell.paid_amount ?? 0) > 0 && paymentAccounts[0]?.id ? String(paymentAccounts[0].id) : '',
         comment: sell.comment ?? '',
         items: sell.items ?? [],
     });
@@ -471,7 +472,8 @@ export default function SellEdit({ sell, paymentAccounts = [], specialDiscounts 
           )
         : 0;
     const netAmount = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
-    const dueAmount = Math.max(0, netAmount - parseFloat(form.data.paid_amount || 0));
+    const { effectivePaid, dueAmount, changeAmount } = computeSalePayment(netAmount, form.data.paid_amount);
+    const dueCustomerError = dueSaleCustomerError(form.data.customer_id, walkInCustomerId, dueAmount);
 
     useEffect(() => {
         const match = findBestSpecialDiscount(specialDiscounts, taxableAmount);
@@ -520,6 +522,16 @@ export default function SellEdit({ sell, paymentAccounts = [], specialDiscounts 
         const lineItems = items.filter((it) => parseFloat(it.quantity || 0) >= 1);
         if (lineItems.length === 0) {
             toast.error('Add at least one line with quantity 1 or more.');
+            return;
+        }
+
+        if (dueCustomerError) {
+            toast.error(dueCustomerError);
+            return;
+        }
+
+        if (effectivePaid > 0 && !form.data.payment_account_id) {
+            toast.error('Select a payment account for the received amount.');
             return;
         }
 
@@ -766,7 +778,7 @@ export default function SellEdit({ sell, paymentAccounts = [], specialDiscounts 
                                 </div>
 
                                 <div className="flex items-center justify-between gap-4">
-                                    <Label className="text-xs text-muted-foreground">Paid Amount</Label>
+                                    <Label className="text-xs text-muted-foreground">Cash Received</Label>
                                     <Input
                                         type="number"
                                         min="0"
@@ -779,8 +791,18 @@ export default function SellEdit({ sell, paymentAccounts = [], specialDiscounts 
                                 {form.errors.paid_amount && (
                                     <p className="text-xs text-destructive">{form.errors.paid_amount}</p>
                                 )}
-
-                                {parseFloat(form.data.paid_amount || 0) > 0 && (
+                                {effectivePaid > 0 && effectivePaid < parseFloat(form.data.paid_amount || 0) && (
+                                    <p className="text-[10px] text-muted-foreground">
+                                        Applied to sale: ৳{effectivePaid.toFixed(2)}
+                                    </p>
+                                )}
+                                {changeAmount > 0 && (
+                                    <div className="flex justify-between text-emerald-700">
+                                        <span>Change</span>
+                                        <span className="font-semibold">৳{changeAmount.toFixed(2)}</span>
+                                    </div>
+                                )}
+                                {effectivePaid > 0 && (
                                     <div>
                                         <Label className="mb-1 block text-xs text-muted-foreground">Payment Account</Label>
                                         <select

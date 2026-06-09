@@ -66,6 +66,14 @@ return [
             ],
         ],
         [
+            'title' => 'Branch Profile',
+            'icon' => 'building-2',
+            'href' => '/setting/branch-profile',
+            'single' => true,
+            'branch_only' => true,
+            'permission' => null,
+        ],
+        [
             'title' => 'Branch',
             'icon' => 'building-2',
             'href' => '/branch',

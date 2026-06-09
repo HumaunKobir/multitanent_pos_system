@@ -1,3 +1,196 @@
+const POS_PRINT_STYLES = `
+@media print {
+    @page {
+        size: 80mm 200mm;
+        margin: 0;
+    }
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        color: #000 !important;
+    }
+}
+
+body {
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    line-height: 1.25;
+    margin: 0;
+    padding: 5px;
+    color: #000;
+    background: #fff;
+}
+
+.pos-container {
+    width: 100%;
+    max-width: 80mm;
+    margin: 0 auto;
+}
+
+.pos-header {
+    text-align: center;
+    border-bottom: 1px dashed #000;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+
+.pos-title {
+    font-size: 15px;
+    font-weight: bold;
+    margin-bottom: 5px;
+    color: #000;
+}
+
+.pos-logo-wrap {
+    margin-bottom: 6px;
+}
+
+.pos-logo {
+    max-height: 44px;
+    max-width: 120px;
+    object-fit: contain;
+}
+
+.pos-subtitle {
+    font-size: 9px;
+    margin-bottom: 5px;
+    color: #000;
+    font-weight: 500;
+}
+
+.pos-info {
+    font-size: 9px;
+    margin-bottom: 10px;
+    color: #000;
+    font-weight: 500;
+}
+
+.pos-customer {
+    border-bottom: 1px dashed #000;
+    padding-bottom: 10px;
+    margin-bottom: 10px;
+}
+
+.pos-customer-line {
+    color: #000;
+    font-weight: 500;
+    font-size: 11px;
+}
+
+.pos-items {
+    margin-bottom: 10px;
+}
+
+.pos-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 3px;
+    font-size: 10px;
+    color: #000;
+}
+
+.pos-item-name {
+    flex: 1;
+    margin-right: 5px;
+}
+
+.pos-item-qty {
+    width: 24px;
+    text-align: center;
+}
+
+.pos-item-price {
+    width: 58px;
+    text-align: right;
+}
+
+.pos-item-meta {
+    margin: -1px 0 2px 0;
+    font-size: 9px;
+    padding-left: 2px;
+    color: #000;
+    font-weight: 500;
+}
+
+.pos-totals {
+    border-top: 1px dashed #000;
+    padding-top: 10px;
+    margin-top: 10px;
+}
+
+.pos-total-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 3px;
+}
+
+.pos-total-label {
+    font-weight: bold;
+    font-size: 12px;
+    color: #000;
+}
+
+.pos-total-value {
+    font-weight: bold;
+    font-size: 12px;
+    color: #000;
+}
+
+.pos-footer {
+    text-align: center;
+    margin-top: 15px;
+    font-size: 9px;
+    border-top: 1px dashed #000;
+    padding-top: 10px;
+    color: #000;
+}
+
+.pos-thank-you {
+    font-weight: bold;
+    font-size: 12px;
+    margin-bottom: 5px;
+    color: #000;
+}
+
+.pos-divider {
+    border-top: 1px dashed #000;
+    margin: 10px 0;
+}
+
+.pos-center {
+    text-align: center;
+}
+
+.pos-right {
+    text-align: right;
+}
+
+.pos-bold {
+    font-weight: bold;
+    font-size: 12px;
+    color: #000;
+}
+
+.pos-small {
+    font-size: 9px;
+    color: #000;
+    font-weight: 500;
+}
+
+.pos-tiny {
+    font-size: 8px;
+    color: #000;
+    font-weight: 500;
+}
+
+.pos-note {
+    margin-bottom: 10px;
+    padding: 6px 4px;
+    border: 1px dashed #000;
+    font-size: 10px;
+}
+`;
+
 function escapeHtml(value) {
     return String(value ?? '')
         .replace(/&/g, '&amp;')
@@ -7,8 +200,9 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
-function formatMoney(value) {
-    return parseFloat(value ?? 0).toFixed(2);
+function formatMoneyTk(value) {
+    const amount = parseFloat(value ?? 0);
+    return `${amount.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TK`;
 }
 
 function formatQty(value) {
@@ -16,141 +210,322 @@ function formatQty(value) {
     return Number.isInteger(qty) ? String(qty) : qty.toFixed(2);
 }
 
+function truncateName(name, max = 28) {
+    const text = String(name ?? '').trim();
+    if (text.length <= max) {
+        return text;
+    }
+
+    return `${text.slice(0, max - 1)}…`;
+}
+
+function formatReceiptDate(value) {
+    if (!value) {
+        return '—';
+    }
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return String(value);
+    }
+
+    return date.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+    });
+}
+
+function formatReceiptTime(value) {
+    const date = value ? new Date(value) : new Date();
+
+    if (Number.isNaN(date.getTime())) {
+        return new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatPrintedAt() {
+    const now = new Date();
+
+    return `${now.toLocaleDateString('en-GB', {
+        day: '2-digit',
+        month: 'short',
+        year: 'numeric',
+    })} ${now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+}
+
+function groupItemsByVariant(items) {
+    const groups = new Map();
+
+    for (const item of items) {
+        const key = item.variant_id ?? item.variation_id ?? `product-${item.product_id ?? item.id}`;
+        const existing = groups.get(key);
+
+        if (existing) {
+            existing.quantity += parseFloat(item.quantity ?? 0);
+            existing.amount += parseFloat(item.amount ?? 0);
+            continue;
+        }
+
+        groups.set(key, {
+            ...item,
+            quantity: parseFloat(item.quantity ?? 0),
+            amount: parseFloat(item.amount ?? 0),
+        });
+    }
+
+    return Array.from(groups.values());
+}
+
+function buildItemName(item) {
+    const baseName = truncateName(item.product?.name ?? item.name ?? '—');
+    const variantLabel = item.variant?.name ?? item.variant_label ?? item.variation?.variation_data?.label ?? '';
+    const variantSku = item.variant?.sku ?? item.variant_sku ?? item.product?.code ?? item.code ?? '';
+
+    if (variantLabel || variantSku) {
+        const variantText = variantSku || variantLabel;
+        return `${baseName} (Variant: ${variantText})`;
+    }
+
+    return baseName;
+}
+
+function totalRow(label, value) {
+    return `
+        <div class="pos-total-row">
+            <div class="pos-total-label">${escapeHtml(label)}:</div>
+            <div class="pos-total-value">${formatMoneyTk(value)}</div>
+        </div>`;
+}
+
 /**
- * Open a 58mm thermal receipt in a popup and trigger the browser print dialog.
- *
- * @param {object} options
- * @param {string} options.companyName
- * @param {string|null|undefined} options.logoUrl
- * @param {string|null|undefined} options.branchName
- * @param {string} options.invoiceNumber
- * @param {string} options.date
- * @param {{ name?: string, phone?: string, address?: string }|null|undefined} options.customer
- * @param {Array<{ name: string, variant?: string, rate: number|string, qty: number|string, amount: number|string }>} options.products
- * @param {{ gross: number|string, vat: number|string, discount: number|string, net: number|string, paid: number|string, due: number|string, change?: number|string }} options.totals
- * @param {string} [options.footer]
+ * Transform a sell record into POS print data (similar to buildPosOrderData).
  */
-export function posPrint({
-    companyName,
-    logoUrl,
-    branchName,
-    invoiceNumber,
-    date,
-    customer,
-    products,
-    totals,
-    footer = 'Powered by Coolness Point',
-}) {
-    try {
-        const customerName = customer?.name?.trim() || 'Walk-in Customer';
-        const customerPhone = customer?.phone?.trim() || '';
-        const customerAddress = customer?.address?.trim() || '';
+export function buildSellPosPrintPayload(sell, options = {}) {
+    const gross = parseFloat(sell.gross_amount ?? 0);
+    const vat = parseFloat(sell.vat ?? 0);
+    const invoiceDiscount = parseFloat(sell.discount ?? 0);
+    const specialDiscount = parseFloat(sell.special_discount_amount ?? 0);
+    const lineDiscount = (sell.products ?? []).reduce((sum, item) => sum + parseFloat(item.discount ?? 0), 0);
+    const net = gross + vat - invoiceDiscount - specialDiscount - lineDiscount;
+    const paid = parseFloat(sell.paid_amount ?? 0);
+    const due = Math.max(0, net - paid);
+    const change = parseFloat(options.change ?? 0);
 
-        const productRows = products
-            .map(
-                (product) => `
-            <tr class="service">
-                <td>${escapeHtml(product.name)}</td>
-                <td>${escapeHtml(product.variant || '')}</td>
-                <td style="text-align:right">${formatMoney(product.rate)}</td>
-                <td style="text-align:right">${formatQty(product.qty)}</td>
-                <td style="text-align:right">${formatMoney(product.amount)}</td>
-            </tr>`,
-            )
-            .join('');
+    const lineItems = (sell.products ?? []).map((item) => {
+        const qty = parseFloat(item.quantity ?? 0);
+        const unitPrice = parseFloat(item.unit_price ?? item.sell_price ?? item.price ?? 0);
+        const lineItemDiscount = parseFloat(item.discount ?? 0);
+        const variantLabel = item.variation?.variation_data?.label ?? item.variation?.sku_code ?? '';
 
-        const logoBlock = logoUrl
-            ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(companyName)}" style="max-height:48px;max-width:200px;margin:0 auto 6px;display:block;" />`
+        return {
+            id: item.id,
+            product_id: item.product_id,
+            variant_id: item.variation_id ?? null,
+            quantity: qty,
+            unit_price: unitPrice,
+            sell_price: unitPrice,
+            price: unitPrice * qty - lineItemDiscount,
+            amount: unitPrice * qty - lineItemDiscount,
+            line_discount: lineItemDiscount,
+            product: {
+                name: item.product?.name ?? '—',
+                code: item.product?.code ?? '',
+            },
+            variant: variantLabel
+                ? {
+                      name: variantLabel,
+                      sku: item.variation?.sku_code ?? variantLabel,
+                  }
+                : null,
+            code: item.product?.code ?? '',
+            name: item.product?.name ?? '—',
+            variant_label: variantLabel,
+        };
+    });
+
+    return {
+        options: {
+            showHeader: options.showHeader ?? true,
+            showFooter: options.showFooter ?? true,
+            showCustomerInfo: options.showCustomerInfo ?? true,
+            showItems: options.showItems ?? true,
+            showTotals: options.showTotals ?? true,
+            showThankYou: options.showThankYou ?? true,
+            companyName: options.companyName || options.siteName || 'Coolness Point',
+            companyAddress: options.companyAddress || options.contact?.address || sell.branch?.address || '',
+            companyPhone: options.companyPhone || options.contact?.phone || sell.branch?.phone || '',
+            companyEmail: options.companyEmail || options.contact?.email || '',
+            companyWebsite: options.companyWebsite || '',
+            companyLogo: options.logoUrl || options.companyLogo || '',
+            branchName: options.branchName || sell.branch?.name || '',
+        },
+        order: {
+            id: sell.id,
+            invoice_no: sell.invoice_number ?? `INVS${String(sell.id).padStart(8, '0')}`,
+            date: sell.date ?? '',
+            comment: sell.comment ?? '',
+            total_price: net,
+            paid,
+            due,
+            change,
+            customer: {
+                name: sell.customer?.name ?? 'Walk-in Customer',
+                phone: sell.customer?.phone ?? '',
+                address: sell.customer?.address ?? '',
+            },
+            orderproduct: lineItems,
+            totals: {
+                gross,
+                vat,
+                invoiceDiscount,
+                specialDiscount,
+                specialDiscountName: sell.special_discount?.name ?? null,
+                lineDiscount,
+                discount: invoiceDiscount + specialDiscount + lineDiscount,
+                net,
+                paid,
+                due,
+                change,
+            },
+        },
+    };
+}
+
+function renderPosInvoice(data) {
+    const { options, order } = data;
+    const totals = order.totals ?? {};
+    const groupedItems = groupItemsByVariant(order.orderproduct ?? []);
+
+    const headerBlock = options.showHeader
+        ? `
+        <div class="pos-header">
+            ${options.companyLogo ? `<div class="pos-logo-wrap"><img class="pos-logo" src="${escapeHtml(options.companyLogo)}" alt="" onerror="this.parentElement.style.display='none'" /></div>` : ''}
+            <div class="pos-title">${escapeHtml(options.companyName)}</div>
+            ${options.branchName ? `<div class="pos-subtitle">${escapeHtml(options.branchName)}</div>` : ''}
+            ${options.companyAddress ? `<div class="pos-subtitle">${escapeHtml(options.companyAddress)}</div>` : ''}
+            ${options.companyPhone ? `<div class="pos-info">Tel: ${escapeHtml(options.companyPhone)}</div>` : ''}
+            <div class="pos-divider"></div>
+            <div class="pos-bold">INVOICE</div>
+            <div class="pos-small">Date: ${escapeHtml(formatReceiptDate(order.date))} | Time: ${escapeHtml(formatReceiptTime(order.date))}</div>
+            <div class="pos-small">Invoice No: ${escapeHtml(order.invoice_no)}</div>
+        </div>`
+        : '';
+
+    const customerBlock =
+        options.showCustomerInfo
+            ? `
+        <div class="pos-customer">
+            <div class="pos-bold">Customer Details:</div>
+            <div class="pos-customer-line">Name: ${escapeHtml(order.customer?.name || 'Walk-in Customer')}</div>
+            ${order.customer?.phone ? `<div class="pos-customer-line">Phone: ${escapeHtml(order.customer.phone)}</div>` : ''}
+            ${order.customer?.address ? `<div class="pos-customer-line">Address: ${escapeHtml(order.customer.address)}</div>` : ''}
+        </div>`
             : '';
 
-        const changeAmount = parseFloat(totals.change ?? Math.max(0, parseFloat(totals.paid) - parseFloat(totals.net)));
+    const itemsBlock = options.showItems
+        ? `
+        <div class="pos-items">
+            <div class="pos-item pos-bold">
+                <div class="pos-item-name">Item</div>
+                <div class="pos-item-qty">Qty</div>
+                <div class="pos-item-price">Price</div>
+            </div>
+            <div class="pos-divider"></div>
+            ${groupedItems
+                .map((item) => {
+                    const metaParts = [];
+                    if (item.product?.code || item.code) {
+                        metaParts.push(`Code: ${item.product?.code ?? item.code}`);
+                    }
+                    if (parseFloat(item.line_discount ?? 0) > 0) {
+                        metaParts.push(`Disc: ${formatMoneyTk(item.line_discount)}`);
+                    }
 
-        const html = `<!DOCTYPE html>
-<html>
+                    return `
+                <div class="pos-item">
+                    <div class="pos-item-name">${escapeHtml(buildItemName(item))}</div>
+                    <div class="pos-item-qty">${formatQty(item.quantity)}</div>
+                    <div class="pos-item-price">${formatMoneyTk(item.amount ?? item.price)}</div>
+                </div>
+                ${metaParts.length ? `<div class="pos-item-meta">${escapeHtml(metaParts.join(' | '))}</div>` : ''}`;
+                })
+                .join('')}
+        </div>`
+        : '';
+
+    const totalsRows = [
+        totals.gross != null ? totalRow('Subtotal', totals.gross) : '',
+        parseFloat(totals.lineDiscount ?? 0) > 0 ? totalRow('Line Discount', totals.lineDiscount) : '',
+        parseFloat(totals.invoiceDiscount ?? 0) > 0 ? totalRow('Invoice Discount', totals.invoiceDiscount) : '',
+        parseFloat(totals.specialDiscount ?? 0) > 0
+            ? totalRow(totals.specialDiscountName ? `Special (${totals.specialDiscountName})` : 'Special Discount', totals.specialDiscount)
+            : '',
+        parseFloat(totals.vat ?? 0) > 0 ? totalRow('VAT', totals.vat) : '',
+        totalRow('Total', totals.net ?? order.total_price),
+        totalRow('Paid', totals.paid ?? order.paid),
+        parseFloat(totals.due ?? order.due ?? 0) > 0 ? totalRow('Due', totals.due ?? order.due) : '',
+        parseFloat(totals.change ?? order.change ?? 0) > 0 ? totalRow('Change', totals.change ?? order.change) : '',
+    ]
+        .filter(Boolean)
+        .join('');
+
+    const totalsBlock = options.showTotals
+        ? `
+        <div class="pos-totals">
+            <div class="pos-divider"></div>
+            ${totalsRows}
+        </div>`
+        : '';
+
+    const noteBlock = order.comment
+        ? `<div class="pos-note"><span class="pos-bold">Note:</span> ${escapeHtml(order.comment)}</div>`
+        : '';
+
+    const footerBlock = options.showFooter
+        ? `
+        <div class="pos-footer">
+            ${options.showThankYou ? '<div class="pos-thank-you">Thank you for your business!</div>' : ''}
+            <div class="pos-small">Please keep this receipt</div>
+            <div class="pos-tiny">For any queries, contact us</div>
+            ${options.companyPhone ? `<div class="pos-small">Tel: ${escapeHtml(options.companyPhone)}</div>` : ''}
+            ${options.companyEmail ? `<div class="pos-small">Email: ${escapeHtml(options.companyEmail)}</div>` : ''}
+            ${options.companyWebsite ? `<div class="pos-small">Web: ${escapeHtml(options.companyWebsite)}</div>` : ''}
+            <div class="pos-divider"></div>
+            <div class="pos-tiny">Printed on: ${escapeHtml(formatPrintedAt())}</div>
+        </div>`
+        : '';
+
+    return `<!DOCTYPE html>
+<html lang="en">
 <head>
     <meta charset="utf-8" />
-    <title>${escapeHtml(invoiceNumber)}</title>
-    <style>
-        @media print {
-            body { font-family: Arial, sans-serif; font-size: 12px; width: 58mm; margin: 0; }
-            .pos-receipt { width: 100%; text-align: center; padding: 0 10px; box-sizing: border-box; }
-            table { width: 100%; border-collapse: collapse; }
-        }
-        body { font-family: Arial, sans-serif; font-size: 12px; margin: 0; }
-        .pos-receipt { width: 270px; margin: 0 auto; text-align: center; padding: 10px; box-sizing: border-box; }
-        .company-name { font-size: 1.2rem; font-weight: bold; margin: 0; }
-        .branch-name { font-size: 12px; margin: 2px 0 8px; }
-        .tabletitle { font-size: 10px; font-weight: bold; border: 1px solid #000; }
-        .tabletitle td { border: 1px solid #000; padding: 2px; }
-        .tableitem2 { font-size: 8px !important; text-align: left; vertical-align: top; }
-        .tableitem2 td { border: 1px solid #000; padding: 2px 4px; }
-        .service td { font-size: 9px; border: 1px solid #000; padding: 2px; }
-        .totals td { font-size: 9px; border: 1px solid #000; padding: 2px 4px; text-align: right; }
-        .footer { font-size: 8px; margin-top: 8px; }
-    </style>
+    <title>${escapeHtml(order.invoice_no)}</title>
+    <style>${POS_PRINT_STYLES}</style>
 </head>
 <body>
-    <div class="pos-receipt">
-        ${logoBlock}
-        <p class="company-name">${escapeHtml(companyName)}</p>
-        ${branchName ? `<p class="branch-name">${escapeHtml(branchName)}</p>` : ''}
-        <table style="width:100%;">
-            <tr class="tableitem2">
-                <td colspan="2">
-                    Name: ${escapeHtml(customerName)}<br />
-                    ${customerPhone ? `Phone: ${escapeHtml(customerPhone)}<br />` : ''}
-                    ${customerAddress ? `Address: ${escapeHtml(customerAddress)}` : ''}
-                </td>
-                <td colspan="3" style="text-align:right;">
-                    Inv: ${escapeHtml(invoiceNumber)}<br />
-                    Date: ${escapeHtml(date)}
-                </td>
-            </tr>
-            <tr class="tabletitle">
-                <td>Product</td>
-                <td>Variant</td>
-                <td style="text-align:right">Rate</td>
-                <td style="text-align:right">Qty</td>
-                <td style="text-align:right">Amount</td>
-            </tr>
-            ${productRows}
-            <tr class="totals">
-                <td colspan="4">Subtotal</td>
-                <td>${formatMoney(totals.gross)}</td>
-            </tr>
-            <tr class="totals">
-                <td colspan="4">Vat</td>
-                <td>${formatMoney(totals.vat)}</td>
-            </tr>
-            <tr class="totals">
-                <td colspan="4">Discount</td>
-                <td>${formatMoney(totals.discount)}</td>
-            </tr>
-            <tr class="totals">
-                <td colspan="4">Payable Amount</td>
-                <td>${formatMoney(totals.net)}</td>
-            </tr>
-            <tr class="totals">
-                <td colspan="4">Total Paid</td>
-                <td>${formatMoney(totals.paid)}</td>
-            </tr>
-            <tr class="totals">
-                <td colspan="4">Due</td>
-                <td>${formatMoney(totals.due)}</td>
-            </tr>
-            ${
-                changeAmount > 0
-                    ? `<tr class="totals">
-                <td colspan="4">Change Amount</td>
-                <td>${formatMoney(changeAmount)}</td>
-            </tr>`
-                    : ''
-            }
-        </table>
-        <p class="footer">${escapeHtml(footer)}</p>
+    <div class="pos-container">
+        ${headerBlock}
+        ${customerBlock}
+        ${noteBlock}
+        ${itemsBlock}
+        ${totalsBlock}
+        ${footerBlock}
     </div>
 </body>
 </html>`;
+}
+
+/**
+ * Print POS invoice from buildSellPosPrintPayload() output or legacy flat payload.
+ */
+export function posPrint(payload) {
+    try {
+        const data = payload?.order ? payload : buildSellPosPrintPayload(payload?.sell ?? {}, payload?.options ?? payload);
+        const html = renderPosInvoice(data);
 
         const printWindow = window.open('', '_blank', 'width=300,height=600');
 
@@ -159,57 +534,44 @@ export function posPrint({
             return;
         }
 
+        printWindow.document.open();
         printWindow.document.write(html);
         printWindow.document.close();
 
-        setTimeout(() => {
+        let printed = false;
+
+        const triggerPrint = () => {
+            if (printed || printWindow.closed) {
+                return;
+            }
+
+            printed = true;
+            printWindow.focus();
             printWindow.print();
-            setTimeout(() => printWindow.close(), 1000);
-        }, 500);
+        };
+
+        printWindow.onload = () => {
+            triggerPrint();
+            printWindow.onafterprint = () => printWindow.close();
+        };
+
+        // Fallback for browsers where onload already fired before assignment.
+        setTimeout(triggerPrint, 500);
     } catch (error) {
         console.error('POS print failed:', error);
         alert('Failed to print POS receipt.');
     }
 }
 
-export function buildSellPosPrintPayload(sell, { companyName, logoUrl, branchName }) {
-    const gross = parseFloat(sell.gross_amount ?? 0);
-    const vat = parseFloat(sell.vat ?? 0);
-    const discount = parseFloat(sell.discount ?? 0);
-    const specialDiscount = parseFloat(sell.special_discount_amount ?? 0);
-    const lineDiscount = (sell.products ?? []).reduce((sum, item) => sum + parseFloat(item.discount ?? 0), 0);
-    const net = gross + vat - discount - specialDiscount - lineDiscount;
-    const paid = parseFloat(sell.paid_amount ?? 0);
-    const due = Math.max(0, net - paid);
-
-    return {
-        companyName: companyName || 'Coolness Point',
-        logoUrl,
-        branchName: branchName || sell.branch?.name || '',
-        invoiceNumber: sell.invoice_number ?? `INVS${String(sell.id).padStart(8, '0')}`,
-        date: sell.date ?? '',
-        customer: sell.customer ?? null,
-        products: (sell.products ?? []).map((item) => {
-            const qty = parseFloat(item.quantity ?? 0);
-            const rate = parseFloat(item.unit_price ?? 0);
-            const lineItemDiscount = parseFloat(item.discount ?? 0);
-
-            return {
-                name: item.product?.name ?? '—',
-                variant: item.variation?.variation_data?.label ?? item.variation?.sku_code ?? '',
-                rate,
-                qty,
-                amount: rate * qty - lineItemDiscount,
-            };
-        }),
-        totals: {
-            gross,
-            vat,
-            discount: discount + specialDiscount + lineDiscount,
-            net,
-            paid,
-            due,
-            specialDiscountName: sell.special_discount?.name ?? null,
-        },
+if (typeof window !== 'undefined') {
+    window.printPos = (order, options = {}) => {
+        const payload = order?.order ? order : buildSellPosPrintPayload(order, options);
+        posPrint(payload);
+    };
+    window.printPosInvoice = window.printPos;
+    window.PosPrint = {
+        print: window.printPos,
+        printInvoice: window.printPos,
+        buildFromSell: buildSellPosPrintPayload,
     };
 }

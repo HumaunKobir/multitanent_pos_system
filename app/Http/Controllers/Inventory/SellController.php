@@ -25,6 +25,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -180,11 +181,26 @@ class SellController extends Controller
 
         $data = $this->validateSellCart($request, requirePayment: true);
         $branchId = Auth::user()?->branch_id;
-        $paymentAccountId = $this->resolvePaymentAccountId($request, (float) $data['paid_amount']);
         $pausedSellId = $request->integer('paused_sell_id') ?: null;
 
+        ['grossAmount' => $grossAmount, 'lineDiscountTotal' => $lineDiscountTotal, 'vatAmount' => $vatAmount] = $this->processSellItems(
+            $data['items'],
+            $branchId,
+            (float) $data['vat'],
+            deductStock: false,
+        );
+
+        $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId);
+        $netAmount = round(
+            $grossAmount + $vatAmount - $discountFields['discount'] - $discountFields['special_discount_amount'] - $lineDiscountTotal,
+            2,
+        );
+        $payment = $this->resolveSalePaymentAmounts($netAmount, (float) $data['paid_amount']);
+        $this->assertCustomerForDueSale($data['customer_id'] ? (int) $data['customer_id'] : null, $payment['due_amount']);
+        $paymentAccountId = $this->resolvePaymentAccountId($request, $payment['effective_paid']);
+
         try {
-            $sell = DB::transaction(function () use ($data, $branchId, $paymentAccountId, $pausedSellId) {
+            $sell = DB::transaction(function () use ($data, $branchId, $paymentAccountId, $pausedSellId, $payment) {
                 ['grossAmount' => $grossAmount, 'lineDiscountTotal' => $lineDiscountTotal, 'vatAmount' => $vatAmount, 'sellProductsData' => $sellProductsData] = $this->processSellItems(
                     $data['items'],
                     $branchId,
@@ -211,7 +227,7 @@ class SellController extends Controller
                     'special_discount_id' => $discountFields['special_discount_id'],
                     'special_discount_amount' => $discountFields['special_discount_amount'],
                     'vat' => $vatAmount,
-                    'paid_amount' => $data['paid_amount'],
+                    'paid_amount' => $payment['effective_paid'],
                     'type' => SaleType::Sale,
                     'comment' => $data['comment'] ?? null,
                 ]);
@@ -222,10 +238,9 @@ class SellController extends Controller
                 }
 
                 $sell->load('products');
-                $dueAmount = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
 
-                if ($sell->customer_id && $dueAmount > 0) {
-                    Customer::whereKey($sell->customer_id)->increment('balance', $dueAmount);
+                if ($sell->customer_id && $payment['due_amount'] > 0) {
+                    Customer::whereKey($sell->customer_id)->increment('balance', $payment['due_amount']);
                 }
 
                 $this->accounting->postSale(
@@ -236,6 +251,8 @@ class SellController extends Controller
 
                 return $sell;
             });
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             return back()
                 ->withErrors([
@@ -247,7 +264,8 @@ class SellController extends Controller
         }
 
         return redirect()->to(route('inventory.sell.show', $sell).'?pos_print=1')
-            ->with('success', 'Sale created successfully.');
+            ->with('success', 'Sale created successfully.')
+            ->with('pos_change', $payment['change_amount'] > 0 ? $payment['change_amount'] : null);
     }
 
     public function show(Sell $sell): Response
@@ -257,7 +275,7 @@ class SellController extends Controller
 
         $sell->load([
             'customer',
-            'branch:id,name',
+            'branch:id,name,phone,address',
             'specialDiscount:id,name,discount_type,discount_value',
             'products.product',
             'products.variation',
@@ -333,7 +351,13 @@ class SellController extends Controller
         $taxableBase = max(0, $grossAmount - $sell->lineDiscountTotal());
         $vatPercent = $taxableBase > 0 ? ((float) $sell->vat / $taxableBase) * 100 : 0;
 
+        $walkInCustomerId = Customer::query()
+            ->where('is_default', true)
+            ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
+            ->value('id');
+
         return Inertia::render('admin/inventory/sell/edit', [
+            'walkInCustomerId' => $walkInCustomerId,
             'sell' => [
                 'id' => $sell->id,
                 'customer_id' => $sell->customer_id,
@@ -398,10 +422,25 @@ class SellController extends Controller
         ]);
 
         $branchId = Auth::user()?->branch_id;
-        $paymentAccountId = $this->resolvePaymentAccountId($request, (float) $data['paid_amount']);
+
+        ['grossAmount' => $grossAmount, 'lineDiscountTotal' => $lineDiscountTotal, 'vatAmount' => $vatAmount] = $this->processSellItems(
+            $data['items'],
+            $branchId,
+            (float) $data['vat'],
+            deductStock: false,
+        );
+
+        $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId);
+        $netAmount = round(
+            $grossAmount + $vatAmount - $discountFields['discount'] - $discountFields['special_discount_amount'] - $lineDiscountTotal,
+            2,
+        );
+        $payment = $this->resolveSalePaymentAmounts($netAmount, (float) $data['paid_amount']);
+        $this->assertCustomerForDueSale($data['customer_id'] ? (int) $data['customer_id'] : null, $payment['due_amount']);
+        $paymentAccountId = $this->resolvePaymentAccountId($request, $payment['effective_paid']);
 
         try {
-            DB::transaction(function () use ($sell, $data, $branchId, $paymentAccountId) {
+            DB::transaction(function () use ($sell, $data, $branchId, $paymentAccountId, $payment) {
                 $this->accounting->reverseFor($sell);
                 $sell->load(['products']);
 
@@ -449,7 +488,7 @@ class SellController extends Controller
                     'special_discount_id' => $discountFields['special_discount_id'],
                     'special_discount_amount' => $discountFields['special_discount_amount'],
                     'vat' => $vatAmount,
-                    'paid_amount' => $data['paid_amount'],
+                    'paid_amount' => $payment['effective_paid'],
                     'comment' => $data['comment'] ?? null,
                 ]);
 
@@ -458,10 +497,9 @@ class SellController extends Controller
                 }
 
                 $sell->load('products');
-                $newDue = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
 
-                if ($sell->customer_id && $newDue > 0) {
-                    Customer::whereKey($sell->customer_id)->increment('balance', $newDue);
+                if ($sell->customer_id && $payment['due_amount'] > 0) {
+                    Customer::whereKey($sell->customer_id)->increment('balance', $payment['due_amount']);
                 }
 
                 $this->accounting->postSale(
@@ -470,6 +508,8 @@ class SellController extends Controller
                     $this->costService->costForSell($sell),
                 );
             });
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             return back()
                 ->withErrors([
@@ -801,6 +841,25 @@ class SellController extends Controller
 
         if ($sell->branch_id !== $branchId) {
             abort(404);
+        }
+    }
+
+    private function assertCustomerForDueSale(?int $customerId, float $dueAmount): void
+    {
+        if ($dueAmount <= 0) {
+            return;
+        }
+
+        if ($customerId === null) {
+            throw ValidationException::withMessages([
+                'customer_id' => 'Select a customer to record due amount.',
+            ]);
+        }
+
+        if (Customer::whereKey($customerId)->where('is_default', true)->exists()) {
+            throw ValidationException::withMessages([
+                'customer_id' => 'Due sales require a registered customer. Walk-in cannot have due.',
+            ]);
         }
     }
 }

@@ -195,12 +195,11 @@ class SellController extends Controller
             $grossAmount + $vatAmount - $discountFields['discount'] - $discountFields['special_discount_amount'] - $lineDiscountTotal,
             2,
         );
-        $payment = $this->resolveSalePaymentAmounts($netAmount, (float) $data['paid_amount']);
+        $payment = $this->resolveSalePayments($data, $netAmount);
         $this->assertCustomerForDueSale($data['customer_id'] ? (int) $data['customer_id'] : null, $payment['due_amount']);
-        $paymentAccountId = $this->resolvePaymentAccountId($request, $payment['effective_paid']);
 
         try {
-            $sell = DB::transaction(function () use ($data, $branchId, $paymentAccountId, $pausedSellId, $payment) {
+            $sell = DB::transaction(function () use ($data, $branchId, $pausedSellId, $payment) {
                 ['grossAmount' => $grossAmount, 'lineDiscountTotal' => $lineDiscountTotal, 'vatAmount' => $vatAmount, 'sellProductsData' => $sellProductsData] = $this->processSellItems(
                     $data['items'],
                     $branchId,
@@ -243,9 +242,11 @@ class SellController extends Controller
                     Customer::whereKey($sell->customer_id)->increment('balance', $payment['due_amount']);
                 }
 
+                $this->syncSellPayments($sell, $payment['payment_lines']);
+
                 $this->accounting->postSale(
                     $sell->fresh(['customer']),
-                    $paymentAccountId,
+                    $payment['payment_lines'],
                     $this->costService->costForSell($sell),
                 );
 
@@ -279,6 +280,7 @@ class SellController extends Controller
             'specialDiscount:id,name,discount_type,discount_value',
             'products.product',
             'products.variation',
+            'payments.paymentAccount:id,code,name',
         ]);
 
         return Inertia::render('admin/inventory/sell/show', [
@@ -314,6 +316,7 @@ class SellController extends Controller
             'specialDiscount:id,name,discount_type,discount_value',
             'products.product:id,name,code,sale_price,discount_price',
             'products.variation:id,variation_data,price,stock',
+            'payments.paymentAccount:id,code,name',
         ]);
 
         $branchId = Auth::user()?->branch_id;
@@ -377,6 +380,10 @@ class SellController extends Controller
                 ] : null,
                 'vat_percent' => round($vatPercent, 6),
                 'paid_amount' => (float) $sell->paid_amount,
+                'payments' => $sell->payments->map(fn ($payment) => [
+                    'payment_account_id' => $payment->payment_account_id,
+                    'amount' => (float) $payment->amount,
+                ])->values()->all(),
                 'comment' => $sell->comment,
                 'invoice_number' => 'INVS'.str_pad($sell->id, 8, '0', STR_PAD_LEFT),
                 'items' => $items,
@@ -413,6 +420,9 @@ class SellController extends Controller
             'vat' => ['required', 'numeric', 'min:0'],
             'paid_amount' => ['required', 'numeric', 'min:0'],
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
+            'payments' => ['nullable', 'array'],
+            'payments.*.payment_account_id' => ['required_with:payments', 'integer', 'exists:chart_of_accounts,id'],
+            'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0.01'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
@@ -435,12 +445,11 @@ class SellController extends Controller
             $grossAmount + $vatAmount - $discountFields['discount'] - $discountFields['special_discount_amount'] - $lineDiscountTotal,
             2,
         );
-        $payment = $this->resolveSalePaymentAmounts($netAmount, (float) $data['paid_amount']);
+        $payment = $this->resolveSalePayments($data, $netAmount);
         $this->assertCustomerForDueSale($data['customer_id'] ? (int) $data['customer_id'] : null, $payment['due_amount']);
-        $paymentAccountId = $this->resolvePaymentAccountId($request, $payment['effective_paid']);
 
         try {
-            DB::transaction(function () use ($sell, $data, $branchId, $paymentAccountId, $payment) {
+            DB::transaction(function () use ($sell, $data, $branchId, $payment) {
                 $this->accounting->reverseFor($sell);
                 $sell->load(['products']);
 
@@ -502,9 +511,11 @@ class SellController extends Controller
                     Customer::whereKey($sell->customer_id)->increment('balance', $payment['due_amount']);
                 }
 
+                $this->syncSellPayments($sell, $payment['payment_lines']);
+
                 $this->accounting->postSale(
                     $sell->fresh(['customer']),
-                    $paymentAccountId,
+                    $payment['payment_lines'],
                     $this->costService->costForSell($sell),
                 );
             });
@@ -651,6 +662,9 @@ class SellController extends Controller
             'vat' => ['required', 'numeric', 'min:0'],
             'paid_amount' => [$requirePayment ? 'required' : 'nullable', 'numeric', 'min:0'],
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
+            'payments' => ['nullable', 'array'],
+            'payments.*.payment_account_id' => ['required_with:payments', 'integer', 'exists:chart_of_accounts,id'],
+            'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0.01'],
             'paused_sell_id' => ['nullable', 'integer', 'exists:sells,id'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'exists:products,id'],

@@ -97,6 +97,11 @@ class Sell extends Model
         return $this->hasMany(SellProduct::class);
     }
 
+    public function payments(): HasMany
+    {
+        return $this->hasMany(SellPayment::class);
+    }
+
     public function saleReturns(): HasMany
     {
         return $this->hasMany(SaleReturn::class);

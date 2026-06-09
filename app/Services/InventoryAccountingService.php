@@ -59,7 +59,10 @@ class InventoryAccountingService
         );
     }
 
-    public function postSale(Sell $sell, ?int $paymentAccountId, float $cogs): Transaction
+    /**
+     * @param  array<int, array{payment_account_id: int, amount: float}>  $paymentLines
+     */
+    public function postSale(Sell $sell, array $paymentLines, float $cogs): Transaction
     {
         $sell->loadMissing('customer:id,name');
 
@@ -78,8 +81,18 @@ class InventoryAccountingService
 
         $lines = [];
 
-        if ($paidAmount > 0) {
-            $lines[] = $this->debitPaymentAccount($paymentAccountId, $paidAmount, "Cash received — Sale {$invoice}");
+        foreach ($paymentLines as $paymentLine) {
+            $lineAmount = round((float) $paymentLine['amount'], 2);
+
+            if ($lineAmount <= 0) {
+                continue;
+            }
+
+            $lines[] = $this->debitPaymentAccount(
+                (int) $paymentLine['payment_account_id'],
+                $lineAmount,
+                "Payment received — Sale {$invoice}",
+            );
         }
 
         if ($dueAmount > 0) {

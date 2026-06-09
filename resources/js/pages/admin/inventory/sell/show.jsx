@@ -40,6 +40,7 @@ export default function SellShow({ sell }) {
     const net = gross + vat - discount - specialDiscount - lineDiscount;
     const paid = parseFloat(sell.paid_amount ?? 0);
     const due = Math.max(0, net - paid);
+    const paymentLines = sell.payments ?? [];
     const actionClass = headerActionClassName();
 
     const handlePosPrint = useCallback(() => {
@@ -146,6 +147,22 @@ export default function SellShow({ sell }) {
                         />
                     }
                 />
+
+                {paymentLines.length > 0 && (
+                    <div className="mx-auto mt-3 max-w-4xl border border-blue-200 bg-white p-3 shadow-sm">
+                        <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-950">Payment Breakdown</h3>
+                        <div className="space-y-1 text-sm">
+                            {paymentLines.map((line) => (
+                                <div key={line.id ?? `${line.payment_account_id}-${line.amount}`} className="flex items-center justify-between gap-3 border-b border-border/60 py-1 last:border-0">
+                                    <span className="text-muted-foreground">
+                                        {line.payment_account?.code} — {line.payment_account?.name}
+                                    </span>
+                                    <span className="font-medium tabular-nums">৳{parseFloat(line.amount ?? 0).toFixed(2)}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+                )}
 
                 {can('inventory.sell.delete') && (
                     <Dialog open={deleting} onOpenChange={setDeleting}>

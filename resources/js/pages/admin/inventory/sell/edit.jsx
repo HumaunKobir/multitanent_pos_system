@@ -5,7 +5,14 @@ import {
     findBestSpecialDiscount,
     formatDiscountLabel,
 } from '@/lib/pos-discount';
-import { computeSalePayment, dueSaleCustomerError } from '@/lib/sale-payment';
+import { SalePaymentLines } from '@/components/inventory/sale-payment-lines';
+import {
+    buildInitialSalePayments,
+    computeSplitSalePayment,
+    dueSaleCustomerError,
+    serializeSalePayments,
+    splitPaymentValidationError,
+} from '@/lib/sale-payment';
 import { route } from '@/lib/route';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Save, Search, ShoppingCart, Trash2, User } from 'lucide-react';
@@ -447,7 +454,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
         special_discount_id: sell.special_discount_id ? String(sell.special_discount_id) : '',
         vat: String(sell.vat_percent ?? '0'),
         paid_amount: String(sell.paid_amount ?? '0'),
-        payment_account_id: parseFloat(sell.paid_amount ?? 0) > 0 && paymentAccounts[0]?.id ? String(paymentAccounts[0].id) : '',
+        payments: buildInitialSalePayments(sell.payments, paymentAccounts),
         comment: sell.comment ?? '',
         items: sell.items ?? [],
     });
@@ -472,7 +479,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
           )
         : 0;
     const netAmount = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
-    const { effectivePaid, dueAmount, changeAmount } = computeSalePayment(netAmount, form.data.paid_amount);
+    const { totalPaid, dueAmount } = computeSplitSalePayment(form.data.payments, netAmount);
     const dueCustomerError = dueSaleCustomerError(form.data.customer_id, walkInCustomerId, dueAmount);
 
     useEffect(() => {
@@ -530,12 +537,20 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
             return;
         }
 
-        if (effectivePaid > 0 && !form.data.payment_account_id) {
-            toast.error('Select a payment account for the received amount.');
+        const paymentError = splitPaymentValidationError(form.data.payments);
+        if (paymentError) {
+            toast.error(paymentError);
             return;
         }
 
-        form.transform((data) => ({ ...data, items: lineItems }));
+        const serializedPayments = serializeSalePayments(form.data.payments);
+
+        form.transform((data) => ({
+            ...data,
+            items: lineItems,
+            paid_amount: String(totalPaid),
+            payments: serializedPayments.length > 0 ? serializedPayments : undefined,
+        }));
         form.put(route('inventory.sell.update', sell.id), {
             preserveScroll: true,
             onError: (errors) => {
@@ -777,51 +792,14 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                     <span className="font-bold text-primary">৳{netAmount.toFixed(2)}</span>
                                 </div>
 
-                                <div className="flex items-center justify-between gap-4">
-                                    <Label className="text-xs text-muted-foreground">Cash Received</Label>
-                                    <Input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={form.data.paid_amount}
-                                        onChange={(e) => form.setData('paid_amount', e.target.value)}
-                                        className={`${inputCls} w-28 text-right`}
-                                    />
-                                </div>
-                                {form.errors.paid_amount && (
-                                    <p className="text-xs text-destructive">{form.errors.paid_amount}</p>
-                                )}
-                                {effectivePaid > 0 && effectivePaid < parseFloat(form.data.paid_amount || 0) && (
-                                    <p className="text-[10px] text-muted-foreground">
-                                        Applied to sale: ৳{effectivePaid.toFixed(2)}
-                                    </p>
-                                )}
-                                {changeAmount > 0 && (
-                                    <div className="flex justify-between text-emerald-700">
-                                        <span>Change</span>
-                                        <span className="font-semibold">৳{changeAmount.toFixed(2)}</span>
-                                    </div>
-                                )}
-                                {effectivePaid > 0 && (
-                                    <div>
-                                        <Label className="mb-1 block text-xs text-muted-foreground">Payment Account</Label>
-                                        <select
-                                            className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs"
-                                            value={form.data.payment_account_id}
-                                            onChange={(e) => form.setData('payment_account_id', e.target.value)}
-                                        >
-                                            <option value="">Select cash / bank account</option>
-                                            {paymentAccounts.map((acc) => (
-                                                <option key={acc.id} value={String(acc.id)}>
-                                                    {acc.label}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        {form.errors.payment_account_id && (
-                                            <p className="mt-1 text-xs text-destructive">{form.errors.payment_account_id}</p>
-                                        )}
-                                    </div>
-                                )}
+                                <SalePaymentLines
+                                    payments={form.data.payments}
+                                    paymentAccounts={paymentAccounts}
+                                    netAmount={netAmount}
+                                    onChange={(payments) => form.setData('payments', payments)}
+                                    errors={form.errors}
+                                    inputClassName={inputCls}
+                                />
 
                                 <div className="flex justify-between border-t border-border pt-2">
                                     <span className="font-semibold text-destructive">Due Amount</span>

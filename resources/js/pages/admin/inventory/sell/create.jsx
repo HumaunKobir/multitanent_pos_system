@@ -4,7 +4,14 @@ import {
     findBestSpecialDiscount,
     formatDiscountLabel,
 } from '@/lib/pos-discount';
-import { computeSalePayment, dueSaleCustomerError } from '@/lib/sale-payment';
+import { SalePaymentLines } from '@/components/inventory/sale-payment-lines';
+import {
+    buildInitialSalePayments,
+    computeSplitSalePayment,
+    dueSaleCustomerError,
+    serializeSalePayments,
+    splitPaymentValidationError,
+} from '@/lib/sale-payment';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
 import { cn } from '@/lib/utils';
@@ -804,7 +811,7 @@ function clampLineDiscount(value, item) {
     return String(Math.min(parsed, lineGross(item)));
 }
 
-function buildInitialFormData({ today, defaultCustomer, resumedSell }) {
+function buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAccounts }) {
     if (resumedSell) {
         return {
             customer_id: resumedSell.customer_id ? String(resumedSell.customer_id) : '',
@@ -814,7 +821,7 @@ function buildInitialFormData({ today, defaultCustomer, resumedSell }) {
             special_discount_id: resumedSell.special_discount_id ? String(resumedSell.special_discount_id) : '',
             vat: resumedSell.vat_percent ?? '0',
             paid_amount: resumedSell.paid_amount ?? '0',
-            payment_account_id: '',
+            payments: buildInitialSalePayments([], paymentAccounts),
             comment: resumedSell.comment ?? '',
             items: [],
         };
@@ -828,7 +835,7 @@ function buildInitialFormData({ today, defaultCustomer, resumedSell }) {
         special_discount_id: '',
         vat: '0',
         paid_amount: '0',
-        payment_account_id: '',
+        payments: buildInitialSalePayments([], paymentAccounts),
         comment: '',
         items: [],
     };
@@ -848,7 +855,7 @@ export default function SellCreate({
     const toast = useAppToast();
     const initialCustomer = resumedSell?.customer ?? defaultCustomer;
 
-    const form = useForm(buildInitialFormData({ today, defaultCustomer, resumedSell }));
+    const form = useForm(buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAccounts }));
 
     const [pausedSellId, setPausedSellId] = useState(resumedSell?.id ?? null);
     const [items, setItems] = useState(resumedSell?.items ?? []);
@@ -886,7 +893,7 @@ export default function SellCreate({
         setMatchedSpecialDiscount(match);
         form.setData('special_discount_id', match ? String(match.id) : '');
     }, [taxableAmount, specialDiscounts]);
-    const { effectivePaid, dueAmount, changeAmount } = computeSalePayment(netAmount, form.data.paid_amount);
+    const { totalPaid, dueAmount } = computeSplitSalePayment(form.data.payments, netAmount);
     const dueCustomerError = dueSaleCustomerError(form.data.customer_id, defaultCustomer?.id ?? null, dueAmount);
     const hasOverStock = items.some((item) => parseFloat(item.quantity || 0) > parseFloat(item.available_stock ?? 0));
     const itemCount = items.reduce((sum, item) => sum + parseFloat(item.quantity || 0), 0);
@@ -958,15 +965,20 @@ export default function SellCreate({
             return;
         }
 
-        if (effectivePaid > 0 && !form.data.payment_account_id) {
-            toast.error('Select a payment account for the received amount.');
+        const paymentError = splitPaymentValidationError(form.data.payments);
+        if (paymentError) {
+            toast.error(paymentError);
             return;
         }
+
+        const serializedPayments = serializeSalePayments(form.data.payments);
 
         form.transform((data) => ({
             ...data,
             items,
             paused_sell_id: pausedSellId ?? '',
+            paid_amount: String(totalPaid),
+            payments: serializedPayments.length > 0 ? serializedPayments : undefined,
         }));
         form.post(route('inventory.sell.store'));
     }
@@ -1117,8 +1129,8 @@ export default function SellCreate({
                             {dueAmount > 0 && (
                                 <p className="mt-0.5 text-xs font-medium text-red-300">Due ৳{dueAmount.toFixed(2)}</p>
                             )}
-                            {changeAmount > 0 && (
-                                <p className="mt-0.5 text-xs font-medium text-emerald-300">Change ৳{changeAmount.toFixed(2)}</p>
+                            {totalPaid > 0 && (
+                                <p className="mt-0.5 text-xs font-medium text-emerald-300">Paid ৳{totalPaid.toFixed(2)}</p>
                             )}
                         </div>
 
@@ -1209,46 +1221,15 @@ export default function SellCreate({
                                     </div>
                                 )}
 
-                                <div>
-                                    <Label className="mb-0.5 block text-[10px] text-muted-foreground">Cash Received</Label>
-                                    <Input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={form.data.paid_amount}
-                                        onChange={(e) => form.setData('paid_amount', e.target.value)}
-                                        className={cn(inputCls, 'text-right font-semibold')}
-                                    />
-                                    {form.errors.paid_amount && (
-                                        <p className="mt-0.5 text-[10px] text-destructive">{form.errors.paid_amount}</p>
-                                    )}
-                                    {effectivePaid > 0 && effectivePaid < parseFloat(form.data.paid_amount || 0) && (
-                                        <p className="mt-0.5 text-[10px] text-muted-foreground">
-                                            Applied to sale: ৳{effectivePaid.toFixed(2)}
-                                        </p>
-                                    )}
-                                </div>
-
-                                {effectivePaid > 0 && (
-                                    <div>
-                                        <Label className="mb-0.5 block text-[10px] text-muted-foreground">Payment Account</Label>
-                                        <select
-                                            className="h-8 w-full rounded-none border border-blue-200 bg-white px-2 text-xs outline-none focus:border-blue-600"
-                                            value={form.data.payment_account_id}
-                                            onChange={(e) => form.setData('payment_account_id', e.target.value)}
-                                        >
-                                            <option value="">Cash / bank</option>
-                                            {paymentAccounts.map((acc) => (
-                                                <option key={acc.id} value={String(acc.id)}>
-                                                    {acc.label}
-                                                </option>
-                                            ))}
-                                        </select>
-                                        {form.errors.payment_account_id && (
-                                            <p className="mt-0.5 text-[10px] text-destructive">{form.errors.payment_account_id}</p>
-                                        )}
-                                    </div>
-                                )}
+                                <SalePaymentLines
+                                    payments={form.data.payments}
+                                    paymentAccounts={paymentAccounts}
+                                    netAmount={netAmount}
+                                    onChange={(payments) => form.setData('payments', payments)}
+                                    errors={form.errors}
+                                    inputClassName={inputCls}
+                                    compact
+                                />
 
                                 <div className="sm:hidden">
                                     <Label className="mb-0.5 block text-[10px] text-muted-foreground">Customer</Label>

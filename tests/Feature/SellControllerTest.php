@@ -8,6 +8,7 @@ use App\Models\Customer;
 use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\Sell;
+use App\Models\SellPayment;
 use App\Models\SellProduct;
 use App\Models\Supplier;
 use App\Models\Transaction;
@@ -554,6 +555,54 @@ test('due sale requires a registered customer', function () {
             ]],
         ])
         ->assertSessionHasErrors('customer_id');
+});
+
+test('sale can be paid across multiple accounts with balanced accounting', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    $sslCommerz = SystemAccountService::resolve(SystemAccountKey::SslCommerz, $user->branch_id);
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+    $sellIdBefore = (int) (Sell::query()->max('id') ?? 0);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '100',
+            'payments' => [
+                ['payment_account_id' => $cash->id, 'amount' => 60],
+                ['payment_account_id' => $sslCommerz->id, 'amount' => 40],
+            ],
+            'comment' => null,
+            'items' => [[
+                'product_id' => $product->id,
+                'variation_id' => null,
+                'unit_price' => '100',
+                'quantity' => '1',
+            ]],
+        ])
+        ->assertRedirect()
+        ->assertSessionDoesntHaveErrors();
+
+    $sell = Sell::query()->where('id', '>', $sellIdBefore)->first();
+    expect($sell)->not->toBeNull();
+    expect((float) $sell->paid_amount)->toBe(100.0);
+    expect(SellPayment::query()->where('sell_id', $sell->id)->count())->toBe(2);
+
+    $transaction = Transaction::query()
+        ->where('source_type', Sell::class)
+        ->where('source_id', $sell->id)
+        ->first();
+
+    $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
+
+    expect(round($ledgers->where('account_id', $cash->id)->sum('debit'), 2))->toBe(60.0);
+    expect(round($ledgers->where('account_id', $sslCommerz->id)->sum('debit'), 2))->toBe(40.0);
+    expect(round($ledgers->sum('debit'), 2))->toBe(round($ledgers->sum('credit'), 2));
 });
 
 test('overpayment stores effective paid amount for accounting', function () {

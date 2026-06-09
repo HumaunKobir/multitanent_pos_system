@@ -146,7 +146,7 @@ test('postSale journal balances when invoice discount is applied', function () {
 
     app(InventoryAccountingService::class)->postSale(
         $sell->fresh(['customer']),
-        $cash->id,
+        [['payment_account_id' => $cash->id, 'amount' => 900.0]],
         $cogs,
     );
 

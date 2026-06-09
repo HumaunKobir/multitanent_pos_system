@@ -2,6 +2,7 @@ import { BranchSalesChart } from '@/components/dashboard/branch-sales-chart';
 import { CollectionRateGauge } from '@/components/dashboard/collection-rate-gauge';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { SalesTrendChart } from '@/components/dashboard/sales-trend-chart';
+import { SellReportPanel } from '@/components/dashboard/sell-report-panel';
 import { StatTile } from '@/components/dashboard/stat-tile';
 import { MoneyCell } from '@/pages/admin/reports/_shared/report-shell';
 import { Head } from '@inertiajs/react';
@@ -15,7 +16,7 @@ function formatExpenseSub(kpi) {
     return `${kpi?.count ?? 0} voucher(s)`;
 }
 
-export default function AdminDashboard({ today, kpis, branchSales, salesTrend, collection }) {
+export default function AdminDashboard({ today, kpis, branchSales, salesTrend, collection, sellReport }) {
     const todaySales = kpis?.today_sales ?? {};
     const monthSales = kpis?.month_sales ?? {};
     const todayExpenses = kpis?.today_expenses ?? {};
@@ -59,6 +60,8 @@ export default function AdminDashboard({ today, kpis, branchSales, salesTrend, c
                     />
                     <CollectionRateGauge collection={collection} />
                 </div>
+
+                <SellReportPanel sellReport={sellReport} routeName="dashboard" />
 
                 <div className="grid gap-3 lg:grid-cols-2">
                     <div>

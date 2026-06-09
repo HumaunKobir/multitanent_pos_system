@@ -4,6 +4,7 @@ import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { ModuleWidget } from '@/components/dashboard/module-widget';
 import { QuickActions } from '@/components/dashboard/quick-actions';
 import { SalesTrendChart } from '@/components/dashboard/sales-trend-chart';
+import { SellReportPanel } from '@/components/dashboard/sell-report-panel';
 import { StatTile } from '@/components/dashboard/stat-tile';
 import { MoneyCell } from '@/pages/admin/reports/_shared/report-shell';
 import { route } from '@/lib/route';
@@ -104,6 +105,12 @@ export default function BranchDashboard({ today, branchName, sections }) {
                         </div>
 
                         <Can permission="inventory.sell.view">
+                            <SellReportPanel
+                                sellReport={sales?.report}
+                                routeName="branch-panel.dashboard"
+                                showBranchBreakdown={false}
+                            />
+
                             <div className="grid gap-3 lg:grid-cols-3">
                                 <div className="lg:col-span-2">
                                     <ModuleWidget title="30-Day Sales Trend" icon={CircleDollarSign}>

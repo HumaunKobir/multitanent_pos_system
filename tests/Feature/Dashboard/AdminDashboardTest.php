@@ -34,6 +34,58 @@ function dashboardBranchUser(?int $branchId = null, array $permissions = []): Us
     return $user;
 }
 
+test('super admin dashboard returns sell report with period filter', function () {
+    $date = '2099-06-15';
+    $branch = Branch::factory()->create(['name' => 'Sell Report Branch '.uniqid()]);
+    $admin = dashboardSuperAdmin();
+
+    Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'type' => SaleType::Sale,
+        'date' => '2099-06-10',
+        'gross_amount' => 2000,
+        'paid_amount' => 1500,
+    ]);
+
+    Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'type' => SaleType::Sale,
+        'date' => '2098-06-10',
+        'gross_amount' => 9000,
+        'paid_amount' => 9000,
+    ]);
+
+    Carbon::setTestNow($date);
+
+    $this->actingAs($admin)
+        ->get(route('dashboard', ['period' => 'current_month']))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('sellReport')
+            ->where('sellReport.period', 'current_month')
+            ->where('sellReport.summary.count', 1)
+            ->where('sellReport.summary.gross', 2000)
+            ->where('sellReport.summary.paid', 1500)
+            ->where('sellReport.date_from', '2099-06-01')
+            ->where('sellReport.date_to', $date));
+
+    $this->actingAs($admin)
+        ->get(route('dashboard', ['period' => 'last_year']))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('sellReport.period', 'last_year')
+            ->where('sellReport.summary.count', 1)
+            ->where('sellReport.summary.gross', 9000)
+            ->where('sellReport.date_from', '2098-01-01')
+            ->where('sellReport.date_to', '2098-12-31'));
+
+    Carbon::setTestNow();
+
+    Sell::query()->where('branch_id', $branch->id)->delete();
+    $branch->delete();
+    $admin->delete();
+});
+
 test('super admin dashboard returns branch sales and trend props', function () {
     $today = Carbon::today()->toDateString();
     $branch = Branch::factory()->create(['name' => 'Dashboard Test Branch '.uniqid()]);
@@ -56,6 +108,7 @@ test('super admin dashboard returns branch sales and trend props', function () {
             ->has('branchSales')
             ->has('salesTrend', 30)
             ->has('collection')
+            ->has('sellReport')
             ->where('today', $today)
             ->where('kpis.today_sales.count', 1)
             ->where('kpis.today_sales.gross', 1500)
@@ -203,7 +256,16 @@ test('branch dashboard includes sales section when user has permission', functio
             ->has('sections.sales')
             ->where('sections.sales.today.count', 1)
             ->where('sections.sales.today.gross', 800)
-            ->has('sections.sales.trend', 30));
+            ->has('sections.sales.trend', 30)
+            ->has('sections.sales.report')
+            ->where('sections.sales.report.period', 'current_month')
+            ->where('sections.sales.report.summary.gross', 800));
+
+    $this->actingAs($user)
+        ->get('/branch-panel?period=previous_week')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('sections.sales.report.period', 'previous_week'));
 
     Sell::query()->where('branch_id', $branch->id)->delete();
     $user->delete();

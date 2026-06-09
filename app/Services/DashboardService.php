@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\DashboardSalesPeriod;
 use App\Enums\PurchaseType;
 use App\Enums\VoucherType;
 use App\Models\Branch;
@@ -19,6 +20,40 @@ use Illuminate\Database\Eloquent\Builder;
 class DashboardService
 {
     private const string NET_AMOUNT_SQL = '(gross_amount + vat - discount)';
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function sellReport(DashboardSalesPeriod $period, ?int $branchId = null): array
+    {
+        $range = $period->dateRange();
+        $from = $range['from'];
+        $to = $range['to'];
+
+        $salesQuery = Sell::query()->sale()
+            ->whereBetween('date', [$from->toDateString(), $to->toDateString()]);
+
+        if ($branchId !== null) {
+            $salesQuery->where('branch_id', $branchId);
+        } else {
+            $salesQuery = $this->excludeMainBranchSales($salesQuery);
+        }
+
+        $summary = $this->aggregateSales($salesQuery);
+
+        return [
+            'period' => $period->value,
+            'label' => $period->label(),
+            'date_from' => $from->format('Y-m-d'),
+            'date_to' => $to->format('Y-m-d'),
+            'summary' => $summary,
+            'collection' => $this->collectionMetrics($summary),
+            'branch_breakdown' => $branchId === null
+                ? $this->branchSalesBreakdownForPeriod($from, $to)
+                : [],
+            'periods' => DashboardSalesPeriod::options(),
+        ];
+    }
 
     /**
      * @return array<string, mixed>
@@ -72,7 +107,7 @@ class DashboardService
     /**
      * @return array<string, mixed>
      */
-    public function branchOverview(User $user): array
+    public function branchOverview(User $user, DashboardSalesPeriod $period = DashboardSalesPeriod::CurrentMonth): array
     {
         $branchId = $user->branch_id;
 
@@ -102,6 +137,7 @@ class DashboardService
                 'month' => $monthSales,
                 'trend' => $this->salesTrend($trendStart, $today, $branchId),
                 'collection' => $this->collectionMetrics($monthSales),
+                'report' => $this->sellReport($period, $branchId),
             ];
         }
 
@@ -284,6 +320,42 @@ class DashboardService
             ];
         })
             ->filter(fn (array $row): bool => $row['today_gross'] > 0 || $row['month_gross'] > 0)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function branchSalesBreakdownForPeriod(Carbon $from, Carbon $to): array
+    {
+        $netSql = self::NET_AMOUNT_SQL;
+        $branches = Branch::query()->operating()->orderBy('name')->get(['id', 'name']);
+
+        $byBranch = $this->excludeMainBranchSales(
+            Sell::query()->sale()->whereBetween('date', [$from->toDateString(), $to->toDateString()]),
+        )
+            ->selectRaw("branch_id, COUNT(*) as invoice_count, COALESCE(SUM({$netSql}), 0) as gross_total, COALESCE(SUM(paid_amount), 0) as paid_total")
+            ->groupBy('branch_id')
+            ->get()
+            ->keyBy('branch_id');
+
+        return $branches->map(function (Branch $branch) use ($byBranch) {
+            $row = $byBranch->get($branch->id);
+            $gross = round((float) ($row->gross_total ?? 0), 2);
+            $paid = round((float) ($row->paid_total ?? 0), 2);
+
+            return [
+                'branch_id' => $branch->id,
+                'branch_name' => $branch->name,
+                'invoice_count' => (int) ($row->invoice_count ?? 0),
+                'gross' => $gross,
+                'paid' => $paid,
+                'due' => round(max(0, $gross - $paid), 2),
+                'collection_rate' => $gross > 0 ? round($paid / $gross * 100, 1) : 0.0,
+            ];
+        })
+            ->filter(fn (array $row): bool => $row['gross'] > 0)
             ->values()
             ->all();
     }

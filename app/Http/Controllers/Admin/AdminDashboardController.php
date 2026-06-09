@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Admin;
 
+use App\Enums\DashboardSalesPeriod;
 use App\Http\Controllers\Controller;
 use App\Services\DashboardService;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -11,8 +13,9 @@ class AdminDashboardController extends Controller
 {
     public function __construct(public DashboardService $dashboard) {}
 
-    public function __invoke(): Response
+    public function __invoke(Request $request): Response
     {
+        $period = DashboardSalesPeriod::tryFromInput($request->input('period'));
         $overview = $this->dashboard->adminOverview();
 
         return Inertia::render('admin/dashboard', [
@@ -21,6 +24,7 @@ class AdminDashboardController extends Controller
             'branchSales' => $overview['branch_sales'],
             'salesTrend' => $overview['sales_trend'],
             'collection' => $overview['collection'],
+            'sellReport' => $this->dashboard->sellReport($period),
         ]);
     }
 }

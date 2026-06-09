@@ -5,6 +5,7 @@ import {
     InventoryFormActions,
     InventoryPageHeader,
     LineItemsTable,
+    ProductNameWithCode,
     formatQty,
     inputCls,
 } from '@/components/inventory/inventory-form';
@@ -125,7 +126,7 @@ export default function DamageEdit({ damage }) {
                                         <tr key={i} className="hover:bg-muted/20">
                                             <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
                                             <td className="px-3 py-2">
-                                                <p className="font-medium">{item.product_name}</p>
+                                                <ProductNameWithCode name={item.product_name} code={item.product_code} />
                                                 {item.variation_label && (
                                                     <p className="text-muted-foreground">{item.variation_label}</p>
                                                 )}

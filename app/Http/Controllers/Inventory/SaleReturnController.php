@@ -241,6 +241,7 @@ class SaleReturnController extends Controller
                 return [
                     'sell_product_id' => $sp->id,
                     'product_name' => $sp->product?->name,
+                    'product_code' => $sp->product?->code,
                     'unit_price' => (float) $sp->unit_price,
                     'max_return_quantity' => (int) $maxReturn,
                     'quantity' => $current ? (string) (int) $current->quantity : '0',

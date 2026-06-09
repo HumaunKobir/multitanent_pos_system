@@ -254,11 +254,13 @@ class ProductExchangeController extends Controller
         $items = $productExchange->products->map(fn ($line) => [
             'sell_product_id' => $line->sell_product_id,
             'old_product_name' => $line->oldProduct?->name,
+            'old_product_code' => $line->oldProduct?->code,
             'old_unit_price' => (float) $line->old_unit_price,
             'sold_quantity' => (int) $line->old_quantity,
             'quantity' => (string) (int) $line->new_quantity,
             'new_product_id' => $line->new_product_id,
             'new_product_name' => $line->newProduct?->name,
+            'new_product_code' => $line->newProduct?->code,
             'new_variation_id' => $line->new_variation_id,
             'new_variation_label' => $line->newVariation?->variation_data['label'] ?? null,
             'new_unit_price' => (string) $line->new_unit_price,

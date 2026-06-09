@@ -212,6 +212,23 @@ export function InvoiceLookupField({ label, placeholder, value, onChange, onSear
     );
 }
 
+export function formatProductLabel(name, code) {
+    if (!name) {
+        return '—';
+    }
+
+    return code ? `${name} (${code})` : name;
+}
+
+export function ProductNameWithCode({ name, code, className = '' }) {
+    return (
+        <div className={className}>
+            <p className="font-medium">{name ?? '—'}</p>
+            {code ? <p className="text-[10px] text-muted-foreground">{code}</p> : null}
+        </div>
+    );
+}
+
 /** Whole-number quantity for display/input (no decimals). */
 export function formatQty(value) {
     if (value === '' || value === null || value === undefined) {

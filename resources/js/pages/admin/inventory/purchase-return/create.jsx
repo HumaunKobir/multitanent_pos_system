@@ -9,6 +9,7 @@ import {
     InvoiceLookupField,
     LineItemsTable,
     PaymentSummaryCard,
+    ProductNameWithCode,
     inputCls,
     paymentModeToType,
 } from '@/components/inventory/inventory-form';
@@ -66,6 +67,7 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
             .map((i) => ({
                 purchase_product_id: i.purchase_product_id,
                 product_name: i.product_name,
+                product_code: i.product_code,
                 max_return_quantity: i.max_return_quantity,
                 unit_price: i.unit_price,
                 quantity: String(i.max_return_quantity),
@@ -176,7 +178,9 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
                                         parseFloat(item.quantity || 0) > parseFloat(item.max_return_quantity);
                                     return (
                                         <tr key={i} className="hover:bg-muted/20">
-                                            <td className="px-3 py-2 font-medium">{item.product_name}</td>
+                                            <td className="px-3 py-2">
+                                                <ProductNameWithCode name={item.product_name} code={item.product_code} />
+                                            </td>
                                             <td className="px-3 py-2 text-right text-muted-foreground">
                                                 {item.max_return_quantity}
                                             </td>

@@ -211,6 +211,7 @@ class PurchaseReturnController extends Controller
                 return [
                     'purchase_product_id' => $pp->id,
                     'product_name' => $pp->product?->name,
+                    'product_code' => $pp->product?->code,
                     'unit_price' => (float) $pp->unit_price,
                     'max_return_quantity' => (int) $maxReturn,
                     'quantity' => $current ? (string) (int) $current->quantity : '0',

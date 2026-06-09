@@ -1,4 +1,4 @@
-import { formatQty } from '@/components/inventory/inventory-form';
+import { formatQty, ProductNameWithCode } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { useCan } from '@/hooks/use-can';
 import { formatBdDate } from '@/lib/format-bd-date';
@@ -76,7 +76,13 @@ export default function DocShow({
                 <table className="w-full text-xs border rounded-lg">
                     <thead className="bg-muted/50"><tr><th className="p-2 text-left">Product</th><th className="p-2 text-right">Qty</th>{lines[0]?.price != null && <th className="p-2 text-right">Price</th>}</tr></thead>
                     <tbody>{lines.map((l, i) => (
-                        <tr key={i} className="border-t"><td className="p-2">{l.name}</td><td className="p-2 text-right">{formatQty(l.qty)}</td>{l.price != null && <td className="p-2 text-right">৳{parseFloat(l.price).toFixed(2)}</td>}</tr>
+                        <tr key={i} className="border-t">
+                            <td className="p-2">
+                                {l.code != null ? <ProductNameWithCode name={l.name} code={l.code} /> : l.name}
+                            </td>
+                            <td className="p-2 text-right">{formatQty(l.qty)}</td>
+                            {l.price != null && <td className="p-2 text-right">৳{parseFloat(l.price).toFixed(2)}</td>}
+                        </tr>
                     ))}</tbody>
                 </table>
                 {showDelete && (

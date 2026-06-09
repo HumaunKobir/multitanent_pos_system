@@ -8,6 +8,7 @@ import {
     InventoryPageHeader,
     LineItemsTable,
     PaymentSummaryCard,
+    ProductNameWithCode,
     inputCls,
     paymentModeToType,
     paymentTypeToMode,
@@ -133,7 +134,9 @@ export default function PurchaseReturnEdit({ purchaseReturn, paymentAccounts = [
                                         parseFloat(item.quantity || 0) > parseFloat(item.max_return_quantity);
                                     return (
                                         <tr key={i} className="hover:bg-muted/20">
-                                            <td className="px-3 py-2 font-medium">{item.product_name}</td>
+                                            <td className="px-3 py-2">
+                                                <ProductNameWithCode name={item.product_name} code={item.product_code} />
+                                            </td>
                                             <td className="px-3 py-2 text-right text-muted-foreground">
                                                 {item.max_return_quantity}
                                             </td>

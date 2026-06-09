@@ -8,6 +8,7 @@ import {
     InventoryPageHeader,
     LineItemsTable,
     PaymentSummaryCard,
+    ProductNameWithCode,
     inputCls,
     paymentModeToType,
     paymentModeToAccountId,
@@ -62,6 +63,7 @@ export default function ProductExchangeEdit({ exchange, paymentAccounts = [] }) 
                           ...it,
                           new_product_id: product.id,
                           new_product_name: product.name,
+                          new_product_code: product.code,
                           new_variation_id: variation?.id ?? null,
                           new_variation_label: variation?.label ?? variation?.variation_data?.label ?? null,
                           new_unit_price: String(
@@ -186,10 +188,16 @@ export default function ProductExchangeEdit({ exchange, paymentAccounts = [] }) 
                             >
                                 {items.map((item, i) => (
                                     <tr key={i} className="hover:bg-muted/20">
-                                        <td className="px-3 py-2">{item.old_product_name}</td>
+                                        <td className="px-3 py-2">
+                                            <ProductNameWithCode name={item.old_product_name} code={item.old_product_code} />
+                                        </td>
                                         <td className="px-3 py-2">
                                             {item.new_product_name ? (
-                                                <span className="font-medium text-primary">{item.new_product_name}</span>
+                                                <ProductNameWithCode
+                                                    name={item.new_product_name}
+                                                    code={item.new_product_code}
+                                                    className="text-primary [&_p]:text-primary"
+                                                />
                                             ) : (
                                                 <button
                                                     type="button"

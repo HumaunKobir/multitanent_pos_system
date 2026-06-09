@@ -16,6 +16,7 @@ export default function SaleReturnShow({ saleReturn }) {
             extra={<p className="mt-1">Customer: {saleReturn.customer?.name ?? '—'} · Sale #{saleReturn.sell_id} · Total ৳{parseFloat(saleReturn.gross_amount).toFixed(2)}</p>}
             lines={saleReturn.products?.map((p) => ({
                 name: p.product?.name,
+                code: p.product?.code,
                 qty: p.quantity,
                 price: p.unit_price,
             }))}

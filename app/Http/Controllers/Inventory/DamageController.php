@@ -161,6 +161,7 @@ class DamageController extends Controller
                     'product_id' => $line->product_id,
                     'variation_id' => $line->variation_id,
                     'product_name' => $line->product?->name,
+                    'product_code' => $line->product?->code,
                     'variation_label' => $line->variation?->variation_data['label'] ?? null,
                     'quantity' => (string) (int) $line->quantity,
                 ])->values(),

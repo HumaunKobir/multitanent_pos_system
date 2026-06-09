@@ -15,6 +15,7 @@ export default function DamageShow({ damage }) {
             comment={damage.comment}
             lines={damage.products?.map((p) => ({
                 name: `${p.product?.name ?? ''}${p.variation?.variation_data?.label ? ` (${p.variation.variation_data.label})` : ''}`,
+                code: p.product?.code,
                 qty: p.quantity,
                 price: null,
             }))}

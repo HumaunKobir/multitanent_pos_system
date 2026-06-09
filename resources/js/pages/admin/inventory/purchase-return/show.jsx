@@ -16,6 +16,7 @@ export default function PurchaseReturnShow({ purchaseReturn }) {
             extra={<p className="mt-1">Supplier: {purchaseReturn.supplier?.name} · Purchase #{purchaseReturn.purchase_id} · Total ৳{parseFloat(purchaseReturn.gross_amount).toFixed(2)}</p>}
             lines={purchaseReturn.products?.map((p) => ({
                 name: p.product?.name,
+                code: p.product?.code,
                 qty: p.quantity,
                 price: p.unit_price,
             }))}

@@ -1,3 +1,5 @@
+import { formatProductLabel } from '@/components/inventory/inventory-form';
+
 import DocShow from '../_shared/doc-show';
 
 export default function ProductExchangeShow({ exchange }) {
@@ -15,7 +17,7 @@ export default function ProductExchangeShow({ exchange }) {
             comment={exchange.comment}
             extra={<p className="mt-1">Customer: {exchange.customer?.name ?? '—'} · Sale #{exchange.sell_id} · Diff ৳{parseFloat(exchange.price_difference).toFixed(2)}</p>}
             lines={exchange.products?.map((p) => ({
-                name: `${p.old_product?.name} → ${p.new_product?.name}`,
+                name: `${formatProductLabel(p.old_product?.name, p.old_product?.code)} → ${formatProductLabel(p.new_product?.name, p.new_product?.code)}`,
                 qty: p.new_quantity,
                 price: p.new_unit_price,
             }))}

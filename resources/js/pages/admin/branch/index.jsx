@@ -1,17 +1,17 @@
 import { DataTable } from '@/components/ui/data-table';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Building2, Pencil, Plus, Search } from 'lucide-react';
+import { Building2, Plus, Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { resourceRoutes } from '@/lib/route';
-import { AdminCreateButton } from '@/components/admin/row-actions';
+import { AdminCreateButton, AdminInlineActions } from '@/components/admin/row-actions';
 import { Can } from '@/components/can';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
-import { useCan } from '@/hooks/use-can';
 import BranchFormDialog from './form-dialog';
 
 const routes = resourceRoutes('branch');
@@ -29,9 +29,9 @@ function isActive(status) {
 export default function BranchIndex({ branches, filters }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
-    const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [editing, setEditing] = useState(null);
+    const [deleting, setDeleting] = useState(null);
     const [formOpen, setFormOpen] = useState(false);
 
     useEffect(() => {
@@ -56,6 +56,16 @@ export default function BranchIndex({ branches, filters }) {
     function openEdit(row) {
         setEditing(row);
         setFormOpen(true);
+    }
+
+    function handleDelete() {
+        if (!deleting) {
+            return;
+        }
+
+        router.delete(routes.destroy(deleting.id), {
+            onSuccess: () => setDeleting(null),
+        });
     }
 
     const columns = [
@@ -87,15 +97,11 @@ export default function BranchIndex({ branches, filters }) {
             header: 'Actions',
             align: 'right',
             render: (row) => (
-                <div className="flex justify-end">
-                    {can('branch.update') && (
-                        <Button size="sm" variant="outline" asChild>
-                            <button type="button" onClick={() => openEdit(row)}>
-                                <Pencil className="size-3.5" />
-                            </button>
-                        </Button>
-                    )}
-                </div>
+                <AdminInlineActions
+                    prefix="branch"
+                    onEdit={() => openEdit(row)}
+                    onDelete={() => setDeleting(row)}
+                />
             ),
         },
     ];
@@ -156,6 +162,27 @@ export default function BranchIndex({ branches, filters }) {
 
             <Can permission={['branch.create', 'branch.update']}>
                 <BranchFormDialog open={formOpen} onOpenChange={setFormOpen} item={editing} routes={routes} />
+            </Can>
+
+            <Can permission="branch.delete">
+                <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
+                    <DialogContent className="max-w-sm">
+                        <DialogHeader>
+                            <DialogTitle>Delete branch?</DialogTitle>
+                        </DialogHeader>
+                        <p className="text-sm text-muted-foreground">
+                            Delete <span className="font-medium text-foreground">{deleting?.name}</span>? This cannot be undone.
+                        </p>
+                        <DialogFooter className="gap-2">
+                            <DialogClose asChild>
+                                <Button variant="outline" size="sm">Cancel</Button>
+                            </DialogClose>
+                            <Button variant="destructive" size="sm" onClick={handleDelete}>
+                                Delete
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
             </Can>
         </>
     );

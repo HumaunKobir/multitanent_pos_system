@@ -93,8 +93,8 @@ class OnlineOrder extends Model
             return 'Delivered or cancelled orders cannot be sent to Steadfast.';
         }
 
-        if ($this->payment_method === 'sslcommerz' && ! in_array($this->payment_status, ['Paid', 'paid'], true)) {
-            return 'Prepaid orders must be paid before sending to Steadfast.';
+        if ($this->status !== OrderStatus::Confirmed) {
+            return 'Order must be confirmed before sending to Steadfast.';
         }
 
         if (! filled($this->name) || ! filled($this->phone) || ! filled($this->address)) {

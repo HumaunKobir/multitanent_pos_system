@@ -48,7 +48,8 @@ function Field({ label, required, error, hint, children }) {
     );
 }
 
-function CustomerSearch({ value, onChange, error, initialCustomer }) {
+function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'default' }) {
+    const onDarkHeader = variant === 'header';
     const [open, setOpen] = useState(false);
     const [q, setQ] = useState('');
     const [results, setResults] = useState([]);
@@ -150,37 +151,58 @@ function CustomerSearch({ value, onChange, error, initialCustomer }) {
                 {selected ? (
                     <div
                         className={cn(
-                            'flex min-h-8 cursor-pointer items-center justify-between rounded-none border bg-muted/30 px-2 py-1 text-xs transition-colors hover:border-primary/40',
-                            error ? 'border-destructive' : 'border-border',
+                            'flex min-h-8 cursor-pointer items-center justify-between rounded-none border px-2 py-1 text-xs transition-colors',
+                            onDarkHeader
+                                ? 'border-blue-200 bg-white text-foreground hover:border-blue-400'
+                                : 'border-border bg-muted/30 hover:border-primary/40',
+                            error && 'border-destructive',
                         )}
                         onClick={() => { setOpen((p) => !p); if (results.length === 0) fetchCustomers(''); }}
                     >
                         <div className="flex min-w-0 items-center gap-2">
-                            <div className="flex size-7 shrink-0 items-center justify-center rounded-none bg-primary/10 text-primary">
+                            <div
+                                className={cn(
+                                    'flex size-7 shrink-0 items-center justify-center rounded-none',
+                                    onDarkHeader ? 'bg-blue-100 text-blue-700' : 'bg-primary/10 text-primary',
+                                )}
+                            >
                                 <User className="size-3.5" />
                             </div>
                             <div className="min-w-0 truncate">
-                                <span className="font-medium">{selected.name}</span>
-                                {selected.phone && <span className="ml-1.5 text-muted-foreground">({selected.phone})</span>}
+                                <span className="font-medium text-foreground">{selected.name}</span>
+                                {selected.phone && (
+                                    <span className={cn('ml-1.5', onDarkHeader ? 'text-slate-500' : 'text-muted-foreground')}>
+                                        ({selected.phone})
+                                    </span>
+                                )}
                             </div>
                         </div>
                         <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); clear(); }}
-                            className="ml-2 shrink-0 rounded-none p-1 text-muted-foreground transition-colors hover:bg-background hover:text-foreground"
+                            className={cn(
+                                'ml-2 shrink-0 rounded-none p-1 transition-colors',
+                                onDarkHeader
+                                    ? 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'
+                                    : 'text-muted-foreground hover:bg-background hover:text-foreground',
+                            )}
                         >
                             ✕
                         </button>
                     </div>
                 ) : (
                     <div className="relative">
-                        <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                        <Search className={cn('absolute top-1/2 left-3 size-4 -translate-y-1/2', onDarkHeader ? 'text-slate-400' : 'text-muted-foreground')} />
                         <Input
                             value={q}
                             onChange={handleChange}
                             onFocus={handleFocus}
                             placeholder="Search customer by name or phone…"
-                            className={cn('h-8 rounded-none pl-8 text-xs', error && 'border-destructive')}
+                            className={cn(
+                                'h-8 rounded-none pl-8 text-xs',
+                                onDarkHeader && 'border-blue-200 bg-white text-foreground placeholder:text-slate-400',
+                                error && 'border-destructive',
+                            )}
                         />
                     </div>
                 )}
@@ -855,6 +877,7 @@ export default function SellCreate({
                                     onChange={(v) => form.setData('customer_id', v)}
                                     error={form.errors.customer_id}
                                     initialCustomer={defaultCustomer}
+                                    variant="header"
                                 />
                             </div>
                             <div className="shrink-0">

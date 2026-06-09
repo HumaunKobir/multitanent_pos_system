@@ -82,7 +82,7 @@ function createSteadfastReadyOrder(array $overrides = []): OnlineOrder
         'subtotal' => 1000,
         'total' => 1060,
         'payment_status' => 'Pending',
-        'status' => OrderStatus::Processing,
+        'status' => OrderStatus::Confirmed,
     ], $overrides));
 
     OnlineOrderProduct::create([
@@ -198,16 +198,32 @@ test('send order to steadfast uses zero cod for prepaid sslcommerz orders', func
     Http::assertSent(fn ($request) => $request['cod_amount'] == 0);
 });
 
-test('send order to steadfast blocks unpaid sslcommerz orders', function () {
+test('send order to steadfast allows confirmed unpaid sslcommerz orders', function () {
     steadfastTestConfig();
 
     $order = createSteadfastReadyOrder([
         'payment_method' => 'sslcommerz',
         'payment_status' => 'Pending',
+        'status' => OrderStatus::Confirmed,
+    ]);
+
+    steadfastCreateOrderFake($order->id);
+
+    $updated = app(SendOrderToSteadfast::class)->execute($order);
+
+    expect($updated->courier)->toBe('steadfast')
+        ->and($updated->status)->toBe(OrderStatus::Shipping);
+});
+
+test('send order to steadfast blocks unconfirmed orders', function () {
+    steadfastTestConfig();
+
+    $order = createSteadfastReadyOrder([
+        'status' => OrderStatus::Processing,
     ]);
 
     app(SendOrderToSteadfast::class)->execute($order);
-})->throws(SteadfastCourierException::class, 'Prepaid orders must be paid before sending to Steadfast.');
+})->throws(SteadfastCourierException::class, 'Order must be confirmed before sending to Steadfast.');
 
 test('send order to steadfast blocks duplicate submissions', function () {
     steadfastTestConfig();

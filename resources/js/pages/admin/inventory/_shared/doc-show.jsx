@@ -7,6 +7,7 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, Edit, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { headerActionClassName } from '@/components/inventory/invoice-show-layout';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
@@ -30,6 +31,7 @@ export default function DocShow({
     const [deleting, setDeleting] = useState(false);
     const showEdit = editRoute && (!updatePermission || can(updatePermission));
     const showDelete = destroyRoute && (!deletePermission || can(deletePermission));
+    const actionClass = headerActionClassName();
 
     useEffect(() => {
         if (flash.success) toast.success(flash.success);
@@ -42,16 +44,32 @@ export default function DocShow({
             <div className="px-2 py-1">
                 <div className="mb-3 flex justify-between rounded-lg bg-blue-950 px-5 py-3 text-white">
                     <div><h1 className="text-base font-semibold">{title}</h1><p className="font-mono text-xs text-white/60">{invoice}</p></div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap justify-end gap-2">
                         {showEdit && (
-                            <Button size="sm" variant="outline" asChild className="border-white/30 text-white">
-                                <Link href={route(editRoute, id)}><Edit className="size-3.5" /></Link>
+                            <Button size="sm" asChild className={actionClass}>
+                                <Link href={route(editRoute, id)}>
+                                    <Edit className="size-3.5" />
+                                    Edit
+                                </Link>
                             </Button>
                         )}
                         {showDelete && (
-                            <Button size="sm" variant="destructive" onClick={() => setDeleting(true)}><Trash2 className="size-3.5" /></Button>
+                            <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => setDeleting(true)}
+                                className="border border-red-500/50 bg-red-600/90 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-red-600 hover:shadow-md"
+                            >
+                                <Trash2 className="size-3.5" />
+                                Delete
+                            </Button>
                         )}
-                        <Button size="sm" variant="outline" asChild className="border-white/30 text-white"><Link href={route(backRoute)}><ArrowLeft className="size-3.5" />Back</Link></Button>
+                        <Button size="sm" asChild className={actionClass}>
+                            <Link href={route(backRoute)}>
+                                <ArrowLeft className="size-3.5" />
+                                Back
+                            </Link>
+                        </Button>
                     </div>
                 </div>
                 <div className="mb-4 text-sm"><p>Date: {formatBdDate(date)}</p>{comment && <p className="text-muted-foreground">Note: {comment}</p>}{extra}</div>

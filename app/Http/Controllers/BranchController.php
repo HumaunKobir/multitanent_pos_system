@@ -73,7 +73,24 @@ class BranchController extends Controller
     {
         $this->authorize('branch.delete');
 
+        if (Branch::isMainBranch($branch->id)) {
+            return redirect()->route('branch.index')
+                ->with('error', 'Main branch cannot be deleted.');
+        }
+
+        if ($branch->users()->exists()) {
+            return redirect()->route('branch.index')
+                ->with('error', 'Cannot delete branch with assigned users.');
+        }
+
+        if ($branch->customers()->exists() || $branch->suppliers()->exists()) {
+            return redirect()->route('branch.index')
+                ->with('error', 'Cannot delete branch with customers or suppliers.');
+        }
+
+        $branch->delete();
+
         return redirect()->route('branch.index')
-            ->with('error', 'Branch delete is not allowed.');
+            ->with('success', 'Branch deleted successfully.');
     }
 }

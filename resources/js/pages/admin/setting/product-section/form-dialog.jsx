@@ -157,7 +157,7 @@ export default function ProductSectionFormDialog({
                     <h2 className="text-sm font-semibold text-white">{isEditing ? 'Edit Product Section' : 'Create Product Section'}</h2>
                 </div>
 
-                <form onSubmit={handleSubmit} className="max-h-[80vh] space-y-1.5 overflow-y-auto px-3 py-2">
+                <form onSubmit={handleSubmit} className="space-y-1.5 px-3 py-2">
                     <div>
                         <Label htmlFor="name">
                             Section Name

@@ -127,7 +127,7 @@ export function PanelSidebar() {
         });
 
     return (
-        <aside className="flex w-64 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
+        <aside className="flex h-full min-h-0 w-64 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
             <div className="relative border-b border-sidebar-border bg-linear-to-b from-muted/40 to-transparent px-4 py-5">
                 <div
                     className="pointer-events-none absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/40 to-transparent"

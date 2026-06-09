@@ -81,7 +81,7 @@ function CheckoutSection({ badge, title, subtitle, children }) {
 
 function CheckoutSteps({ currentStep, steps }) {
     return (
-        <div className="mb-5 overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
+        <div className="mb-4 overflow-hidden rounded-xl bg-white ring-1 ring-gray-200 sm:mb-5">
             <div className="grid grid-cols-3 divide-x divide-gray-200">
                 {steps.map((step, index) => {
                     const active = index <= currentStep;
@@ -90,7 +90,7 @@ function CheckoutSteps({ currentStep, steps }) {
                         <div
                             key={step}
                             className={cn(
-                                'relative px-3 py-3 text-center',
+                                'relative px-2 py-2.5 text-center sm:px-3 sm:py-3',
                                 active ? 'bg-store-surface/40' : 'bg-white',
                             )}
                         >
@@ -99,7 +99,7 @@ function CheckoutSteps({ currentStep, steps }) {
                             )}
                             <span
                                 className={cn(
-                                    'inline-flex size-6 items-center justify-center rounded-full text-[11px] font-bold',
+                                    'inline-flex size-6 items-center justify-center rounded-full text-[11px] font-bold sm:size-7',
                                     active
                                         ? 'bg-store-accent text-white'
                                         : 'bg-gray-100 text-store-muted ring-1 ring-gray-200',
@@ -109,7 +109,7 @@ function CheckoutSteps({ currentStep, steps }) {
                             </span>
                             <p
                                 className={cn(
-                                    'mt-1.5 text-[10px] font-semibold uppercase tracking-wide',
+                                    'mt-1 text-[9px] font-semibold uppercase leading-tight tracking-wide sm:mt-1.5 sm:text-[10px]',
                                     active ? 'text-store-primary' : 'text-store-muted',
                                 )}
                             >
@@ -123,7 +123,17 @@ function CheckoutSteps({ currentStep, steps }) {
     );
 }
 
-function OrderSummaryPanel({ items, subtotal, deliveryCharge, total, processing, paymentMethod }) {
+function OrderSummaryPanel({
+    items,
+    subtotal,
+    deliveryCharge,
+    total,
+    processing,
+    paymentMethod,
+    showSubmit = true,
+    sticky = false,
+    showAssurances = true,
+}) {
     const isOnlinePayment = paymentMethod === 'sslcommerz';
     const submitLabel = isOnlinePayment
         ? `Pay Now — ৳${formatPrice(total)}`
@@ -135,7 +145,12 @@ function OrderSummaryPanel({ items, subtotal, deliveryCharge, total, processing,
     ];
 
     return (
-        <div className="sticky top-20 overflow-hidden rounded-xl bg-white ring-1 ring-gray-200">
+        <div
+            className={cn(
+                'overflow-hidden rounded-xl bg-white ring-1 ring-gray-200',
+                sticky && 'lg:sticky lg:top-24',
+            )}
+        >
             <div className="relative overflow-hidden bg-linear-to-br from-store-surface/90 via-white to-white px-4 py-3">
                 <div className="absolute inset-x-0 top-0 h-0.5 bg-store-accent/80" aria-hidden />
                 <span className="inline-block rounded-md bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-store-muted ring-1 ring-gray-200">
@@ -145,7 +160,7 @@ function OrderSummaryPanel({ items, subtotal, deliveryCharge, total, processing,
                 <p className="text-[11px] text-store-muted">{items.length} item{items.length === 1 ? '' : 's'} in your bag</p>
             </div>
 
-            <ul className="max-h-52 divide-y divide-gray-200 overflow-y-auto">
+            <ul className="divide-y divide-gray-200 lg:max-h-60 lg:overflow-y-auto">
                 {items.map((item, index) => (
                     <li key={index} className="flex items-start gap-3 px-4 py-2.5">
                         {item.image ? (
@@ -165,7 +180,7 @@ function OrderSummaryPanel({ items, subtotal, deliveryCharge, total, processing,
                 ))}
             </ul>
 
-            <div className="space-y-2 border-t border-gray-200 px-4 py-3 text-[11px]">
+            <div className="space-y-2 border-t border-gray-200 px-4 py-3 text-[11px] sm:text-xs">
                 <div className="flex justify-between text-store-muted">
                     <span>Subtotal</span>
                     <span className="font-medium text-store-primary">৳{formatPrice(subtotal)}</span>
@@ -180,23 +195,27 @@ function OrderSummaryPanel({ items, subtotal, deliveryCharge, total, processing,
                 </div>
             </div>
 
-            <div className="grid grid-cols-3 divide-x divide-gray-200 border-t border-gray-200">
-                {assurances.map(({ icon: Icon, title, desc }) => (
-                    <div key={title} className="px-2 py-2.5 text-center">
-                        <span className="mx-auto inline-flex size-7 items-center justify-center rounded-lg border border-store-accent/20 bg-store-accent/5">
-                            <Icon className="size-3.5 text-store-accent" aria-hidden />
-                        </span>
-                        <p className="mt-1.5 text-[9px] font-bold leading-tight text-store-primary">{title}</p>
-                        <p className="mt-0.5 text-[8px] leading-snug text-store-muted">{desc}</p>
-                    </div>
-                ))}
-            </div>
+            {showAssurances && (
+                <div className="hidden border-t border-gray-200 sm:grid sm:grid-cols-3 sm:divide-x sm:divide-gray-200">
+                    {assurances.map(({ icon: Icon, title, desc }) => (
+                        <div key={title} className="px-2 py-2.5 text-center">
+                            <span className="mx-auto inline-flex size-7 items-center justify-center rounded-lg border border-store-accent/20 bg-store-accent/5">
+                                <Icon className="size-3.5 text-store-accent" aria-hidden />
+                            </span>
+                            <p className="mt-1.5 text-[9px] font-bold leading-tight text-store-primary sm:text-[10px]">{title}</p>
+                            <p className="mt-0.5 text-[8px] leading-snug text-store-muted sm:text-[9px]">{desc}</p>
+                        </div>
+                    ))}
+                </div>
+            )}
 
-            <div className="border-t border-gray-200 px-4 py-3">
-                <StoreButton type="submit" variant="accent" className="w-full rounded-xl py-3 text-sm font-bold" disabled={processing}>
-                    {processing ? 'Processing...' : submitLabel}
-                </StoreButton>
-            </div>
+            {showSubmit && (
+                <div className="hidden border-t border-gray-200 px-4 py-3 lg:block">
+                    <StoreButton type="submit" variant="accent" className="w-full rounded-xl py-3 text-sm font-bold" disabled={processing}>
+                        {processing ? 'Processing...' : submitLabel}
+                    </StoreButton>
+                </div>
+            )}
         </div>
     );
 }
@@ -242,11 +261,15 @@ export default function Checkout({ cart, customer }) {
     const steps = ['Contact', 'Shipping', 'Payment'];
     const currentStep = data.address ? (data.payment_method ? 2 : 1) : 0;
 
+    const submitLabel = data.payment_method === 'sslcommerz'
+        ? `Pay Now — ৳${formatPrice(total)}`
+        : `Place Order — ৳${formatPrice(total)}`;
+
     return (
-        <FrontendLayout>
+        <FrontendLayout hideFloatingCart>
             <Head title="Checkout" />
-            <div className="bg-store-surface/60">
-                <div className="store-container py-4 pb-28 sm:py-5 lg:pb-5">
+            <div className="overflow-x-hidden bg-store-surface/60">
+                <div className="store-container py-4 pb-[calc(5.5rem+env(safe-area-inset-bottom,0px))] sm:py-5 lg:pb-5">
                     <div className="mb-4">
                         <span className="inline-block rounded-md bg-white px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-store-muted ring-1 ring-gray-200">
                             Checkout
@@ -262,8 +285,21 @@ export default function Checkout({ cart, customer }) {
 
                     <CheckoutSteps currentStep={currentStep} steps={steps} />
 
-                    <form id="checkout-form" onSubmit={submit} className="grid gap-4 lg:grid-cols-3 lg:items-start">
-                        <div className="space-y-4 lg:col-span-2">
+                    <div className="mb-4 lg:hidden">
+                        <OrderSummaryPanel
+                            items={items}
+                            subtotal={subtotal}
+                            deliveryCharge={deliveryCharge}
+                            total={total}
+                            processing={processing}
+                            paymentMethod={data.payment_method}
+                            showSubmit={false}
+                            showAssurances={false}
+                        />
+                    </div>
+
+                    <form id="checkout-form" onSubmit={submit} className="grid min-w-0 gap-4 lg:grid-cols-3 lg:items-start">
+                        <div className="min-w-0 space-y-4 lg:col-span-2">
                             <CheckoutSection
                                 badge="Step 1"
                                 title="Delivery details"
@@ -334,7 +370,7 @@ export default function Checkout({ cart, customer }) {
                             </CheckoutSection>
                         </div>
 
-                        <div className="lg:col-span-1">
+                        <div className="hidden min-w-0 lg:col-span-1 lg:block">
                             <OrderSummaryPanel
                                 items={items}
                                 subtotal={subtotal}
@@ -342,22 +378,31 @@ export default function Checkout({ cart, customer }) {
                                 total={total}
                                 processing={processing}
                                 paymentMethod={data.payment_method}
+                                sticky
                             />
                         </div>
                     </form>
                 </div>
             </div>
 
-            <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 p-2 shadow-lg backdrop-blur-sm lg:hidden">
-                <StoreButton
-                    type="submit"
-                    form="checkout-form"
-                    variant="accent"
-                    className="w-full rounded-xl py-2.5 text-xs font-bold"
-                    disabled={processing}
-                >
-                    {processing ? 'Processing...' : (data.payment_method === 'sslcommerz' ? `Pay Now — ৳${formatPrice(total)}` : `Place Order — ৳${formatPrice(total)}`)}
-                </StoreButton>
+            <div className="fixed inset-x-0 bottom-0 z-40 border-t border-gray-200 bg-white/95 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom,0px))] shadow-lg backdrop-blur-sm lg:hidden">
+                <div className="store-container">
+                    <div className="mb-2 flex items-center justify-between gap-3 text-[11px]">
+                        <span className="font-medium text-store-muted">
+                            {items.length} item{items.length === 1 ? '' : 's'}
+                        </span>
+                        <span className="font-bold text-store-accent">৳{formatPrice(total)}</span>
+                    </div>
+                    <StoreButton
+                        type="submit"
+                        form="checkout-form"
+                        variant="accent"
+                        className="w-full rounded-xl py-3 text-sm font-bold"
+                        disabled={processing}
+                    >
+                        {processing ? 'Processing...' : submitLabel}
+                    </StoreButton>
+                </div>
             </div>
         </FrontendLayout>
     );

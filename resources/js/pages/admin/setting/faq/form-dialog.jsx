@@ -43,7 +43,7 @@ export default function FaqFormDialog({ open, onOpenChange, item, routes }) {
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-h-[90vh] overflow-y-auto p-0 sm:max-w-2xl">
+            <DialogContent className="p-0 sm:max-w-2xl">
                 <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
                     <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
                         <HelpCircle className="size-3.5 text-white" />

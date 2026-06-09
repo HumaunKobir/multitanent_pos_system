@@ -189,6 +189,28 @@
     }
 }
 
+@layer components {
+    body:has([data-slot='dialog-overlay'][data-state='open']) [data-panel-main] {
+        overflow: hidden;
+    }
+
+    [data-slot='dialog-content'] > :not(form) {
+        flex-shrink: 0;
+    }
+
+    [data-slot='dialog-content'] > form {
+        min-height: 0;
+        flex: 1 1 auto;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+
+    [data-slot='dialog-content']:not(:has(> form)) {
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+}
+
 @layer utilities {
     .store-gradient {
         background: linear-gradient(135deg, var(--store-gradient-from) 0%, var(--store-gradient-to) 100%);

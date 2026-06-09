@@ -82,7 +82,7 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
                     <h2 className="text-sm font-semibold text-white">{isEditing ? 'Edit User' : 'Create User'}</h2>
                 </div>
 
-                <form onSubmit={handleSubmit} className="max-h-[75vh] space-y-3 overflow-y-auto p-4">
+                <form onSubmit={handleSubmit} className="space-y-3 p-4">
                     <FormField label="Branch" name="branch_id" required error={form.errors.branch_id}>
                         <div className="mt-1">
                             <SmartSelect

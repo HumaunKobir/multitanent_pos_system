@@ -2,10 +2,10 @@ import { PanelSidebar } from '@/components/admin/panel-sidebar';
 
 export default function AdminLayout({ children }) {
     return (
-        <div className="flex min-h-screen w-full bg-background">
+        <div className="flex h-dvh w-full overflow-hidden bg-background">
             <PanelSidebar />
-            <div className="flex min-h-screen flex-1 flex-col border-l border-border">
-                <main className="flex-1 overflow-auto">{children}</main>
+            <div className="flex min-h-0 flex-1 flex-col border-l border-border">
+                <main data-panel-main className="min-h-0 flex-1 overflow-y-auto">{children}</main>
             </div>
         </div>
     );

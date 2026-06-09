@@ -229,7 +229,7 @@ function CustomerSearch({ value, onChange, error, initialCustomer }) {
 
             <Dialog open={modalOpen} onOpenChange={(o) => !o && setModalOpen(false)}>
                 <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-lg">
-                    <DialogHeader className="border-b border-border bg-muted/40 px-5 py-4">
+                    <DialogHeader className="shrink-0 border-b border-border bg-muted/40 px-5 py-4">
                         <DialogTitle className="flex items-center gap-2 text-base">
                             <User className="size-4 text-primary" />
                             Add Customer

@@ -1,0 +1,1 @@
+import{t as e}from"./use-can-BoWhl9d9.js";function t(t){let{permission:n,children:r,fallback:i}=t,a=i===void 0?null:i,{can:o}=e();return o(n)?r:a}export{t};

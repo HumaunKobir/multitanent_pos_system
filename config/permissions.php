@@ -332,6 +332,14 @@ return [
             ],
         ],
 
+        'online-customer' => [
+            'label' => 'Online Customers',
+            'group' => 'Ecommerce',
+            'permissions' => [
+                'online-customer.view' => 'View Online Customers',
+            ],
+        ],
+
         // ── Administration ────────────────────────────────────────────────────
 
         'branch' => [

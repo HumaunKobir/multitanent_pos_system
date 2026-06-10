@@ -98,6 +98,14 @@ return [
             'permission' => 'online-order.view',
         ],
         [
+            'title' => 'Online Customers',
+            'icon' => 'users-round',
+            'href' => '/online-customer',
+            'single' => true,
+            'ecommerce_only' => true,
+            'permission' => 'online-customer.view',
+        ],
+        [
             'title' => 'Contact Messages',
             'icon' => 'phone-call',
             'href' => '/contact-list',

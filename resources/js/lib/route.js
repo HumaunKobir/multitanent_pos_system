@@ -102,6 +102,8 @@ const routes = {
     'online-order.fulfill': '/online-order/:onlineOrder/fulfill',
     'online-order.update-status': '/online-order/:onlineOrder/status',
     'online-order.invoice': '/online-order/:onlineOrder/invoice',
+    'online-customer.index': '/online-customer',
+    'online-customer.show': '/online-customer/:customer',
     'subscriber-list.index': '/subscriber-list',
     'subscriber-list.destroy': '/subscriber-list/:subscriber',
     'subscribe.store': '/subscribe',

@@ -21,6 +21,7 @@ use App\Http\Controllers\Inventory\SellController;
 use App\Http\Controllers\Inventory\StockDistributionController;
 use App\Http\Controllers\Inventory\SupplierController;
 use App\Http\Controllers\Inventory\SupplierPaymentController;
+use App\Http\Controllers\OnlineCustomerController;
 use App\Http\Controllers\OnlineOrderController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\Reports\ReportController;
@@ -85,6 +86,8 @@ Route::middleware(['auth', 'verified', 'ecommerce.panel'])->group(function () {
             ->except(['create', 'edit', 'show'])
             ->parameters(['faq' => 'faq']);
     });
+    Route::get('online-customer', [OnlineCustomerController::class, 'index'])->name('online-customer.index');
+    Route::get('online-customer/{customer}', [OnlineCustomerController::class, 'show'])->name('online-customer.show');
     Route::get('online-order', [OnlineOrderController::class, 'index'])->name('online-order.index');
     Route::get('online-order/{onlineOrder}', [OnlineOrderController::class, 'show'])->name('online-order.show');
     Route::post('online-order/{onlineOrder}/steadfast', [OnlineOrderController::class, 'sendToSteadfast'])->name('online-order.send-steadfast');

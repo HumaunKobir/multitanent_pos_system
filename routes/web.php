@@ -1,10 +1,16 @@
 <?php
 
 use App\Http\Controllers\Admin\AdminDashboardController;
+use App\Http\Controllers\Auth\ForgotPasswordController;
+use App\Http\Controllers\Auth\ResetPasswordController;
+use App\Http\Controllers\Auth\VerifyPasswordResetController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\CheckoutController;
+use App\Http\Controllers\Customer\Auth\CustomerForgotPasswordController;
 use App\Http\Controllers\Customer\Auth\CustomerLoginController;
 use App\Http\Controllers\Customer\Auth\CustomerRegisterController;
+use App\Http\Controllers\Customer\Auth\CustomerResetPasswordController;
+use App\Http\Controllers\Customer\Auth\CustomerVerifyPasswordResetController;
 use App\Http\Controllers\Customer\CustomerDashboardController;
 use App\Http\Controllers\Customer\CustomerProfileController;
 use App\Http\Controllers\HomeController;
@@ -59,6 +65,22 @@ Route::post('/sslcommerz/ipn', [SslCommerzPaymentController::class, 'ipn'])->nam
 
 Route::post('/steadfast/webhook', SteadfastWebhookController::class)->name('steadfast.webhook');
 
+// ── STAFF PASSWORD RESET (OTP) ────────────────────────────────────────────────
+Route::middleware('guest:web')->group(function () {
+    Route::get('forgot-password', [ForgotPasswordController::class, 'create'])->name('password.request');
+    Route::post('forgot-password', [ForgotPasswordController::class, 'store'])
+        ->middleware('throttle:5,1')
+        ->name('password.email');
+    Route::get('reset-password/verify', [VerifyPasswordResetController::class, 'create'])->name('password.verify');
+    Route::post('reset-password/verify', [VerifyPasswordResetController::class, 'store'])
+        ->middleware('throttle:5,1')
+        ->name('password.verify.store');
+    Route::get('reset-password', [ResetPasswordController::class, 'create'])->name('password.reset');
+    Route::post('reset-password', [ResetPasswordController::class, 'store'])
+        ->middleware('throttle:5,1')
+        ->name('password.update');
+});
+
 // Pathao API stubs (Phase 12 — wire to Pathao package when available)
 Route::get('/pathao/cities', [PathaoCourierController::class, 'getCities'])->name('pathao.cities');
 Route::get('/pathao/zones/{cityId}', [PathaoCourierController::class, 'getZones'])->name('pathao.zones');
@@ -71,6 +93,18 @@ Route::prefix('customer')->name('customer.')->group(function () {
         Route::post('login', [CustomerLoginController::class, 'login']);
         Route::get('register', [CustomerRegisterController::class, 'showRegisterForm'])->name('register');
         Route::post('register', [CustomerRegisterController::class, 'register']);
+        Route::get('forgot-password', [CustomerForgotPasswordController::class, 'create'])->name('password.request');
+        Route::post('forgot-password', [CustomerForgotPasswordController::class, 'store'])
+            ->middleware('throttle:5,1')
+            ->name('password.email');
+        Route::get('reset-password/verify', [CustomerVerifyPasswordResetController::class, 'create'])->name('password.verify');
+        Route::post('reset-password/verify', [CustomerVerifyPasswordResetController::class, 'store'])
+            ->middleware('throttle:5,1')
+            ->name('password.verify.store');
+        Route::get('reset-password', [CustomerResetPasswordController::class, 'create'])->name('password.reset');
+        Route::post('reset-password', [CustomerResetPasswordController::class, 'store'])
+            ->middleware('throttle:5,1')
+            ->name('password.update');
     });
 
     Route::middleware('auth:customer')->group(function () {

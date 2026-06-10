@@ -172,6 +172,14 @@ return [
             ],
         ],
         [
+            'title' => 'Admin Profile',
+            'icon' => 'shield',
+            'href' => '/setting/admin-profile',
+            'single' => true,
+            'admin_only' => true,
+            'permission' => null,
+        ],
+        [
             'title' => 'Branch Profile',
             'icon' => 'building-2',
             'href' => '/setting/branch-profile',

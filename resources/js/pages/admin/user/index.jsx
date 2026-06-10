@@ -3,7 +3,7 @@ import { Can } from '@/components/can';
 import { DataTable } from '@/components/ui/data-table';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { useCan } from '@/hooks/use-can';
-import { Head, router, usePage } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Pencil, Plus, Trash2, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -48,8 +48,8 @@ export default function UserIndex({ users, branches, roles }) {
     const columns = [
         {
             id: 'num',
-            header: '#',
-            render: (_, i) => i + 1,
+            header: 'No.',
+            render: (_, i) => (users.from ?? 1) + i,
         },
         { header: 'Name', accessorKey: 'name' },
         { header: 'Email', accessorKey: 'email' },
@@ -57,7 +57,7 @@ export default function UserIndex({ users, branches, roles }) {
         {
             id: 'branch',
             header: 'Branch',
-            render: (row) => row.branch_name ?? 'All Branches',
+            render: (row) => row.branch_name ?? '—',
         },
         {
             id: 'role',
@@ -120,7 +120,25 @@ export default function UserIndex({ users, branches, roles }) {
                     />
                 </div>
 
-                <DataTable columns={columns} rows={users} rowKey="id" emptyMessage="No users found." />
+                <DataTable columns={columns} rows={users.data} rowKey="id" emptyMessage="No users found." />
+
+                {users.links?.length > 3 && (
+                    <div className="mt-4 flex flex-wrap gap-1">
+                        {users.links.map((link, i) => (
+                            <Link
+                                key={i}
+                                href={link.url ?? '#'}
+                                className={[
+                                    'border px-3 py-1 text-sm transition-colors',
+                                    link.active ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-accent',
+                                    !link.url ? 'pointer-events-none opacity-50' : '',
+                                ].join(' ')}
+                                dangerouslySetInnerHTML={{ __html: link.label }}
+                                preserveScroll
+                            />
+                        ))}
+                    </div>
+                )}
 
                 {can('user.delete') && (
                 <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>

@@ -29,7 +29,7 @@ class DatabaseSeeder extends Seeder
 
         User::query()->create([
             'name' => 'Branch Admin',
-            'email' => 'branchadmin@coolness.com',
+            'email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL,
             'phone' => '01700000002',
             'password' => bcrypt('123456789'),
             'branch_id' => $branch->id,

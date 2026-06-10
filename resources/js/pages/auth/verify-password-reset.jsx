@@ -1,7 +1,6 @@
 import { Form, Head } from '@inertiajs/react';
 
 import InputError from '@/components/input-error';
-import PasswordInput from '@/components/password-input';
 import { StaffPasswordResetSteps } from '@/components/password-reset-steps';
 import TextLink from '@/components/text-link';
 import { Input } from '@/components/ui/input';
@@ -10,22 +9,22 @@ import { Spinner } from '@/components/ui/spinner';
 import { staffAuthLayout } from '@/layouts/auth/login-page-layout';
 import { route, routeForm } from '@/lib/route';
 
-export default function ResetPassword({ email, status }) {
+export default function VerifyPasswordReset({ email, status }) {
     return (
         <>
-            <Head title="New password" />
+            <Head title="Verify code" />
 
-            <StaffPasswordResetSteps currentStep={3} />
+            <StaffPasswordResetSteps currentStep={2} />
 
             <div className="mb-8">
                 <p className="text-[11px] text-indigo-500 uppercase tracking-[0.2em] font-semibold mb-2">
-                    Step 3 of 3
+                    Step 2 of 3
                 </p>
                 <h1 className="text-[1.75rem] font-black tracking-tight leading-tight">
-                    Set new password
+                    Verify your code
                 </h1>
                 <p className="text-muted-foreground text-[13px] mt-1.5">
-                    Choose a strong password for your account
+                    Enter the 6-digit code sent to your email
                 </p>
             </div>
 
@@ -35,11 +34,7 @@ export default function ResetPassword({ email, status }) {
                 </div>
             ) : null}
 
-            <Form
-                {...routeForm('password.update')}
-                resetOnSuccess={['password', 'password_confirmation']}
-                className="flex flex-col gap-5"
-            >
+            <Form {...routeForm('password.verify.store')} resetOnError={['otp']} className="flex flex-col gap-5">
                 {({ processing, errors }) => (
                     <>
                         <input type="hidden" name="email" value={email} />
@@ -59,48 +54,36 @@ export default function ResetPassword({ email, status }) {
                         </div>
 
                         <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="password" className="text-[12.5px] font-semibold tracking-wide uppercase text-muted-foreground">
-                                New password
+                            <Label htmlFor="otp" className="text-[12.5px] font-semibold tracking-wide uppercase text-muted-foreground">
+                                Verification code
                             </Label>
-                            <PasswordInput
-                                id="password"
-                                name="password"
+                            <Input
+                                id="otp"
+                                name="otp"
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                maxLength={6}
                                 required
                                 autoFocus
-                                autoComplete="new-password"
-                                placeholder="••••••••"
-                                className="h-11 text-sm bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 focus-visible:border-indigo-500 focus-visible:ring-indigo-500/20"
+                                placeholder="000000"
+                                className="h-11 text-sm tracking-[0.35em] text-center font-mono bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-700 focus-visible:border-indigo-500 focus-visible:ring-indigo-500/20"
                             />
-                            <InputError message={errors.password} />
-                        </div>
-
-                        <div className="flex flex-col gap-1.5">
-                            <Label htmlFor="password_confirmation" className="text-[12.5px] font-semibold tracking-wide uppercase text-muted-foreground">
-                                Confirm password
-                            </Label>
-                            <PasswordInput
-                                id="password_confirmation"
-                                name="password_confirmation"
-                                required
-                                autoComplete="new-password"
-                                placeholder="••••••••"
-                                className="h-11 text-sm bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 focus-visible:border-indigo-500 focus-visible:ring-indigo-500/20"
-                            />
-                            <InputError message={errors.password_confirmation} />
+                            <InputError message={errors.otp} />
                         </div>
 
                         <button
                             type="submit"
                             disabled={processing}
-                            data-test="reset-password-button"
+                            data-test="verify-password-reset-button"
                             className="mt-2 w-full h-11 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-[13.5px] tracking-wide transition-colors duration-150 flex items-center justify-center gap-2 cursor-pointer"
                         >
-                            {processing ? <Spinner /> : 'Update password'}
+                            {processing ? <Spinner /> : 'Verify code'}
                         </button>
 
                         <p className="text-center text-[13px] text-muted-foreground">
-                            <TextLink href={route('login')} className="font-semibold text-indigo-600 no-underline hover:underline">
-                                Back to sign in
+                            Didn&apos;t get a code?{' '}
+                            <TextLink href={route('password.request')} className="font-semibold text-indigo-600 no-underline hover:underline">
+                                Request again
                             </TextLink>
                         </p>
                     </>
@@ -110,4 +93,4 @@ export default function ResetPassword({ email, status }) {
     );
 }
 
-ResetPassword.layout = staffAuthLayout;
+VerifyPasswordReset.layout = staffAuthLayout;

@@ -25,6 +25,7 @@ use App\Http\Controllers\OnlineOrderController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\RoleController;
+use App\Http\Controllers\Setting\AdminProfileController;
 use App\Http\Controllers\Setting\BranchProfileController;
 use App\Http\Controllers\Setting\BrandController;
 use App\Http\Controllers\Setting\CategoryController;
@@ -182,6 +183,8 @@ Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->gr
     Route::resource('special-discount', SpecialDiscountController::class)
         ->except(['create', 'edit', 'show'])
         ->parameters(['special-discount' => 'specialDiscount']);
+    Route::get('admin-profile', [AdminProfileController::class, 'edit'])->name('admin-profile.edit');
+    Route::put('admin-profile', [AdminProfileController::class, 'update'])->name('admin-profile.update');
     Route::get('branch-profile', [BranchProfileController::class, 'edit'])->name('branch-profile.edit');
     Route::put('branch-profile', [BranchProfileController::class, 'update'])->name('branch-profile.update');
 });

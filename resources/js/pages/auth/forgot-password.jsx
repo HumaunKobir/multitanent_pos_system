@@ -1,17 +1,79 @@
-// Components
 import { Form, Head } from '@inertiajs/react';
-import { LoaderCircle } from 'lucide-react';
-import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-runtime";
+
 import InputError from '@/components/input-error';
+import { StaffPasswordResetSteps } from '@/components/password-reset-steps';
 import TextLink from '@/components/text-link';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Spinner } from '@/components/ui/spinner';
+import { staffAuthLayout } from '@/layouts/auth/login-page-layout';
 import { route, routeForm } from '@/lib/route';
+
 export default function ForgotPassword({ status }) {
-    return (_jsxs(_Fragment, { children: [_jsx(Head, { title: "Forgot password" }), status && (_jsx("div", { className: "mb-4 text-center text-sm font-medium text-green-600", children: status })), _jsxs("div", { className: "space-y-6", children: [_jsx(Form, { ...routeForm('password.email'), children: ({ processing, errors }) => (_jsxs(_Fragment, { children: [_jsxs("div", { className: "grid gap-2", children: [_jsx(Label, { htmlFor: "email", children: "Email address" }), _jsx(Input, { id: "email", type: "email", name: "email", autoComplete: "off", autoFocus: true, placeholder: "email@example.com" }), _jsx(InputError, { message: errors.email })] }), _jsx("div", { className: "my-6 flex items-center justify-start", children: _jsxs(Button, { className: "w-full", disabled: processing, "data-test": "email-password-reset-link-button", children: [processing && (_jsx(LoaderCircle, { className: "h-4 w-4 animate-spin" })), "Email password reset link"] }) })] })) }), _jsxs("div", { className: "space-x-1 text-center text-sm text-muted-foreground", children: [_jsx("span", { children: "Or, return to" }), _jsx(TextLink, { href: route('login'), children: "log in" })] })] })] }));
+    return (
+        <>
+            <Head title="Forgot password" />
+
+            <StaffPasswordResetSteps currentStep={1} />
+
+            <div className="mb-8">
+                <p className="text-[11px] text-indigo-500 uppercase tracking-[0.2em] font-semibold mb-2">
+                    Step 1 of 3
+                </p>
+                <h1 className="text-[1.75rem] font-black tracking-tight leading-tight">
+                    Reset password
+                </h1>
+                <p className="text-muted-foreground text-[13px] mt-1.5">
+                    Enter your email and we will send a verification code
+                </p>
+            </div>
+
+            {status ? (
+                <div className="mb-6 text-sm text-green-700 bg-green-50 border-l-4 border-green-500 px-4 py-3">
+                    {status}
+                </div>
+            ) : null}
+
+            <Form {...routeForm('password.email')} className="flex flex-col gap-5">
+                {({ processing, errors }) => (
+                    <>
+                        <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="email" className="text-[12.5px] font-semibold tracking-wide uppercase text-muted-foreground">
+                                Email
+                            </Label>
+                            <Input
+                                id="email"
+                                type="email"
+                                name="email"
+                                required
+                                autoFocus
+                                autoComplete="email"
+                                placeholder="you@example.com"
+                                className="h-11 text-sm bg-zinc-50 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 focus-visible:border-indigo-500 focus-visible:ring-indigo-500/20"
+                            />
+                            <InputError message={errors.email} />
+                        </div>
+
+                        <button
+                            type="submit"
+                            disabled={processing}
+                            data-test="email-password-reset-link-button"
+                            className="mt-2 w-full h-11 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-60 disabled:cursor-not-allowed text-white font-bold text-[13.5px] tracking-wide transition-colors duration-150 flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                            {processing ? <Spinner /> : 'Send verification code'}
+                        </button>
+
+                        <p className="text-center text-[13px] text-muted-foreground">
+                            Remember your password?{' '}
+                            <TextLink href={route('login')} className="font-semibold text-indigo-600 no-underline hover:underline">
+                                Sign in
+                            </TextLink>
+                        </p>
+                    </>
+                )}
+            </Form>
+        </>
+    );
 }
-ForgotPassword.layout = {
-    title: 'Forgot password',
-    description: 'Enter your email to receive a password reset link',
-};
+
+ForgotPassword.layout = staffAuthLayout;

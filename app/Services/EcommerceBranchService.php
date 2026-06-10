@@ -6,7 +6,7 @@ use App\Models\Branch;
 
 class EcommerceBranchService
 {
-    public const string BRANCH_NAME = 'Ecommerce';
+    public const string BRANCH_NAME = Branch::ECOMMERCE_BRANCH_NAME;
 
     private static ?int $resolvedId = null;
 

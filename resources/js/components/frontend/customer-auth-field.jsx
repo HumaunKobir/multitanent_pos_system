@@ -12,7 +12,7 @@ function fieldErrorClass(error) {
     return error ? 'border-red-400 bg-red-50/40 focus:border-red-500 focus:ring-red-500/15' : '';
 }
 
-export function CustomerAuthField({ label, required = false, error, className, id, ...props }) {
+export function CustomerAuthField({ label, required = false, error, className, inputClassName, id, ...props }) {
     const inputId = id || label?.toLowerCase()?.replace(/[^a-z0-9]+/g, '-');
 
     return (
@@ -25,7 +25,7 @@ export function CustomerAuthField({ label, required = false, error, className, i
             )}
             <input
                 id={inputId}
-                className={storeCn(fieldInputClass, 'py-3', fieldErrorClass(error))}
+                className={storeCn(fieldInputClass, 'py-3', fieldErrorClass(error), inputClassName)}
                 {...props}
             />
             {error && <p className="mt-1.5 text-xs font-medium text-store-accent">{error}</p>}

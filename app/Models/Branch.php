@@ -16,7 +16,7 @@ class Branch extends Model
 
     public const int MAIN_BRANCH_ID = 1;
 
-    public const string ECOMMERCE_BRANCH_NAME = 'Ecommerce';
+    public const string ECOMMERCE_BRANCH_NAME = 'Ecommerce Branch';
 
     protected $fillable = ['name', 'phone', 'address', 'status'];
 
@@ -32,6 +32,22 @@ class Branch extends Model
     public function scopeOperating(Builder $query): Builder
     {
         return $query->where('id', '!=', self::MAIN_BRANCH_ID);
+    }
+
+    public function scopeAssignableForUsers(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query->where('id', '!=', self::MAIN_BRANCH_ID)
+                ->orWhere('name', self::ECOMMERCE_BRANCH_NAME);
+        });
+    }
+
+    public function scopeAvailableForUserAssignment(Builder $query): Builder
+    {
+        return $query
+            ->active()
+            ->assignableForUsers()
+            ->whereDoesntHave('users', fn (Builder $userQuery) => $userQuery->managedInUserList());
     }
 
     public static function isMainBranch(?int $branchId): bool

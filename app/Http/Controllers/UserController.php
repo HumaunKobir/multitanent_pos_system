@@ -8,7 +8,9 @@ use App\Services\SystemAccountService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Validation\Rules\Unique;
 use Inertia\Inertia;
 use Inertia\Response;
 use Spatie\Permission\Models\Role;
@@ -21,10 +23,11 @@ class UserController extends Controller
 
         $users = User::query()
             ->with('branch', 'roles')
-            ->where('id', '!=', 1)
+            ->listedInUserManagement()
             ->latest()
-            ->get()
-            ->map(fn (User $user) => [
+            ->paginate(20)
+            ->withQueryString()
+            ->through(fn (User $user) => [
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
@@ -38,7 +41,10 @@ class UserController extends Controller
 
         return Inertia::render('admin/user/index', [
             'users' => $users,
-            'branches' => Branch::active()->orderBy('name')->pluck('name', 'id'),
+            'branches' => Branch::query()
+                ->availableForUserAssignment()
+                ->orderBy('name')
+                ->pluck('name', 'id'),
             'roles' => Role::orderBy('name')->pluck('name', 'id'),
         ]);
     }
@@ -48,7 +54,12 @@ class UserController extends Controller
         $this->authorize('user.create');
 
         $data = $request->validate([
-            'branch_id' => ['required', 'integer', Rule::exists('branches', 'id')],
+            'branch_id' => [
+                'required',
+                'integer',
+                $this->assignableBranchExistsRule(),
+                $this->uniqueManagedBranchRule(),
+            ],
             'name' => ['required', 'string', 'max:191'],
             'email' => ['required', 'email', 'max:191', 'unique:users,email'],
             'phone' => ['required', 'string', 'max:20', 'unique:users,phone'],
@@ -80,13 +91,20 @@ class UserController extends Controller
     {
         $this->authorize('user.update');
 
-        if ($user->id === 1) {
+        if ($user->id === User::SUPER_ADMIN_ID) {
             abort(403);
         }
 
+        abort_unless($this->userIsManagedViaUserList($user), 403);
+
         $branchRules = $user->isSuperAdmin()
             ? ['nullable', 'integer', Rule::exists('branches', 'id')]
-            : ['required', 'integer', Rule::exists('branches', 'id')];
+            : [
+                'required',
+                'integer',
+                $this->assignableBranchExistsRule(),
+                $this->uniqueManagedBranchRule($user->id),
+            ];
 
         $data = $request->validate([
             'branch_id' => $branchRules,
@@ -127,14 +145,48 @@ class UserController extends Controller
     {
         $this->authorize('user.delete');
 
-        if ($user->id === 1) {
+        if ($user->id === User::SUPER_ADMIN_ID) {
             return redirect()->route('user.index')
                 ->with('error', 'Superadmin user cannot be deleted.');
         }
+
+        abort_unless($this->userIsManagedViaUserList($user), 403);
 
         $user->delete();
 
         return redirect()->route('user.index')
             ->with('success', 'User deleted successfully.');
+    }
+
+    protected function userIsManagedViaUserList(User $user): bool
+    {
+        if ($user->branch_id === null || $user->isSystemEcommerceAdmin()) {
+            return false;
+        }
+
+        return User::query()
+            ->whereKey($user->id)
+            ->managedInUserList()
+            ->exists();
+    }
+
+    protected function uniqueManagedBranchRule(?int $ignoreUserId = null): Unique
+    {
+        $rule = Rule::unique('users', 'branch_id')
+            ->where(fn ($query) => $query->where('email', '!=', User::ECOMMERCE_BRANCH_ADMIN_EMAIL));
+
+        if ($ignoreUserId !== null) {
+            $rule->ignore($ignoreUserId);
+        }
+
+        return $rule;
+    }
+
+    protected function assignableBranchExistsRule(): Exists
+    {
+        return Rule::exists('branches', 'id')->where(function ($query): void {
+            $query->where('id', '!=', Branch::MAIN_BRANCH_ID)
+                ->orWhere('name', Branch::ECOMMERCE_BRANCH_NAME);
+        });
     }
 }

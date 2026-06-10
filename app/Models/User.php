@@ -6,6 +6,7 @@ use App\Traits\HasBranch;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -18,6 +19,10 @@ use Spatie\Permission\Traits\HasRoles;
 #[Hidden(['password', 'two_factor_secret', 'two_factor_recovery_codes', 'remember_token'])]
 class User extends Authenticatable
 {
+    public const int SUPER_ADMIN_ID = 1;
+
+    public const string ECOMMERCE_BRANCH_ADMIN_EMAIL = 'branchadmin@coolness.com';
+
     /** @use HasFactory<UserFactory> */
     use HasBranch, HasFactory, HasRoles, Notifiable, TwoFactorAuthenticatable;
 
@@ -35,9 +40,32 @@ class User extends Authenticatable
         return $this->branch_id === null;
     }
 
+    public function isProtectedFromPasswordReset(): bool
+    {
+        return $this->id === self::SUPER_ADMIN_ID
+            || Branch::isMainBranch($this->branch_id);
+    }
+
     public function isBranchUser(): bool
     {
         return $this->branch_id !== null;
+    }
+
+    public function isSystemEcommerceAdmin(): bool
+    {
+        return $this->email === self::ECOMMERCE_BRANCH_ADMIN_EMAIL;
+    }
+
+    public function scopeListedInUserManagement(Builder $query): Builder
+    {
+        return $query
+            ->whereHas('branch', fn (Builder $branchQuery) => $branchQuery->assignableForUsers())
+            ->where('email', '!=', self::ECOMMERCE_BRANCH_ADMIN_EMAIL);
+    }
+
+    public function scopeManagedInUserList(Builder $query): Builder
+    {
+        return $query->listedInUserManagement();
     }
 
     public function branch(): BelongsTo

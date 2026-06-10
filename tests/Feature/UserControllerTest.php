@@ -18,6 +18,14 @@ function userManagementActor(array $permissions = []): User
     return $user;
 }
 
+function clearManagedUsersForBranch(int $branchId): void
+{
+    User::query()
+        ->where('branch_id', $branchId)
+        ->managedInUserList()
+        ->delete();
+}
+
 test('creating a branch user seeds default accounts for that branch', function () {
     $this->artisan('permissions:sync');
 
@@ -53,7 +61,7 @@ test('creating a branch user seeds default accounts for that branch', function (
     }
 });
 
-test('multiple users can be assigned to the same branch', function () {
+test('a branch can only have one user', function () {
     $this->artisan('permissions:sync');
 
     $actor = userManagementActor(['user.create']);
@@ -71,19 +79,209 @@ test('multiple users can be assigned to the same branch', function () {
             'password_confirmation' => 'password123',
             'status' => 1,
         ])
-        ->assertRedirect(route('user.index'))
-        ->assertSessionHas('success');
-
-    expect(User::query()->where('branch_id', $branch->id)->count())->toBe(2);
+        ->assertSessionHasErrors('branch_id');
 });
 
-test('user index exposes all active branches for assignment', function () {
+test('user index does not include the main super admin account', function () {
     $this->artisan('permissions:sync');
 
     $actor = userManagementActor(['user.view']);
 
-    $branch = Branch::factory()->create(['name' => 'Assigned Branch '.fake()->unique()->word()]);
-    User::factory()->create(['branch_id' => $branch->id]);
+    $superAdmin = User::query()->find(User::SUPER_ADMIN_ID)
+        ?? User::factory()->create(['id' => User::SUPER_ADMIN_ID, 'branch_id' => null]);
+
+    $branch = Branch::factory()->create();
+    $branchUser = User::factory()->create(['branch_id' => $branch->id]);
+    $otherSuperStyleUser = User::factory()->create(['branch_id' => null]);
+
+    $this->actingAs($actor)
+        ->get('/user')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/user/index')
+            ->where('users.data', fn ($users) => collect($users)->pluck('id')->contains($branchUser->id)
+                && ! collect($users)->pluck('id')->contains($superAdmin->id)
+                && ! collect($users)->pluck('id')->contains($otherSuperStyleUser->id)));
+});
+
+test('user index hides system ecommerce admin and only exposes branches without users', function () {
+    $this->artisan('permissions:sync');
+
+    $actor = userManagementActor(['user.view']);
+
+    $unassignedBranch = Branch::factory()->create();
+    $assignedBranch = Branch::factory()->create();
+    $assignedUser = User::factory()->create(['branch_id' => $assignedBranch->id]);
+
+    $ecommerceBranch = Branch::query()->firstOrCreate(
+        ['name' => Branch::ECOMMERCE_BRANCH_NAME],
+        Branch::factory()->make(['name' => Branch::ECOMMERCE_BRANCH_NAME])->toArray(),
+    );
+    clearManagedUsersForBranch($ecommerceBranch->id);
+    $systemEcommerceAdmin = User::query()->firstOrCreate(
+        ['email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL],
+        User::factory()->make([
+            'branch_id' => $ecommerceBranch->id,
+            'email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL,
+        ])->toArray(),
+    );
+
+    $mainBranch = Branch::query()->find(Branch::MAIN_BRANCH_ID);
+    $mainBranchUser = null;
+
+    if ($mainBranch !== null && $mainBranch->name !== Branch::ECOMMERCE_BRANCH_NAME) {
+        $mainBranchUser = User::factory()->create(['branch_id' => $mainBranch->id]);
+    }
+
+    $this->actingAs($actor)
+        ->get('/user')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/user/index')
+            ->where('users.data', fn ($users) => collect($users)->pluck('id')->contains($assignedUser->id)
+                && ! collect($users)->pluck('id')->contains($systemEcommerceAdmin->id)
+                && ($mainBranchUser === null || ! collect($users)->pluck('id')->contains($mainBranchUser->id)))
+            ->where('branches', fn ($branches) => collect($branches)->has($unassignedBranch->id)
+                && ! collect($branches)->has($assignedBranch->id)
+                && collect($branches)->has($ecommerceBranch->id)
+                && ($mainBranch === null || $mainBranch->name === Branch::ECOMMERCE_BRANCH_NAME || ! collect($branches)->has($mainBranch->id))));
+});
+
+test('ecommerce branch is available in user form when only the system admin exists', function () {
+    $this->artisan('permissions:sync');
+
+    $actor = userManagementActor(['user.create']);
+
+    $ecommerceBranch = Branch::query()->firstOrCreate(
+        ['name' => Branch::ECOMMERCE_BRANCH_NAME],
+        Branch::factory()->make(['name' => Branch::ECOMMERCE_BRANCH_NAME])->toArray(),
+    );
+
+    clearManagedUsersForBranch($ecommerceBranch->id);
+
+    User::query()->firstOrCreate(
+        ['email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL],
+        User::factory()->make([
+            'branch_id' => $ecommerceBranch->id,
+            'email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL,
+        ])->toArray(),
+    );
+
+    $this->actingAs($actor)
+        ->post('/user', [
+            'branch_id' => $ecommerceBranch->id,
+            'name' => 'Ecommerce Staff',
+            'email' => fake()->unique()->safeEmail(),
+            'phone' => fake()->unique()->numerify('01#########'),
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'status' => 1,
+        ])
+        ->assertRedirect(route('user.index'))
+        ->assertSessionHas('success');
+});
+
+test('ecommerce branch cannot receive a second managed user from user form', function () {
+    $this->artisan('permissions:sync');
+
+    $actor = userManagementActor(['user.create']);
+
+    $ecommerceBranch = Branch::query()->firstOrCreate(
+        ['name' => Branch::ECOMMERCE_BRANCH_NAME],
+        Branch::factory()->make(['name' => Branch::ECOMMERCE_BRANCH_NAME])->toArray(),
+    );
+
+    User::query()->firstOrCreate(
+        ['email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL],
+        User::factory()->make([
+            'branch_id' => $ecommerceBranch->id,
+            'email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL,
+        ])->toArray(),
+    );
+
+    User::factory()->create(['branch_id' => $ecommerceBranch->id]);
+
+    $this->actingAs($actor)
+        ->post('/user', [
+            'branch_id' => $ecommerceBranch->id,
+            'name' => 'Second Ecommerce Staff',
+            'email' => fake()->unique()->safeEmail(),
+            'phone' => fake()->unique()->numerify('01#########'),
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'status' => 1,
+        ])
+        ->assertSessionHasErrors('branch_id');
+});
+
+test('system ecommerce admin cannot be updated or deleted from user list', function () {
+    $this->artisan('permissions:sync');
+
+    $actor = userManagementActor(['user.update', 'user.delete']);
+
+    $ecommerceBranch = Branch::query()->firstOrCreate(
+        ['name' => Branch::ECOMMERCE_BRANCH_NAME],
+        Branch::factory()->make(['name' => Branch::ECOMMERCE_BRANCH_NAME])->toArray(),
+    );
+    $systemEcommerceAdmin = User::query()->firstOrCreate(
+        ['email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL],
+        User::factory()->make([
+            'branch_id' => $ecommerceBranch->id,
+            'email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL,
+        ])->toArray(),
+    );
+
+    $this->actingAs($actor)
+        ->patch("/user/{$systemEcommerceAdmin->id}", [
+            'branch_id' => $ecommerceBranch->id,
+            'name' => 'Updated Name',
+            'email' => $systemEcommerceAdmin->email,
+            'phone' => $systemEcommerceAdmin->phone,
+            'status' => 1,
+        ])
+        ->assertForbidden();
+
+    $this->actingAs($actor)
+        ->delete("/user/{$systemEcommerceAdmin->id}")
+        ->assertForbidden();
+});
+
+test('user index paginates results', function () {
+    $this->artisan('permissions:sync');
+
+    $actor = userManagementActor(['user.view']);
+
+    foreach (range(1, 21) as $index) {
+        $branch = Branch::factory()->create();
+        User::factory()->create(['branch_id' => $branch->id]);
+    }
+
+    $this->actingAs($actor)
+        ->get('/user')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/user/index')
+            ->has('users.data', 20)
+            ->where('users.total', fn ($total) => $total >= 21)
+            ->where('users.per_page', 20));
+
+    $this->actingAs($actor)
+        ->get('/user?page=2')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/user/index')
+            ->has('users.data')
+            ->where('users.current_page', 2));
+});
+
+test('user index exposes only branches without managed users', function () {
+    $this->artisan('permissions:sync');
+
+    $actor = userManagementActor(['user.view']);
+
+    $availableBranch = Branch::factory()->create(['name' => 'Available Branch '.fake()->unique()->word()]);
+    $assignedBranch = Branch::factory()->create(['name' => 'Assigned Branch '.fake()->unique()->word()]);
+    User::factory()->create(['branch_id' => $assignedBranch->id]);
 
     $this->actingAs($actor)
         ->get('/user')
@@ -91,5 +289,6 @@ test('user index exposes all active branches for assignment', function () {
         ->assertInertia(fn ($page) => $page
             ->component('admin/user/index')
             ->has('branches')
-            ->where('branches', fn ($branches) => collect($branches)->has($branch->id)));
+            ->where('branches', fn ($branches) => collect($branches)->has($availableBranch->id)
+                && ! collect($branches)->has($assignedBranch->id)));
 });

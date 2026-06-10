@@ -10,9 +10,11 @@ use Inertia\Response;
 
 class CustomerLoginController extends Controller
 {
-    public function showLoginForm(): Response
+    public function showLoginForm(Request $request): Response
     {
-        return Inertia::render('frontend/customer/login');
+        return Inertia::render('frontend/customer/login', [
+            'status' => $request->session()->get('status'),
+        ]);
     }
 
     public function login(Request $request): RedirectResponse

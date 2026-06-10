@@ -11,14 +11,21 @@ import { useEffect, useMemo } from 'react';
 export default function UserFormDialog({ open, onOpenChange, item, routes, branches, roles }) {
     const isEditing = !!item?.id;
     const roleOptions = Object.entries(roles ?? {});
-    const branchSelectOptions = useMemo(
-        () =>
-            Object.entries(branches ?? {}).map(([id, name]) => ({
-                value: String(id),
-                label: name,
-            })),
-        [branches],
-    );
+    const branchSelectOptions = useMemo(() => {
+        const options = Object.entries(branches ?? {}).map(([id, name]) => ({
+            value: String(id),
+            label: name,
+        }));
+
+        if (isEditing && item?.branch_id && !branches?.[item.branch_id]) {
+            options.unshift({
+                value: String(item.branch_id),
+                label: item.branch_name ?? `Branch #${item.branch_id}`,
+            });
+        }
+
+        return options;
+    }, [branches, isEditing, item?.branch_id, item?.branch_name]);
 
     const form = useForm({
         branch_id: item?.branch_id ? String(item.branch_id) : '',

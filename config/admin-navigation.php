@@ -63,6 +63,7 @@ return [
             'children' => [
                 ['title' => 'Customer', 'href' => '/party/customer', 'permission' => 'party.customer.view'],
                 ['title' => 'Due Collection', 'href' => '/party/customer-due-collection', 'permission' => 'party.customer-due-collection.view'],
+                ['title' => 'Due Alert', 'href' => '/party/customer-due-alert', 'permission' => 'party.customer-due-alert.view'],
             ],
         ],
         [

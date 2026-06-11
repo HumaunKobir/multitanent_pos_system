@@ -169,6 +169,17 @@ return [
             ],
         ],
 
+        'party.customer-due-alert' => [
+            'label' => 'Customer Due Alert',
+            'group' => 'Parties',
+            'permissions' => [
+                'party.customer-due-alert.view' => 'View Customer Due Alerts',
+                'party.customer-due-alert.create' => 'Create Customer Due Alert',
+                'party.customer-due-alert.update' => 'Update Customer Due Alert',
+                'party.customer-due-alert.delete' => 'Delete Customer Due Alert',
+            ],
+        ],
+
         // ── Accounts ──────────────────────────────────────────────────────────
 
         'accounts' => [

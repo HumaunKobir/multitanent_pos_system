@@ -48,16 +48,13 @@ class CustomerController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'min:11', 'max:11', 'unique:customers,phone'],
             'email' => ['nullable', 'string', 'email', 'max:255', 'unique:customers,email'],
-            'password' => ['nullable', 'string', 'min:6'],
             'address' => ['nullable', 'string', 'max:255'],
             'opening_balance' => ['nullable', 'numeric', 'min:0'],
             'is_default' => ['required', 'in:0,1'],
             'status' => ['required', new Enum(CommonStatus::class)],
         ]);
 
-        if (empty($data['password'])) {
-            $data['password'] = '12345678';
-        }
+        $data['password'] = '12345678';
 
         $data['branch_id'] = auth()->user()?->branch_id;
         $data['registration_type'] = CustomerRegistrationType::Offline;
@@ -91,15 +88,10 @@ class CustomerController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'min:11', 'max:11', Rule::unique('customers', 'phone')->ignore($customer->id)],
             'email' => ['nullable', 'string', 'email', 'max:255', Rule::unique('customers', 'email')->ignore($customer->id)],
-            'password' => ['nullable', 'string', 'min:6'],
             'address' => ['nullable', 'string', 'max:255'],
             'is_default' => ['required', 'in:0,1'],
             'status' => ['required', new Enum(CommonStatus::class)],
         ]);
-
-        if (empty($data['password'])) {
-            unset($data['password']);
-        }
 
         if ((int) $data['is_default'] === 1 && ! $customer->is_default) {
             Customer::where('branch_id', $customer->branch_id)->where('is_default', true)->update(['is_default' => false]);

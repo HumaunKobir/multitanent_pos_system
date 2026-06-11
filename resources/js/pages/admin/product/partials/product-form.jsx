@@ -839,11 +839,11 @@ export default function ProductForm({
                             />
                         </Field>
 
-                        <Field label="Product Name" required error={form.errors.name}>
+                        <Field label="Product Name / Code" required error={form.errors.name}>
                             <Input className="h-8 text-xs" value={form.data.name} onChange={(e) => form.setData('name', e.target.value)} placeholder="Product name" />
                         </Field>
 
-                        <Field label="Product Code" error={form.errors.code}>
+                        <Field label="Barcode" error={form.errors.code}>
                             <Input
                                 className="h-8 text-xs"
                                 value={form.data.code}

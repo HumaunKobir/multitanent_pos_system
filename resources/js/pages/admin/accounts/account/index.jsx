@@ -9,7 +9,7 @@ import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { useCan } from '@/hooks/use-can';
 import { route } from '@/lib/route';
 import { Head, router, usePage } from '@inertiajs/react';
-import { ChevronDown, ChevronRight, Pencil, Plus, Search, Trash2, Wallet } from 'lucide-react';
+import { ChevronDown, ChevronRight, Pencil, Plus, RotateCcw, Search, Trash2, Wallet } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import AccountFormDialog from './form-dialog';
 
@@ -197,6 +197,11 @@ export default function AccountIndex({ accounts, parentAccounts, accountTypes, c
         { skipFirstRun: true },
     );
 
+    function handleReset() {
+        setSearch('');
+        setTypeFilter('');
+    }
+
     function toggleExpand(id) {
         setExpandedIds((prev) => {
             const next = new Set(prev);
@@ -273,6 +278,9 @@ export default function AccountIndex({ accounts, parentAccounts, accountTypes, c
                             ))}
                         </SelectContent>
                     </Select>
+                    <Button variant="outline" size="icon" onClick={handleReset} title="Reset filters">
+                        <RotateCcw className="size-4" />
+                    </Button>
                 </div>
 
                 {/* Accounts grouped by type */}

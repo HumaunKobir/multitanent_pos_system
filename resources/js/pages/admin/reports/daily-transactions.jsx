@@ -1,5 +1,6 @@
 import { formatBdDate } from '@/lib/format-bd-date';
-import { Head } from '@inertiajs/react';
+import { route } from '@/lib/route';
+import { Head, router } from '@inertiajs/react';
 import { CalendarRange } from 'lucide-react';
 import { useState } from 'react';
 
@@ -8,6 +9,7 @@ import {
     MoneyCell,
     ReportDateInput,
     ReportFilterField,
+    ReportFilterReset,
     ReportPage,
     useLiveReportFilters,
 } from '@/pages/admin/reports/_shared/report-shell';
@@ -18,12 +20,21 @@ export default function DailyTransactionsReport({ filters = {}, entries = [] }) 
 
     useLiveReportFilters('report.daily-transactions', { date_from: dateFrom, date_to: dateTo }, [dateFrom, dateTo]);
 
+    const hasActiveFilters = Boolean(dateFrom || dateTo);
+
+    function resetFilters() {
+        setDateFrom('');
+        setDateTo('');
+        router.get(route('report.daily-transactions'), {}, { preserveState: true, replace: true });
+    }
+
     return (
         <>
             <Head title="Daily Transactions" />
             <ReportPage
                 title="Daily Transactions"
                 description="All ledger entries for the selected period."
+                filterActions={<ReportFilterReset onClick={resetFilters} disabled={!hasActiveFilters} />}
                 filterBar={
                     <>
                         <ReportFilterField label="From date" icon={CalendarRange}>

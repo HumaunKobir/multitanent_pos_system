@@ -1,5 +1,6 @@
 import { formatBdDate } from '@/lib/format-bd-date';
-import { Head } from '@inertiajs/react';
+import { route } from '@/lib/route';
+import { Head, router } from '@inertiajs/react';
 import { CalendarRange, Package } from 'lucide-react';
 import { useState } from 'react';
 
@@ -7,6 +8,7 @@ import { DataTable } from '@/components/ui/data-table';
 import {
     ReportDateInput,
     ReportFilterField,
+    ReportFilterReset,
     ReportPage,
     ReportSelect,
     useLiveReportFilters,
@@ -23,12 +25,22 @@ export default function DateWiseStockReport({ products = [], filters = {}, entri
         [productId, dateFrom, dateTo],
     );
 
+    const hasActiveFilters = Boolean((productId !== 'all' && productId !== '') || dateFrom || dateTo);
+
+    function resetFilters() {
+        setProductId('all');
+        setDateFrom('');
+        setDateTo('');
+        router.get(route('report.date-wise-stock'), {}, { preserveState: true, replace: true });
+    }
+
     return (
         <>
             <Head title="Date Wise Stock" />
             <ReportPage
                 title="Date Wise Stock"
                 description="Product stock in/out movement log."
+                filterActions={<ReportFilterReset onClick={resetFilters} disabled={!hasActiveFilters} />}
                 filterBar={
                     <>
                         <ReportFilterField label="Product" icon={Package} className="sm:col-span-2">

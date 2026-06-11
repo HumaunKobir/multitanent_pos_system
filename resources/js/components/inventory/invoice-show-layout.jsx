@@ -16,6 +16,9 @@ const lineItemColumns = [
         render: (row) => (
             <div>
                 <p className="font-medium">{row.product?.name ?? '—'}</p>
+                {row.product?.code && (
+                    <p className="text-[10px] font-mono text-muted-foreground">Barcode: {row.product.code}</p>
+                )}
                 {row.variation?.variation_data?.label && (
                     <p className="text-xs text-muted-foreground">{row.variation.variation_data.label}</p>
                 )}

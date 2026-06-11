@@ -52,16 +52,6 @@ function CustomerForm({ form, onSubmit, onCancel, isEditing, statuses }) {
                         className="mt-1"
                     />
                 </FormField>
-                <FormField label="Password" name="password" error={form.errors.password}>
-                    <Input
-                        id="password"
-                        type="password"
-                        value={form.data.password}
-                        onChange={(e) => form.setData('password', e.target.value)}
-                        placeholder={isEditing ? 'Blank = keep current' : 'Password'}
-                        className="mt-1"
-                    />
-                </FormField>
             </div>
             <FormField label="Address" name="address" error={form.errors.address}>
                 <Input
@@ -157,7 +147,7 @@ export default function CustomerIndex({ customers, filters, statuses }) {
     const [editing, setEditing] = useState(null);
     const [deleting, setDeleting] = useState(null);
 
-    const blankForm = { name: '', phone: '', email: '', address: '', opening_balance: '', password: '', is_default: '0', status: 1 };
+    const blankForm = { name: '', phone: '', email: '', address: '', opening_balance: '', is_default: '0', status: 1 };
     const createForm = useForm(blankForm);
     const editForm = useForm(blankForm);
 
@@ -181,7 +171,6 @@ export default function CustomerIndex({ customers, filters, statuses }) {
             phone: customer.phone,
             email: customer.email ?? '',
             address: customer.address ?? '',
-            password: '',
             is_default: customer.is_default ? '1' : '0',
             status: customer.status,
         });

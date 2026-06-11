@@ -1,11 +1,12 @@
 import { DataTable } from '@/components/ui/data-table';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Eye, Package } from 'lucide-react';
+import { Eye, Package, RotateCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Button } from '@/components/ui/button';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { route } from '@/lib/route';
 
@@ -54,6 +55,12 @@ export default function OnlineOrderIndex({ orders, filters, statuses }) {
         if (flash.success) toast.success(flash.success);
         if (flash.error) toast.error(flash.error);
     }, [flash.success, flash.error]);
+
+    function handleReset() {
+        setSearch('');
+        setStatus('all');
+        setCourier('all');
+    }
 
     useDebouncedEffect(
         () => {
@@ -195,6 +202,9 @@ export default function OnlineOrderIndex({ orders, filters, statuses }) {
                             <SelectItem value="none">Not sent</SelectItem>
                         </SelectContent>
                     </Select>
+                    <Button variant="outline" size="icon" onClick={handleReset} title="Reset filters">
+                        <RotateCcw className="size-4" />
+                    </Button>
                 </div>
 
                 <DataTable columns={columns} rows={orders.data} rowKey="id" emptyMessage="No online orders found." />

@@ -1,5 +1,6 @@
 import { formatBdDate } from '@/lib/format-bd-date';
-import { Head } from '@inertiajs/react';
+import { route } from '@/lib/route';
+import { Head, router } from '@inertiajs/react';
 import { CalendarRange, Wallet } from 'lucide-react';
 import { useState } from 'react';
 
@@ -8,6 +9,7 @@ import {
     MoneyCell,
     ReportDateInput,
     ReportFilterField,
+    ReportFilterReset,
     ReportPage,
     ReportSelect,
     useLiveReportFilters,
@@ -24,12 +26,22 @@ export default function CashFlowReport({ accounts = [], filters = {}, entries = 
         [accountId, dateFrom, dateTo],
     );
 
+    const hasActiveFilters = Boolean((accountId !== 'all' && accountId !== '') || dateFrom || dateTo);
+
+    function resetFilters() {
+        setAccountId('all');
+        setDateFrom('');
+        setDateTo('');
+        router.get(route('report.cash-flow'), {}, { preserveState: true, replace: true });
+    }
+
     return (
         <>
             <Head title="Cash Flow" />
             <ReportPage
                 title="Cash Flow"
                 description="Cash and bank account ledger movements."
+                filterActions={<ReportFilterReset onClick={resetFilters} disabled={!hasActiveFilters} />}
                 filterBar={
                     <>
                         <ReportFilterField label="Cash account" icon={Wallet} className="sm:col-span-2">

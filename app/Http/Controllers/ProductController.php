@@ -38,17 +38,35 @@ class ProductController extends Controller
             ->withSum(['batches as batches_sum_available' => fn ($q) => $q->when($branchId, fn ($q) => $q->where(fn ($q) => $q->where('branch_id', $branchId)->orWhereNull('branch_id')))], 'available')
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('name', 'like', "%{$s}%")
-                    ->orWhere('code', 'like', "%{$s}%");
+                    ->orWhere('code', 'like', "%{$s}%")
+                    ->orWhereHas('brand', fn ($q) => $q->where('name', 'like', "%{$s}%"))
+                    ->orWhereHas('category', fn ($q) => $q->where('name', 'like', "%{$s}%"))
+                    ->orWhereJsonContains('tags', $s);
             }))
             ->when($request->category_id, fn ($q, $c) => $q->where('category_id', $c))
+            ->when($request->brand_id, fn ($q, $b) => $q->where('brand_id', $b))
+            ->when($request->tag, fn ($q, $t) => $q->whereJsonContains('tags', $t))
             ->latest()
             ->paginate(20)
             ->withQueryString();
 
         return Inertia::render('admin/product/index', [
             'products' => $products,
-            'filters' => $request->only('search', 'category_id'),
+            'filters' => $request->only('search', 'category_id', 'brand_id', 'tag'),
             'categories' => Category::active()->pluck('name', 'id'),
+            'brands' => Brand::active()->pluck('name', 'id'),
+            'tags' => Tag::selectableForProduct()
+                ->with('parent:id,name')
+                ->get(['id', 'name', 'parent_id'])
+                ->sortBy(fn (Tag $tag): string => ($tag->parent?->name ?? $tag->name).' '.$tag->name)
+                ->values()
+                ->map(fn (Tag $tag): array => [
+                    'value' => $tag->name,
+                    'label' => $tag->parent_id && $tag->parent
+                        ? "{$tag->parent->name} › {$tag->name}"
+                        : $tag->name,
+                ])
+                ->all(),
         ]);
     }
 

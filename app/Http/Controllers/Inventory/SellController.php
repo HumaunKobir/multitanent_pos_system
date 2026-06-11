@@ -50,7 +50,7 @@ class SellController extends Controller
             ->with('customer:id,name,phone')
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('id', 'like', "%{$s}%")
-                    ->orWhereHas('customer', fn ($q) => $q->where('name', 'like', "%{$s}%"));
+                    ->orWhereHas('customer', fn ($q) => $q->where('name', 'like', "%{$s}%")->orWhere('phone', 'like', "%{$s}%"));
             }))
             ->latest()
             ->paginate(20)

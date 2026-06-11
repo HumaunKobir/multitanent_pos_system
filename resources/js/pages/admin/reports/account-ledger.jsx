@@ -1,5 +1,6 @@
 import { formatBdDate } from '@/lib/format-bd-date';
-import { Head } from '@inertiajs/react';
+import { route } from '@/lib/route';
+import { Head, router } from '@inertiajs/react';
 import { BookOpen, CalendarRange } from 'lucide-react';
 import { useState } from 'react';
 
@@ -8,6 +9,7 @@ import {
     MoneyCell,
     ReportDateInput,
     ReportFilterField,
+    ReportFilterReset,
     ReportInfoBanner,
     ReportPage,
     ReportSelect,
@@ -32,6 +34,15 @@ export default function AccountLedgerReport({
         [accountId, dateFrom, dateTo],
     );
 
+    const hasActiveFilters = Boolean(accountId || dateFrom || dateTo);
+
+    function resetFilters() {
+        setAccountId('');
+        setDateFrom('');
+        setDateTo('');
+        router.get(route('report.account-ledger'), {}, { preserveState: true, replace: true });
+    }
+
     const displayRows =
         account && dateFrom
             ? [
@@ -55,6 +66,7 @@ export default function AccountLedgerReport({
             <ReportPage
                 title="Account Ledger"
                 description="Ledger book for a chart of account."
+                filterActions={<ReportFilterReset onClick={resetFilters} disabled={!hasActiveFilters} />}
                 filterBar={
                     <>
                         <ReportFilterField label="Account" icon={BookOpen} className="sm:col-span-2">

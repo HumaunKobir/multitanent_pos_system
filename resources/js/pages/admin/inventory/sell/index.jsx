@@ -168,7 +168,7 @@ export default function SellIndex({ sells, filters }) {
                         <Input
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Search by invoice or customer…"
+                            placeholder="Search by invoice, customer, phone…"
                             className="pl-8"
                         />
                     </div>

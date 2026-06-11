@@ -1,5 +1,6 @@
 import { formatBdDate } from '@/lib/format-bd-date';
-import { Head } from '@inertiajs/react';
+import { route } from '@/lib/route';
+import { Head, router } from '@inertiajs/react';
 import { CalendarRange, User } from 'lucide-react';
 import { useState } from 'react';
 
@@ -8,6 +9,7 @@ import {
     MoneyCell,
     ReportDateInput,
     ReportFilterField,
+    ReportFilterReset,
     ReportInfoBanner,
     ReportPage,
     ReportSelect,
@@ -25,12 +27,22 @@ export default function CustomerLedgerReport({ customers = [], filters = {}, cus
         [customerId, dateFrom, dateTo],
     );
 
+    const hasActiveFilters = Boolean(customerId || dateFrom || dateTo);
+
+    function resetFilters() {
+        setCustomerId('');
+        setDateFrom('');
+        setDateTo('');
+        router.get(route('report.customer-ledger'), {}, { preserveState: true, replace: true });
+    }
+
     return (
         <>
             <Head title="Customer Ledger" />
             <ReportPage
                 title="Customer Ledger"
                 description="Sales and returns ledger for a customer."
+                filterActions={<ReportFilterReset onClick={resetFilters} disabled={!hasActiveFilters} />}
                 filterBar={
                     <>
                         <ReportFilterField label="Customer" icon={User} className="sm:col-span-2">

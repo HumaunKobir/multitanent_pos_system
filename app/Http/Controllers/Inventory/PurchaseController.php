@@ -33,10 +33,10 @@ class PurchaseController extends Controller
 
         $purchases = Purchase::query()->ownBranch()
             ->purchase()
-            ->with('supplier:id,name')
+            ->with('supplier:id,name,phone')
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('serial', 'like', "%{$s}%")
-                    ->orWhereHas('supplier', fn ($q) => $q->where('name', 'like', "%{$s}%"));
+                    ->orWhereHas('supplier', fn ($q) => $q->where('name', 'like', "%{$s}%")->orWhere('phone', 'like', "%{$s}%"));
             }))
             ->latest()
             ->paginate(20)

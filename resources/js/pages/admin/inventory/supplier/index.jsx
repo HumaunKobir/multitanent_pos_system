@@ -39,7 +39,7 @@ function SupplierForm({ form, onSubmit, onCancel, isEditing }) {
                     />
                 </FormField>
             </div>
-            <FormField label="Company Name" name="company_name" error={form.errors.company_name}>
+            <FormField label="Company Name" required name="company_name" error={form.errors.company_name}>
                 <Input
                     id="company_name"
                     value={form.data.company_name}

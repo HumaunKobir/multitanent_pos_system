@@ -1,5 +1,6 @@
 import { formatBdDate } from '@/lib/format-bd-date';
-import { Head } from '@inertiajs/react';
+import { route } from '@/lib/route';
+import { Head, router } from '@inertiajs/react';
 import { ArrowLeftRight, CalendarRange, BookOpen } from 'lucide-react';
 import { useState } from 'react';
 
@@ -7,6 +8,7 @@ import {
     MoneyCell,
     ReportDateInput,
     ReportFilterField,
+    ReportFilterReset,
     ReportPage,
     ReportSelect,
     useLiveReportFilters,
@@ -43,12 +45,22 @@ export default function AccountTransactionsReport({ accounts = [], filters = {},
         [accountId, dateFrom, dateTo],
     );
 
+    const hasActiveFilters = Boolean((accountId !== 'all' && accountId !== '') || dateFrom || dateTo);
+
+    function resetFilters() {
+        setAccountId('all');
+        setDateFrom('');
+        setDateTo('');
+        router.get(route('report.account-transactions'), {}, { preserveState: true, replace: true });
+    }
+
     return (
         <>
             <Head title="A/C Transactions" />
             <ReportPage
                 title="A/C Transactions"
                 description="Accounting transactions with ledger lines."
+                filterActions={<ReportFilterReset onClick={resetFilters} disabled={!hasActiveFilters} />}
                 filterBar={
                     <>
                         <ReportFilterField label="Account" icon={BookOpen} className="sm:col-span-2">

@@ -142,7 +142,7 @@ export default function PurchaseIndex({ purchases, filters }) {
                     <Input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Search by invoice or supplier…"
+                        placeholder="Search by invoice, supplier, phone…"
                         className="max-w-xs"
                     />
                 </div>

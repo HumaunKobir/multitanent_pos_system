@@ -180,7 +180,7 @@ function SupplierSearch({ suppliers, value, onChange, onCreated, error }) {
                                 <Input value={modalData.phone} onChange={(e) => setField('phone', e.target.value)} placeholder="01XXXXXXXXX" className="mt-1" />
                             </Field>
                         </div>
-                        <Field label="Company Name" error={modalErrors.company_name}>
+                        <Field label="Company Name" required error={modalErrors.company_name}>
                             <Input value={modalData.company_name} onChange={(e) => setField('company_name', e.target.value)} placeholder="Company name" className="mt-1" />
                         </Field>
                         <Field label="Address" error={modalErrors.address}>

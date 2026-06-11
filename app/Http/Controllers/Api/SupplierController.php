@@ -16,7 +16,7 @@ class SupplierController extends Controller
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['required', 'string', 'max:30'],
-            'company_name' => ['nullable', 'string', 'max:255'],
+            'company_name' => ['required', 'string', 'max:255'],
             'address' => ['nullable', 'string', 'max:500'],
             'opening_balance' => ['nullable', 'numeric', 'min:0'],
         ]);

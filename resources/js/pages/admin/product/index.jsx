@@ -1,7 +1,7 @@
 import { DataTable } from '@/components/ui/data-table';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Package, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { Package, Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -14,12 +14,14 @@ import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { useCan } from '@/hooks/use-can';
 import { route } from '@/lib/route';
 
-export default function ProductIndex({ products, filters, categories }) {
+export default function ProductIndex({ products, filters, categories, brands, tags }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [categoryId, setCategoryId] = useState(filters.category_id ?? '__all');
+    const [brandId, setBrandId] = useState(filters.brand_id ?? '__all');
+    const [tag, setTag] = useState(filters.tag ?? '__all');
     const [deleting, setDeleting] = useState(null);
 
     useEffect(() => {
@@ -31,14 +33,26 @@ export default function ProductIndex({ products, filters, categories }) {
         () => {
             router.get(
                 route('product.index'),
-                { search: search || undefined, category_id: categoryId === '__all' ? undefined : categoryId },
+                {
+                    search: search || undefined,
+                    category_id: categoryId === '__all' ? undefined : categoryId,
+                    brand_id: brandId === '__all' ? undefined : brandId,
+                    tag: tag === '__all' ? undefined : tag,
+                },
                 { preserveState: true, replace: true },
             );
         },
-        [search, categoryId],
+        [search, categoryId, brandId, tag],
         350,
         { skipFirstRun: true },
     );
+
+    function handleReset() {
+        setSearch('');
+        setCategoryId('__all');
+        setBrandId('__all');
+        setTag('__all');
+    }
 
     function handleDelete() {
         if (!deleting) return;
@@ -48,6 +62,7 @@ export default function ProductIndex({ products, filters, categories }) {
     }
 
     const categoryOptions = Object.entries(categories || {}).map(([value, label]) => ({ value, label }));
+    const brandOptions = Object.entries(brands || {}).map(([value, label]) => ({ value, label }));
 
     const columns = [
         {
@@ -155,7 +170,7 @@ export default function ProductIndex({ products, filters, categories }) {
                     <Input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Search by name or code..."
+                        placeholder="Search by name, code, brand, category, tag..."
                         className="max-w-xs"
                     />
                     <Select value={categoryId} onValueChange={(v) => setCategoryId(v)}>
@@ -171,6 +186,35 @@ export default function ProductIndex({ products, filters, categories }) {
                             ))}
                         </SelectContent>
                     </Select>
+                    <Select value={brandId} onValueChange={(v) => setBrandId(v)}>
+                        <SelectTrigger className="w-48">
+                            <SelectValue placeholder="All brands" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="__all">All brands</SelectItem>
+                            {brandOptions.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Select value={tag} onValueChange={(v) => setTag(v)}>
+                        <SelectTrigger className="w-48">
+                            <SelectValue placeholder="All tags" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="__all">All tags</SelectItem>
+                            {(tags || []).map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                    <Button variant="outline" size="icon" onClick={handleReset} title="Reset filters">
+                        <RotateCcw className="size-4" />
+                    </Button>
                 </div>
 
                 <DataTable columns={columns} rows={products.data} rowKey="id" emptyMessage="No products found." />

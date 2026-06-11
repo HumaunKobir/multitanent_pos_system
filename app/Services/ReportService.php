@@ -718,6 +718,7 @@ class ReportService
     public function balanceSheet(string $asOfDate): array
     {
         $accounts = ChartOfAccount::query()
+            ->forPanel()
             ->whereNotNull('parent_id')
             ->whereIn('type', [AccountType::Asset, AccountType::Liability, AccountType::Equity])
             ->orderBy('code')
@@ -774,6 +775,7 @@ class ReportService
     public function accountOptions(): array
     {
         return ChartOfAccount::query()
+            ->forPanel()
             ->whereNotNull('parent_id')
             ->orderBy('code')
             ->get(['id', 'code', 'name', 'type'])
@@ -952,11 +954,35 @@ class ReportService
 
     private function stockLedgerLogQuery(?int $branchId, ?int $productId, ?string $dateFrom, ?string $dateTo): Builder
     {
+        $allowedTypes = $this->stockLedgerAllowedTypes();
+
         return ProductInOutLog::query()
             ->when($branchId !== null, fn (Builder $q) => $this->scopeProductInOutLogForBranch($q, $branchId))
             ->when($productId !== null, fn (Builder $q) => $q->where('product_id', $productId))
             ->when($dateFrom, fn (Builder $q, string $date) => $q->whereDate('created_at', '>=', $date))
-            ->when($dateTo, fn (Builder $q, string $date) => $q->whereDate('created_at', '<=', $date));
+            ->when($dateTo, fn (Builder $q, string $date) => $q->whereDate('created_at', '<=', $date))
+            ->whereIn('type', array_map(fn ($t) => $t->value, $allowedTypes));
+    }
+
+    /** @return list<ProductLogType> */
+    private function stockLedgerAllowedTypes(): array
+    {
+        if ($this->branchId() === null) {
+            return [
+                ProductLogType::Purchase,
+                ProductLogType::InitialStock,
+                ProductLogType::Purchase_Return,
+                ProductLogType::Distribution_Out,
+            ];
+        }
+
+        return [
+            ProductLogType::Distribution_In,
+            ProductLogType::Sale,
+            ProductLogType::Sale_Return,
+            ProductLogType::Damage,
+            ProductLogType::Exchange,
+        ];
     }
 
     private function productCurrentStock(int $productId, ?int $branchId): float
@@ -988,10 +1014,12 @@ class ReportService
     private function productStockBalanceBeforeAllBranches(int $productId, string $dateFrom): float
     {
         $balance = 0.0;
+        $allowedTypes = array_map(fn ($t) => $t->value, $this->stockLedgerAllowedTypes());
 
         ProductInOutLog::query()
             ->where('product_id', $productId)
             ->whereDate('created_at', '<', $dateFrom)
+            ->whereIn('type', $allowedTypes)
             ->orderBy('created_at')
             ->orderBy('id')
             ->get(['type', 'quantity'])
@@ -1011,10 +1039,12 @@ class ReportService
     private function productStockBalanceBefore(int $productId, int $branchId, string $dateFrom): float
     {
         $balance = 0.0;
+        $allowedTypes = array_map(fn ($t) => $t->value, $this->stockLedgerAllowedTypes());
 
         $this->scopeProductInOutLogForBranch(ProductInOutLog::query(), $branchId)
             ->where('product_id', $productId)
             ->whereDate('created_at', '<', $dateFrom)
+            ->whereIn('type', $allowedTypes)
             ->orderBy('created_at')
             ->orderBy('id')
             ->get(['type', 'quantity'])

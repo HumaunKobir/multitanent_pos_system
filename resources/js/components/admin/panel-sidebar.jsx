@@ -10,6 +10,7 @@ import {
     LayoutDashboard,
     LogOut,
     Mail,
+    Menu,
     Package,
     PhoneCall,
     Send,
@@ -25,8 +26,13 @@ import {
 import { useEffect, useState } from 'react';
 
 import { useCurrentUrl } from '@/hooks/use-current-url';
+import { usePanelSidebar } from '@/contexts/panel-sidebar-context';
 import { cn } from '@/lib/utils';
 import { route } from '@/lib/route';
+
+import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
 const iconMap = {
     'layout-dashboard': LayoutDashboard,
@@ -90,57 +96,75 @@ function NavItem({ href, className, children, active }) {
     );
 }
 
-export function PanelSidebar() {
-    const { adminNavigation = [], panelType = 'admin' } = usePage().props;
-    const panelTitle = panelType === 'branch' ? 'Branch Panel' : 'Admin Panel';
-    const { currentUrl, isCurrentUrl } = useCurrentUrl();
+function SidebarToggle() {
+    const { toggle, collapsed, isMobile } = usePanelSidebar();
 
-    const [expanded, setExpanded] = useState(() => {
-        return new Set(
-            adminNavigation
-                .filter((s) => !s.single && s.children?.some((c) => c.href && isCurrentUrl(c.href)))
-                .map((s) => s.title),
+    if (isMobile) {
+        return (
+            <Button
+                variant="outline"
+                size="icon"
+                className="fixed left-2 top-2 z-40 size-7 rounded-full border-border/60 bg-background/80 shadow-sm backdrop-blur-sm"
+                onClick={toggle}
+            >
+                <Menu className="size-3.5" />
+                <span className="sr-only">Open sidebar</span>
+            </Button>
         );
-    });
-
-    useEffect(() => {
-        setExpanded((prev) => {
-            const next = new Set(prev);
-            let changed = false;
-            for (const s of adminNavigation) {
-                if (s.single) continue;
-                const hasActive = s.children?.some((c) => c.href && isCurrentUrl(c.href));
-                if (hasActive && !next.has(s.title)) {
-                    next.add(s.title);
-                    changed = true;
-                }
-            }
-            return changed ? next : prev;
-        });
-    }, [currentUrl, adminNavigation]);
-
-    const toggle = (title) =>
-        setExpanded((prev) => {
-            const next = new Set(prev);
-            next.has(title) ? next.delete(title) : next.add(title);
-            return next;
-        });
+    }
 
     return (
-        <aside className="flex h-full min-h-0 w-64 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground">
-            <div className="relative border-b border-sidebar-border bg-linear-to-b from-muted/40 to-transparent px-4 py-5">
+        <Tooltip>
+            <TooltipTrigger asChild>
+                <Button
+                    variant="outline"
+                    size="icon"
+                    className={cn(
+                        'fixed left-2 top-2 z-40 size-7 rounded-full border-border/60 bg-background/80 shadow-sm backdrop-blur-sm transition-[left] duration-200',
+                        collapsed ? 'left-2' : 'left-[calc(var(--sidebar-w,16rem)+0.5rem)]',
+                    )}
+                    onClick={toggle}
+                >
+                    <Menu className="size-3.5" />
+                    <span className="sr-only">{collapsed ? 'Expand sidebar' : 'Collapse sidebar'}</span>
+                </Button>
+            </TooltipTrigger>
+            <TooltipContent side="right" hidden={!collapsed}>
+                {collapsed ? 'Expand' : 'Collapse'}
+            </TooltipContent>
+        </Tooltip>
+    );
+}
+
+function SidebarContent({ adminNavigation, panelType, currentUrl, isCurrentUrl, expanded, toggle, collapsed }) {
+    const panelTitle = panelType === 'branch' ? 'Branch Panel' : 'Admin Panel';
+
+    return (
+        <>
+            <div className={cn(
+                'relative border-b border-sidebar-border bg-linear-to-b from-muted/40 to-transparent transition-[padding] duration-200',
+                collapsed ? 'px-1 py-2' : 'px-4 py-5',
+            )}>
                 <div
                     className="pointer-events-none absolute inset-x-0 top-0 h-px bg-linear-to-r from-transparent via-primary/40 to-transparent"
                     aria-hidden
                 />
-                <p className="font-mono text-[0.65rem] font-medium uppercase tracking-[0.28em] text-muted-foreground">
-                    Coolness Point
-                </p>
-                <p className="mt-1 font-semibold tracking-tight text-foreground">{panelTitle}</p>
+                {collapsed ? (
+                    <div className="flex justify-center">
+                        <Building2 className="size-4 text-muted-foreground" />
+                    </div>
+                ) : (
+                    <>
+                        <p className="font-mono text-[0.65rem] font-medium uppercase tracking-[0.28em] text-muted-foreground">
+                            Coolness Point
+                        </p>
+                        <p className="mt-1 font-semibold tracking-tight text-foreground">{panelTitle}</p>
+                    </>
+                )}
             </div>
 
-            <nav className="flex flex-1 flex-col gap-1 overflow-y-auto p-3" aria-label={`${panelTitle} navigation`}>
-                <ul className="flex flex-col gap-0.5">
+            <nav className={cn('flex flex-1 flex-col gap-0.5 overflow-y-auto', collapsed ? 'px-0.5 py-1' : 'gap-1 p-3')} aria-label={`${panelTitle} navigation`}>
+                <ul className={cn('flex flex-col', collapsed ? 'gap-px' : 'gap-0.5')}>
                     {adminNavigation.map((section) => {
                         const SectionIcon = iconMap[section.icon] ?? LayoutDashboard;
 
@@ -154,6 +178,31 @@ export function PanelSidebar() {
                                   (section.title === 'Dashboard' &&
                                       dashboardPaths.some((path) => isCurrentUrl(path)))
                                 : false;
+
+                            if (collapsed) {
+                                return (
+                                    <li key={section.title}>
+                                        <Tooltip>
+                                            <TooltipTrigger asChild>
+                                                <NavItem href={section.href} className={cn(navLinkClass(active), 'justify-center px-0 py-1.5')} active={active}>
+                                                    <SectionIcon
+                                                        className={cn(
+                                                            'size-3.5 shrink-0',
+                                                            active
+                                                                ? 'text-white'
+                                                                : 'text-muted-foreground group-hover:text-foreground',
+                                                        )}
+                                                        strokeWidth={active ? 2.25 : 2}
+                                                        aria-hidden
+                                                    />
+                                                </NavItem>
+                                            </TooltipTrigger>
+                                            <TooltipContent side="right">{section.title}</TooltipContent>
+                                        </Tooltip>
+                                    </li>
+                                );
+                            }
+
                             return (
                                 <li key={section.title}>
                                     <NavItem href={section.href} className={navLinkClass(active)} active={active}>
@@ -176,6 +225,36 @@ export function PanelSidebar() {
                         const isOpen = expanded.has(section.title);
                         const sectionActive = section.children?.some((c) => c.href && isCurrentUrl(c.href));
                         const submenuId = `panel-submenu-${section.title.replace(/\s+/g, '-')}`;
+
+                        if (collapsed) {
+                            return (
+                                <li key={section.title}>
+                                    <Tooltip>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                type="button"
+                                                className={cn(
+                                                    'flex w-full items-center justify-center border border-transparent py-1.5 text-left transition-[border-color,background-color,color]',
+                                                    'hover:border-border/80 hover:bg-sidebar-accent/50',
+                                                    sectionActive ? 'text-foreground' : 'text-sidebar-foreground',
+                                                )}
+                                                onClick={() => toggle(section.title)}
+                                            >
+                                                <SectionIcon
+                                                    className={cn(
+                                                        'size-3.5 shrink-0',
+                                                        sectionActive ? 'text-primary' : 'text-muted-foreground',
+                                                    )}
+                                                    strokeWidth={2}
+                                                    aria-hidden
+                                                />
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="right">{section.title}</TooltipContent>
+                                    </Tooltip>
+                                </li>
+                            );
+                        }
 
                         return (
                             <li key={section.title}>
@@ -232,17 +311,114 @@ export function PanelSidebar() {
                 </ul>
             </nav>
 
-            <div className="border-t border-sidebar-border p-3">
-                <Link
-                    href={route('logout')}
-                    method="post"
-                    as="button"
-                    className="flex w-full items-center gap-2 border border-dashed border-sidebar-border px-3 py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:bg-sidebar-accent/40 hover:text-sidebar-foreground"
-                >
-                    <LogOut className="size-3.5 shrink-0" aria-hidden />
-                    Logout
-                </Link>
+            <div className={cn('border-t border-sidebar-border', collapsed ? 'px-0.5 py-1' : 'p-3')}>
+                {collapsed ? (
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                            <Link
+                                href={route('logout')}
+                                method="post"
+                                as="button"
+                                className="flex w-full items-center justify-center border border-dashed border-sidebar-border py-1.5 text-muted-foreground transition-colors hover:border-border hover:bg-sidebar-accent/40 hover:text-sidebar-foreground"
+                            >
+                                <LogOut className="size-3 shrink-0" aria-hidden />
+                            </Link>
+                        </TooltipTrigger>
+                        <TooltipContent side="right">Logout</TooltipContent>
+                    </Tooltip>
+                ) : (
+                    <Link
+                        href={route('logout')}
+                        method="post"
+                        as="button"
+                        className="flex w-full items-center gap-2 border border-dashed border-sidebar-border px-3 py-2.5 text-xs font-medium text-muted-foreground transition-colors hover:border-border hover:bg-sidebar-accent/40 hover:text-sidebar-foreground"
+                    >
+                        <LogOut className="size-3.5 shrink-0" aria-hidden />
+                        Logout
+                    </Link>
+                )}
             </div>
+        </>
+    );
+}
+
+export function PanelSidebar() {
+    const { adminNavigation = [], panelType = 'admin' } = usePage().props;
+    const { currentUrl, isCurrentUrl } = useCurrentUrl();
+    const { collapsed, mobileOpen, closeMobile, isMobile } = usePanelSidebar();
+
+    const [expanded, setExpanded] = useState(() => {
+        return new Set(
+            adminNavigation
+                .filter((s) => !s.single && s.children?.some((c) => c.href && isCurrentUrl(c.href)))
+                .map((s) => s.title),
+        );
+    });
+
+    useEffect(() => {
+        setExpanded((prev) => {
+            const next = new Set(prev);
+            let changed = false;
+            for (const s of adminNavigation) {
+                if (s.single) continue;
+                const hasActive = s.children?.some((c) => c.href && isCurrentUrl(c.href));
+                if (hasActive && !next.has(s.title)) {
+                    next.add(s.title);
+                    changed = true;
+                }
+            }
+            return changed ? next : prev;
+        });
+    }, [currentUrl, adminNavigation]);
+
+    const toggle = (title) =>
+        setExpanded((prev) => {
+            const next = new Set(prev);
+            next.has(title) ? next.delete(title) : next.add(title);
+            return next;
+        });
+
+    if (isMobile) {
+        return (
+            <Sheet open={mobileOpen} onOpenChange={(open) => !open && closeMobile()}>
+                <SheetContent side="left" className="w-72 p-0 [&>button]:hidden">
+                    <SheetTitle className="sr-only">Navigation</SheetTitle>
+                    <aside className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
+                        <SidebarContent
+                            adminNavigation={adminNavigation}
+                            panelType={panelType}
+                            currentUrl={currentUrl}
+                            isCurrentUrl={isCurrentUrl}
+                            expanded={expanded}
+                            toggle={toggle}
+                            collapsed={false}
+                        />
+                    </aside>
+                </SheetContent>
+            </Sheet>
+        );
+    }
+
+    return (
+        <aside
+            className={cn(
+                'flex h-full min-h-0 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground transition-[width] duration-200',
+                collapsed ? 'w-10' : 'w-64',
+            )}
+            style={{ '--sidebar-w': collapsed ? '2.5rem' : '16rem' }}
+            data-collapsed={collapsed || undefined}
+        >
+            <SidebarContent
+                adminNavigation={adminNavigation}
+                panelType={panelType}
+                currentUrl={currentUrl}
+                isCurrentUrl={isCurrentUrl}
+                expanded={expanded}
+                toggle={toggle}
+                collapsed={collapsed}
+            />
         </aside>
     );
 }
+
+export { SidebarToggle };

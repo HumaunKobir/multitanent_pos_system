@@ -300,10 +300,10 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
 
 function PosPanelHeader({ title, icon: Icon, action }) {
     return (
-        <div className="flex h-9 shrink-0 items-center justify-between border-b border-blue-200 bg-slate-50 px-3">
-            <div className="flex items-center gap-2 border-l-[3px] border-l-blue-950 pl-2">
-                {Icon && <Icon className="size-3.5 shrink-0 text-blue-950" />}
-                <h2 className="text-[11px] font-semibold uppercase tracking-wider text-blue-950">{title}</h2>
+        <div className="flex h-7 shrink-0 items-center justify-between border-b border-blue-200 bg-slate-50 px-1.5 lg:h-8 lg:px-2 2xl:h-9 2xl:px-3">
+            <div className="flex items-center gap-1 border-l-2 border-l-blue-950 pl-1.5 lg:border-l-[3px] lg:gap-1.5 lg:pl-2 2xl:gap-2">
+                {Icon && <Icon className="size-3 shrink-0 text-blue-950 lg:size-3.5" />}
+                <h2 className="text-[9px] font-semibold uppercase tracking-wider text-blue-950 lg:text-[10px] 2xl:text-[11px]">{title}</h2>
             </div>
             {action}
         </div>
@@ -317,25 +317,25 @@ function CategoryPill({ active, label, image, onClick, isAll = false }) {
             onClick={onClick}
             title={label}
             className={cn(
-                'flex w-full flex-col items-center gap-1 border p-1.5 font-medium transition-colors',
+                'flex shrink-0 flex-row items-center gap-1 border p-1 text-left font-medium transition-colors md:w-full md:flex-col md:items-center md:gap-0.5 md:text-center lg:p-1 2xl:gap-1 2xl:p-1.5',
                 active
                     ? 'border-blue-900 bg-blue-950 text-white'
                     : 'border-blue-200/80 bg-white text-blue-950 hover:border-blue-400 hover:bg-blue-50',
             )}
         >
             {image ? (
-                <img src={image} alt="" className="size-11 shrink-0 border border-blue-100 object-cover" />
+                <img src={image} alt="" className="size-7 shrink-0 border border-blue-100 object-cover md:size-9 lg:size-9 2xl:size-11" />
             ) : (
                 <div
                     className={cn(
-                        'flex size-11 shrink-0 items-center justify-center border border-blue-100',
+                        'flex size-7 shrink-0 items-center justify-center border border-blue-100 md:size-9 lg:size-9 2xl:size-11',
                         active ? 'bg-blue-900 text-white' : 'bg-blue-50 text-blue-400',
                     )}
                 >
-                    {isAll ? <LayoutGrid className="size-5" /> : <Package className="size-5" />}
+                    {isAll ? <LayoutGrid className="size-3.5 lg:size-4 2xl:size-5" /> : <Package className="size-3.5 lg:size-4 2xl:size-5" />}
                 </div>
             )}
-            <span className="line-clamp-2 w-full text-center text-[10px] leading-tight">{label}</span>
+            <span className="line-clamp-1 text-[9px] leading-tight md:line-clamp-2 md:w-full lg:text-[9px] 2xl:text-[10px]">{label}</span>
         </button>
     );
 }
@@ -468,10 +468,10 @@ function PosProductPicker({ categories = [], onAdd }) {
     }
 
     return (
-        <div className="flex h-full min-h-0 gap-1">
+        <div className="flex h-full min-h-0 flex-col gap-1 md:flex-row">
             <nav
                 aria-label="Product categories"
-                className="flex w-[5.5rem] shrink-0 flex-col gap-1 overflow-y-auto border-r border-blue-100 bg-slate-50/90 p-1"
+                className="flex gap-1 overflow-x-auto border-b border-blue-100 bg-slate-50/90 p-0.5 md:w-[4.5rem] md:shrink-0 md:flex-col md:overflow-y-auto md:border-b-0 md:border-r md:p-1 2xl:w-[5.5rem]"
             >
                 <CategoryPill isAll active={!categoryId} label="All" onClick={() => setCategoryId('')} />
                 {categories.map((category) => (
@@ -485,18 +485,18 @@ function PosProductPicker({ categories = [], onAdd }) {
                 ))}
             </nav>
 
-            <div className="flex min-w-0 flex-1 flex-col gap-2">
+            <div className="flex min-w-0 flex-1 flex-col gap-1 lg:gap-1.5 2xl:gap-2">
             <div className="relative shrink-0">
-                <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-blue-900/50" />
+                <Search className="absolute top-1/2 left-2 size-3 -translate-y-1/2 text-blue-900/50 lg:left-2.5 lg:size-3.5" />
                 <Input
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Search or scan barcode…"
-                    className="h-9 rounded-none border-blue-200 bg-white pl-8 pr-24 text-xs focus:border-blue-600"
+                    className="h-7 rounded-none border-blue-200 bg-white pl-7 pr-20 text-[11px] focus:border-blue-600 lg:h-9 lg:pl-8 lg:pr-24 lg:text-xs"
                 />
-                <div className="pointer-events-none absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1 border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-blue-900">
-                    <Barcode className="size-3" />
+                <div className="pointer-events-none absolute top-1/2 right-1.5 flex -translate-y-1/2 items-center gap-0.5 border border-blue-200 bg-blue-50 px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-blue-900 lg:right-2 lg:gap-1 lg:px-1.5 lg:text-[9px]">
+                    <Barcode className="size-2.5 lg:size-3" />
                     Scan
                 </div>
             </div>
@@ -523,7 +523,7 @@ function PosProductPicker({ categories = [], onAdd }) {
                                         disabled={outOfStock}
                                         onClick={() => handleProductClick(product)}
                                         className={cn(
-                                            'flex w-full gap-2 p-2 text-left transition-colors',
+                                            'flex w-full gap-1.5 p-1.5 text-left transition-colors lg:gap-2 lg:p-2',
                                             outOfStock
                                                 ? 'cursor-not-allowed opacity-50'
                                                 : 'hover:bg-blue-50/80',
@@ -534,25 +534,25 @@ function PosProductPicker({ categories = [], onAdd }) {
                                             <img
                                                 src={product.image}
                                                 alt=""
-                                                className="size-14 shrink-0 border border-blue-100 object-cover"
+                                                className="size-10 shrink-0 border border-blue-100 object-cover lg:size-14"
                                             />
                                         ) : (
-                                            <div className="flex size-14 shrink-0 items-center justify-center border border-blue-100 bg-slate-50">
-                                                <Package className="size-6 text-blue-200" />
+                                            <div className="flex size-10 shrink-0 items-center justify-center border border-blue-100 bg-slate-50 lg:size-14">
+                                                <Package className="size-4 text-blue-200 lg:size-6" />
                                             </div>
                                         )}
                                         <div className="flex min-w-0 flex-1 flex-col">
-                                            <p className="line-clamp-2 text-xs font-semibold text-blue-950">{product.name}</p>
+                                            <p className="line-clamp-1 text-[11px] font-semibold text-blue-950 lg:line-clamp-2 lg:text-xs">{product.name}</p>
                                             {product.category_name && (
-                                                <p className="mt-0.5 text-[10px] font-medium uppercase tracking-wide text-blue-600/80">
+                                                <p className="mt-0.5 text-[9px] font-medium uppercase tracking-wide text-blue-600/80 lg:text-[10px]">
                                                     {product.category_name}
                                                 </p>
                                             )}
                                             {product.code && (
-                                                <p className="mt-0.5 text-[11px] text-muted-foreground">{product.code}</p>
+                                                <p className="mt-0.5 text-[10px] text-muted-foreground lg:text-[11px]">{product.code}</p>
                                             )}
-                                            <div className="mt-auto flex items-end justify-between gap-2 pt-1">
-                                                <p className="text-sm font-bold tabular-nums text-emerald-700">
+                                            <div className="mt-auto flex items-end justify-between gap-1 pt-0.5 lg:gap-2 lg:pt-1">
+                                                <p className="text-xs font-bold tabular-nums text-emerald-700 lg:text-sm">
                                                     ৳{parseFloat(product.sale_price ?? 0).toFixed(2)}
                                                 </p>
                                                 {product.has_variations ? (
@@ -618,10 +618,10 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
     const subTotal = lineGross(item) - parseFloat(item.discount || 0);
 
     return (
-        <div className="border-b border-blue-100 bg-white p-2 last:border-b-0">
-            <div className="flex items-start gap-2">
+        <div className="border-b border-blue-100 bg-white p-1.5 lg:p-2 last:border-b-0">
+            <div className="flex items-start gap-1.5 lg:gap-2">
                 <div className="min-w-0 flex-1">
-                    <p className="truncate text-xs font-semibold text-blue-950">{item.product_name}</p>
+                    <p className="truncate text-[11px] font-semibold text-blue-950 lg:text-xs">{item.product_name}</p>
                     <div className="mt-0.5 flex flex-wrap items-center gap-1">
                         {item.variation_label && (
                             <Badge variant="outline" className="border-blue-200 px-1 py-0 text-[9px] font-normal text-blue-900">
@@ -641,13 +641,13 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                     size="icon"
                     variant="ghost"
                     onClick={() => onRemove(index)}
-                    className="size-7 shrink-0 text-muted-foreground hover:text-destructive"
+                    className="size-6 shrink-0 text-muted-foreground hover:text-destructive lg:size-7"
                 >
-                    <Trash2 className="size-3.5" />
+                    <Trash2 className="size-3 lg:size-3.5" />
                 </Button>
             </div>
 
-            <div className="mt-2 grid grid-cols-4 gap-1.5">
+            <div className="mt-1.5 grid grid-cols-2 gap-x-1.5 gap-y-1 sm:grid-cols-4 sm:gap-1 sm:gap-y-0 lg:mt-2 lg:gap-1.5">
                 <div>
                     <p className="mb-0.5 text-[9px] uppercase text-muted-foreground">Price</p>
                     <Input
@@ -656,7 +656,7 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                         step="0.01"
                         value={item.unit_price}
                         onChange={(e) => onUpdate(index, 'unit_price', e.target.value)}
-                        className={cn(inputCls, 'h-7 px-1 text-right text-xs')}
+                        className={cn(inputCls, 'h-5 px-0.5 text-right text-[11px] sm:h-6 sm:px-1 lg:h-7')}
                     />
                 </div>
                 <div>
@@ -666,11 +666,11 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                             type="button"
                             variant="outline"
                             size="icon"
-                            className="size-7 shrink-0"
+                            className="size-5 shrink-0 sm:size-6 lg:size-7"
                             onClick={() => onAdjust(index, -1)}
                             disabled={qty <= 1}
                         >
-                            <Minus className="size-3" />
+                            <Minus className="size-2.5 lg:size-3" />
                         </Button>
                         <Input
                             type="number"
@@ -680,17 +680,17 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                             onChange={(e) =>
                                 onUpdate(index, 'quantity', clampQuantityInput(e.target.value, item.available_stock))
                             }
-                            className={cn(inputCls, 'h-7 w-full min-w-0 px-0.5 text-center text-xs', overStock && 'border-destructive')}
+                            className={cn(inputCls, 'h-5 w-full min-w-0 px-0.5 text-center text-[11px] sm:h-6 lg:h-7', overStock && 'border-destructive')}
                         />
                         <Button
                             type="button"
                             variant="outline"
                             size="icon"
-                            className="size-7 shrink-0"
+                            className="size-5 shrink-0 sm:size-6 lg:size-7"
                             onClick={() => onAdjust(index, 1)}
                             disabled={qty >= stock}
                         >
-                            <Plus className="size-3" />
+                            <Plus className="size-2.5 lg:size-3" />
                         </Button>
                     </div>
                 </div>
@@ -702,7 +702,7 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                         step="0.01"
                         value={item.discount ?? '0'}
                         onChange={(e) => onUpdate(index, 'discount', clampLineDiscount(e.target.value, item))}
-                        className={cn(inputCls, 'h-7 px-1 text-right text-xs text-green-700')}
+                        className={cn(inputCls, 'h-5 px-0.5 text-right text-[11px] text-green-700 sm:h-6 sm:px-1 lg:h-7')}
                     />
                 </div>
                 <div className="text-right">
@@ -1007,48 +1007,48 @@ export default function SellCreate({
         router.get(route('inventory.sell.create'), { paused: saleId });
     }
 
-    const inputCls = 'h-8 rounded-none border-blue-200 bg-white text-xs tabular-nums focus:border-blue-600';
+    const inputCls = 'h-7 rounded-none border-blue-200 bg-white text-[11px] tabular-nums focus:border-blue-600 lg:h-8 lg:text-xs';
 
     return (
         <>
             <Head title="Point of Sale" />
 
-            <div className="flex h-[calc(100vh-0px)] flex-col bg-slate-100">
-                <header className="relative z-10 shrink-0 border-b-2 border-blue-800 bg-blue-950 px-3 py-2 shadow-md">
-                    <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                        <div className="flex min-w-0 items-center gap-2">
+            <div className="flex min-h-screen flex-col bg-slate-100 md:h-dvh">
+                <header className="relative z-10 shrink-0 border-b-2 border-blue-800 bg-blue-950 px-2 py-1 lg:px-3 lg:py-2 2xl:px-3 2xl:py-2 shadow-md">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 lg:gap-x-3 2xl:gap-y-2">
+                        <div className="flex min-w-0 items-center gap-1.5 lg:gap-2">
                             <Button
                                 size="sm"
                                 asChild
-                                className="h-8 shrink-0 border border-white/25 bg-white/10 px-2 text-white hover:bg-white/20"
+                                className="h-7 shrink-0 border border-white/25 bg-white/10 px-1.5 text-white hover:bg-white/20 lg:h-8 lg:px-2"
                             >
                                 <Link href={route('inventory.sell.index')}>
                                     <ArrowLeft className="size-3.5" />
-                                    <span className="hidden sm:inline">Back</span>
+                                    <span className="hidden lg:inline">Back</span>
                                 </Link>
                             </Button>
 
-                            <div className="flex size-8 shrink-0 items-center justify-center bg-white/15">
-                                <ShoppingCart className="size-4 text-white" />
+                            <div className="flex size-7 shrink-0 items-center justify-center bg-white/15 lg:size-8">
+                                <ShoppingCart className="size-3.5 text-white lg:size-4" />
                             </div>
 
                             <div className="min-w-0">
-                                <h1 className="text-sm font-semibold leading-tight text-white">Point of Sale</h1>
-                                <p className="text-[10px] leading-tight text-white/55">
+                                <h1 className="text-xs font-semibold leading-tight text-white lg:text-sm">Point of Sale</h1>
+                                <p className="text-[9px] leading-tight text-white/55 lg:text-[10px]">
                                     {itemCount} {itemCount === 1 ? 'item' : 'items'} in cart
                                     {pausedSellId ? ' · Resuming paused sale' : ''}
                                 </p>
                             </div>
                         </div>
 
-                        <div className="flex w-full flex-wrap items-end gap-2 sm:ml-auto sm:w-auto">
+                        <div className="flex w-full flex-wrap items-end gap-1.5 sm:ml-auto sm:w-auto lg:gap-2">
                             <PausedSalesPanel
                                 pausedSales={pausedSales}
                                 currentPausedId={pausedSellId}
                                 onResume={resumePausedSale}
                             />
-                            <div className="min-w-0 flex-1 sm:w-44 lg:w-48">
-                                <span className="mb-0.5 block text-[10px] font-medium text-white/60">Customer</span>
+                            <div className="min-w-0 min-w-[120px] flex-1 sm:min-w-0 sm:w-36 lg:w-44 2xl:w-48">
+                                <span className="mb-0.5 block text-[9px] font-medium text-white/60 lg:text-[10px]">Customer</span>
                                 <CustomerSearch
                                     value={form.data.customer_id}
                                     onChange={(v) => form.setData('customer_id', v)}
@@ -1058,15 +1058,15 @@ export default function SellCreate({
                                 />
                             </div>
                             <div className="shrink-0">
-                                <span className="mb-0.5 block text-[10px] font-medium text-white/60">Date</span>
+                                <span className="mb-0.5 block text-[9px] font-medium text-white/60 lg:text-[10px]">Date</span>
                                 <div className="relative">
-                                    <CalendarDays className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                                    <CalendarDays className="pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2 text-muted-foreground lg:size-3.5" />
                                     <Input
                                         type="date"
                                         value={form.data.date}
                                         onChange={(e) => form.setData('date', e.target.value)}
                                         className={cn(
-                                            'h-8 w-[8.75rem] rounded-none border-blue-200 bg-white pl-7 text-xs',
+                                            'h-7 w-[7rem] rounded-none border-blue-200 bg-white pl-6 text-[11px] lg:h-8 lg:w-[8.75rem] lg:pl-7 lg:text-xs',
                                             dateInputRightIconClassName,
                                         )}
                                     />
@@ -1079,18 +1079,18 @@ export default function SellCreate({
                     </div>
                 </header>
 
-                <form onSubmit={handleSubmit} className="grid min-h-0 flex-1 grid-cols-1 gap-2 bg-slate-100 p-2 lg:grid-cols-12">
+                <form onSubmit={handleSubmit} className="grid min-h-0 flex-1 grid-cols-1 gap-1 bg-slate-100 p-1 md:grid-cols-5 md:grid-rows-[1fr_auto] md:gap-1.5 md:p-1.5 lg:grid-cols-11 lg:grid-rows-1 lg:gap-1.5 lg:p-1.5 2xl:grid-cols-12 2xl:gap-2 2xl:p-2">
                     {/* Left — Products */}
-                    <section className="flex min-h-0 flex-col overflow-hidden border border-blue-200 bg-white shadow-sm lg:col-span-3">
+                    <section className="flex h-[50vh] flex-col overflow-hidden border border-blue-200 bg-white shadow-sm md:h-auto md:min-h-0 md:col-span-2 md:row-span-2 lg:col-span-3 lg:row-span-1 2xl:col-span-3">
                         <PosPanelHeader title="Products" icon={Grid3x3} />
-                        <div className="flex min-h-0 flex-1 flex-col p-2">
+                        <div className="flex min-h-0 flex-1 flex-col p-1 lg:p-1.5 2xl:p-2">
                             <PosProductPicker categories={categories} onAdd={addItem} />
                             {form.errors.items && <p className="mt-1 text-[11px] text-destructive">{form.errors.items}</p>}
                         </div>
                     </section>
 
                     {/* Middle — Cart */}
-                    <section className="flex min-h-0 flex-col overflow-hidden border border-blue-200 bg-white shadow-sm lg:col-span-5">
+                    <section className="flex flex-col border border-blue-200 bg-white shadow-sm md:min-h-0 md:overflow-hidden md:col-span-3 lg:col-span-4 2xl:col-span-5">
                         <PosPanelHeader
                             title="Cart"
                             icon={Package}
@@ -1120,37 +1120,37 @@ export default function SellCreate({
                     </section>
 
                     {/* Right — Payment */}
-                    <aside className="flex min-h-0 flex-col overflow-hidden border border-blue-200 bg-white shadow-sm lg:col-span-4">
+                    <aside className="flex flex-col border border-blue-200 bg-white shadow-sm md:min-h-0 md:overflow-hidden md:col-span-3 md:col-start-3 lg:col-span-4 lg:col-start-auto 2xl:col-span-4">
                         <PosPanelHeader title="Checkout" icon={HandCoins} />
 
-                        <div className="border-b border-blue-200 bg-blue-950 px-3 py-3 text-center">
-                            <p className="text-[10px] font-medium uppercase tracking-wider text-white/60">Net Payable</p>
-                            <p className="text-2xl font-bold tabular-nums text-white">৳{netAmount.toFixed(2)}</p>
+                        <div className="border-b border-blue-200 bg-blue-950 px-2 py-2 text-center lg:px-3 lg:py-2.5 2xl:py-3">
+                            <p className="text-[9px] font-medium uppercase tracking-wider text-white/60 lg:text-[10px]">Net Payable</p>
+                            <p className="text-lg font-bold tabular-nums text-white lg:text-xl 2xl:text-2xl">৳{netAmount.toFixed(2)}</p>
                             {dueAmount > 0 && (
-                                <p className="mt-0.5 text-xs font-medium text-red-300">Due ৳{dueAmount.toFixed(2)}</p>
+                                <p className="mt-0.5 text-[11px] font-medium text-red-300 lg:text-xs">Due ৳{dueAmount.toFixed(2)}</p>
                             )}
                             {totalPaid > 0 && (
-                                <p className="mt-0.5 text-xs font-medium text-emerald-300">Paid ৳{totalPaid.toFixed(2)}</p>
+                                <p className="mt-0.5 text-[11px] font-medium text-emerald-300 lg:text-xs">Paid ৳{totalPaid.toFixed(2)}</p>
                             )}
                         </div>
 
-                        <div className="min-h-0 flex-1 overflow-y-auto p-2.5">
-                            <div className="space-y-2 text-xs">
-                                <div className="flex items-center justify-between gap-2 border border-blue-100 bg-blue-50/50 px-2 py-1.5">
+                        <div className="min-h-0 flex-1 overflow-y-auto p-1.5 lg:p-2 2xl:p-2.5">
+                            <div className="space-y-1.5 text-[11px] lg:space-y-2 lg:text-xs">
+                                <div className="flex items-center justify-between gap-1 border border-blue-100 bg-blue-50/50 px-1.5 py-1 lg:gap-2 lg:px-2 lg:py-1.5">
                                     <span className="text-muted-foreground">Gross</span>
                                     <span className="font-medium tabular-nums">৳{grossAmount.toFixed(2)}</span>
                                 </div>
 
                                 {lineDiscountTotal > 0 && (
-                                    <div className="flex items-center justify-between gap-2 border border-green-100 bg-green-50/50 px-2 py-1.5">
+                                    <div className="flex items-center justify-between gap-1 border border-green-100 bg-green-50/50 px-1.5 py-1 lg:gap-2 lg:px-2 lg:py-1.5">
                                         <span className="text-green-800">Line Disc.</span>
                                         <span className="font-medium tabular-nums text-green-700">-৳{lineDiscountTotal.toFixed(2)}</span>
                                     </div>
                                 )}
 
                                 {matchedSpecialDiscount && specialDiscountAmount > 0 && (
-                                    <div className="border border-amber-200 bg-amber-50/80 px-2 py-1.5">
-                                        <div className="flex items-center justify-between gap-2">
+                                    <div className="border border-amber-200 bg-amber-50/80 px-1.5 py-1 lg:px-2 lg:py-1.5">
+                                        <div className="flex items-center justify-between gap-1 lg:gap-2">
                                             <span className="text-amber-900">Special: {matchedSpecialDiscount.name}</span>
                                             <span className="font-medium tabular-nums text-amber-800">
                                                 -৳{specialDiscountAmount.toFixed(2)}
@@ -1166,11 +1166,11 @@ export default function SellCreate({
                                     </div>
                                 )}
 
-                                <div className="grid grid-cols-3 gap-2">
+                                <div className="grid grid-cols-3 gap-1 lg:gap-2">
                                     <div>
-                                        <Label className="mb-0.5 block text-[10px] text-muted-foreground">Inv. Disc. Type</Label>
+                                        <Label className="mb-0.5 block text-[9px] text-muted-foreground lg:text-[10px]">Inv. Disc. Type</Label>
                                         <select
-                                            className="h-8 w-full rounded-none border border-blue-200 bg-white px-2 text-xs outline-none focus:border-blue-600"
+                                            className="h-7 w-full rounded-none border border-blue-200 bg-white px-1 text-[11px] outline-none focus:border-blue-600 lg:h-8 lg:px-2 lg:text-xs"
                                             value={form.data.discount_type}
                                             onChange={(e) => form.setData('discount_type', e.target.value)}
                                         >
@@ -1182,7 +1182,7 @@ export default function SellCreate({
                                         </select>
                                     </div>
                                     <div>
-                                        <Label className="mb-0.5 block text-[10px] text-muted-foreground">Inv. Discount</Label>
+                                        <Label className="mb-0.5 block text-[9px] text-muted-foreground lg:text-[10px]">Inv. Discount</Label>
                                         <Input
                                             type="number"
                                             min="0"
@@ -1193,7 +1193,7 @@ export default function SellCreate({
                                         />
                                     </div>
                                     <div>
-                                        <Label className="mb-0.5 block text-[10px] text-muted-foreground">VAT %</Label>
+                                        <Label className="mb-0.5 block text-[9px] text-muted-foreground lg:text-[10px]">VAT %</Label>
                                         <Input
                                             type="number"
                                             min="0"
@@ -1232,7 +1232,7 @@ export default function SellCreate({
                                 />
 
                                 <div className="sm:hidden">
-                                    <Label className="mb-0.5 block text-[10px] text-muted-foreground">Customer</Label>
+                                    <Label className="mb-0.5 block text-[9px] text-muted-foreground lg:text-[10px]">Customer</Label>
                                     <CustomerSearch
                                         value={form.data.customer_id}
                                         onChange={(v) => form.setData('customer_id', v)}
@@ -1242,27 +1242,27 @@ export default function SellCreate({
                                 </div>
 
                                 <div>
-                                    <Label className="mb-0.5 block text-[10px] text-muted-foreground">Note</Label>
+                                    <Label className="mb-0.5 block text-[9px] text-muted-foreground lg:text-[10px]">Note</Label>
                                     <Textarea
                                         rows={2}
                                         value={form.data.comment}
                                         onChange={(e) => form.setData('comment', e.target.value)}
                                         placeholder="Optional note…"
-                                        className="min-h-0 resize-none text-xs"
+                                        className="min-h-0 resize-none text-[11px] lg:text-xs"
                                     />
                                 </div>
                             </div>
                         </div>
 
-                        <div className="shrink-0 border-t border-blue-200 bg-slate-50 p-2.5">
+                        <div className="shrink-0 border-t border-blue-200 bg-slate-50 p-1.5 lg:p-2 2xl:p-2.5">
                             {hasOverStock && (
-                                <p className="mb-2 border border-destructive/30 bg-destructive/5 px-2 py-1 text-[10px] text-destructive">
+                                <p className="mb-1 border border-destructive/30 bg-destructive/5 px-1.5 py-0.5 text-[9px] text-destructive lg:mb-2 lg:px-2 lg:py-1 lg:text-[10px]">
                                     Stock exceeded — adjust quantities.
                                 </p>
                             )}
 
-                            <div className="grid grid-cols-3 gap-1.5">
-                                <Button type="button" variant="outline" size="sm" className="h-8 border-red-400 text-xs text-red-600 hover:bg-red-50" asChild>
+                            <div className="grid grid-cols-3 gap-1 lg:gap-1.5">
+                                <Button type="button" variant="outline" size="sm" className="h-7 border-red-400 text-[11px] text-red-600 hover:bg-red-50 lg:h-8 lg:text-xs" asChild>
                                     <Link href={route('inventory.sell.index')}>Cancel</Link>
                                 </Button>
                                 <Button
@@ -1271,7 +1271,7 @@ export default function SellCreate({
                                     variant="outline"
                                     disabled={form.processing || items.length === 0 || hasOverStock}
                                     onClick={handlePause}
-                                    className="h-8 border-amber-400 text-xs text-amber-700 hover:bg-amber-50"
+                                    className="h-7 border-amber-400 text-[11px] text-amber-700 hover:bg-amber-50 lg:h-8 lg:text-xs"
                                 >
                                     Pause
                                 </Button>
@@ -1279,7 +1279,7 @@ export default function SellCreate({
                                     type="submit"
                                     size="sm"
                                     disabled={form.processing || items.length === 0 || hasOverStock}
-                                    className="h-8 bg-emerald-600 text-xs text-white hover:bg-emerald-600/90"
+                                    className="h-7 bg-emerald-600 text-[11px] text-white hover:bg-emerald-600/90 lg:h-8 lg:text-xs"
                                 >
                                     {form.processing ? 'Saving…' : 'Complete Sale'}
                                 </Button>

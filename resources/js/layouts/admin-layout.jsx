@@ -1,12 +1,21 @@
-import { PanelSidebar } from '@/components/admin/panel-sidebar';
+import { PanelSidebar, SidebarToggle } from '@/components/admin/panel-sidebar';
+import { PanelSidebarProvider } from '@/contexts/panel-sidebar-context';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 export default function AdminLayout({ children }) {
     return (
-        <div data-panel-shell className="flex h-dvh w-full overflow-hidden bg-background">
-            <PanelSidebar />
-            <div className="flex min-h-0 flex-1 flex-col border-l border-border">
-                <main data-panel-main className="min-h-0 flex-1 overflow-y-auto overscroll-contain">{children}</main>
-            </div>
-        </div>
+        <TooltipProvider>
+            <PanelSidebarProvider>
+                <div data-panel-shell className="flex h-dvh w-full overflow-hidden bg-background">
+                    <PanelSidebar />
+                    <div className="relative flex min-h-0 flex-1 flex-col border-l border-border">
+                        <SidebarToggle />
+                        <main data-panel-main className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                            {children}
+                        </main>
+                    </div>
+                </div>
+            </PanelSidebarProvider>
+        </TooltipProvider>
     );
 }

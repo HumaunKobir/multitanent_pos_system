@@ -5,33 +5,34 @@ import { Barcode, Printer, Search } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { route } from '@/lib/route';
 
-const BARCODE_WIDTH = 220;
-
-function BarcodeLabel({ code }) {
+function BarcodeBars({ code }) {
     const textRef = useRef(null);
+    const wrapRef = useRef(null);
     const [scaleX, setScaleX] = useState(1);
 
     useLayoutEffect(() => {
         const measure = () => {
-            if (textRef.current) {
-                const w = textRef.current.scrollWidth;
-                if (w > 0) setScaleX(BARCODE_WIDTH / w);
+            if (textRef.current && wrapRef.current) {
+                const wrapW = wrapRef.current.offsetWidth;
+                const textW = textRef.current.scrollWidth;
+                if (textW > 0 && wrapW > 0) setScaleX(wrapW / textW);
             }
         };
         document.fonts?.ready ? document.fonts.ready.then(measure) : measure();
     }, [code]);
 
     return (
-        <div style={{ width: `${BARCODE_WIDTH}px`, height: '40px', overflow: 'hidden' }}>
+        <div ref={wrapRef} style={{ width: '160px', height: '36px', overflow: 'hidden' }}>
             <div
                 ref={textRef}
                 style={{
                     fontFamily: "'Libre Barcode 128', monospace",
-                    fontSize: '40px',
+                    fontSize: '36px',
                     lineHeight: 1,
                     whiteSpace: 'nowrap',
                     display: 'inline-block',
@@ -45,57 +46,13 @@ function BarcodeLabel({ code }) {
     );
 }
 
-function PrintWindow({ row }) {
-    const handlePrint = () => {
-        const win = window.open('', '_blank', 'width=500,height=400');
-        win.document.write(`<!DOCTYPE html>
-<html>
-<head>
-  <title>Barcode - ${row.code}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap" rel="stylesheet">
-  <style>
-    body { margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; background: white; }
-    .label { display: inline-flex; flex-direction: column; align-items: center; border: 1px solid #ccc; padding: 10px 16px; }
-    .name { font-size: 11px; font-family: sans-serif; margin-bottom: 4px; text-align: center; max-width: 200px; }
-    .bars-wrap { width: 200px; overflow: hidden; height: 60px; }
-    .bars { font-family: 'Libre Barcode 128', monospace; font-size: 60px; line-height: 1; white-space: nowrap; display: inline-block; transform-origin: 0 0; }
-    .code { font-size: 11px; font-family: monospace; letter-spacing: 3px; margin-top: 4px; }
-  </style>
-</head>
-<body>
-  <div class="label">
-    <div class="name">${row.name}</div>
-    <div class="bars-wrap">
-      <div class="bars" id="bars">${row.code}</div>
-    </div>
-    <div class="code">${row.code}</div>
-  </div>
-  <script>
-    document.fonts.ready.then(() => {
-      var el = document.getElementById('bars');
-      var w = el.scrollWidth;
-      if (w > 0) el.style.transform = 'scaleX(' + (200 / w) + ')';
-      window.print();
-      window.close();
-    });
-  <\/script>
-</body>
-</html>`);
-        win.document.close();
-    };
-
-    return (
-        <Button size="sm" variant="outline" onClick={handlePrint}>
-            <Printer className="size-3.5" />
-        </Button>
-    );
-}
-
 export default function BarcodeIndex({ barcodes, filters }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const [search, setSearch] = useState(filters.search ?? '');
+    const [selectedIds, setSelectedIds] = useState([]);
+
+    const rows = barcodes.data ?? [];
 
     useEffect(() => {
         if (flash.success) toast.success(flash.success);
@@ -111,7 +68,38 @@ export default function BarcodeIndex({ barcodes, filters }) {
         { skipFirstRun: true },
     );
 
+    const allSelected = rows.length > 0 && rows.every((r) => selectedIds.includes(r.id));
+
+    const toggleAll = () => setSelectedIds(allSelected ? [] : rows.map((r) => r.id));
+
+    const toggleOne = (id) =>
+        setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+    const handlePrintLabels = () => {
+        const ids = selectedIds.length > 0 ? selectedIds : rows.map((r) => r.id);
+        router.visit(route('barcode.print') + (ids.length ? `?ids=${ids.join(',')}` : ''));
+    };
+
+    const handlePrintSingle = (row) => {
+        router.visit(route('barcode.print') + `?ids=${row.id}`);
+    };
+
     const columns = [
+        {
+            id: 'select',
+            header: (
+                <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={toggleAll}
+                />
+            ),
+            render: (row) => (
+                <Checkbox
+                    checked={selectedIds.includes(row.id)}
+                    onCheckedChange={() => toggleOne(row.id)}
+                />
+            ),
+        },
         {
             id: 'num',
             header: '#',
@@ -120,7 +108,7 @@ export default function BarcodeIndex({ barcodes, filters }) {
         {
             id: 'barcode',
             header: 'Barcode',
-            render: (row) => <BarcodeLabel code={row.code} />,
+            render: (row) => <BarcodeBars code={row.code} />,
         },
         {
             id: 'product',
@@ -145,7 +133,11 @@ export default function BarcodeIndex({ barcodes, filters }) {
             id: 'actions',
             header: '',
             align: 'right',
-            render: (row) => <PrintWindow row={row} />,
+            render: (row) => (
+                <Button size="sm" variant="outline" onClick={() => handlePrintSingle(row)}>
+                    <Printer className="size-3.5" />
+                </Button>
+            ),
         },
     ];
 
@@ -164,9 +156,16 @@ export default function BarcodeIndex({ barcodes, filters }) {
                             <p className="text-xs text-white/60">Auto-generated from product codes &amp; SKUs.</p>
                         </div>
                     </div>
+                    <Button
+                        onClick={handlePrintLabels}
+                        className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
+                    >
+                        <Printer className="size-4" />
+                        {selectedIds.length > 0 ? `Print ${selectedIds.length} Selected` : 'Print Labels'}
+                    </Button>
                 </div>
 
-                <div className="mb-4 flex gap-2">
+                <div className="mb-3 flex items-center gap-2">
                     <div className="relative max-w-xs flex-1">
                         <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                         <Input
@@ -176,9 +175,14 @@ export default function BarcodeIndex({ barcodes, filters }) {
                             className="pl-8"
                         />
                     </div>
+                    {selectedIds.length > 0 && (
+                        <span className="text-xs text-muted-foreground">
+                            {selectedIds.length} of {rows.length} selected
+                        </span>
+                    )}
                 </div>
 
-                <DataTable columns={columns} rows={barcodes.data} rowKey="id" emptyMessage="No barcodes found." />
+                <DataTable columns={columns} rows={rows} rowKey="id" emptyMessage="No barcodes found." />
 
                 {barcodes.links?.length > 3 && (
                     <div className="mt-4 flex flex-wrap gap-1">

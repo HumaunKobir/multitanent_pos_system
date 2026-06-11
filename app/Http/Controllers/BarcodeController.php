@@ -13,7 +13,7 @@ class BarcodeController extends Controller
     {
         $this->authorize('barcode.view');
 
-        $barcodes = Barcode::with(['product:id,name,image', 'variation:id,variation_data'])
+        $barcodes = Barcode::with(['product:id,name,image,sale_price,discount_price', 'variation:id,variation_data'])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('code', 'like', "%{$s}%")
                     ->orWhere('name', 'like', "%{$s}%");
@@ -25,6 +25,22 @@ class BarcodeController extends Controller
         return Inertia::render('admin/barcode/index', [
             'barcodes' => $barcodes,
             'filters' => $request->only('search'),
+        ]);
+    }
+
+    public function print(Request $request): Response
+    {
+        $this->authorize('barcode.view');
+
+        $ids = array_filter(explode(',', (string) $request->query('ids', '')));
+
+        $barcodes = Barcode::with(['product:id,name,image,sale_price,discount_price', 'variation:id,variation_data'])
+            ->when($ids, fn ($q) => $q->whereIn('id', $ids))
+            ->latest()
+            ->get();
+
+        return Inertia::render('admin/barcode/print', [
+            'barcodes' => $barcodes,
         ]);
     }
 }

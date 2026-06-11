@@ -345,7 +345,6 @@ function PosProductPicker({ categories = [], onAdd }) {
     const [categoryId, setCategoryId] = useState('');
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [expandedProductId, setExpandedProductId] = useState(null);
     const timerRef = useRef(null);
     const apiUrl = route('api.products.sell');
 
@@ -395,7 +394,6 @@ function PosProductPicker({ categories = [], onAdd }) {
             } else if (match && match.has_variations) {
                 setResults([match]);
                 setQuery('');
-                setExpandedProductId(match.id);
             } else {
                 setQuery(term);
                 setResults(data);
@@ -455,17 +453,9 @@ function PosProductPicker({ categories = [], onAdd }) {
             quantity: 1,
             available_stock: stock,
         });
-        setExpandedProductId(null);
         setQuery('');
     }
 
-    function handleProductClick(product) {
-        if (product.has_variations) {
-            setExpandedProductId((current) => (current === product.id ? null : product.id));
-            return;
-        }
-        addItem(product, null);
-    }
 
     return (
         <div className="flex h-full min-h-0 flex-col gap-1 md:flex-row">
@@ -512,84 +502,63 @@ function PosProductPicker({ categories = [], onAdd }) {
                     </div>
                 ) : (
                     <div className="flex flex-1 flex-col gap-px overflow-y-auto bg-blue-100/80">
-                        {results.map((product) => {
-                            const isExpanded = expandedProductId === product.id;
-                            const outOfStock = !product.has_variations && parseFloat(product.stock ?? 0) <= 0;
+                        {results.flatMap((product) =>
+                            product.has_variations
+                                ? (product.variations ?? []).map((variation) => ({ product, variation }))
+                                : [{ product, variation: null }],
+                        ).map(({ product, variation }) => {
+                            const isVariant = variation !== null;
+                            const itemKey = isVariant ? `v-${variation.id}` : `p-${product.id}`;
+                            const stock = isVariant ? parseFloat(variation.stock ?? 0) : parseFloat(product.stock ?? 0);
+                            const price = isVariant ? parseFloat(variation.sale_price ?? 0) : parseFloat(product.sale_price ?? 0);
+                            const outOfStock = stock <= 0;
 
                             return (
-                                <div key={product.id} className="bg-white">
-                                    <button
-                                        type="button"
-                                        disabled={outOfStock}
-                                        onClick={() => handleProductClick(product)}
-                                        className={cn(
-                                            'flex w-full gap-1.5 p-1.5 text-left transition-colors lg:gap-2 lg:p-2',
-                                            outOfStock
-                                                ? 'cursor-not-allowed opacity-50'
-                                                : 'hover:bg-blue-50/80',
-                                            isExpanded && 'bg-blue-50 ring-1 ring-inset ring-blue-400',
-                                        )}
-                                    >
-                                        {product.image ? (
-                                            <img
-                                                src={product.image}
-                                                alt=""
-                                                className="size-10 shrink-0 border border-blue-100 object-cover lg:size-14"
-                                            />
+                                <button
+                                    key={itemKey}
+                                    type="button"
+                                    disabled={outOfStock}
+                                    onClick={() => addItem(product, variation)}
+                                    className={cn(
+                                        'flex w-full gap-1.5 bg-white p-1.5 text-left transition-colors lg:gap-2 lg:p-2',
+                                        outOfStock ? 'cursor-not-allowed opacity-50' : 'hover:bg-blue-50/80',
+                                    )}
+                                >
+                                    {product.image ? (
+                                        <img
+                                            src={product.image}
+                                            alt=""
+                                            className="size-10 shrink-0 border border-blue-100 object-cover lg:size-14"
+                                        />
+                                    ) : (
+                                        <div className="flex size-10 shrink-0 items-center justify-center border border-blue-100 bg-slate-50 lg:size-14">
+                                            <Package className="size-4 text-blue-200 lg:size-6" />
+                                        </div>
+                                    )}
+                                    <div className="flex min-w-0 flex-1 flex-col">
+                                        <p className="line-clamp-1 text-[11px] font-semibold text-blue-950 lg:line-clamp-2 lg:text-xs">{product.name}</p>
+                                        {isVariant ? (
+                                            <p className="mt-0.5 text-[10px] font-medium text-blue-700 lg:text-[11px]">{variation.label}</p>
                                         ) : (
-                                            <div className="flex size-10 shrink-0 items-center justify-center border border-blue-100 bg-slate-50 lg:size-14">
-                                                <Package className="size-4 text-blue-200 lg:size-6" />
-                                            </div>
-                                        )}
-                                        <div className="flex min-w-0 flex-1 flex-col">
-                                            <p className="line-clamp-1 text-[11px] font-semibold text-blue-950 lg:line-clamp-2 lg:text-xs">{product.name}</p>
-                                            {product.category_name && (
+                                            product.category_name && (
                                                 <p className="mt-0.5 text-[9px] font-medium uppercase tracking-wide text-blue-600/80 lg:text-[10px]">
                                                     {product.category_name}
                                                 </p>
-                                            )}
-                                            {product.code && (
-                                                <p className="mt-0.5 text-[10px] text-muted-foreground lg:text-[11px]">{product.code}</p>
-                                            )}
-                                            <div className="mt-auto flex items-end justify-between gap-1 pt-0.5 lg:gap-2 lg:pt-1">
-                                                <p className="text-xs font-bold tabular-nums text-emerald-700 lg:text-sm">
-                                                    ৳{parseFloat(product.sale_price ?? 0).toFixed(2)}
-                                                </p>
-                                                {product.has_variations ? (
-                                                    <Badge className="border-blue-200 bg-blue-100 text-[10px] text-blue-900 hover:bg-blue-100">
-                                                        {product.variations?.length ?? 0} variants
-                                                    </Badge>
-                                                ) : (
-                                                    <span className="text-[11px] font-medium text-muted-foreground">
-                                                        Stock {parseFloat(product.stock ?? 0)}
-                                                    </span>
-                                                )}
-                                            </div>
+                                            )
+                                        )}
+                                        {!isVariant && product.code && (
+                                            <p className="mt-0.5 text-[10px] text-muted-foreground lg:text-[11px]">{product.code}</p>
+                                        )}
+                                        <div className="mt-auto flex items-end justify-between gap-1 pt-0.5 lg:gap-2 lg:pt-1">
+                                            <p className="text-xs font-bold tabular-nums text-emerald-700 lg:text-sm">
+                                                ৳{price.toFixed(2)}
+                                            </p>
+                                            <span className="text-[11px] font-medium text-muted-foreground">
+                                                Stock {stock}
+                                            </span>
                                         </div>
-                                    </button>
-
-                                    {isExpanded && product.has_variations && (
-                                        <div className="border-t border-blue-100 bg-blue-50/60 p-2">
-                                            {(product.variations ?? []).map((variation) => {
-                                                const variantStock = parseFloat(variation.stock ?? 0);
-                                                return (
-                                                    <button
-                                                        key={variation.id}
-                                                        type="button"
-                                                        disabled={variantStock <= 0}
-                                                        onClick={() => addItem(product, variation)}
-                                                        className="mb-1 flex w-full items-center justify-between border border-blue-200 bg-white px-2 py-1.5 text-left text-xs last:mb-0 hover:border-blue-500 hover:bg-blue-50 disabled:opacity-50"
-                                                    >
-                                                        <span className="font-medium text-blue-950">{variation.label}</span>
-                                                        <span className="tabular-nums text-emerald-700">
-                                                            ৳{parseFloat(variation.sale_price ?? 0).toFixed(2)} · {variantStock}
-                                                        </span>
-                                                    </button>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                </div>
+                                    </div>
+                                </button>
                             );
                         })}
                     </div>

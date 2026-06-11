@@ -751,9 +751,6 @@ export default function ProductForm({
 
     function handleVariationsToggle(val) {
         setHasVariations(val);
-        if (val) {
-            form.setData('code', '');
-        }
     }
 
     const visibleOn = form.data.visible === 'yes';
@@ -849,8 +846,7 @@ export default function ProductForm({
                                 value={form.data.code}
                                 onChange={(e) => form.setData('code', e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
-                                placeholder={hasVariations ? 'Auto-generated if empty' : 'Leave empty for auto code'}
-                                disabled={hasVariations}
+                                placeholder="Leave empty for auto code"
                             />
                         </Field>
                     </div>

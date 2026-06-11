@@ -64,6 +64,22 @@ export default function ProductIndex({ products, filters, categories, brands, ta
     const categoryOptions = Object.entries(categories || {}).map(([value, label]) => ({ value, label }));
     const brandOptions = Object.entries(brands || {}).map(([value, label]) => ({ value, label }));
 
+    const flatRows = (products.data ?? []).flatMap((product) => {
+        if (!product.variations?.length) {
+            return [{ ...product, _rowKey: `p-${product.id}`, _isVariant: false }];
+        }
+        return product.variations.map((v) => ({
+            ...product,
+            _rowKey: `v-${v.id}`,
+            _isVariant: true,
+            _variantLabel: v.variation_data?.label ?? v.sku,
+            _variantSku: v.sku,
+            _variantPrice: parseFloat(v.price ?? 0),
+            _variantPurchasePrice: parseFloat(v.purchase_price ?? 0),
+            _variantStock: v.stock,
+        }));
+    });
+
     const columns = [
         {
             id: 'num',
@@ -86,7 +102,14 @@ export default function ProductIndex({ products, filters, categories, brands, ta
             render: (row) => (
                 <div>
                     <p className="font-medium">{row.name}</p>
-                    <p className="text-xs text-muted-foreground">{row.code}</p>
+                    {row._isVariant ? (
+                        <>
+                            <p className="text-xs font-medium text-blue-700">{row._variantLabel}</p>
+                            <p className="text-[11px] text-muted-foreground">{row._variantSku}</p>
+                        </>
+                    ) : (
+                        <p className="text-xs text-muted-foreground">{row.code}</p>
+                    )}
                 </div>
             ),
         },
@@ -103,18 +126,24 @@ export default function ProductIndex({ products, filters, categories, brands, ta
         {
             id: 'price',
             header: 'Price',
-            render: (row) => (
-                <div>
-                    <p className="text-xs text-muted-foreground">Buy: ৳{row.purchase_price}</p>
-                    <p className="font-medium">৳{row.sale_price}</p>
-                </div>
-            ),
+            render: (row) => {
+                const buy = row._isVariant ? row._variantPurchasePrice : parseFloat(row.purchase_price ?? 0);
+                const sell = row._isVariant ? row._variantPrice : parseFloat(row.sale_price ?? 0);
+                return (
+                    <div>
+                        <p className="text-xs text-muted-foreground">Buy: ৳{buy.toFixed(2)}</p>
+                        <p className="font-medium">৳{sell.toFixed(2)}</p>
+                    </div>
+                );
+            },
         },
         {
             id: 'stock',
             header: 'Stock',
             render: (row) => {
-                const stock = parseFloat(row.variations_sum_stock ?? row.batches_sum_available ?? 0) || 0;
+                const stock = row._isVariant
+                    ? parseFloat(row._variantStock ?? 0)
+                    : parseFloat(row.batches_sum_available ?? 0) || 0;
                 return <span className="font-medium">{stock}</span>;
             },
         },
@@ -136,7 +165,7 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                     prefix="product"
                     id={row.slug}
                     editRoute="product.edit"
-                    onDelete={() => setDeleting(row)}
+                    onDelete={row._isVariant ? undefined : () => setDeleting(row)}
                 />
             ),
         },
@@ -217,7 +246,13 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                     </Button>
                 </div>
 
-                <DataTable columns={columns} rows={products.data} rowKey="id" emptyMessage="No products found." />
+                <DataTable
+                    columns={columns}
+                    rows={flatRows}
+                    rowKey="_rowKey"
+                    emptyMessage="No products found."
+                    getRowProps={(row) => row._isVariant ? { className: 'bg-blue-50/40' } : {}}
+                />
 
                 {products.links?.length > 3 && (
                     <div className="mt-4 flex flex-wrap gap-1">

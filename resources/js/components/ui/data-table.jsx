@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { cn } from '@/lib/utils';
 
 /**
@@ -37,6 +38,7 @@ const alignTd = {
  * @param {string} [props.tableClassName]
  * @param {string} [props.caption] — screen-reader only table caption (no visible row above the header)
  * @param {(row: object, rowIndex: number) => import('react').HTMLAttributes<HTMLTableRowElement>} [props.getRowProps]
+ * @param {(row: object, rowIndex: number) => import('react').ReactNode} [props.renderExpandedRow] — optional full-width row rendered after each data row
  */
 export function DataTable({
     columns,
@@ -47,6 +49,7 @@ export function DataTable({
     tableClassName,
     caption,
     getRowProps,
+    renderExpandedRow,
     ...props
 }) {
     const resolveRowKey = typeof rowKey === 'function' ? rowKey : (row) => row[rowKey];
@@ -109,8 +112,8 @@ export function DataTable({
                             const rowProps = getRowProps?.(row, rowIndex) ?? {};
 
                             return (
+                            <Fragment key={resolveRowKey(row)}>
                             <tr
-                                key={resolveRowKey(row)}
                                 {...rowProps}
                                 className={cn(
                                     'border-b border-blue-200/85 transition-colors duration-200 last:border-b-0 dark:border-blue-900/55',
@@ -137,6 +140,14 @@ export function DataTable({
                                     );
                                 })}
                             </tr>
+                            {renderExpandedRow && (
+                                <tr className="border-b border-blue-200/85 last:border-b-0 dark:border-blue-900/55">
+                                    <td colSpan={columns.length} className="p-0">
+                                        {renderExpandedRow(row, rowIndex)}
+                                    </td>
+                                </tr>
+                            )}
+                            </Fragment>
                             );
                         })
                     )}

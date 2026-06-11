@@ -33,7 +33,7 @@ class ProductController extends Controller
 
         $products = Product::ownBranch()
             ->active()
-            ->with(['category', 'brand'])
+            ->with(['category', 'brand', 'variations:id,product_id,sku,variation_data,price,purchase_price,stock'])
             ->withSum(['variations as variations_sum_stock' => fn ($q) => $q->when($branchId, fn ($q) => $q->where(fn ($q) => $q->where('branch_id', $branchId)->orWhereNull('branch_id')))], 'stock')
             ->withSum(['batches as batches_sum_available' => fn ($q) => $q->when($branchId, fn ($q) => $q->where(fn ($q) => $q->where('branch_id', $branchId)->orWhereNull('branch_id')))], 'available')
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {

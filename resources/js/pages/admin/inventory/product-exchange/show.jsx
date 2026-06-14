@@ -15,7 +15,19 @@ export default function ProductExchangeShow({ exchange }) {
             id={exchange.id}
             date={exchange.date}
             comment={exchange.comment}
-            extra={<p className="mt-1">Customer: {exchange.customer?.name ?? '—'} · Sale #{exchange.sell_id} · Diff ৳{parseFloat(exchange.price_difference).toFixed(2)}</p>}
+            extra={
+                <p className="mt-1">
+                    Customer: {exchange.customer?.name ?? '—'} · Sale #{exchange.sell_id} · Diff ৳
+                    {parseFloat(exchange.price_difference).toFixed(2)}
+                    {parseFloat(exchange.special_discount_amount || 0) > 0 && (
+                        <>
+                            {' '}
+                            · Special discount: -৳{parseFloat(exchange.special_discount_amount).toFixed(2)}
+                            {exchange.special_discount?.name ? ` (${exchange.special_discount.name})` : ''}
+                        </>
+                    )}
+                </p>
+            }
             lines={exchange.products?.map((p) => ({
                 name: `${formatProductLabel(p.old_product?.name, p.old_product?.code)} → ${formatProductLabel(p.new_product?.name, p.new_product?.code)}`,
                 qty: p.new_quantity,

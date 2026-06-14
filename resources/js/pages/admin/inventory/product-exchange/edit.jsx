@@ -16,6 +16,7 @@ import {
 } from '@/components/inventory/inventory-form';
 import { ProductSearchBox } from '@/components/inventory/product-search-box';
 import { useAppToast } from '@/contexts/app-toast-context';
+import { computeDiscountAmount, findBestSpecialDiscount, formatDiscountLabel } from '@/lib/pos-discount';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeftRight, CalendarDays, Package } from 'lucide-react';
@@ -24,18 +25,20 @@ import { useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-export default function ProductExchangeEdit({ exchange, paymentAccounts = [] }) {
+export default function ProductExchangeEdit({ exchange, paymentAccounts = [], specialDiscounts = [] }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const [items, setItems] = useState(exchange.items ?? []);
     const [paymentMode, setPaymentMode] = useState(paymentTypeToMode(exchange.payment_type));
     const [replaceIndex, setReplaceIndex] = useState(null);
+    const [matchedSpecialDiscount, setMatchedSpecialDiscount] = useState(null);
 
     const form = useForm({
         date: exchange.date ?? '',
         comment: exchange.comment ?? '',
         paid_amount: exchange.paid_amount ?? '0',
         payment_type: String(exchange.payment_type ?? '5'),
+        special_discount_id: '',
         items: [],
     });
 
@@ -52,7 +55,21 @@ export default function ProductExchangeEdit({ exchange, paymentAccounts = [] }) 
         (s, it) => s + parseFloat(it.quantity || 0) * parseFloat(it.old_unit_price || 0),
         0,
     );
-    const priceDifference = grossAmount - oldTotal;
+    const specialDiscountAmount = matchedSpecialDiscount
+        ? computeDiscountAmount(
+              matchedSpecialDiscount.discount_type,
+              matchedSpecialDiscount.discount_value,
+              grossAmount,
+          )
+        : 0;
+    const netNewAmount = grossAmount - specialDiscountAmount;
+    const priceDifference = netNewAmount - oldTotal;
+
+    useEffect(() => {
+        const match = findBestSpecialDiscount(specialDiscounts, grossAmount);
+        setMatchedSpecialDiscount(match);
+        form.setData('special_discount_id', match ? String(match.id) : '');
+    }, [grossAmount, specialDiscounts]);
 
     function applyReplacement(product, variation) {
         if (replaceIndex === null) return;
@@ -247,7 +264,18 @@ export default function ProductExchangeEdit({ exchange, paymentAccounts = [] }) 
                                     </tr>
                                 ))}
                             </LineItemsTable>
-                            <div className="mt-3 flex justify-end gap-6 text-xs">
+                            <div className="mt-3 flex flex-col items-end gap-1 text-xs">
+                                {matchedSpecialDiscount && specialDiscountAmount > 0 && (
+                                    <span className="text-amber-800">
+                                        Special ({matchedSpecialDiscount.name}):{' '}
+                                        <strong>-৳{specialDiscountAmount.toFixed(2)}</strong>{' '}
+                                        ({formatDiscountLabel(
+                                            matchedSpecialDiscount.discount_type,
+                                            matchedSpecialDiscount.discount_value,
+                                        )}{' '}
+                                        applied automatically)
+                                    </span>
+                                )}
                                 <span>
                                     Price difference:{' '}
                                     <strong className={priceDifference >= 0 ? 'text-primary' : 'text-destructive'}>

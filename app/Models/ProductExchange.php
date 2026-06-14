@@ -20,6 +20,8 @@ class ProductExchange extends Model
         'customer_id',
         'date',
         'gross_amount',
+        'special_discount_id',
+        'special_discount_amount',
         'paid_amount',
         'price_difference',
         'payment_type',
@@ -29,6 +31,7 @@ class ProductExchange extends Model
     protected $casts = [
         'date' => 'date',
         'gross_amount' => 'decimal:2',
+        'special_discount_amount' => 'decimal:2',
         'paid_amount' => 'decimal:2',
         'price_difference' => 'decimal:2',
         'payment_type' => ReceivedPaymentMethod::class,
@@ -47,6 +50,16 @@ class ProductExchange extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function specialDiscount(): BelongsTo
+    {
+        return $this->belongsTo(SpecialDiscount::class);
+    }
+
+    public function getNetNewAmountAttribute(): float
+    {
+        return (float) $this->gross_amount - (float) $this->special_discount_amount;
     }
 
     public function products(): HasMany

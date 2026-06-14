@@ -497,7 +497,8 @@ class InventoryAccountingService
         }
 
         [$oldBase, $oldVat] = $this->splitVat($oldGross, $vatRatio);
-        [$newBase, $newVat] = $this->splitVat($newGross, $vatRatio);
+        $newGrossNet = max(0, $newGross - (float) $exchange->special_discount_amount);
+        [$newBase, $newVat] = $this->splitVat($newGrossNet, $vatRatio);
 
         return [
             'old_base' => $oldBase,

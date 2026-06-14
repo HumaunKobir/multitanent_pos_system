@@ -49,8 +49,13 @@ class Sell extends Model
 
     public function hasAnyDiscount(): bool
     {
+        return $this->hasManualDiscount()
+            || (float) $this->special_discount_amount > 0;
+    }
+
+    public function hasManualDiscount(): bool
+    {
         return (float) $this->discount > 0
-            || (float) $this->special_discount_amount > 0
             || $this->lineDiscountTotal() > 0;
     }
 

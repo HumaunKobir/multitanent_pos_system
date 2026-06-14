@@ -85,6 +85,7 @@ class SaleLookupController extends Controller
             'date' => optional($sell->date)->format('Y-m-d'),
             'discount' => (float) $sell->discount,
             'has_discount' => $sell->hasAnyDiscount(),
+            'has_manual_discount' => $sell->hasManualDiscount(),
             'items' => $items,
         ]);
     }

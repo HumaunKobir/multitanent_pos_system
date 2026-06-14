@@ -72,4 +72,33 @@ class SpecialDiscountService
             'discount_value' => (float) $discount->discount_value,
         ];
     }
+
+    /**
+     * @return array<int, array{
+     *   id: int,
+     *   name: string,
+     *   min_amount: float,
+     *   max_amount: ?float,
+     *   discount_type: string,
+     *   discount_value: float
+     * }>
+     */
+    public function activeForBranch(?int $branchId): array
+    {
+        return SpecialDiscount::query()
+            ->active()
+            ->when($branchId, fn ($query) => $query->accessibleAtBranch($branchId))
+            ->orderBy('min_amount')
+            ->get(['id', 'name', 'min_amount', 'max_amount', 'discount_type', 'discount_value'])
+            ->map(fn (SpecialDiscount $discount) => [
+                'id' => $discount->id,
+                'name' => $discount->name,
+                'min_amount' => (float) $discount->min_amount,
+                'max_amount' => $discount->max_amount !== null ? (float) $discount->max_amount : null,
+                'discount_type' => $discount->discount_type->value,
+                'discount_value' => (float) $discount->discount_value,
+            ])
+            ->values()
+            ->all();
+    }
 }

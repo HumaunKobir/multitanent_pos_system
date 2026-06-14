@@ -12,6 +12,7 @@ use App\Models\ProductExchange;
 use App\Models\Sell;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryStockService;
+use App\Services\SpecialDiscountService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -27,6 +28,7 @@ class ProductExchangeController extends Controller
     public function __construct(
         private InventoryStockService $stock,
         private InventoryAccountingService $accounting,
+        private SpecialDiscountService $specialDiscountService,
     ) {}
 
     public function index(Request $request): Response
@@ -53,9 +55,12 @@ class ProductExchangeController extends Controller
     {
         $this->authorize('inventory.product-exchange.create');
 
+        $branchId = Auth::user()?->branch_id;
+
         return Inertia::render('admin/inventory/product-exchange/create', [
             'today' => now()->format('Y-m-d'),
             'paymentAccounts' => $this->paymentAccounts(),
+            'specialDiscounts' => $this->specialDiscountService->activeForBranch($branchId),
         ]);
     }
 
@@ -70,6 +75,7 @@ class ProductExchangeController extends Controller
             'paid_amount' => ['required', 'numeric', 'min:0'],
             'payment_type' => ['required', 'integer'],
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
+            'special_discount_id' => ['nullable', 'integer', 'exists:special_discounts,id'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
             'items.*.product_id' => ['required', 'exists:products,id'],
@@ -93,8 +99,8 @@ class ProductExchangeController extends Controller
                     ->lockForUpdate()
                     ->findOrFail($data['sell_id']);
 
-                if ($parent->hasAnyDiscount()) {
-                    throw new \RuntimeException('Sales with a discount cannot be exchanged.');
+                if ($parent->hasManualDiscount()) {
+                    throw new \RuntimeException('Sales with a manual discount cannot be exchanged.');
                 }
 
                 if (ProductExchange::where('sell_id', $parent->id)->exists()) {
@@ -102,7 +108,7 @@ class ProductExchangeController extends Controller
                 }
 
                 $grossAmount = 0.0;
-                $priceDifference = 0.0;
+                $oldTotal = 0.0;
                 $lines = [];
 
                 foreach ($data['items'] as $item) {
@@ -150,10 +156,10 @@ class ProductExchangeController extends Controller
                         );
                     }
 
-                    $oldTotal = $qty * (float) $sellProduct->unit_price;
+                    $lineOldTotal = $qty * (float) $sellProduct->unit_price;
                     $newTotal = $qty * $newUnitPrice;
+                    $oldTotal += $lineOldTotal;
                     $grossAmount += $newTotal;
-                    $priceDifference += $newTotal - $oldTotal;
 
                     $lines[] = [
                         'branch_id' => $branchId,
@@ -171,6 +177,13 @@ class ProductExchangeController extends Controller
                     ];
                 }
 
+                $specialResolved = $this->specialDiscountService->resolveForSale(
+                    $this->normalizedSpecialDiscountId($data),
+                    $grossAmount,
+                    $branchId,
+                );
+                $priceDifference = ($grossAmount - ($specialResolved['amount'] ?? 0.0)) - $oldTotal;
+
                 $paymentType = ReceivedPaymentMethod::from((int) $data['payment_type']);
 
                 $exchange = ProductExchange::create([
@@ -179,6 +192,8 @@ class ProductExchangeController extends Controller
                     'customer_id' => $parent->customer_id,
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
+                    'special_discount_id' => $specialResolved['id'] ?? null,
+                    'special_discount_amount' => $specialResolved['amount'] ?? 0.0,
                     'paid_amount' => (float) $data['paid_amount'],
                     'price_difference' => $priceDifference,
                     'payment_type' => $paymentType,
@@ -221,6 +236,7 @@ class ProductExchangeController extends Controller
         $productExchange->load([
             'customer',
             'sell.products.product',
+            'specialDiscount:id,name,discount_type,discount_value',
             'products.oldProduct',
             'products.newProduct',
             'products.oldVariation',
@@ -247,7 +263,7 @@ class ProductExchangeController extends Controller
 
         $parent = $productExchange->sell;
 
-        if (! $parent || $parent->hasAnyDiscount()) {
+        if (! $parent || $parent->hasManualDiscount()) {
             abort(403, 'This exchange cannot be edited.');
         }
 
@@ -266,9 +282,12 @@ class ProductExchangeController extends Controller
             'new_unit_price' => (string) $line->new_unit_price,
         ])->values();
 
+        $branchId = Auth::user()?->branch_id;
+
         return Inertia::render('admin/inventory/product-exchange/edit', [
             'today' => now()->format('Y-m-d'),
             'paymentAccounts' => $this->paymentAccounts(),
+            'specialDiscounts' => $this->specialDiscountService->activeForBranch($branchId),
             'exchange' => [
                 'id' => $productExchange->id,
                 'sell_id' => $productExchange->sell_id,
@@ -294,6 +313,7 @@ class ProductExchangeController extends Controller
             'paid_amount' => ['required', 'numeric', 'min:0'],
             'payment_type' => ['required', 'integer'],
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
+            'special_discount_id' => ['nullable', 'integer', 'exists:special_discounts,id'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
             'items.*.product_id' => ['required', 'exists:products,id'],
@@ -323,12 +343,12 @@ class ProductExchangeController extends Controller
                     ->lockForUpdate()
                     ->findOrFail($productExchange->sell_id);
 
-                if ($parent->hasAnyDiscount()) {
-                    throw new \RuntimeException('Sales with a discount cannot be exchanged.');
+                if ($parent->hasManualDiscount()) {
+                    throw new \RuntimeException('Sales with a manual discount cannot be exchanged.');
                 }
 
                 $grossAmount = 0.0;
-                $priceDifference = 0.0;
+                $oldTotal = 0.0;
                 $lines = [];
 
                 foreach ($data['items'] as $item) {
@@ -376,10 +396,10 @@ class ProductExchangeController extends Controller
                         );
                     }
 
-                    $oldTotal = $qty * (float) $sellProduct->unit_price;
+                    $lineOldTotal = $qty * (float) $sellProduct->unit_price;
                     $newTotal = $qty * $newUnitPrice;
+                    $oldTotal += $lineOldTotal;
                     $grossAmount += $newTotal;
-                    $priceDifference += $newTotal - $oldTotal;
 
                     $lines[] = [
                         'branch_id' => $branchId,
@@ -401,11 +421,20 @@ class ProductExchangeController extends Controller
                     throw new \RuntimeException('At least one line with exchange quantity greater than zero is required.');
                 }
 
+                $specialResolved = $this->specialDiscountService->resolveForSale(
+                    $this->normalizedSpecialDiscountId($data),
+                    $grossAmount,
+                    $branchId,
+                );
+                $priceDifference = ($grossAmount - ($specialResolved['amount'] ?? 0.0)) - $oldTotal;
+
                 $paymentType = ReceivedPaymentMethod::from((int) $data['payment_type']);
 
                 $productExchange->update([
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
+                    'special_discount_id' => $specialResolved['id'] ?? null,
+                    'special_discount_amount' => $specialResolved['amount'] ?? 0.0,
                     'paid_amount' => (float) $data['paid_amount'],
                     'price_difference' => $priceDifference,
                     'payment_type' => $paymentType,
@@ -545,5 +574,15 @@ class ProductExchangeController extends Controller
         }
 
         return $scaled;
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private function normalizedSpecialDiscountId(array $data): ?int
+    {
+        if (empty($data['special_discount_id'])) {
+            return null;
+        }
+
+        return (int) $data['special_discount_id'];
     }
 }

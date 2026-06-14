@@ -13,9 +13,17 @@ const PREVIEW_MAX_W = 500;
 const PREVIEW_MAX_H = 220;
 
 function getEffectivePrice(row) {
-    if (!row?.product) return null;
+    if (row?.variation?.price != null) {
+        return parseFloat(row.variation.price);
+    }
+
+    if (!row?.product) {
+        return null;
+    }
+
     const disc = parseFloat(row.product.discount_price ?? 0);
     const sale = parseFloat(row.product.sale_price ?? 0);
+
     return disc > 0 ? disc : sale;
 }
 
@@ -131,11 +139,7 @@ function buildPrintHtml(rows, settings) {
     const labels = rows
         .flatMap((row) => Array.from({ length: copies }, () => row))
         .map((row) => {
-            const price = row.product
-                ? parseFloat(row.product.discount_price ?? 0) > 0
-                    ? row.product.discount_price
-                    : row.product.sale_price
-                : 0;
+            const price = getEffectivePrice(row) ?? 0;
             return `
       <div class="label">
         <div class="label-inner">

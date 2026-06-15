@@ -741,6 +741,16 @@ export default function ProductForm({
     const toast = useAppToast();
     const [hasVariations, setHasVariations] = useState(isEditing && initialVariations.length > 0);
 
+    const colorSelectOptions = useMemo(
+        () => colorOptions.map((opt) => ({ value: String(opt.id), label: opt.label })),
+        [colorOptions],
+    );
+
+    const sizeSelectOptions = useMemo(
+        () => sizeOptions.map((opt) => ({ value: String(opt.id), label: opt.label })),
+        [sizeOptions],
+    );
+
     const combinations = form.data.combinations || [];
     const allCombosHavePrices =
         hasVariations &&
@@ -751,6 +761,14 @@ export default function ProductForm({
 
     function handleVariationsToggle(val) {
         setHasVariations(val);
+
+        if (val) {
+            form.setData((data) => ({
+                ...data,
+                color_ids: [],
+                size_ids: [],
+            }));
+        }
     }
 
     const visibleOn = form.data.visible === 'yes';
@@ -855,6 +873,30 @@ export default function ProductForm({
                 {/* Extra Options */}
                 <Card title="Options" icon={Settings}>
                     <div className="grid grid-cols-3 gap-3">
+                        {!hasVariations && (
+                            <>
+                                <Field label="Color" error={form.errors.color_ids}>
+                                    <SmartMultiSelect
+                                        options={colorSelectOptions}
+                                        value={form.data.color_ids || []}
+                                        onValueChange={(values) => form.setData('color_ids', values)}
+                                        placeholder="Select colors…"
+                                        triggerClassName="min-h-8 text-xs"
+                                    />
+                                </Field>
+
+                                <Field label="Size" error={form.errors.size_ids}>
+                                    <SmartMultiSelect
+                                        options={sizeSelectOptions}
+                                        value={form.data.size_ids || []}
+                                        onValueChange={(values) => form.setData('size_ids', values)}
+                                        placeholder="Select sizes…"
+                                        triggerClassName="min-h-8 text-xs"
+                                    />
+                                </Field>
+                            </>
+                        )}
+
                         <Field label="YouTube Link" error={form.errors.youtube_link}>
                             <Input className="h-8 text-xs" value={form.data.youtube_link} onChange={(e) => form.setData('youtube_link', e.target.value)} placeholder="https://youtube.com/..." />
                         </Field>

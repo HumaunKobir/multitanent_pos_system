@@ -2,10 +2,12 @@
 
 use App\Models\Brand;
 use App\Models\Category;
+use App\Models\Color;
 use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Models\Sell;
 use App\Models\SellProduct;
+use App\Models\Size;
 use App\Models\Unit;
 use App\Models\User;
 
@@ -145,6 +147,58 @@ test('product update syncs variations when not locked', function () {
     expect((float) $variation->price)->toBe(220.0)
         ->and((float) $variation->purchase_price)->toBe(130.0)
         ->and($variation->stock)->toBe(7);
+});
+
+test('product update saves multiple colors and sizes even when variants are locked', function () {
+    $admin = productUpdateAdmin();
+    $colorOne = Color::query()->create(['name' => 'Green '.fake()->unique()->numerify('####'), 'status' => 1]);
+    $colorTwo = Color::query()->create(['name' => 'Yellow '.fake()->unique()->numerify('####'), 'status' => 1]);
+    $sizeOne = Size::query()->create(['name' => 'XL '.fake()->unique()->numerify('####'), 'status' => 1]);
+    $sizeTwo = Size::query()->create(['name' => 'XXL '.fake()->unique()->numerify('####'), 'status' => 1]);
+
+    $product = Product::factory()->create([
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => 'COLOR-'.fake()->unique()->numerify('######'),
+    ]);
+
+    $variation = ProductVariation::query()->create([
+        'product_id' => $product->id,
+        'sku' => $product->code.'-GREEN-L',
+        'price' => 190,
+        'purchase_price' => 115,
+        'stock' => 4,
+        'variation_data' => ['label' => 'Green-L', 'Color' => 'Green', 'Size' => 'L'],
+    ]);
+
+    $sell = Sell::query()->create([
+        'date' => now()->toDateString(),
+        'gross_amount' => 190,
+        'paid_amount' => 190,
+    ]);
+
+    SellProduct::query()->create([
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'variation_id' => $variation->id,
+        'quantity' => 1,
+        'unit_price' => 190,
+    ]);
+
+    $payload = productUpdatePayload($product, [
+        'color_ids' => [(string) $colorOne->id, (string) $colorTwo->id],
+        'size_ids' => [(string) $sizeOne->id, (string) $sizeTwo->id],
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), $payload)
+        ->assertRedirect(route('product.index'));
+
+    $product->refresh();
+
+    expect($product->colors)->toBe([$colorOne->id, $colorTwo->id])
+        ->and($product->sizes)->toBe([$sizeOne->id, $sizeTwo->id]);
 });
 
 test('product update ignores variation changes when locked', function () {

@@ -73,7 +73,6 @@ export default function ProductIndex({ products, filters, categories, brands, ta
             _rowKey: `v-${v.id}`,
             _isVariant: true,
             _variantLabel: v.variation_data?.label ?? v.sku,
-            _variantSku: v.sku,
             _variantPrice: parseFloat(v.price ?? 0),
             _variantPurchasePrice: parseFloat(v.purchase_price ?? 0),
             _variantStock: v.stock,
@@ -103,10 +102,7 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                 <div>
                     <p className="font-medium">{row.name}</p>
                     {row._isVariant ? (
-                        <>
-                            <p className="text-xs font-medium text-blue-700">{row._variantLabel}</p>
-                            <p className="text-[11px] text-muted-foreground">{row._variantSku}</p>
-                        </>
+                        <p className="text-xs font-medium text-blue-700">{row._variantLabel}</p>
                     ) : (
                         <p className="text-xs text-muted-foreground">{row.code}</p>
                     )}

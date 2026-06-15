@@ -91,6 +91,8 @@ export default function ProductEdit({
         image: null,
         photos: [],
         combinations: mapVariationsToCombinations(product.variations),
+        color_ids: (product.colors ?? []).map(String),
+        size_ids: (product.sizes ?? []).map(String),
         _existing_image: product.image ?? null,
     });
 

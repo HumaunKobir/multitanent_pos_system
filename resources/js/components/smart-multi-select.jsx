@@ -130,7 +130,7 @@ export function SmartMultiSelect({
                                         key={option.value}
                                         className="inline-flex items-center gap-1 bg-indigo-600 px-2 py-0.5 text-[11px] leading-4 font-medium text-white shadow-sm shadow-indigo-500/40"
                                     >
-                                        {option.value}
+                                        {option.label}
                                         <button
                                             type="button"
                                             onClick={(event) => {
@@ -138,7 +138,7 @@ export function SmartMultiSelect({
                                                 removeValue(option.value);
                                             }}
                                             className="opacity-80 hover:opacity-100"
-                                            aria-label={`Remove ${option.value}`}
+                                            aria-label={`Remove ${option.label}`}
                                         >
                                             <X className="size-2.5" />
                                         </button>

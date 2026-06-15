@@ -25,6 +25,8 @@ export default function ProductCreate({ categories, brands, units, warranties, b
         image: null,
         photos: [],
         combinations: [],
+        color_ids: [],
+        size_ids: [],
     });
 
     function handleSubmit(e) {

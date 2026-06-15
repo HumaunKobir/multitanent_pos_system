@@ -96,6 +96,10 @@ class ProductController extends Controller
             'brand_id' => ['required', Rule::exists('brands', 'id')],
             'unit_id' => ['required', Rule::exists('units', 'id')],
             'warranty_id' => ['nullable', Rule::exists('warranties', 'id')],
+            'color_ids' => ['nullable', 'array'],
+            'color_ids.*' => [Rule::exists('colors', 'id')],
+            'size_ids' => ['nullable', 'array'],
+            'size_ids.*' => [Rule::exists('sizes', 'id')],
             'name' => ['required', 'string', 'max:255', 'unique:products,name'],
             'code' => ['nullable', 'string', 'max:100', 'unique:products,code'],
             'purchase_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
@@ -123,6 +127,8 @@ class ProductController extends Controller
         $combinations = $data['combinations'] ?? [];
         unset($data['combinations']);
 
+        $data = $this->normalizeProductColorAndSizeIds($data);
+
         $mainPurchasePrice = $data['purchase_price'] ?? 0;
         $mainSalePrice = $data['sale_price'] ?? 0;
 
@@ -130,6 +136,8 @@ class ProductController extends Controller
         if ($hasVariations) {
             $data['purchase_price'] = 0;
             $data['sale_price'] = 0;
+            $data['colors'] = null;
+            $data['sizes'] = null;
         }
 
         DB::transaction(function () use ($request, $data, $combinations, $mainPurchasePrice, $mainSalePrice) {
@@ -235,6 +243,10 @@ class ProductController extends Controller
             'brand_id' => ['required', Rule::exists('brands', 'id')],
             'unit_id' => ['required', Rule::exists('units', 'id')],
             'warranty_id' => ['nullable', Rule::exists('warranties', 'id')],
+            'color_ids' => ['nullable', 'array'],
+            'color_ids.*' => [Rule::exists('colors', 'id')],
+            'size_ids' => ['nullable', 'array'],
+            'size_ids.*' => [Rule::exists('sizes', 'id')],
             'name' => ['required', 'string', 'max:255', Rule::unique('products', 'name')->ignore($product->id)],
             'code' => ['required', 'string', 'max:100', Rule::unique('products', 'code')->ignore($product->id)],
             'purchase_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
@@ -263,12 +275,16 @@ class ProductController extends Controller
         $combinations = $variantsLocked ? [] : ($data['combinations'] ?? []);
         unset($data['combinations']);
 
+        $data = $this->normalizeProductColorAndSizeIds($data);
+
         $mainPurchasePrice = $data['purchase_price'] ?? 0;
         $mainSalePrice = $data['sale_price'] ?? 0;
 
         if ($hasVariations) {
             $data['purchase_price'] = 0;
             $data['sale_price'] = 0;
+            $data['colors'] = null;
+            $data['sizes'] = null;
         }
 
         DB::transaction(function () use ($request, $data, $product, $combinations, $hasVariations, $variantsLocked, $mainPurchasePrice, $mainSalePrice) {
@@ -444,6 +460,28 @@ class ProductController extends Controller
     }
 
     /** @return array<string, mixed> */
+    private function normalizeProductColorAndSizeIds(array $data): array
+    {
+        $data['colors'] = collect($data['color_ids'] ?? [])
+            ->filter(fn ($id) => filled($id))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        $data['sizes'] = collect($data['size_ids'] ?? [])
+            ->filter(fn ($id) => filled($id))
+            ->map(fn ($id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+
+        unset($data['color_ids'], $data['size_ids']);
+
+        return $data;
+    }
+
+    /** @return array<string, mixed> */
     private function formData(): array
     {
         return [
@@ -453,10 +491,18 @@ class ProductController extends Controller
             'warranties' => Warranty::active()->pluck('name', 'id'),
             'branches' => Branch::active()->orderBy('name')->pluck('name', 'id'),
             'colorOptions' => Color::active()->orderBy('name')->get(['id', 'name'])
-                ->map(fn (Color $color): array => ['value' => $color->name, 'label' => $color->name])
+                ->map(fn (Color $color): array => [
+                    'value' => $color->name,
+                    'label' => $color->name,
+                    'id' => (string) $color->id,
+                ])
                 ->all(),
             'sizeOptions' => Size::active()->orderBy('name')->get(['id', 'name'])
-                ->map(fn (Size $size): array => ['value' => $size->name, 'label' => $size->name])
+                ->map(fn (Size $size): array => [
+                    'value' => $size->name,
+                    'label' => $size->name,
+                    'id' => (string) $size->id,
+                ])
                 ->all(),
             'tagOptions' => Tag::query()
                 ->selectableForProduct()

@@ -21,6 +21,8 @@ class Product extends Model
         'brand_id',
         'unit_id',
         'warranty_id',
+        'colors',
+        'sizes',
         'name',
         'slug',
         'code',
@@ -38,6 +40,8 @@ class Product extends Model
 
     protected $casts = [
         'tags' => 'array',
+        'colors' => 'array',
+        'sizes' => 'array',
         'purchase_price' => 'decimal:2',
         'sale_price' => 'decimal:2',
         'discount_price' => 'decimal:2',

@@ -53,7 +53,7 @@ class PurchaseController extends Controller
         $this->authorize('inventory.purchase.create');
 
         return Inertia::render('admin/inventory/purchase/create', [
-            'suppliers' => Supplier::query()->ownBranch()->orderBy('name', 'asc')->get(['id', 'name', 'phone']),
+            'suppliers' => Supplier::query()->ownBranch()->orderBy('name', 'asc')->get(['id', 'name', 'company_name', 'phone']),
             'today' => now()->format('Y-m-d'),
             'paymentAccounts' => $this->paymentAccounts(),
         ]);
@@ -288,7 +288,7 @@ class PurchaseController extends Controller
                 'supplier' => $purchase->supplier,
                 'items' => $items,
             ],
-            'suppliers' => Supplier::query()->ownBranch()->orderBy('name', 'asc')->get(['id', 'name', 'phone']),
+            'suppliers' => Supplier::query()->ownBranch()->orderBy('name', 'asc')->get(['id', 'name', 'company_name', 'phone']),
             'paymentAccounts' => $this->paymentAccounts(),
         ]);
     }

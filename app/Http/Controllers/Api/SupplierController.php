@@ -27,7 +27,7 @@ class SupplierController extends Controller
 
         $supplier = Supplier::create($data);
 
-        return response()->json($supplier->only(['id', 'name', 'phone', 'balance']), 201);
+        return response()->json($supplier->only(['id', 'name', 'company_name', 'phone', 'balance']), 201);
     }
 
     public function index(Request $request): JsonResponse

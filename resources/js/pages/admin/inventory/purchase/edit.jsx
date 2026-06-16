@@ -42,6 +42,32 @@ function Field({ label, required, error, children }) {
     );
 }
 
+function supplierMatchesQuery(supplier, query) {
+    const needle = query.toLowerCase();
+
+    return (
+        supplier.name.toLowerCase().includes(needle)
+        || supplier.phone.includes(query)
+        || (supplier.company_name ?? '').toLowerCase().includes(needle)
+    );
+}
+
+function SupplierOptionLabel({ supplier }) {
+    return (
+        <span>
+            {supplier.company_name ? (
+                <>
+                    <span className="font-semibold">{supplier.company_name}</span>
+                    <span className="text-muted-foreground"> · {supplier.name}</span>
+                </>
+            ) : (
+                supplier.name
+            )}
+            <span className="text-muted-foreground"> · {supplier.phone}</span>
+        </span>
+    );
+}
+
 function SupplierSearch({ suppliers, value, onChange, onCreated, error }) {
     const [open, setOpen] = useState(false);
     const [q, setQ] = useState('');
@@ -52,9 +78,7 @@ function SupplierSearch({ suppliers, value, onChange, onCreated, error }) {
     const ref = useRef(null);
     const selected = suppliers.find((s) => String(s.id) === String(value));
 
-    const filtered = q
-        ? suppliers.filter((s) => s.name.toLowerCase().includes(q.toLowerCase()) || s.phone.includes(q))
-        : suppliers;
+    const filtered = q ? suppliers.filter((s) => supplierMatchesQuery(s, q)) : suppliers;
 
     useEffect(() => {
         function handleClick(e) {
@@ -113,7 +137,7 @@ function SupplierSearch({ suppliers, value, onChange, onCreated, error }) {
                         className={`flex min-h-8 cursor-pointer items-center justify-between rounded-md border bg-background px-3 py-1.5 text-xs shadow-xs transition-colors hover:border-primary/60 ${error ? 'border-destructive' : 'border-input'}`}
                         onClick={() => setOpen((p) => !p)}
                     >
-                        <span>{selected.name} <span className="text-muted-foreground">({selected.phone})</span></span>
+                        <SupplierOptionLabel supplier={selected} />
                         <button type="button" onClick={(e) => { e.stopPropagation(); clear(); }} className="ml-2 text-muted-foreground hover:text-foreground">✕</button>
                     </div>
                 ) : (
@@ -142,7 +166,7 @@ function SupplierSearch({ suppliers, value, onChange, onCreated, error }) {
                                     className="flex cursor-pointer items-center justify-between px-3 py-2 text-xs hover:bg-accent"
                                     onClick={() => { onChange(String(s.id)); setOpen(false); setQ(''); }}
                                 >
-                                    <span>{s.name} <span className="text-muted-foreground">{s.phone}</span></span>
+                                    <SupplierOptionLabel supplier={s} />
                                     {String(s.id) === String(value) && <Check className="size-3.5 shrink-0 text-primary" />}
                                 </li>
                             ))}

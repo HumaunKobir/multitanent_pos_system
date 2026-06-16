@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Branch;
+use App\Models\User;
 
 class EcommerceBranchService
 {
@@ -21,9 +22,11 @@ class EcommerceBranchService
             return self::$resolvedId;
         }
 
-        self::$resolvedId = Branch::query()
-            ->where('name', self::BRANCH_NAME)
-            ->value('id') ?? Branch::MAIN_BRANCH_ID;
+        $branchId = User::query()
+            ->where('email', User::ECOMMERCE_BRANCH_ADMIN_EMAIL)
+            ->value('branch_id');
+
+        self::$resolvedId = $branchId ?? Branch::MAIN_BRANCH_ID;
 
         return self::$resolvedId;
     }

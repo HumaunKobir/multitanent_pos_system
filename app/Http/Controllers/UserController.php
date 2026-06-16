@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Branch;
 use App\Models\User;
+use App\Services\EcommerceBranchService;
 use App\Services\SystemAccountService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -184,9 +185,11 @@ class UserController extends Controller
 
     protected function assignableBranchExistsRule(): Exists
     {
-        return Rule::exists('branches', 'id')->where(function ($query): void {
+        $ecommerceBranchId = EcommerceBranchService::resolveIdStatic();
+
+        return Rule::exists('branches', 'id')->where(function ($query) use ($ecommerceBranchId): void {
             $query->where('id', '!=', Branch::MAIN_BRANCH_ID)
-                ->orWhere('name', Branch::ECOMMERCE_BRANCH_NAME);
+                ->orWhere('id', $ecommerceBranchId);
         });
     }
 }

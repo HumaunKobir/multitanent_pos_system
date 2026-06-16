@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\CommonStatus;
+use App\Services\EcommerceBranchService;
 use Database\Factories\BranchFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -36,9 +37,11 @@ class Branch extends Model
 
     public function scopeAssignableForUsers(Builder $query): Builder
     {
-        return $query->where(function (Builder $query): void {
+        $ecommerceBranchId = EcommerceBranchService::resolveIdStatic();
+
+        return $query->where(function (Builder $query) use ($ecommerceBranchId): void {
             $query->where('id', '!=', self::MAIN_BRANCH_ID)
-                ->orWhere('name', self::ECOMMERCE_BRANCH_NAME);
+                ->orWhere('id', $ecommerceBranchId);
         });
     }
 

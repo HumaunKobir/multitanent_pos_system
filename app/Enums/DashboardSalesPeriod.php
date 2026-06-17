@@ -11,6 +11,8 @@ enum DashboardSalesPeriod: string
     case CurrentMonth = 'current_month';
     case PreviousMonth = 'previous_month';
     case PreviousWeek = 'previous_week';
+    case Last7Days = 'last_7_days';
+    case CustomRange = 'custom';
 
     public function label(): string
     {
@@ -20,6 +22,8 @@ enum DashboardSalesPeriod: string
             self::CurrentMonth => 'Current Month',
             self::PreviousMonth => 'Previous Month',
             self::PreviousWeek => 'Previous Week',
+            self::Last7Days => 'Last 7 Days',
+            self::CustomRange => 'Custom Range',
         };
     }
 
@@ -51,6 +55,11 @@ enum DashboardSalesPeriod: string
                 'from' => $today->copy()->subWeek()->startOfWeek(),
                 'to' => $today->copy()->subWeek()->endOfWeek(),
             ],
+            self::Last7Days => [
+                'from' => $today->copy()->subDays(6),
+                'to' => $today,
+            ],
+            self::CustomRange => throw new \InvalidArgumentException('Custom range dates must be provided explicitly.'),
         };
     }
 

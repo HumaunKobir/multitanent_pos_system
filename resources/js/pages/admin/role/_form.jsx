@@ -7,6 +7,33 @@ import { route } from '@/lib/route';
 import { Link, useForm } from '@inertiajs/react';
 import { ArrowLeft, KeyRound, Shield } from 'lucide-react';
 
+function toPermissionList(value) {
+    if (Array.isArray(value)) {
+        return [...value];
+    }
+
+    if (value && typeof value === 'object') {
+        return Object.values(value);
+    }
+
+    return [];
+}
+
+function permissionCheckboxId(name) {
+    return `perm-${name.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+}
+
+function permissionErrors(errors) {
+    if (errors.permissions) {
+        return errors.permissions;
+    }
+
+    return Object.entries(errors)
+        .filter(([key]) => key.startsWith('permissions.'))
+        .map(([, message]) => message)
+        .join(' ');
+}
+
 function Card({ title, icon: Icon, children, action }) {
     return (
         <div className="border bg-card shadow-sm">
@@ -44,7 +71,7 @@ export default function RoleForm({ role = null, permissionGroups = [] }) {
 
     const form = useForm({
         name: role?.name ?? '',
-        permissions: role?.permissions ? [...role.permissions] : [],
+        permissions: toPermissionList(role?.permissions),
     });
 
     function handleSubmit(e) {
@@ -95,6 +122,8 @@ export default function RoleForm({ role = null, permissionGroups = [] }) {
         return 'some';
     }
 
+    const permissionError = permissionErrors(form.errors);
+
     return (
         <div className="px-2 py-1">
             <div className="mb-3 flex items-center justify-between rounded-lg bg-blue-950 px-5 py-3">
@@ -132,6 +161,12 @@ export default function RoleForm({ role = null, permissionGroups = [] }) {
                             />
                         </Field>
                     </Card>
+
+                    {permissionError && (
+                        <p className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                            {permissionError}
+                        </p>
+                    )}
 
                     {permissionGroups.map((group) => {
                         const gState = groupState(group);
@@ -177,21 +212,25 @@ export default function RoleForm({ role = null, permissionGroups = [] }) {
                                                 </div>
 
                                                 <div className="ml-6 grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3 lg:grid-cols-4">
-                                                    {module.permissions.map((perm) => (
+                                                    {module.permissions.map((perm) => {
+                                                        const checkboxId = permissionCheckboxId(perm.name);
+
+                                                        return (
                                                         <label
                                                             key={perm.name}
-                                                            htmlFor={perm.name}
+                                                            htmlFor={checkboxId}
                                                             className="flex cursor-pointer items-center gap-1.5"
                                                         >
                                                             <Checkbox
-                                                                id={perm.name}
+                                                                id={checkboxId}
                                                                 checked={form.data.permissions.includes(perm.name)}
                                                                 onCheckedChange={() => toggle(perm.name)}
                                                                 className="shrink-0"
                                                             />
                                                             <span className="text-xs text-muted-foreground">{perm.label}</span>
                                                         </label>
-                                                    ))}
+                                                        );
+                                                    })}
                                                 </div>
                                             </div>
                                         );

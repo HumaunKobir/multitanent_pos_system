@@ -126,6 +126,56 @@ test('superadmin can create a role and is redirected to role index', function ()
     expect(Role::where('name', $name)->exists())->toBeTrue();
 });
 
+test('superadmin can create a role with permissions from the role form', function () {
+    $name = testRoleName('Sales Staff');
+
+    $this->actingAs(superAdmin())
+        ->post('/role', [
+            'name' => $name,
+            'permissions' => ['inventory.sell.view', 'inventory.sell.create', 'product.view'],
+        ])
+        ->assertRedirect('/role');
+
+    $role = Role::where('name', $name)->first();
+
+    expect($role)->not->toBeNull();
+    expect($role->hasPermissionTo('inventory.sell.view'))->toBeTrue();
+    expect($role->hasPermissionTo('inventory.sell.create'))->toBeTrue();
+    expect($role->hasPermissionTo('product.view'))->toBeTrue();
+});
+
+test('superadmin can update a role with permissions from the role form', function () {
+    $role = Role::create(['name' => testRoleName('Old Name'), 'guard_name' => 'web']);
+    $role->givePermissionTo('inventory.sell.view');
+
+    $this->actingAs(superAdmin())
+        ->patch("/role/{$role->id}", [
+            'name' => $role->name,
+            'permissions' => ['product.view', 'product.create'],
+        ])
+        ->assertRedirect('/role');
+
+    expect($role->fresh()->hasPermissionTo('product.view'))->toBeTrue();
+    expect($role->fresh()->hasPermissionTo('product.create'))->toBeTrue();
+    expect($role->fresh()->hasPermissionTo('inventory.sell.view'))->toBeFalse();
+});
+
+test('role save creates missing configured permissions before syncing', function () {
+    Permission::where('name', 'report.balance-sheet.view')->delete();
+
+    $name = testRoleName('Report Viewer');
+
+    $this->actingAs(superAdmin())
+        ->post('/role', [
+            'name' => $name,
+            'permissions' => ['report.balance-sheet.view'],
+        ])
+        ->assertRedirect('/role');
+
+    expect(Permission::where('name', 'report.balance-sheet.view')->exists())->toBeTrue();
+    expect(Role::where('name', $name)->first()?->hasPermissionTo('report.balance-sheet.view'))->toBeTrue();
+});
+
 test('superadmin can update a role name', function () {
     $role = Role::create(['name' => testRoleName('Old Name'), 'guard_name' => 'web']);
     $newName = testRoleName('New Name');

@@ -1,11 +1,13 @@
 import { CollectionRateGauge } from '@/components/dashboard/collection-rate-gauge';
 import { StatTile } from '@/components/dashboard/stat-tile';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { formatBdDate } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
-import { cn } from '@/lib/utils';
-import { MoneyCell } from '@/pages/admin/reports/_shared/report-shell';
+import { MoneyCell, ReportDateInput } from '@/pages/admin/reports/_shared/report-shell';
 import { router } from '@inertiajs/react';
 import { CircleDollarSign } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
 function formatCountSub(summary) {
     return `${summary?.count ?? 0} invoices · Due ৳${parseFloat(summary?.due ?? 0).toFixed(2)}`;
@@ -15,14 +17,64 @@ export function SellReportPanel({ sellReport, routeName, showBranchBreakdown = t
     const summary = sellReport?.summary ?? {};
     const periods = sellReport?.periods ?? [];
     const activePeriod = sellReport?.period ?? 'current_month';
+    const [customDateFrom, setCustomDateFrom] = useState(
+        activePeriod === 'custom' ? (sellReport?.date_from ?? '') : '',
+    );
+    const [customDateTo, setCustomDateTo] = useState(activePeriod === 'custom' ? (sellReport?.date_to ?? '') : '');
+
+    useEffect(() => {
+        if (activePeriod !== 'custom') {
+            return;
+        }
+
+        setCustomDateFrom(sellReport?.date_from ?? '');
+        setCustomDateTo(sellReport?.date_to ?? '');
+    }, [activePeriod, sellReport?.date_from, sellReport?.date_to]);
+
+    const activeLabel = periods.find((option) => option.value === activePeriod)?.label ?? sellReport?.label ?? 'Period';
+
+    function visitPeriod(period, dateFrom = null, dateTo = null) {
+        const params = { period };
+
+        if (period === 'custom' && dateFrom && dateTo) {
+            params.date_from = dateFrom;
+            params.date_to = dateTo;
+        }
+
+        router.get(route(routeName), params, { preserveState: true, replace: true });
+    }
 
     function selectPeriod(value) {
         if (value === activePeriod) {
             return;
         }
 
-        router.get(route(routeName), { period: value }, { preserveState: true, replace: true });
+        if (value === 'custom') {
+            setCustomDateFrom('');
+            setCustomDateTo('');
+            router.get(route(routeName), { period: 'custom' }, { preserveState: true, replace: true });
+            return;
+        }
+
+        visitPeriod(value);
     }
+
+    useDebouncedEffect(
+        () => {
+            if (activePeriod !== 'custom' || !customDateFrom || !customDateTo) {
+                return;
+            }
+
+            if (customDateFrom === sellReport?.date_from && customDateTo === sellReport?.date_to) {
+                return;
+            }
+
+            visitPeriod('custom', customDateFrom, customDateTo);
+        },
+        [customDateFrom, customDateTo, activePeriod],
+        350,
+        { skipFirstRun: true },
+    );
 
     return (
         <div>
@@ -36,22 +88,38 @@ export function SellReportPanel({ sellReport, routeName, showBranchBreakdown = t
                 </p>
             </div>
 
-            <div className="mb-3 flex flex-wrap gap-1.5">
-                {periods.map((option) => (
-                    <button
-                        key={option.value}
-                        type="button"
-                        onClick={() => selectPeriod(option.value)}
-                        className={cn(
-                            'border px-2.5 py-1 text-[11px] font-medium uppercase tracking-wide transition-colors',
-                            activePeriod === option.value
-                                ? 'border-emerald-600 bg-emerald-600 text-white'
-                                : 'border-border bg-card text-muted-foreground hover:border-emerald-600/40 hover:text-foreground',
-                        )}
-                    >
-                        {option.label}
-                    </button>
-                ))}
+            <div className="mb-3 flex flex-wrap items-end gap-2">
+                <div className="min-w-[180px]">
+                    <Select value={activePeriod} onValueChange={selectPeriod}>
+                        <SelectTrigger className="h-8 border-border bg-card text-xs font-medium uppercase tracking-wide">
+                            <SelectValue placeholder="Select period">{activeLabel}</SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                            {periods.map((option) => (
+                                <SelectItem key={option.value} value={option.value} className="text-xs uppercase tracking-wide">
+                                    {option.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                {activePeriod === 'custom' ? (
+                    <div className="flex flex-wrap items-end gap-2">
+                        <div className="min-w-[150px]">
+                            <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">From</p>
+                            <div className="rounded-md border border-border bg-card">
+                                <ReportDateInput value={customDateFrom} onChange={setCustomDateFrom} />
+                            </div>
+                        </div>
+                        <div className="min-w-[150px]">
+                            <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">To</p>
+                            <div className="rounded-md border border-border bg-card">
+                                <ReportDateInput value={customDateTo} onChange={setCustomDateTo} />
+                            </div>
+                        </div>
+                    </div>
+                ) : null}
             </div>
 
             <div className="mb-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">

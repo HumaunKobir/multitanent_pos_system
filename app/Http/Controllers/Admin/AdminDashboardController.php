@@ -24,7 +24,12 @@ class AdminDashboardController extends Controller
             'branchSales' => $overview['branch_sales'],
             'salesTrend' => $overview['sales_trend'],
             'collection' => $overview['collection'],
-            'sellReport' => $this->dashboard->sellReport($period),
+            'sellReport' => $this->dashboard->sellReport(
+                $period,
+                null,
+                $request->input('date_from'),
+                $request->input('date_to'),
+            ),
         ]);
     }
 }

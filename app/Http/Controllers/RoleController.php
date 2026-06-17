@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Support\PermissionCatalog;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 use Spatie\Permission\Models\Role;
@@ -42,14 +44,10 @@ class RoleController extends Controller
     {
         $this->authorize('role.create');
 
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:191', 'unique:roles,name'],
-            'permissions' => ['nullable', 'array'],
-            'permissions.*' => ['string', 'exists:permissions,name'],
-        ]);
+        $data = $this->validatedRolePayload($request);
 
         $role = Role::create(['name' => $data['name'], 'guard_name' => 'web']);
-        $role->syncPermissions($data['permissions'] ?? []);
+        $role->syncPermissions($data['permissions']);
 
         return redirect()->route('role.index')
             ->with('success', 'Role created successfully.');
@@ -63,7 +61,7 @@ class RoleController extends Controller
             'role' => [
                 'id' => $role->id,
                 'name' => $role->name,
-                'permissions' => $role->permissions->pluck('name'),
+                'permissions' => $role->permissions->pluck('name')->values()->all(),
             ],
             'permissionGroups' => $this->buildPermissionGroups(),
         ]);
@@ -73,14 +71,10 @@ class RoleController extends Controller
     {
         $this->authorize('role.update');
 
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:191', 'unique:roles,name,'.$role->id],
-            'permissions' => ['nullable', 'array'],
-            'permissions.*' => ['string', 'exists:permissions,name'],
-        ]);
+        $data = $this->validatedRolePayload($request, $role);
 
         $role->update(['name' => $data['name']]);
-        $role->syncPermissions($data['permissions'] ?? []);
+        $role->syncPermissions($data['permissions']);
 
         return redirect()->route('role.index')
             ->with('success', 'Role updated successfully.');
@@ -109,7 +103,7 @@ class RoleController extends Controller
             'role' => [
                 'id' => $role->id,
                 'name' => $role->name,
-                'permissions' => $role->permissions->pluck('name'),
+                'permissions' => $role->permissions->pluck('name')->values()->all(),
             ],
             'permissionGroups' => $this->buildPermissionGroups(),
         ]);
@@ -119,15 +113,53 @@ class RoleController extends Controller
     {
         $this->authorize('role.update');
 
-        $data = $request->validate([
-            'permissions' => ['nullable', 'array'],
-            'permissions.*' => ['string', 'exists:permissions,name'],
-        ]);
+        $permissions = $this->validatedPermissions($request);
 
-        $role->syncPermissions($data['permissions'] ?? []);
+        $role->syncPermissions($permissions);
 
         return redirect()->route('role.permissions', $role)
             ->with('success', 'Permissions updated successfully.');
+    }
+
+    /**
+     * @return array{name: string, permissions: list<string>}
+     */
+    private function validatedRolePayload(Request $request, ?Role $role = null): array
+    {
+        $data = $request->validate([
+            'name' => [
+                'required',
+                'string',
+                'max:191',
+                Rule::unique('roles', 'name')->ignore($role),
+            ],
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => ['string', Rule::in(PermissionCatalog::names())],
+        ]);
+
+        $permissions = array_values($data['permissions'] ?? []);
+        PermissionCatalog::ensureExist($permissions);
+
+        return [
+            'name' => $data['name'],
+            'permissions' => $permissions,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function validatedPermissions(Request $request): array
+    {
+        $data = $request->validate([
+            'permissions' => ['nullable', 'array'],
+            'permissions.*' => ['string', Rule::in(PermissionCatalog::names())],
+        ]);
+
+        $permissions = array_values($data['permissions'] ?? []);
+        PermissionCatalog::ensureExist($permissions);
+
+        return $permissions;
     }
 
     private function buildPermissionGroups(): Collection

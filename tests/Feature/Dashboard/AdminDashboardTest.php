@@ -86,6 +86,69 @@ test('super admin dashboard returns sell report with period filter', function ()
     $admin->delete();
 });
 
+test('super admin dashboard supports last 7 days and custom range period filters', function () {
+    $date = '2188-08-15';
+    $branch = Branch::factory()->create(['name' => 'Range Filter Branch '.uniqid()]);
+    $admin = dashboardSuperAdmin();
+
+    Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'type' => SaleType::Sale,
+        'date' => '2188-08-14',
+        'gross_amount' => 700,
+        'paid_amount' => 700,
+    ]);
+
+    Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'type' => SaleType::Sale,
+        'date' => '2188-08-05',
+        'gross_amount' => 300,
+        'paid_amount' => 300,
+    ]);
+
+    Carbon::setTestNow($date);
+
+    $this->actingAs($admin)
+        ->get(route('dashboard', ['period' => 'last_7_days']))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('sellReport.period', 'last_7_days')
+            ->where('sellReport.summary.count', 1)
+            ->where('sellReport.summary.gross', 700)
+            ->where('sellReport.date_from', '2188-08-09')
+            ->where('sellReport.date_to', $date));
+
+    $this->actingAs($admin)
+        ->get(route('dashboard', ['period' => 'custom']))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('sellReport.period', 'custom')
+            ->where('sellReport.date_from', null)
+            ->where('sellReport.date_to', null)
+            ->where('sellReport.summary.count', 0));
+
+    $this->actingAs($admin)
+        ->get(route('dashboard', [
+            'period' => 'custom',
+            'date_from' => '2188-08-01',
+            'date_to' => '2188-08-10',
+        ]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('sellReport.period', 'custom')
+            ->where('sellReport.summary.count', 1)
+            ->where('sellReport.summary.gross', 300)
+            ->where('sellReport.date_from', '2188-08-01')
+            ->where('sellReport.date_to', '2188-08-10'));
+
+    Carbon::setTestNow();
+
+    Sell::query()->where('branch_id', $branch->id)->delete();
+    $branch->delete();
+    $admin->delete();
+});
+
 test('super admin dashboard returns branch sales and trend props', function () {
     $today = Carbon::today()->toDateString();
     $branch = Branch::factory()->create(['name' => 'Dashboard Test Branch '.uniqid()]);

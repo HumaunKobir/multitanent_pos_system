@@ -24,11 +24,39 @@ class DashboardService
     /**
      * @return array<string, mixed>
      */
-    public function sellReport(DashboardSalesPeriod $period, ?int $branchId = null): array
-    {
-        $range = $period->dateRange();
-        $from = $range['from'];
-        $to = $range['to'];
+    public function sellReport(
+        DashboardSalesPeriod $period,
+        ?int $branchId = null,
+        ?string $customDateFrom = null,
+        ?string $customDateTo = null,
+    ): array {
+        if ($period === DashboardSalesPeriod::CustomRange) {
+            if (blank($customDateFrom) || blank($customDateTo)) {
+                $emptySummary = ['count' => 0, 'gross' => 0.0, 'paid' => 0.0, 'due' => 0.0];
+
+                return [
+                    'period' => $period->value,
+                    'label' => $period->label(),
+                    'date_from' => null,
+                    'date_to' => null,
+                    'summary' => $emptySummary,
+                    'collection' => $this->collectionMetrics($emptySummary),
+                    'branch_breakdown' => [],
+                    'periods' => DashboardSalesPeriod::options(),
+                ];
+            }
+
+            $from = Carbon::parse($customDateFrom)->startOfDay();
+            $to = Carbon::parse($customDateTo)->startOfDay();
+
+            if ($from->gt($to)) {
+                [$from, $to] = [$to, $from];
+            }
+        } else {
+            $range = $period->dateRange();
+            $from = $range['from'];
+            $to = $range['to'];
+        }
 
         $salesQuery = Sell::query()->sale()
             ->whereBetween('date', [$from->toDateString(), $to->toDateString()]);
@@ -107,8 +135,12 @@ class DashboardService
     /**
      * @return array<string, mixed>
      */
-    public function branchOverview(User $user, DashboardSalesPeriod $period = DashboardSalesPeriod::CurrentMonth): array
-    {
+    public function branchOverview(
+        User $user,
+        DashboardSalesPeriod $period = DashboardSalesPeriod::CurrentMonth,
+        ?string $customDateFrom = null,
+        ?string $customDateTo = null,
+    ): array {
         $branchId = $user->branch_id;
 
         if ($branchId === null) {
@@ -137,7 +169,7 @@ class DashboardService
                 'month' => $monthSales,
                 'trend' => $this->salesTrend($trendStart, $today, $branchId),
                 'collection' => $this->collectionMetrics($monthSales),
-                'report' => $this->sellReport($period, $branchId),
+                'report' => $this->sellReport($period, $branchId, $customDateFrom, $customDateTo),
             ];
         }
 

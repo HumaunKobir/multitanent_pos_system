@@ -17,7 +17,12 @@ class BranchDashboardController extends Controller
     {
         $user = auth()->user();
         $period = DashboardSalesPeriod::tryFromInput($request->input('period'));
-        $overview = $this->dashboard->branchOverview($user, $period);
+        $overview = $this->dashboard->branchOverview(
+            $user,
+            $period,
+            $request->input('date_from'),
+            $request->input('date_to'),
+        );
 
         return Inertia::render('branch-panel/dashboard', [
             'today' => $overview['today'],

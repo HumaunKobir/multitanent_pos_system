@@ -20,7 +20,7 @@ function CustomerForm({ form, onSubmit, onCancel, isEditing, statuses }) {
     return (
         <form onSubmit={onSubmit} className="space-y-1.5 px-3 py-2">
             <div className="grid grid-cols-2 gap-3">
-                <FormField label="Name" required name="name" error={form.errors.name}>
+                <FormField label="Name" name="name" error={form.errors.name}>
                     <Input
                         id="name"
                         value={form.data.name}
@@ -167,7 +167,7 @@ export default function CustomerIndex({ customers, filters, statuses }) {
 
     function openEdit(customer) {
         editForm.setData({
-            name: customer.name,
+            name: customer.name ?? '',
             phone: customer.phone,
             email: customer.email ?? '',
             address: customer.address ?? '',

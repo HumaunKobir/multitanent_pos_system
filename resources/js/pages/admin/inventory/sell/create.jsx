@@ -13,6 +13,7 @@ import {
     splitPaymentValidationError,
 } from '@/lib/sale-payment';
 import { useAppToast } from '@/contexts/app-toast-context';
+import { customerModalDefaultsFromSearch } from '@/lib/customer-modal-defaults';
 import { route } from '@/lib/route';
 import { cn } from '@/lib/utils';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
@@ -123,7 +124,7 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
     }
 
     function openModal() {
-        setModalData({ name: q.trim(), phone: '', email: '', address: '' });
+        setModalData(customerModalDefaultsFromSearch(q));
         setModalErrors({});
         setOpen(false);
         setModalOpen(true);
@@ -270,7 +271,7 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
                     </DialogHeader>
                     <form onSubmit={handleCreate} className="space-y-4 p-5">
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <Field label="Name" required error={modalErrors.name}>
+                            <Field label="Name" error={modalErrors.name}>
                                 <Input value={modalData.name} onChange={(e) => setField('name', e.target.value)} placeholder="Customer name" />
                             </Field>
                             <Field label="Phone" required error={modalErrors.phone}>

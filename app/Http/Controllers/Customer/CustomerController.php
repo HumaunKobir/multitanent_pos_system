@@ -45,7 +45,7 @@ class CustomerController extends Controller
         $this->authorize('party.customer.create');
 
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'name' => ['nullable', 'string', 'max:255'],
             'phone' => ['required', 'string', 'min:11', 'max:11', 'unique:customers,phone'],
             'email' => ['nullable', 'string', 'email', 'max:255', 'unique:customers,email'],
             'address' => ['nullable', 'string', 'max:255'],
@@ -85,7 +85,7 @@ class CustomerController extends Controller
         $this->authorize('party.customer.update');
 
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
+            'name' => ['nullable', 'string', 'max:255'],
             'phone' => ['required', 'string', 'min:11', 'max:11', Rule::unique('customers', 'phone')->ignore($customer->id)],
             'email' => ['nullable', 'string', 'email', 'max:255', Rule::unique('customers', 'email')->ignore($customer->id)],
             'address' => ['nullable', 'string', 'max:255'],

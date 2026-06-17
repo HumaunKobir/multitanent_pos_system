@@ -13,6 +13,7 @@ import {
     serializeSalePayments,
     splitPaymentValidationError,
 } from '@/lib/sale-payment';
+import { customerModalDefaultsFromSearch } from '@/lib/customer-modal-defaults';
 import { route } from '@/lib/route';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Save, Search, ShoppingCart, Trash2, User } from 'lucide-react';
@@ -118,7 +119,7 @@ function CustomerSearch({ initialCustomer, value, onChange, error }) {
     }
 
     function openModal() {
-        setModalData({ name: q.trim(), phone: '', email: '', address: '' });
+        setModalData(customerModalDefaultsFromSearch(q));
         setModalErrors({});
         setOpen(false);
         setModalOpen(true);
@@ -227,7 +228,7 @@ function CustomerSearch({ initialCustomer, value, onChange, error }) {
                     </div>
                     <form onSubmit={handleCreate} className="space-y-1.5 px-3 py-2">
                         <div className="grid grid-cols-2 gap-3">
-                            <Field label="Name" required error={modalErrors.name}>
+                            <Field label="Name" error={modalErrors.name}>
                                 <Input value={modalData.name} onChange={(e) => setField('name', e.target.value)} placeholder="Customer name" className="mt-1" />
                             </Field>
                             <Field label="Phone" required error={modalErrors.phone}>

@@ -1,4 +1,4 @@
-import { PanelSidebar, SidebarToggle } from '@/components/admin/panel-sidebar';
+import { MobileSidebarTrigger, PanelSidebar } from '@/components/admin/panel-sidebar';
 import { PanelSidebarProvider } from '@/contexts/panel-sidebar-context';
 import { TooltipProvider } from '@/components/ui/tooltip';
 
@@ -9,8 +9,8 @@ export default function BranchLayout({ children }) {
                 <div data-panel-shell className="flex h-dvh w-full overflow-hidden bg-background">
                     <PanelSidebar />
                     <div className="relative flex min-h-0 flex-1 flex-col border-l border-border">
-                        <SidebarToggle />
                         <main data-panel-main className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                            <MobileSidebarTrigger />
                             {children}
                         </main>
                     </div>

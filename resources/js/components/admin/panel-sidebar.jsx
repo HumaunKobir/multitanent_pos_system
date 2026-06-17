@@ -11,6 +11,8 @@ import {
     LogOut,
     Mail,
     Menu,
+    PanelLeftClose,
+    PanelLeftOpen,
     Package,
     PhoneCall,
     Send,
@@ -96,43 +98,57 @@ function NavItem({ href, className, children, active }) {
     );
 }
 
-function SidebarToggle() {
-    const { toggle, collapsed, isMobile } = usePanelSidebar();
+function SidebarCollapseButton({ collapsed }) {
+    const { toggle } = usePanelSidebar();
+    const label = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
 
-    if (isMobile) {
+    const button = (
+        <button
+            type="button"
+            className={cn(
+                'flex w-full items-center border border-dashed border-sidebar-border text-muted-foreground transition-colors hover:border-border hover:bg-sidebar-accent/40 hover:text-sidebar-foreground',
+                collapsed ? 'justify-center py-1.5' : 'gap-2 px-3 py-2.5 text-xs font-medium',
+            )}
+            onClick={toggle}
+        >
+            {collapsed ? (
+                <PanelLeftOpen className="size-3 shrink-0" aria-hidden />
+            ) : (
+                <>
+                    <PanelLeftClose className="size-3.5 shrink-0" aria-hidden />
+                    Collapse
+                </>
+            )}
+            <span className="sr-only">{label}</span>
+        </button>
+    );
+
+    if (collapsed) {
         return (
-            <Button
-                variant="outline"
-                size="icon"
-                className="fixed left-2 top-2 z-40 size-7 rounded-full border-border/60 bg-background/80 shadow-sm backdrop-blur-sm"
-                onClick={toggle}
-            >
-                <Menu className="size-3.5" />
-                <span className="sr-only">Open sidebar</span>
-            </Button>
+            <Tooltip>
+                <TooltipTrigger asChild>{button}</TooltipTrigger>
+                <TooltipContent side="right">Expand</TooltipContent>
+            </Tooltip>
         );
     }
 
+    return button;
+}
+
+export function MobileSidebarTrigger() {
+    const { toggle, isMobile } = usePanelSidebar();
+
+    if (!isMobile) {
+        return null;
+    }
+
     return (
-        <Tooltip>
-            <TooltipTrigger asChild>
-                <Button
-                    variant="outline"
-                    size="icon"
-                    className={cn(
-                        'fixed left-2 top-2 z-40 size-7 rounded-full border-border/60 bg-background/80 shadow-sm backdrop-blur-sm transition-[left] duration-200',
-                        collapsed ? 'left-2' : 'left-[calc(var(--sidebar-w,16rem)+0.5rem)]',
-                    )}
-                    onClick={toggle}
-                >
-                    <Menu className="size-3.5" />
-                    <span className="sr-only">{collapsed ? 'Expand sidebar' : 'Collapse sidebar'}</span>
-                </Button>
-            </TooltipTrigger>
-            <TooltipContent side="right" hidden={!collapsed}>
-                {collapsed ? 'Expand' : 'Collapse'}
-            </TooltipContent>
-        </Tooltip>
+        <div className="sticky top-0 z-30 flex shrink-0 items-center border-b border-border bg-background px-3 py-2">
+            <Button variant="outline" size="icon" className="size-8 shrink-0" onClick={toggle}>
+                <Menu className="size-4" />
+                <span className="sr-only">Open sidebar</span>
+            </Button>
+        </div>
     );
 }
 
@@ -311,7 +327,8 @@ function SidebarContent({ adminNavigation, panelType, currentUrl, isCurrentUrl, 
                 </ul>
             </nav>
 
-            <div className={cn('border-t border-sidebar-border', collapsed ? 'px-0.5 py-1' : 'p-3')}>
+            <div className={cn('flex flex-col border-t border-sidebar-border', collapsed ? 'gap-px px-0.5 py-1' : 'gap-1 p-3')}>
+                <SidebarCollapseButton collapsed={collapsed} />
                 {collapsed ? (
                     <Tooltip>
                         <TooltipTrigger asChild>
@@ -405,7 +422,6 @@ export function PanelSidebar() {
                 'flex h-full min-h-0 shrink-0 flex-col border-r border-border bg-sidebar text-sidebar-foreground transition-[width] duration-200',
                 collapsed ? 'w-10' : 'w-64',
             )}
-            style={{ '--sidebar-w': collapsed ? '2.5rem' : '16rem' }}
             data-collapsed={collapsed || undefined}
         >
             <SidebarContent
@@ -421,4 +437,3 @@ export function PanelSidebar() {
     );
 }
 
-export { SidebarToggle };

@@ -1,6 +1,6 @@
 import { DataTable } from '@/components/ui/data-table';
 import { useAppToast } from '@/contexts/app-toast-context';
-import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, router, usePage } from '@inertiajs/react';
 import { Package, Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
@@ -10,6 +10,7 @@ import { Dialog, DialogClose, DialogContent, DialogFooter } from '@/components/u
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AdminCreateLink, AdminRowActions } from '@/components/admin/row-actions';
+import { AdminPagination } from '@/components/admin/pagination';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { useCan } from '@/hooks/use-can';
 import { route } from '@/lib/route';
@@ -83,7 +84,7 @@ export default function ProductIndex({ products, filters, categories, brands, ta
         {
             id: 'num',
             header: '#',
-            render: (_, i) => (products.from ?? 0) + i,
+            render: (_, i) => Number(products.from ?? 1) + i,
         },
         {
             id: 'image',
@@ -250,23 +251,7 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                     getRowProps={(row) => row._isVariant ? { className: 'bg-blue-50/40' } : {}}
                 />
 
-                {products.links?.length > 3 && (
-                    <div className="mt-4 flex flex-wrap gap-1">
-                        {products.links.map((link, i) => (
-                            <Link
-                                key={i}
-                                href={link.url ?? '#'}
-                                className={[
-                                    'border px-3 py-1 text-sm transition-colors',
-                                    link.active ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-accent',
-                                    !link.url ? 'pointer-events-none opacity-50' : '',
-                                ].join(' ')}
-                                dangerouslySetInnerHTML={{ __html: link.label }}
-                                preserveScroll
-                            />
-                        ))}
-                    </div>
-                )}
+                <AdminPagination paginator={products} />
             </div>
 
             {can('product.delete') && (

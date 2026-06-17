@@ -101,6 +101,7 @@ Route::middleware(['auth', 'verified', 'ecommerce.panel'])->group(function () {
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('product', ProductController::class)->except(['show']);
     Route::get('barcode', [BarcodeController::class, 'index'])->name('barcode.index');
+    Route::get('barcode/serial-range', [BarcodeController::class, 'serialRange'])->name('barcode.serial-range');
     Route::get('barcode/print', [BarcodeController::class, 'print'])->name('barcode.print');
     Route::post('variation', [VariationController::class, 'store'])->name('variation.store');
     Route::delete('variation/{variation}', [VariationController::class, 'destroy'])->name('variation.destroy');

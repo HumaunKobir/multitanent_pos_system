@@ -5,7 +5,13 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { route } from '@/lib/route';
 
 const PRINT_DPI = 96;
@@ -27,6 +33,12 @@ function getEffectivePrice(row) {
     return disc > 0 ? disc : sale;
 }
 
+function formatLabelPrice(price) {
+    const amount = price != null ? Number(price) : 0;
+
+    return `Price: ${amount.toFixed(2)}`;
+}
+
 function BarcodeBars({ code, barHeight, fontWeight }) {
     const textRef = useRef(null);
     const wrapRef = useRef(null);
@@ -44,7 +56,14 @@ function BarcodeBars({ code, barHeight, fontWeight }) {
     }, [code, barHeight]);
 
     return (
-        <div ref={wrapRef} style={{ width: '100%', height: `${barHeight}px`, overflow: 'hidden' }}>
+        <div
+            ref={wrapRef}
+            style={{
+                width: '100%',
+                height: `${barHeight}px`,
+                overflow: 'hidden',
+            }}
+        >
             <div
                 ref={textRef}
                 style={{
@@ -77,7 +96,14 @@ function LabelPreview({ row, settings }) {
     const price = getEffectivePrice(row);
 
     return (
-        <div style={{ width: `${displayW}px`, height: `${displayH}px`, overflow: 'hidden', flexShrink: 0 }}>
+        <div
+            style={{
+                width: `${displayW}px`,
+                height: `${displayH}px`,
+                overflow: 'hidden',
+                flexShrink: 0,
+            }}
+        >
             <div
                 style={{
                     width: `${pxWidth}px`,
@@ -110,7 +136,11 @@ function LabelPreview({ row, settings }) {
                     >
                         {row?.name ?? 'Product Name'}
                     </div>
-                    <BarcodeBars code={row?.code ?? '123456789'} barHeight={barHeight} fontWeight={fw} />
+                    <BarcodeBars
+                        code={row?.code ?? '123456789'}
+                        barHeight={barHeight}
+                        fontWeight={fw}
+                    />
                     <div
                         style={{
                             display: 'flex',
@@ -122,7 +152,7 @@ function LabelPreview({ row, settings }) {
                             lineHeight: 1,
                         }}
                     >
-                        <span>{price != null ? Number(price).toFixed(2) : '0.00'}</span>
+                        <span>{formatLabelPrice(price)}</span>
                         <span>{row?.code ?? ''}</span>
                     </div>
                 </div>
@@ -146,7 +176,7 @@ function buildPrintHtml(rows, settings) {
           <div class="name">${row.name ?? ''}</div>
           <div class="bars-wrap"><div class="bars">${row.code}</div></div>
           <div class="footer">
-            <span>${Number(price ?? 0).toFixed(2)}</span>
+            <span>${formatLabelPrice(price)}</span>
             <span>${row.code}</span>
           </div>
         </div>
@@ -200,7 +230,8 @@ export default function BarcodePrint({ barcodes }) {
         copies: 1,
     });
 
-    const set = (key, value) => setSettings((prev) => ({ ...prev, [key]: value }));
+    const set = (key, value) =>
+        setSettings((prev) => ({ ...prev, [key]: value }));
 
     const previewRow = barcodes[0] ?? null;
 
@@ -225,9 +256,12 @@ export default function BarcodePrint({ barcodes }) {
                             <ArrowLeft className="size-4 text-white" />
                         </Link>
                         <div>
-                            <h1 className="text-base font-semibold text-white">Print Barcodes</h1>
+                            <h1 className="text-base font-semibold text-white">
+                                Print Barcodes
+                            </h1>
                             <p className="text-xs text-white/60">
-                                {barcodes.length} label{barcodes.length !== 1 ? 's' : ''} selected
+                                {barcodes.length} label
+                                {barcodes.length !== 1 ? 's' : ''} selected
                             </p>
                         </div>
                     </div>
@@ -243,7 +277,9 @@ export default function BarcodePrint({ barcodes }) {
                 {/* Print Settings — full width */}
                 <div className="mb-3 rounded-lg border bg-white shadow-sm">
                     <div className="border-b px-4 py-2.5">
-                        <h2 className="text-sm font-semibold text-gray-800">Print Settings</h2>
+                        <h2 className="text-sm font-semibold text-gray-800">
+                            Print Settings
+                        </h2>
                     </div>
                     <div className="grid grid-cols-3 divide-x">
                         {/* Dimensions */}
@@ -253,26 +289,41 @@ export default function BarcodePrint({ barcodes }) {
                             </p>
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                    <Label className="mb-1 block text-xs text-gray-500">Width (in)</Label>
+                                    <Label className="mb-1 block text-xs text-gray-500">
+                                        Width (in)
+                                    </Label>
                                     <Input
                                         type="number"
                                         min={0.5}
                                         max={10}
                                         step={0.1}
                                         value={settings.width}
-                                        onChange={(e) => set('width', parseFloat(e.target.value) || 1)}
+                                        onChange={(e) =>
+                                            set(
+                                                'width',
+                                                parseFloat(e.target.value) || 1,
+                                            )
+                                        }
                                         className="h-7 text-xs"
                                     />
                                 </div>
                                 <div>
-                                    <Label className="mb-1 block text-xs text-gray-500">Height (in)</Label>
+                                    <Label className="mb-1 block text-xs text-gray-500">
+                                        Height (in)
+                                    </Label>
                                     <Input
                                         type="number"
                                         min={0.3}
                                         max={10}
                                         step={0.1}
                                         value={settings.height}
-                                        onChange={(e) => set('height', parseFloat(e.target.value) || 0.5)}
+                                        onChange={(e) =>
+                                            set(
+                                                'height',
+                                                parseFloat(e.target.value) ||
+                                                    0.5,
+                                            )
+                                        }
                                         className="h-7 text-xs"
                                     />
                                 </div>
@@ -286,29 +337,44 @@ export default function BarcodePrint({ barcodes }) {
                             </p>
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                    <Label className="mb-1 block text-xs text-gray-500">Font Size (px)</Label>
+                                    <Label className="mb-1 block text-xs text-gray-500">
+                                        Font Size (px)
+                                    </Label>
                                     <Input
                                         type="number"
                                         min={6}
                                         max={24}
                                         step={1}
                                         value={settings.fontSize}
-                                        onChange={(e) => set('fontSize', parseInt(e.target.value) || 8)}
+                                        onChange={(e) =>
+                                            set(
+                                                'fontSize',
+                                                parseInt(e.target.value) || 8,
+                                            )
+                                        }
                                         className="h-7 text-xs"
                                     />
                                 </div>
                                 <div>
-                                    <Label className="mb-1 block text-xs text-gray-500">Font Weight</Label>
+                                    <Label className="mb-1 block text-xs text-gray-500">
+                                        Font Weight
+                                    </Label>
                                     <Select
                                         value={settings.fontWeight}
-                                        onValueChange={(v) => set('fontWeight', v)}
+                                        onValueChange={(v) =>
+                                            set('fontWeight', v)
+                                        }
                                     >
                                         <SelectTrigger className="h-7 w-28 text-xs">
                                             <SelectValue />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            <SelectItem value="normal">Normal</SelectItem>
-                                            <SelectItem value="bold">Bold</SelectItem>
+                                            <SelectItem value="normal">
+                                                Normal
+                                            </SelectItem>
+                                            <SelectItem value="bold">
+                                                Bold
+                                            </SelectItem>
                                         </SelectContent>
                                     </Select>
                                 </div>
@@ -321,14 +387,21 @@ export default function BarcodePrint({ barcodes }) {
                                 Quantity
                             </p>
                             <div>
-                                <Label className="mb-1 block text-xs text-gray-500">Copies per Label</Label>
+                                <Label className="mb-1 block text-xs text-gray-500">
+                                    Copies per Label
+                                </Label>
                                 <Input
                                     type="number"
                                     min={1}
                                     max={100}
                                     step={1}
                                     value={settings.copies}
-                                    onChange={(e) => set('copies', parseInt(e.target.value) || 1)}
+                                    onChange={(e) =>
+                                        set(
+                                            'copies',
+                                            parseInt(e.target.value) || 1,
+                                        )
+                                    }
                                     className="h-7 text-xs"
                                 />
                             </div>
@@ -339,21 +412,29 @@ export default function BarcodePrint({ barcodes }) {
                 {/* Preview — full width, fixed height container */}
                 <div className="mb-3 rounded-lg border bg-white shadow-sm">
                     <div className="border-b px-4 py-2.5">
-                        <h2 className="text-sm font-semibold text-gray-800">Preview</h2>
+                        <h2 className="text-sm font-semibold text-gray-800">
+                            Preview
+                        </h2>
                     </div>
                     <div
                         className="flex items-center justify-center bg-gray-100"
                         style={{ height: '280px' }}
                     >
                         {previewRow ? (
-                            <LabelPreview row={previewRow} settings={settings} />
+                            <LabelPreview
+                                row={previewRow}
+                                settings={settings}
+                            />
                         ) : (
-                            <p className="text-xs text-muted-foreground">No barcode to preview</p>
+                            <p className="text-xs text-muted-foreground">
+                                No barcode to preview
+                            </p>
                         )}
                     </div>
                     <div className="border-t px-4 py-2 text-center">
                         <p className="text-xs text-gray-400">
-                            {settings.width}" × {settings.height}" · {settings.copies}× per label
+                            {settings.width}" × {settings.height}" ·{' '}
+                            {settings.copies}× per label
                         </p>
                     </div>
                 </div>
@@ -370,15 +451,27 @@ export default function BarcodePrint({ barcodes }) {
                     </div>
                     <div className="divide-y">
                         {barcodes.map((row) => (
-                            <div key={row.id} className="flex items-center gap-3 px-4 py-2">
+                            <div
+                                key={row.id}
+                                className="flex items-center gap-3 px-4 py-2"
+                            >
                                 <div style={{ width: '120px', flexShrink: 0 }}>
-                                    <BarcodeBars code={row.code} barHeight={28} fontWeight={400} />
+                                    <BarcodeBars
+                                        code={row.code}
+                                        barHeight={28}
+                                        fontWeight={400}
+                                    />
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                    <p className="truncate text-sm font-medium text-gray-800">{row.name}</p>
+                                    <p className="truncate text-sm font-medium text-gray-800">
+                                        {row.name}
+                                    </p>
                                     {row.variation && (
                                         <p className="text-xs text-muted-foreground">
-                                            {row.variation.variation_data?.label}
+                                            {
+                                                row.variation.variation_data
+                                                    ?.label
+                                            }
                                         </p>
                                     )}
                                 </div>

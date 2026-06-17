@@ -108,6 +108,7 @@ const routes = {
     'subscriber-list.destroy': '/subscriber-list/:subscriber',
     'subscribe.store': '/subscribe',
     'barcode.index': '/barcode',
+    'barcode.serial-range': '/barcode/serial-range',
     'barcode.print': '/barcode/print',
     'product.index': '/product',
     'product.create': '/product/create',

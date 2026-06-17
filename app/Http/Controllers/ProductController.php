@@ -47,7 +47,7 @@ class ProductController extends Controller
             ->when($request->brand_id, fn ($q, $b) => $q->where('brand_id', $b))
             ->when($request->tag, fn ($q, $t) => $q->whereJsonContains('tags', $t))
             ->latest()
-            ->paginate(20)
+            ->paginate(10)
             ->withQueryString();
 
         return Inertia::render('admin/product/index', [

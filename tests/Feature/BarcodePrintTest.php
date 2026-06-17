@@ -13,6 +13,21 @@ function barcodePrintAdmin(): User
     return User::factory()->create(['branch_id' => null]);
 }
 
+test('barcode index returns paginated barcodes', function () {
+    $admin = barcodePrintAdmin();
+
+    $this->actingAs($admin)
+        ->get(route('barcode.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/barcode/index')
+            ->has('barcodes.data')
+            ->has('barcodes.links')
+            ->where('barcodes.per_page', 10));
+
+    $admin->delete();
+});
+
 test('barcode print page includes variation price for variant products', function () {
     $admin = barcodePrintAdmin();
     $product = Product::factory()->create([
@@ -76,4 +91,56 @@ test('barcode print page includes product sale price for simple products', funct
             ->has('barcodes', 1)
             ->where('barcodes.0.product.sale_price', '275.00')
             ->where('barcodes.0.variation', null));
+});
+
+test('barcode serial range endpoint returns ids for list position range', function () {
+    $admin = barcodePrintAdmin();
+    $prefix = 'SR-'.uniqid();
+    $product = Product::factory()->create([
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => $prefix,
+        'sale_price' => 100,
+    ]);
+
+    $orderedIds = [];
+
+    for ($i = 0; $i < 5; $i++) {
+        $barcode = Barcode::query()->create([
+            'product_id' => $product->id,
+            'product_variation_id' => null,
+            'code' => $prefix.'-'.$i,
+            'name' => $prefix.' Item '.$i,
+            'created_at' => now()->subMinutes(5 - $i),
+            'updated_at' => now()->subMinutes(5 - $i),
+        ]);
+
+        $orderedIds[] = $barcode->id;
+    }
+
+    $this->actingAs($admin)
+        ->getJson(route('barcode.serial-range', ['from' => 2, 'to' => 3, 'search' => $prefix]))
+        ->assertOk()
+        ->assertJson([
+            'ids' => Barcode::query()
+                ->where(function ($q) use ($prefix) {
+                    $q->where('code', 'like', "%{$prefix}%")
+                        ->orWhere('name', 'like', "%{$prefix}%");
+                })
+                ->listed()
+                ->skip(1)
+                ->take(2)
+                ->pluck('id')
+                ->all(),
+        ]);
+
+    $this->actingAs($admin)
+        ->getJson(route('barcode.serial-range', ['from' => 10, 'to' => 20, 'search' => $prefix]))
+        ->assertOk()
+        ->assertJson(['ids' => []]);
+
+    Barcode::query()->whereIn('id', $orderedIds)->delete();
+    $product->delete();
+    $admin->delete();
 });

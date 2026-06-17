@@ -19,7 +19,10 @@ test('product index page passes brands and tags props', function () {
         ->assertInertia(fn ($page) => $page
             ->component('admin/product/index')
             ->has('brands')
-            ->has('tags'));
+            ->has('tags')
+            ->has('products.data')
+            ->has('products.links')
+            ->where('products.per_page', 10));
 });
 
 test('product index can filter by brand', function () {

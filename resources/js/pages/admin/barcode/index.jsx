@@ -1,14 +1,61 @@
 import { DataTable } from '@/components/ui/data-table';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { Head, router, usePage } from '@inertiajs/react';
-import { Barcode, Printer, Search } from 'lucide-react';
+import { Barcode, ListChecks, Printer, Search } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { AdminPagination } from '@/components/admin/pagination';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { route } from '@/lib/route';
+
+function parseSerialRange(input) {
+    const trimmed = String(input ?? '').trim();
+
+    if (!trimmed) {
+        return null;
+    }
+
+    const rangeMatch = trimmed.match(/^(\d+)\s*-\s*(\d+)$/);
+
+    if (rangeMatch) {
+        const from = parseInt(rangeMatch[1], 10);
+        const to = parseInt(rangeMatch[2], 10);
+
+        if (Number.isNaN(from) || Number.isNaN(to) || from < 1 || to < 1) {
+            return null;
+        }
+
+        return from <= to ? { from, to } : { from: to, to: from };
+    }
+
+    const single = parseInt(trimmed, 10);
+
+    if (!Number.isNaN(single) && single >= 1) {
+        return { from: single, to: single };
+    }
+
+    return null;
+}
+
+function getRowSerial(rowIndex, barcodes) {
+    return Number(barcodes.from ?? 1) + rowIndex;
+}
+
+function selectIdsForSerialRange(range, rows, barcodes) {
+    return rows
+        .filter((_, i) => {
+            const serial = getRowSerial(i, barcodes);
+            return serial >= range.from && serial <= range.to;
+        })
+        .map((row) => Number(row.id));
+}
+
+function isIdSelected(selectedIds, id) {
+    return selectedIds.includes(Number(id));
+}
 
 function BarcodeBars({ code }) {
     const textRef = useRef(null);
@@ -50,7 +97,9 @@ export default function BarcodeIndex({ barcodes, filters }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const [search, setSearch] = useState(filters.search ?? '');
+    const [serialRange, setSerialRange] = useState('');
     const [selectedIds, setSelectedIds] = useState([]);
+    const [selectingRange, setSelectingRange] = useState(false);
 
     const rows = barcodes.data ?? [];
 
@@ -58,6 +107,10 @@ export default function BarcodeIndex({ barcodes, filters }) {
         if (flash.success) toast.success(flash.success);
         if (flash.error) toast.error(flash.error);
     }, [flash.success, flash.error]);
+
+    useEffect(() => {
+        setSelectedIds([]);
+    }, [filters.search]);
 
     useDebouncedEffect(
         () => {
@@ -68,12 +121,17 @@ export default function BarcodeIndex({ barcodes, filters }) {
         { skipFirstRun: true },
     );
 
-    const allSelected = rows.length > 0 && rows.every((r) => selectedIds.includes(r.id));
+    const allSelected = rows.length > 0 && rows.every((r) => isIdSelected(selectedIds, r.id));
 
-    const toggleAll = () => setSelectedIds(allSelected ? [] : rows.map((r) => r.id));
+    const toggleAll = () => setSelectedIds(allSelected ? [] : rows.map((r) => Number(r.id)));
 
-    const toggleOne = (id) =>
-        setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+    const toggleOne = (id) => {
+        const numericId = Number(id);
+
+        setSelectedIds((prev) =>
+            prev.includes(numericId) ? prev.filter((x) => x !== numericId) : [...prev, numericId],
+        );
+    };
 
     const handlePrintLabels = () => {
         const ids = selectedIds.length > 0 ? selectedIds : rows.map((r) => r.id);
@@ -82,6 +140,71 @@ export default function BarcodeIndex({ barcodes, filters }) {
 
     const handlePrintSingle = (row) => {
         router.visit(route('barcode.print') + `?ids=${row.id}`);
+    };
+
+    const handleSelectSerialRange = async () => {
+        const range = parseSerialRange(serialRange);
+
+        if (!range) {
+            toast.error('Enter a serial range like 1-10');
+            return;
+        }
+
+        setSelectingRange(true);
+
+        const listStart = Number(barcodes.from ?? 1);
+        const listEnd = rows.length > 0 ? listStart + rows.length - 1 : listStart;
+        const activeSearch = filters.search ?? '';
+
+        try {
+            if (range.from >= listStart && range.to <= listEnd) {
+                const ids = selectIdsForSerialRange(range, rows, barcodes);
+
+                if (ids.length === 0) {
+                    toast.error('No barcodes found in that serial range');
+                    return;
+                }
+
+                setSelectedIds(ids);
+                toast.success(`Selected ${ids.length} barcode${ids.length !== 1 ? 's' : ''}`);
+                return;
+            }
+
+            const url = route('barcode.serial-range', {
+                query: {
+                    from: range.from,
+                    to: range.to,
+                    search: activeSearch || undefined,
+                },
+            });
+
+            const res = await fetch(url, {
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+
+            if (!res.ok) {
+                toast.error('Could not select serial range');
+                return;
+            }
+
+            const data = await res.json();
+            const ids = (data.ids ?? []).map(Number);
+
+            if (ids.length === 0) {
+                toast.error('No barcodes found in that serial range');
+                return;
+            }
+
+            setSelectedIds(ids);
+            toast.success(`Selected ${ids.length} barcode${ids.length !== 1 ? 's' : ''}`);
+        } catch {
+            toast.error('Could not select serial range');
+        } finally {
+            setSelectingRange(false);
+        }
     };
 
     const columns = [
@@ -95,7 +218,7 @@ export default function BarcodeIndex({ barcodes, filters }) {
             ),
             render: (row) => (
                 <Checkbox
-                    checked={selectedIds.includes(row.id)}
+                    checked={isIdSelected(selectedIds, row.id)}
                     onCheckedChange={() => toggleOne(row.id)}
                 />
             ),
@@ -103,7 +226,7 @@ export default function BarcodeIndex({ barcodes, filters }) {
         {
             id: 'num',
             header: '#',
-            render: (_, i) => (barcodes.from ?? 0) + i,
+            render: (_, i) => getRowSerial(i, barcodes),
         },
         {
             id: 'barcode',
@@ -165,7 +288,7 @@ export default function BarcodeIndex({ barcodes, filters }) {
                     </Button>
                 </div>
 
-                <div className="mb-3 flex items-center gap-2">
+                <div className="mb-3 flex flex-wrap items-center gap-2">
                     <div className="relative max-w-xs flex-1">
                         <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
                         <Input
@@ -175,31 +298,42 @@ export default function BarcodeIndex({ barcodes, filters }) {
                             className="pl-8"
                         />
                     </div>
+                    <div className="flex items-center gap-1.5">
+                        <div className="relative w-36">
+                            <ListChecks className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                            <Input
+                                value={serialRange}
+                                onChange={(e) => setSerialRange(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        handleSelectSerialRange();
+                                    }
+                                }}
+                                placeholder="SL: 1-10"
+                                className="pl-8"
+                            />
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="lg"
+                            onClick={handleSelectSerialRange}
+                            disabled={selectingRange}
+                        >
+                            Select
+                        </Button>
+                    </div>
                     {selectedIds.length > 0 && (
                         <span className="text-xs text-muted-foreground">
-                            {selectedIds.length} of {rows.length} selected
+                            {selectedIds.length} selected
                         </span>
                     )}
                 </div>
 
                 <DataTable columns={columns} rows={rows} rowKey="id" emptyMessage="No barcodes found." />
 
-                {barcodes.links?.length > 3 && (
-                    <div className="mt-4 flex flex-wrap gap-1">
-                        {barcodes.links.map((link, i) => (
-                            <a
-                                key={i}
-                                href={link.url ?? '#'}
-                                className={[
-                                    'border px-3 py-1 text-sm transition-colors',
-                                    link.active ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-accent',
-                                    !link.url ? 'pointer-events-none opacity-50' : '',
-                                ].join(' ')}
-                                dangerouslySetInnerHTML={{ __html: link.label }}
-                            />
-                        ))}
-                    </div>
-                )}
+                <AdminPagination paginator={barcodes} />
             </div>
         </>
     );

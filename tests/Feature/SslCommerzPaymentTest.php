@@ -1,7 +1,6 @@
 <?php
 
 use App\Enums\OrderStatus;
-use App\Models\ConfigDictionary;
 use App\Models\Customer;
 use App\Models\OnlineOrder;
 use App\Models\Product;
@@ -107,11 +106,7 @@ test('sslcommerz checkout marks order failed when gateway returns error', functi
 });
 
 test('sslcommerz success callback marks order paid after validation', function () {
-    $cash = seedAccountingAccounts();
-    ConfigDictionary::setMany([
-        'online_sslcommerz_payment_account_id' => (string) $cash->id,
-        'online_cod_payment_account_id' => (string) $cash->id,
-    ]);
+    seedEcommerceBranchAccounts();
 
     $order = createPendingSslCommerzOrder();
 
@@ -160,11 +155,7 @@ test('sslcommerz cancel callback marks pending order as cancelled', function () 
 });
 
 test('sslcommerz ipn marks order paid and is idempotent', function () {
-    $cash = seedAccountingAccounts();
-    ConfigDictionary::setMany([
-        'online_sslcommerz_payment_account_id' => (string) $cash->id,
-        'online_cod_payment_account_id' => (string) $cash->id,
-    ]);
+    seedEcommerceBranchAccounts();
 
     $transactionId = 'CP-103-IPN0001-'.fake()->unique()->numerify('####');
     $order = createPendingSslCommerzOrder($transactionId);

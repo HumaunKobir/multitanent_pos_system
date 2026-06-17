@@ -3,8 +3,10 @@
 namespace App\Services;
 
 use App\Enums\AccountType;
+use App\Enums\CommonStatus;
 use App\Enums\ReceivedPaymentMethod;
 use App\Enums\SystemAccountKey;
+use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Models\Customer;
 use App\Models\CustomerPayment;
@@ -289,12 +291,13 @@ class InventoryAccountingService
 
     public function postOnlineOrderPrepayment(OnlineOrder $order, int $paymentAccountId): Transaction
     {
+        $branchId = EcommerceBranchService::resolveIdStatic();
         $amount = round((float) $order->total, 2);
         $label = $this->onlineOrderLabel($order);
 
         $lines = [
-            $this->debitPaymentAccount($paymentAccountId, $amount, "Online prepayment received — {$label}"),
-            $this->creditLine(SystemAccountKey::AdvanceFromCustomer, $amount, "Customer deposit — {$label}"),
+            $this->debitPaymentAccount($paymentAccountId, $amount, "Online prepayment received — {$label}", $branchId),
+            $this->creditLine(SystemAccountKey::AdvanceFromCustomer, $amount, "Customer deposit — {$label}", $branchId),
         ];
 
         return $this->postOnlineOrderJournal($order, 'prepayment', $lines);
@@ -302,6 +305,7 @@ class InventoryAccountingService
 
     public function postOnlineOrderFulfillment(OnlineOrder $order, ?int $paymentAccountId, float $cogs): Transaction
     {
+        $branchId = EcommerceBranchService::resolveIdStatic();
         $subtotal = round((float) $order->subtotal, 2);
         $deliveryCharge = round((float) $order->delivery_charge, 2);
         $total = round((float) $order->total, 2);
@@ -310,27 +314,27 @@ class InventoryAccountingService
 
         if ($order->payment_method === 'sslcommerz' && $order->payment_status === 'Paid') {
             if ($total > 0) {
-                $lines[] = $this->debitLine(SystemAccountKey::AdvanceFromCustomer, $total, "Revenue recognition — {$label}");
+                $lines[] = $this->debitLine(SystemAccountKey::AdvanceFromCustomer, $total, "Revenue recognition — {$label}", $branchId);
             }
         } elseif ($order->payment_method === 'cod') {
             if ($total > 0) {
-                $lines[] = $this->debitPaymentAccount($paymentAccountId, $total, "COD collection — {$label}");
+                $lines[] = $this->debitPaymentAccount($paymentAccountId, $total, "COD collection — {$label}", $branchId);
             }
         } else {
             throw new \RuntimeException('Unsupported online order payment method for fulfillment.');
         }
 
         if ($subtotal > 0) {
-            $lines[] = $this->creditLine(SystemAccountKey::ProductSales, $subtotal, "Product sales — {$label}");
+            $lines[] = $this->creditLine(SystemAccountKey::ProductSales, $subtotal, "Product sales — {$label}", $branchId);
         }
 
         if ($deliveryCharge > 0) {
-            $lines[] = $this->creditLine(SystemAccountKey::OtherIncome, $deliveryCharge, "Delivery revenue — {$label}");
+            $lines[] = $this->creditLine(SystemAccountKey::OtherIncome, $deliveryCharge, "Delivery revenue — {$label}", $branchId);
         }
 
         if ($cogs > 0) {
-            $lines[] = $this->debitLine(SystemAccountKey::CostOfGoodsSold, $cogs, "COGS — {$label}");
-            $lines[] = $this->creditLine(SystemAccountKey::ProductInventory, $cogs, "Inventory reduced — {$label}");
+            $lines[] = $this->debitLine(SystemAccountKey::CostOfGoodsSold, $cogs, "COGS — {$label}", $branchId);
+            $lines[] = $this->creditLine(SystemAccountKey::ProductInventory, $cogs, "Inventory reduced — {$label}", $branchId);
         }
 
         return $this->postOnlineOrderJournal($order, 'fulfillment', $lines);
@@ -338,12 +342,13 @@ class InventoryAccountingService
 
     public function reverseOnlineOrderPrepayment(OnlineOrder $order, int $paymentAccountId): Transaction
     {
+        $branchId = EcommerceBranchService::resolveIdStatic();
         $amount = round((float) $order->total, 2);
         $label = $this->onlineOrderLabel($order);
 
         $lines = [
-            $this->debitLine(SystemAccountKey::AdvanceFromCustomer, $amount, "Prepayment reversed — {$label}"),
-            $this->creditPaymentAccount($paymentAccountId, $amount, "Prepayment refunded — {$label}"),
+            $this->debitLine(SystemAccountKey::AdvanceFromCustomer, $amount, "Prepayment reversed — {$label}", $branchId),
+            $this->creditPaymentAccount($paymentAccountId, $amount, "Prepayment refunded — {$label}", $branchId),
         ];
 
         return $this->postOnlineOrderJournal($order, 'prepayment_reversal', $lines);
@@ -686,26 +691,38 @@ class InventoryAccountingService
         return $this->line($account, 0.0, $amount, false, $description);
     }
 
-    private function debitPaymentAccount(?int $paymentAccountId, float $amount, string $description): array
+    private function debitPaymentAccount(?int $paymentAccountId, float $amount, string $description, ?int $branchId = null): array
     {
-        return $this->debitAccount($this->resolvePaymentAccount($paymentAccountId), $amount, $description);
+        return $this->debitAccount($this->resolvePaymentAccount($paymentAccountId, $branchId), $amount, $description);
     }
 
-    private function creditPaymentAccount(?int $paymentAccountId, float $amount, string $description): array
+    private function creditPaymentAccount(?int $paymentAccountId, float $amount, string $description, ?int $branchId = null): array
     {
-        return $this->creditAccount($this->resolvePaymentAccount($paymentAccountId), $amount, $description);
+        return $this->creditAccount($this->resolvePaymentAccount($paymentAccountId, $branchId), $amount, $description);
     }
 
-    private function resolvePaymentAccount(?int $paymentAccountId): ChartOfAccount
+    private function resolvePaymentAccount(?int $paymentAccountId, ?int $branchId = null): ChartOfAccount
     {
         if ($paymentAccountId === null) {
             throw new \RuntimeException('Payment account is required for cash settlement.');
         }
 
-        $account = ChartOfAccount::query()
-            ->paymentAccount()
-            ->whereKey($paymentAccountId)
-            ->first();
+        $query = ChartOfAccount::query()->whereKey($paymentAccountId);
+
+        if ($branchId !== null) {
+            $cashAndBankId = SystemAccountService::id(SystemAccountKey::CashAndBank, $branchId);
+
+            $query
+                ->where('source_type', Branch::class)
+                ->where('source_id', $branchId)
+                ->where('parent_id', $cashAndBankId)
+                ->where('type', AccountType::Asset)
+                ->where('status', CommonStatus::Active);
+        } else {
+            $query->paymentAccount();
+        }
+
+        $account = $query->first();
 
         if ($account === null) {
             throw new \RuntimeException('Invalid payment account selected.');

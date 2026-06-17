@@ -1,9 +1,11 @@
 <?php
 
 use App\Enums\SystemAccountKey;
+use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\EcommerceBranchService;
 use App\Services\InventoryAccountingService;
 use App\Services\SystemAccountService;
 use Tests\TestCase;
@@ -97,4 +99,36 @@ function seedAccountingAccounts(float $minimumBalance = 100000, ?int $branchId =
     }
 
     return $cash;
+}
+
+/**
+ * @return array{branch: Branch, sslCommerz: ChartOfAccount, cashInHand: ChartOfAccount}
+ */
+function seedEcommerceBranchAccounts(): array
+{
+    EcommerceBranchService::resetResolvedId();
+
+    $branch = Branch::query()->firstOrCreate(
+        ['name' => EcommerceBranchService::BRANCH_NAME],
+        Branch::factory()->make(['name' => EcommerceBranchService::BRANCH_NAME])->toArray(),
+    );
+
+    User::query()->updateOrCreate(
+        ['email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL],
+        User::factory()->make([
+            'email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL,
+            'branch_id' => $branch->id,
+        ])->toArray(),
+    );
+
+    EcommerceBranchService::resetResolvedId();
+
+    SystemAccountService::seed($branch->id);
+    seedAccountingAccounts(branchId: $branch->id);
+
+    return [
+        'branch' => $branch,
+        'sslCommerz' => SystemAccountService::resolve(SystemAccountKey::SslCommerz, $branch->id),
+        'cashInHand' => SystemAccountService::resolve(SystemAccountKey::CashInHand, $branch->id),
+    ];
 }

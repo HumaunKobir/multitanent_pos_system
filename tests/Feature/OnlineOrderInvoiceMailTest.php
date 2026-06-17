@@ -200,11 +200,7 @@ test('cod order sends order placed email once with invoice attachment', function
 test('sslcommerz payment success sends one combined email with order and payment details', function () {
     Mail::fake();
 
-    $cash = seedAccountingAccounts();
-    ConfigDictionary::setMany([
-        'online_sslcommerz_payment_account_id' => (string) $cash->id,
-        'online_cod_payment_account_id' => (string) $cash->id,
-    ]);
+    seedEcommerceBranchAccounts();
 
     $order = createOnlineOrderForMail(['email' => 'paid@example.com']);
 

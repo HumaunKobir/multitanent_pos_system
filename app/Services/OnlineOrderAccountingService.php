@@ -29,10 +29,6 @@ class OnlineOrderAccountingService
 
         $paymentAccountId = WebsiteSettings::onlineSslCommerzPaymentAccountId();
 
-        if ($paymentAccountId === null) {
-            throw new RuntimeException('Configure the online SSLCommerz payment account in website settings.');
-        }
-
         return $this->accounting->postOnlineOrderPrepayment($order, $paymentAccountId);
     }
 
@@ -57,10 +53,6 @@ class OnlineOrderAccountingService
             $paymentAccountId = $order->payment_method === 'cod'
                 ? WebsiteSettings::onlineCodPaymentAccountId()
                 : WebsiteSettings::onlineSslCommerzPaymentAccountId();
-
-            if ($order->payment_method === 'cod' && $paymentAccountId === null) {
-                throw new RuntimeException('Configure the online COD payment account in website settings.');
-            }
 
             $this->accounting->postOnlineOrderFulfillment($order, $paymentAccountId, $cogs);
 
@@ -101,10 +93,6 @@ class OnlineOrderAccountingService
         }
 
         $paymentAccountId = WebsiteSettings::onlineSslCommerzPaymentAccountId();
-
-        if ($paymentAccountId === null) {
-            throw new RuntimeException('Configure the online SSLCommerz payment account in website settings.');
-        }
 
         return $this->accounting->reverseOnlineOrderPrepayment($order, $paymentAccountId);
     }

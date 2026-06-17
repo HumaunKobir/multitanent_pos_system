@@ -2,7 +2,10 @@
 
 namespace App\Support;
 
+use App\Enums\SystemAccountKey;
 use App\Models\ConfigDictionary;
+use App\Services\EcommerceBranchService;
+use App\Services\SystemAccountService;
 use Illuminate\Support\Facades\Storage;
 
 final class WebsiteSettings
@@ -123,31 +126,22 @@ final class WebsiteSettings
         return 'data:'.$mime.';base64,'.base64_encode($contents);
     }
 
-    public static function onlineSslCommerzPaymentAccountId(): ?int
+    public static function onlineSslCommerzPaymentAccountId(): int
     {
-        return self::resolvePaymentAccountId('online_sslcommerz_payment_account_id', 'ONLINE_SSLCOMMERZ_PAYMENT_ACCOUNT_ID');
+        return self::ecommerceBranchPaymentAccountId(SystemAccountKey::SslCommerz);
     }
 
-    public static function onlineCodPaymentAccountId(): ?int
+    public static function onlineCodPaymentAccountId(): int
     {
-        return self::resolvePaymentAccountId('online_cod_payment_account_id', 'ONLINE_COD_PAYMENT_ACCOUNT_ID');
+        return self::ecommerceBranchPaymentAccountId(SystemAccountKey::CashInHand);
     }
 
-    private static function resolvePaymentAccountId(string $settingKey, string $envKey): ?int
+    private static function ecommerceBranchPaymentAccountId(SystemAccountKey $key): int
     {
-        $value = self::get($settingKey);
+        $branchId = EcommerceBranchService::resolveIdStatic();
+        SystemAccountService::ensureConfigured($branchId);
 
-        if ($value !== null && $value !== '') {
-            return (int) $value;
-        }
-
-        $envValue = env($envKey);
-
-        if ($envValue !== null && $envValue !== '') {
-            return (int) $envValue;
-        }
-
-        return null;
+        return SystemAccountService::id($key, $branchId);
     }
 
     /**

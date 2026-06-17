@@ -4,7 +4,6 @@ use App\Enums\OrderStatus;
 use App\Enums\SystemAccountKey;
 use App\Models\Batch;
 use App\Models\Branch;
-use App\Models\ConfigDictionary;
 use App\Models\Ledger;
 use App\Models\OnlineOrder;
 use App\Models\OnlineOrderProduct;
@@ -73,14 +72,6 @@ function onlineOrderWithStock(array $orderOverrides = []): array
     return compact('order', 'product', 'batch');
 }
 
-function configureOnlinePaymentAccounts(int $sslAccountId, int $codAccountId): void
-{
-    ConfigDictionary::setMany([
-        'online_sslcommerz_payment_account_id' => (string) $sslAccountId,
-        'online_cod_payment_account_id' => (string) $codAccountId,
-    ]);
-}
-
 function assertBalancedTransaction(?Transaction $transaction): void
 {
     expect($transaction)->not->toBeNull();
@@ -94,9 +85,7 @@ function assertBalancedTransaction(?Transaction $transaction): void
 }
 
 test('sslcommerz prepayment posts cash debit and customer deposits credit', function () {
-    $cash = seedAccountingAccounts();
-    configureOnlinePaymentAccounts($cash->id, $cash->id);
-    SystemAccountService::seed();
+    $accounts = seedEcommerceBranchAccounts();
 
     ['order' => $order] = onlineOrderWithStock();
 
@@ -106,17 +95,15 @@ test('sslcommerz prepayment posts cash debit and customer deposits credit', func
     assertBalancedTransaction($transaction);
 
     $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
-    $cashAccountId = $cash->id;
-    $depositsAccountId = SystemAccountService::resolve(SystemAccountKey::AdvanceFromCustomer)->id;
+    $sslAccountId = $accounts['sslCommerz']->id;
+    $depositsAccountId = SystemAccountService::resolve(SystemAccountKey::AdvanceFromCustomer, $accounts['branch']->id)->id;
 
-    expect($ledgers->firstWhere('account_id', $cashAccountId)?->debit)->toBe('1260.00')
+    expect($ledgers->firstWhere('account_id', $sslAccountId)?->debit)->toBe('1260.00')
         ->and($ledgers->firstWhere('account_id', $depositsAccountId)?->credit)->toBe('1260.00');
 });
 
 test('sslcommerz fulfillment recognizes revenue and cogs from customer deposits', function () {
-    $cash = seedAccountingAccounts();
-    configureOnlinePaymentAccounts($cash->id, $cash->id);
-    SystemAccountService::seed();
+    $accounts = seedEcommerceBranchAccounts();
 
     ['order' => $order, 'batch' => $batch] = onlineOrderWithStock();
 
@@ -133,9 +120,10 @@ test('sslcommerz fulfillment recognizes revenue and cogs from customer deposits'
     $batch->refresh();
     expect((float) $batch->available)->toBe(9.0);
 
-    $revenueAccountId = SystemAccountService::resolve(SystemAccountKey::ProductSales)->id;
-    $otherIncomeAccountId = SystemAccountService::resolve(SystemAccountKey::OtherIncome)->id;
-    $cogsAccountId = SystemAccountService::resolve(SystemAccountKey::CostOfGoodsSold)->id;
+    $branchId = $accounts['branch']->id;
+    $revenueAccountId = SystemAccountService::resolve(SystemAccountKey::ProductSales, $branchId)->id;
+    $otherIncomeAccountId = SystemAccountService::resolve(SystemAccountKey::OtherIncome, $branchId)->id;
+    $cogsAccountId = SystemAccountService::resolve(SystemAccountKey::CostOfGoodsSold, $branchId)->id;
     $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
 
     expect(round($ledgers->where('account_id', $revenueAccountId)->sum('credit'), 2))->toBe(1200.0)
@@ -144,9 +132,7 @@ test('sslcommerz fulfillment recognizes revenue and cogs from customer deposits'
 });
 
 test('cod fulfillment posts cash receipt and revenue at delivery', function () {
-    $cash = seedAccountingAccounts();
-    configureOnlinePaymentAccounts($cash->id, $cash->id);
-    SystemAccountService::seed();
+    $accounts = seedEcommerceBranchAccounts();
 
     ['order' => $order] = onlineOrderWithStock([
         'payment_method' => 'cod',
@@ -164,14 +150,12 @@ test('cod fulfillment posts cash receipt and revenue at delivery', function () {
         ->and($order->payment_status)->toBe('Paid');
 
     $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
-    expect(round($ledgers->where('account_id', $cash->id)->sum('debit'), 2))->toBe(1260.0);
+    expect(round($ledgers->where('account_id', $accounts['cashInHand']->id)->sum('debit'), 2))->toBe(1260.0);
 });
 
 test('admin can fulfill online order through route', function () {
     $user = onlineOrderAdmin();
-    $cash = seedAccountingAccounts(branchId: $user->branch_id);
-    configureOnlinePaymentAccounts($cash->id, $cash->id);
-    SystemAccountService::seed($user->branch_id);
+    seedEcommerceBranchAccounts();
 
     ['order' => $order] = onlineOrderWithStock(['payment_method' => 'cod', 'payment_status' => 'Pending', 'transaction_id' => null]);
 
@@ -184,9 +168,7 @@ test('admin can fulfill online order through route', function () {
 });
 
 test('sslcommerz success callback records prepayment journal', function () {
-    $cash = seedAccountingAccounts();
-    configureOnlinePaymentAccounts($cash->id, $cash->id);
-    SystemAccountService::seed();
+    seedEcommerceBranchAccounts();
 
     ['order' => $order] = onlineOrderWithStock(['payment_status' => 'Pending']);
 
@@ -208,8 +190,7 @@ test('sslcommerz success callback records prepayment journal', function () {
 });
 
 test('prepayment recording is idempotent', function () {
-    $cash = seedAccountingAccounts();
-    configureOnlinePaymentAccounts($cash->id, $cash->id);
+    seedEcommerceBranchAccounts();
 
     ['order' => $order] = onlineOrderWithStock();
     $service = app(OnlineOrderAccountingService::class);

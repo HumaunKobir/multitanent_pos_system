@@ -53,6 +53,8 @@ test('chart of accounts seeder creates child accounts under parent heads', funct
         [SystemAccountKey::CashAndBank, [
             SystemAccountKey::CashInHand,
             SystemAccountKey::SslCommerz,
+            SystemAccountKey::Bkash,
+            SystemAccountKey::Nagad,
         ]],
         [SystemAccountKey::Inventory, [
             SystemAccountKey::ProductInventory,
@@ -160,18 +162,6 @@ test('retired system accounts are not seeded by default', function () {
 
     expect(ChartOfAccount::query()
         ->where('account_number', SystemAccountKey::BranchInventory->accountNumber())
-        ->whereNull('source_type')
-        ->whereNull('source_id')
-        ->exists())->toBeFalse();
-
-    expect(ChartOfAccount::query()
-        ->where('account_number', SystemAccountKey::Bkash->accountNumber())
-        ->whereNull('source_type')
-        ->whereNull('source_id')
-        ->exists())->toBeFalse();
-
-    expect(ChartOfAccount::query()
-        ->where('account_number', SystemAccountKey::Nagad->accountNumber())
         ->whereNull('source_type')
         ->whereNull('source_id')
         ->exists())->toBeFalse();

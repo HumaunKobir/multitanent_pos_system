@@ -53,6 +53,19 @@ test('system seeds default cash and bank payment accounts', function () {
     expect($sslCommerz->code)->toBe('A001-02');
     expect($sslCommerz->parent_id)->toBe($cashAndBankId);
     expect($sslCommerz->is_system)->toBeTrue();
+
+    $bkash = SystemAccountService::resolve(SystemAccountKey::Bkash);
+    $nagad = SystemAccountService::resolve(SystemAccountKey::Nagad);
+
+    expect($bkash->name)->toBe('bKash');
+    expect($bkash->code)->toBe('A001-03');
+    expect($bkash->parent_id)->toBe($cashAndBankId);
+    expect($bkash->is_system)->toBeTrue();
+
+    expect($nagad->name)->toBe('Nagad');
+    expect($nagad->code)->toBe('A001-04');
+    expect($nagad->parent_id)->toBe($cashAndBankId);
+    expect($nagad->is_system)->toBeTrue();
 });
 
 test('system seeds purchase returns and default expense accounts', function () {

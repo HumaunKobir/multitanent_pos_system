@@ -109,9 +109,7 @@ trait UsesInventoryAccounting
         }
 
         if ($lines === []) {
-            throw ValidationException::withMessages([
-                'payments' => 'Add at least one payment line with an account and amount.',
-            ]);
+            return [];
         }
 
         return $lines;

@@ -6,6 +6,7 @@ import {
     formatDiscountLabel,
 } from '@/lib/pos-discount';
 import { SalePaymentLines } from '@/components/inventory/sale-payment-lines';
+import { SellDueAlertFields } from '@/components/inventory/sell-due-alert-fields';
 import {
     buildInitialSalePayments,
     computeSplitSalePayment,
@@ -457,6 +458,8 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
         paid_amount: String(sell.paid_amount ?? '0'),
         payments: buildInitialSalePayments(sell.payments, paymentAccounts),
         comment: sell.comment ?? '',
+        due_given_date: '',
+        due_alert_action: '',
         items: sell.items ?? [],
     });
 
@@ -815,6 +818,13 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                     errors={form.errors}
                                     inputClassName={inputCls}
                                     hideSummary
+                                />
+
+                                <SellDueAlertFields
+                                    customerId={form.data.customer_id}
+                                    walkInCustomerId={walkInCustomerId}
+                                    dueAmount={dueAmount}
+                                    form={form}
                                 />
                             </div>
                         </Card>

@@ -38,9 +38,8 @@ export function computeSplitSalePayment(payments, netAmount) {
 export function splitPaymentValidationError(payments) {
     const lines = (payments ?? []).filter((line) => {
         const amount = parseFloat(line.amount) || 0;
-        const accountId = line.payment_account_id;
 
-        return amount > 0 || (accountId !== '' && accountId != null);
+        return amount > 0;
     });
 
     if (lines.length === 0) {
@@ -48,15 +47,10 @@ export function splitPaymentValidationError(payments) {
     }
 
     for (const line of lines) {
-        const amount = parseFloat(line.amount) || 0;
         const accountId = line.payment_account_id;
 
         if (!accountId) {
             return 'Select an account for each payment line.';
-        }
-
-        if (amount <= 0) {
-            return 'Enter an amount for each payment line.';
         }
     }
 

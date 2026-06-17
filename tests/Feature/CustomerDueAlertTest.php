@@ -162,3 +162,40 @@ test('branch user cannot modify alert from another branch', function () {
         ])
         ->assertNotFound();
 });
+
+test('api returns active due alert for customer', function () {
+    $this->artisan('permissions:sync');
+
+    $user = dueAlertUser(['party.customer.view']);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    CustomerDueAlert::create([
+        'branch_id' => $user->branch_id,
+        'customer_id' => $customer->id,
+        'due_given_date' => '2026-07-01',
+        'status' => CustomerDueAlertStatus::Unpaid->value,
+    ]);
+
+    $this->actingAs($user)
+        ->getJson("/api/customers/{$customer->id}/due-alert")
+        ->assertSuccessful()
+        ->assertJson([
+            'active' => [
+                'due_given_date' => '2026-07-01',
+                'status' => CustomerDueAlertStatus::Unpaid->value,
+            ],
+        ]);
+});
+
+test('api returns null when customer has no active due alert', function () {
+    $this->artisan('permissions:sync');
+
+    $user = dueAlertUser(['party.customer.view']);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    $response = $this->actingAs($user)
+        ->getJson("/api/customers/{$customer->id}/due-alert");
+
+    $response->assertSuccessful();
+    expect($response->json('active'))->toBeNull();
+});

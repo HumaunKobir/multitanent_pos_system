@@ -5,6 +5,7 @@ import {
     formatDiscountLabel,
 } from '@/lib/pos-discount';
 import { SalePaymentLines } from '@/components/inventory/sale-payment-lines';
+import { SellDueAlertFields } from '@/components/inventory/sell-due-alert-fields';
 import {
     buildInitialSalePayments,
     computeSplitSalePayment,
@@ -793,6 +794,8 @@ function buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAcco
             paid_amount: resumedSell.paid_amount ?? '0',
             payments: buildInitialSalePayments([], paymentAccounts),
             comment: resumedSell.comment ?? '',
+            due_given_date: '',
+            due_alert_action: '',
             items: [],
         };
     }
@@ -807,6 +810,8 @@ function buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAcco
         paid_amount: '0',
         payments: buildInitialSalePayments([], paymentAccounts),
         comment: '',
+        due_given_date: '',
+        due_alert_action: '',
         items: [],
     };
 }
@@ -1223,6 +1228,13 @@ export default function SellCreate({
                                     inputClassName={inputCls}
                                     compact
                                     hideSummary
+                                />
+
+                                <SellDueAlertFields
+                                    customerId={form.data.customer_id}
+                                    walkInCustomerId={defaultCustomer?.id ?? null}
+                                    dueAmount={dueAmount}
+                                    form={form}
                                 />
 
                                 <div className="sm:hidden">

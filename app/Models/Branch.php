@@ -49,8 +49,7 @@ class Branch extends Model
     {
         return $query
             ->active()
-            ->assignableForUsers()
-            ->whereDoesntHave('users', fn (Builder $userQuery) => $userQuery->managedInUserList());
+            ->assignableForUsers();
     }
 
     public static function isMainBranch(?int $branchId): bool

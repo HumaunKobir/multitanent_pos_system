@@ -11,7 +11,6 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Exists;
 use Illuminate\Validation\Rules\Password;
-use Illuminate\Validation\Rules\Unique;
 use Inertia\Inertia;
 use Inertia\Response;
 use Spatie\Permission\Models\Role;
@@ -59,7 +58,6 @@ class UserController extends Controller
                 'required',
                 'integer',
                 $this->assignableBranchExistsRule(),
-                $this->uniqueManagedBranchRule(),
             ],
             'name' => ['required', 'string', 'max:191'],
             'email' => ['required', 'email', 'max:191', 'unique:users,email'],
@@ -104,7 +102,6 @@ class UserController extends Controller
                 'required',
                 'integer',
                 $this->assignableBranchExistsRule(),
-                $this->uniqueManagedBranchRule($user->id),
             ];
 
         $data = $request->validate([
@@ -169,18 +166,6 @@ class UserController extends Controller
             ->whereKey($user->id)
             ->managedInUserList()
             ->exists();
-    }
-
-    protected function uniqueManagedBranchRule(?int $ignoreUserId = null): Unique
-    {
-        $rule = Rule::unique('users', 'branch_id')
-            ->where(fn ($query) => $query->where('email', '!=', User::ECOMMERCE_BRANCH_ADMIN_EMAIL));
-
-        if ($ignoreUserId !== null) {
-            $rule->ignore($ignoreUserId);
-        }
-
-        return $rule;
     }
 
     protected function assignableBranchExistsRule(): Exists

@@ -205,6 +205,7 @@ const routes = {
     'api.products.distribution': '/api/products/for-distribution',
     'api.customers': '/api/customers',
     'api.customers.store': '/api/customers',
+    'api.customers.due-alert': '/api/customers/:customer/due-alert',
     'accounts.index': '/accounts',
     'accounts.store': '/accounts',
     'accounts.next-code': '/accounts/next-code',

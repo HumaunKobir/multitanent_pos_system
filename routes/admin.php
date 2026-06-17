@@ -138,6 +138,7 @@ Route::middleware(['auth', 'verified'])->prefix('api')->name('api.')->group(func
     Route::get('sales/lookup', SaleLookupController::class)->name('sales.lookup');
     Route::get('customers', [CustomerSearchController::class, 'index'])->name('customers');
     Route::post('customers', [CustomerSearchController::class, 'store'])->name('customers.store');
+    Route::get('customers/{customer}/due-alert', [CustomerSearchController::class, 'dueAlert'])->name('customers.due-alert');
 });
 
 Route::middleware(['auth', 'verified'])->prefix('accounts')->name('accounts.')->group(function () {

@@ -61,7 +61,7 @@ test('creating a branch user seeds default accounts for that branch', function (
     }
 });
 
-test('a branch can only have one user', function () {
+test('a branch can have multiple users', function () {
     $this->artisan('permissions:sync');
 
     $actor = userManagementActor(['user.create']);
@@ -79,7 +79,10 @@ test('a branch can only have one user', function () {
             'password_confirmation' => 'password123',
             'status' => 1,
         ])
-        ->assertSessionHasErrors('branch_id');
+        ->assertRedirect(route('user.index'))
+        ->assertSessionHas('success');
+
+    expect(User::query()->where('branch_id', $branch->id)->count())->toBe(2);
 });
 
 test('user index does not include the main super admin account', function () {
@@ -104,7 +107,7 @@ test('user index does not include the main super admin account', function () {
                 && ! collect($users)->pluck('id')->contains($otherSuperStyleUser->id)));
 });
 
-test('user index hides system ecommerce admin and only exposes branches without users', function () {
+test('user index hides system ecommerce admin and exposes assignable branches', function () {
     $this->artisan('permissions:sync');
 
     $actor = userManagementActor(['user.view']);
@@ -142,7 +145,7 @@ test('user index hides system ecommerce admin and only exposes branches without 
                 && ! collect($users)->pluck('id')->contains($systemEcommerceAdmin->id)
                 && ($mainBranchUser === null || ! collect($users)->pluck('id')->contains($mainBranchUser->id)))
             ->where('branches', fn ($branches) => collect($branches)->has($unassignedBranch->id)
-                && ! collect($branches)->has($assignedBranch->id)
+                && collect($branches)->has($assignedBranch->id)
                 && collect($branches)->has($ecommerceBranch->id)
                 && ($mainBranch === null || $mainBranch->name === Branch::ECOMMERCE_BRANCH_NAME || ! collect($branches)->has($mainBranch->id))));
 });
@@ -181,7 +184,7 @@ test('ecommerce branch is available in user form when only the system admin exis
         ->assertSessionHas('success');
 });
 
-test('ecommerce branch cannot receive a second managed user from user form', function () {
+test('ecommerce branch can receive multiple managed users from user form', function () {
     $this->artisan('permissions:sync');
 
     $actor = userManagementActor(['user.create']);
@@ -211,7 +214,8 @@ test('ecommerce branch cannot receive a second managed user from user form', fun
             'password_confirmation' => 'password123',
             'status' => 1,
         ])
-        ->assertSessionHasErrors('branch_id');
+        ->assertRedirect(route('user.index'))
+        ->assertSessionHas('success');
 });
 
 test('system ecommerce admin cannot be updated or deleted from user list', function () {
@@ -274,7 +278,7 @@ test('user index paginates results', function () {
             ->where('users.current_page', 2));
 });
 
-test('user index exposes only branches without managed users', function () {
+test('user index exposes all assignable active branches', function () {
     $this->artisan('permissions:sync');
 
     $actor = userManagementActor(['user.view']);
@@ -290,5 +294,5 @@ test('user index exposes only branches without managed users', function () {
             ->component('admin/user/index')
             ->has('branches')
             ->where('branches', fn ($branches) => collect($branches)->has($availableBranch->id)
-                && ! collect($branches)->has($assignedBranch->id)));
+                && collect($branches)->has($assignedBranch->id)));
 });

@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Api;
 use App\Enums\CommonStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Services\CustomerDueAlertService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class CustomerSearchController extends Controller
 {
+    public function __construct(private CustomerDueAlertService $dueAlertService) {}
+
     public function store(Request $request): JsonResponse
     {
         $this->authorize('party.customer.create');
@@ -44,5 +47,30 @@ class CustomerSearchController extends Controller
             ->get(['id', 'name', 'phone']);
 
         return response()->json($customers);
+    }
+
+    public function dueAlert(Customer $customer): JsonResponse
+    {
+        $this->authorize('party.customer.view');
+
+        $branchId = auth()->user()?->branch_id;
+
+        if ($branchId !== null && $customer->branch_id !== $branchId) {
+            abort(404);
+        }
+
+        $alert = $this->dueAlertService->findActiveAlert($customer->id, $branchId);
+
+        if ($alert === null) {
+            return response()->json(['active' => null]);
+        }
+
+        return response()->json([
+            'active' => [
+                'id' => $alert->id,
+                'due_given_date' => $alert->due_given_date->format('Y-m-d'),
+                'status' => $alert->status->value,
+            ],
+        ]);
     }
 }

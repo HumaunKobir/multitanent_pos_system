@@ -15,6 +15,7 @@ use App\Models\ProductVariation;
 use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\SpecialDiscount;
+use App\Services\CustomerDueAlertService;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
 use App\Services\SpecialDiscountService;
@@ -38,6 +39,7 @@ class SellController extends Controller
         private InventoryAccountingService $accounting,
         private InventoryCostService $costService,
         private SpecialDiscountService $specialDiscountService,
+        private CustomerDueAlertService $dueAlertService,
     ) {}
 
     public function index(Request $request): Response
@@ -197,6 +199,7 @@ class SellController extends Controller
         );
         $payment = $this->resolveSalePayments($data, $netAmount);
         $this->assertCustomerForDueSale($data['customer_id'] ? (int) $data['customer_id'] : null, $payment['due_amount']);
+        $this->assertDueAlertFields($data, $branchId, $payment['due_amount']);
 
         try {
             $sell = DB::transaction(function () use ($data, $branchId, $pausedSellId, $payment) {
@@ -240,6 +243,14 @@ class SellController extends Controller
 
                 if ($sell->customer_id && $payment['due_amount'] > 0) {
                     Customer::whereKey($sell->customer_id)->increment('balance', $payment['due_amount']);
+
+                    $this->dueAlertService->syncFromDueSale(
+                        (int) $sell->customer_id,
+                        $branchId,
+                        $payment['due_amount'],
+                        $data['due_given_date'] ?? null,
+                        $data['due_alert_action'] ?? null,
+                    );
                 }
 
                 $this->syncSellPayments($sell, $payment['payment_lines']);
@@ -422,7 +433,9 @@ class SellController extends Controller
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
             'payments' => ['nullable', 'array'],
             'payments.*.payment_account_id' => ['required_with:payments', 'integer', 'exists:chart_of_accounts,id'],
-            'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0.01'],
+            'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0'],
+            'due_given_date' => ['nullable', 'date'],
+            'due_alert_action' => ['nullable', 'in:merge,separate'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
@@ -447,6 +460,7 @@ class SellController extends Controller
         );
         $payment = $this->resolveSalePayments($data, $netAmount);
         $this->assertCustomerForDueSale($data['customer_id'] ? (int) $data['customer_id'] : null, $payment['due_amount']);
+        $this->assertDueAlertFields($data, $branchId, $payment['due_amount']);
 
         try {
             DB::transaction(function () use ($sell, $data, $branchId, $payment) {
@@ -509,6 +523,14 @@ class SellController extends Controller
 
                 if ($sell->customer_id && $payment['due_amount'] > 0) {
                     Customer::whereKey($sell->customer_id)->increment('balance', $payment['due_amount']);
+
+                    $this->dueAlertService->syncFromDueSale(
+                        (int) $sell->customer_id,
+                        $branchId,
+                        $payment['due_amount'],
+                        $data['due_given_date'] ?? null,
+                        $data['due_alert_action'] ?? null,
+                    );
                 }
 
                 $this->syncSellPayments($sell, $payment['payment_lines']);
@@ -664,8 +686,10 @@ class SellController extends Controller
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
             'payments' => ['nullable', 'array'],
             'payments.*.payment_account_id' => ['required_with:payments', 'integer', 'exists:chart_of_accounts,id'],
-            'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0.01'],
+            'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0'],
             'paused_sell_id' => ['nullable', 'integer', 'exists:sells,id'],
+            'due_given_date' => ['nullable', 'date'],
+            'due_alert_action' => ['nullable', 'in:merge,separate'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'exists:products,id'],
             'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
@@ -873,6 +897,34 @@ class SellController extends Controller
         if (Customer::whereKey($customerId)->where('is_default', true)->exists()) {
             throw ValidationException::withMessages([
                 'customer_id' => 'Due sales require a registered customer. Walk-in cannot have due.',
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function assertDueAlertFields(array $data, ?int $branchId, float $dueAmount): void
+    {
+        if ($dueAmount <= 0 || blank($data['due_given_date'] ?? null)) {
+            return;
+        }
+
+        $customerId = isset($data['customer_id']) ? (int) $data['customer_id'] : null;
+
+        if ($customerId === null) {
+            return;
+        }
+
+        $existingAlert = $this->dueAlertService->findActiveAlert($customerId, $branchId);
+
+        if ($existingAlert === null) {
+            return;
+        }
+
+        if (blank($data['due_alert_action'] ?? null)) {
+            throw ValidationException::withMessages([
+                'due_alert_action' => 'This customer already has an active due alert. Choose to merge or create a separate alert.',
             ]);
         }
     }

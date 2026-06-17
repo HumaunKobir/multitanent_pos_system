@@ -1,10 +1,12 @@
 <?php
 
+use App\Enums\CustomerDueAlertStatus;
 use App\Enums\SaleType;
 use App\Enums\SystemAccountKey;
 use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Customer;
+use App\Models\CustomerDueAlert;
 use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\Sell;
@@ -524,6 +526,193 @@ test('due sale records customer balance and receivable accounting', function () 
     expect(round($ledgers->where('account_id', $cash->id)->sum('debit'), 2))->toBe(200.0);
     expect(round($ledgers->where('account_id', $receivableAccountId)->sum('debit'), 2))->toBe($dueAmount);
     expect(round($ledgers->sum('debit'), 2))->toBe(round($ledgers->sum('credit'), 2));
+});
+
+function dueSalePayload(User $user, Product $product, Customer $customer, $cash, array $overrides = []): array
+{
+    return array_merge([
+        'customer_id' => $customer->id,
+        'date' => now()->format('Y-m-d'),
+        'discount_type' => 'flat',
+        'discount_value' => '0',
+        'special_discount_id' => null,
+        'vat' => '0',
+        'paid_amount' => '200',
+        'payment_account_id' => $cash->id,
+        'comment' => null,
+        'items' => [[
+            'product_id' => $product->id,
+            'variation_id' => null,
+            'unit_price' => '500',
+            'quantity' => '1',
+        ]],
+    ], $overrides);
+}
+
+test('due sale with due given date creates a customer due alert', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'is_default' => false,
+        'balance' => 0,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', dueSalePayload($user, $product, $customer, $cash, [
+            'due_given_date' => '2026-08-15',
+        ]))
+        ->assertRedirect();
+
+    $alert = CustomerDueAlert::query()->where('customer_id', $customer->id)->first();
+
+    expect($alert)->not->toBeNull();
+    expect($alert->branch_id)->toBe($user->branch_id);
+    expect($alert->due_given_date->format('Y-m-d'))->toBe('2026-08-15');
+    expect($alert->status)->toBe(CustomerDueAlertStatus::Unpaid);
+});
+
+test('full due sale with zero payment lines is allowed', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'is_default' => false,
+        'balance' => 0,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', dueSalePayload($user, $product, $customer, $cash, [
+            'paid_amount' => '0',
+            'payments' => [
+                ['payment_account_id' => $cash->id, 'amount' => 0],
+            ],
+        ]))
+        ->assertRedirect();
+
+    $sell = Sell::query()->latest('id')->first();
+
+    expect((float) $sell->paid_amount)->toBe(0.0);
+    expect((float) $sell->net_amount)->toBe(500.0);
+
+    $customer->refresh();
+    expect((float) $customer->balance)->toBe(500.0);
+});
+
+test('due sale without due given date does not create a customer due alert', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'is_default' => false,
+        'balance' => 0,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', dueSalePayload($user, $product, $customer, $cash))
+        ->assertRedirect();
+
+    expect(CustomerDueAlert::query()->where('customer_id', $customer->id)->exists())->toBeFalse();
+});
+
+test('due sale merges into an existing active due alert when requested', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'is_default' => false,
+        'balance' => 0,
+    ]);
+
+    $existingAlert = CustomerDueAlert::create([
+        'branch_id' => $user->branch_id,
+        'customer_id' => $customer->id,
+        'due_given_date' => '2026-07-01',
+        'status' => CustomerDueAlertStatus::Unpaid,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', dueSalePayload($user, $product, $customer, $cash, [
+            'due_given_date' => '2026-09-01',
+            'due_alert_action' => 'merge',
+        ]))
+        ->assertRedirect();
+
+    expect(CustomerDueAlert::query()->where('customer_id', $customer->id)->count())->toBe(1);
+
+    $existingAlert->refresh();
+    expect($existingAlert->due_given_date->format('Y-m-d'))->toBe('2026-09-01');
+    expect($existingAlert->status)->toBe(CustomerDueAlertStatus::DateChanged);
+});
+
+test('due sale can create a separate due alert when customer already has an active alert', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'is_default' => false,
+        'balance' => 0,
+    ]);
+
+    CustomerDueAlert::create([
+        'branch_id' => $user->branch_id,
+        'customer_id' => $customer->id,
+        'due_given_date' => '2026-07-01',
+        'status' => CustomerDueAlertStatus::Unpaid,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', dueSalePayload($user, $product, $customer, $cash, [
+            'due_given_date' => '2026-10-01',
+            'due_alert_action' => 'separate',
+        ]))
+        ->assertRedirect();
+
+    $alerts = CustomerDueAlert::query()
+        ->where('customer_id', $customer->id)
+        ->orderBy('id')
+        ->get();
+
+    expect($alerts)->toHaveCount(2);
+    expect($alerts->last()->due_given_date->format('Y-m-d'))->toBe('2026-10-01');
+    expect($alerts->last()->status)->toBe(CustomerDueAlertStatus::Unpaid);
+});
+
+test('due sale with existing active alert requires merge or separate action when due date is provided', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'is_default' => false,
+        'balance' => 0,
+    ]);
+
+    CustomerDueAlert::create([
+        'branch_id' => $user->branch_id,
+        'customer_id' => $customer->id,
+        'due_given_date' => '2026-07-01',
+        'status' => CustomerDueAlertStatus::Unpaid,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', dueSalePayload($user, $product, $customer, $cash, [
+            'due_given_date' => '2026-10-01',
+        ]))
+        ->assertSessionHasErrors('due_alert_action');
+
+    expect(CustomerDueAlert::query()->where('customer_id', $customer->id)->count())->toBe(1);
 });
 
 test('due sale requires a registered customer', function () {

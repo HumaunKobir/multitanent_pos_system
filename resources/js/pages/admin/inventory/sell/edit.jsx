@@ -714,9 +714,9 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
 
                         <Card title="Summary" icon={HandCoins}>
                             <div className="space-y-3 text-xs">
-                                <div className="flex justify-between">
-                                    <span className="text-muted-foreground">Gross Amount</span>
-                                    <span className="font-semibold">৳{grossAmount.toFixed(2)}</span>
+                                <div className="flex justify-between text-sm lg:text-base">
+                                    <span className="font-medium text-muted-foreground">Gross Amount</span>
+                                    <span className="font-semibold tabular-nums">৳{grossAmount.toFixed(2)}</span>
                                 </div>
 
                                 {lineDiscountTotal > 0 && (
@@ -788,9 +788,23 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                     />
                                 </div>
 
-                                <div className="flex justify-between border-t border-border pt-2">
-                                    <span className="font-semibold">Net Amount</span>
-                                    <span className="font-bold text-primary">৳{netAmount.toFixed(2)}</span>
+                                <div className="grid grid-cols-3 gap-2 rounded-lg border border-blue-200 bg-blue-950 px-3 py-3">
+                                    <div className="text-center">
+                                        <p className="text-xs font-semibold uppercase tracking-wider text-white/60">Net Payable</p>
+                                        <p className="mt-1 text-lg font-bold tabular-nums text-white">৳{netAmount.toFixed(2)}</p>
+                                    </div>
+                                    <div className="border-x border-white/15 px-2 text-center">
+                                        <p className="text-xs font-semibold uppercase tracking-wider text-white/60">Amount</p>
+                                        <p className="mt-1 text-lg font-bold tabular-nums text-emerald-300">৳{totalPaid.toFixed(2)}</p>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-xs font-semibold uppercase tracking-wider text-white/60">Due Amount</p>
+                                        <p
+                                            className={`mt-1 text-lg font-bold tabular-nums ${dueAmount > 0 ? 'text-red-300' : 'text-white/50'}`}
+                                        >
+                                            ৳{dueAmount.toFixed(2)}
+                                        </p>
+                                    </div>
                                 </div>
 
                                 <SalePaymentLines
@@ -800,12 +814,8 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                     onChange={(payments) => form.setData('payments', payments)}
                                     errors={form.errors}
                                     inputClassName={inputCls}
+                                    hideSummary
                                 />
-
-                                <div className="flex justify-between border-t border-border pt-2">
-                                    <span className="font-semibold text-destructive">Due Amount</span>
-                                    <span className="font-bold text-destructive">৳{dueAmount.toFixed(2)}</span>
-                                </div>
                             </div>
                         </Card>
                     </div>

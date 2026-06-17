@@ -14,6 +14,7 @@ export function SalePaymentLines({
     errors = {},
     inputClassName,
     compact = false,
+    hideSummary = false,
 }) {
     const { totalPaid, dueAmount, remaining } = computeSplitSalePayment(payments, netAmount);
 
@@ -117,24 +118,26 @@ export function SalePaymentLines({
                 </div>
             ))}
 
-            <div className="space-y-1 border border-blue-100 bg-blue-50/50 px-2 py-1.5 text-[11px]">
-                <div className="flex items-center justify-between gap-2">
-                    <span className="text-muted-foreground">Total Paid</span>
-                    <span className="font-medium tabular-nums">৳{totalPaid.toFixed(2)}</span>
+            {!hideSummary && (
+                <div className="space-y-1 border border-blue-100 bg-blue-50/50 px-2 py-1.5 text-[11px]">
+                    <div className="flex items-center justify-between gap-2">
+                        <span className="text-muted-foreground">Total Paid</span>
+                        <span className="font-medium tabular-nums">৳{totalPaid.toFixed(2)}</span>
+                    </div>
+                    {dueAmount > 0 && (
+                        <div className="flex items-center justify-between gap-2 text-red-700">
+                            <span>Due</span>
+                            <span className="font-medium tabular-nums">৳{dueAmount.toFixed(2)}</span>
+                        </div>
+                    )}
+                    {remaining > 0 && totalPaid > 0 && (
+                        <div className="flex items-center justify-between gap-2 text-amber-700">
+                            <span>Remaining</span>
+                            <span className="font-medium tabular-nums">৳{remaining.toFixed(2)}</span>
+                        </div>
+                    )}
                 </div>
-                {dueAmount > 0 && (
-                    <div className="flex items-center justify-between gap-2 text-red-700">
-                        <span>Due</span>
-                        <span className="font-medium tabular-nums">৳{dueAmount.toFixed(2)}</span>
-                    </div>
-                )}
-                {remaining > 0 && totalPaid > 0 && (
-                    <div className="flex items-center justify-between gap-2 text-amber-700">
-                        <span>Remaining</span>
-                        <span className="font-medium tabular-nums">৳{remaining.toFixed(2)}</span>
-                    </div>
-                )}
-            </div>
+            )}
 
             {errors.payments && <p className="text-[10px] text-destructive">{errors.payments}</p>}
         </div>

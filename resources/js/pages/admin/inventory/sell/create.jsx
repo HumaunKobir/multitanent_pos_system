@@ -1093,22 +1093,45 @@ export default function SellCreate({
                     <aside className="flex flex-col border border-blue-200 bg-white shadow-sm md:min-h-0 md:overflow-hidden md:col-span-3 md:col-start-3 lg:col-span-4 lg:col-start-auto 2xl:col-span-4">
                         <PosPanelHeader title="Checkout" icon={HandCoins} />
 
-                        <div className="border-b border-blue-200 bg-blue-950 px-2 py-2 text-center lg:px-3 lg:py-2.5 2xl:py-3">
-                            <p className="text-[9px] font-medium uppercase tracking-wider text-white/60 lg:text-[10px]">Net Payable</p>
-                            <p className="text-lg font-bold tabular-nums text-white lg:text-xl 2xl:text-2xl">৳{netAmount.toFixed(2)}</p>
-                            {dueAmount > 0 && (
-                                <p className="mt-0.5 text-[11px] font-medium text-red-300 lg:text-xs">Due ৳{dueAmount.toFixed(2)}</p>
-                            )}
-                            {totalPaid > 0 && (
-                                <p className="mt-0.5 text-[11px] font-medium text-emerald-300 lg:text-xs">Paid ৳{totalPaid.toFixed(2)}</p>
-                            )}
+                        <div className="border-b border-blue-200 bg-blue-950 px-2 py-2.5 lg:px-3 lg:py-3">
+                            <div className="grid grid-cols-3 divide-x divide-white/15">
+                                <div className="px-1.5 text-center lg:px-2">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-white/60 lg:text-xs">
+                                        Net Payable
+                                    </p>
+                                    <p className="mt-1 text-base font-bold tabular-nums text-white lg:text-lg 2xl:text-xl">
+                                        ৳{netAmount.toFixed(2)}
+                                    </p>
+                                </div>
+                                <div className="px-1.5 text-center lg:px-2">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-white/60 lg:text-xs">
+                                        Amount
+                                    </p>
+                                    <p className="mt-1 text-base font-bold tabular-nums text-emerald-300 lg:text-lg 2xl:text-xl">
+                                        ৳{totalPaid.toFixed(2)}
+                                    </p>
+                                </div>
+                                <div className="px-1.5 text-center lg:px-2">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-white/60 lg:text-xs">
+                                        Due Amount
+                                    </p>
+                                    <p
+                                        className={cn(
+                                            'mt-1 text-base font-bold tabular-nums lg:text-lg 2xl:text-xl',
+                                            dueAmount > 0 ? 'text-red-300' : 'text-white/50',
+                                        )}
+                                    >
+                                        ৳{dueAmount.toFixed(2)}
+                                    </p>
+                                </div>
+                            </div>
                         </div>
 
                         <div className="min-h-0 flex-1 overflow-y-auto p-1.5 lg:p-2 2xl:p-2.5">
                             <div className="space-y-1.5 text-[11px] lg:space-y-2 lg:text-xs">
-                                <div className="flex items-center justify-between gap-1 border border-blue-100 bg-blue-50/50 px-1.5 py-1 lg:gap-2 lg:px-2 lg:py-1.5">
-                                    <span className="text-muted-foreground">Gross</span>
-                                    <span className="font-medium tabular-nums">৳{grossAmount.toFixed(2)}</span>
+                                <div className="flex items-center justify-between gap-1 border border-blue-100 bg-blue-50/50 px-1.5 py-1.5 lg:gap-2 lg:px-2 lg:py-2">
+                                    <span className="text-sm font-medium text-muted-foreground lg:text-base">Gross</span>
+                                    <span className="text-sm font-semibold tabular-nums lg:text-base">৳{grossAmount.toFixed(2)}</span>
                                 </div>
 
                                 {lineDiscountTotal > 0 && (
@@ -1199,6 +1222,7 @@ export default function SellCreate({
                                     errors={form.errors}
                                     inputClassName={inputCls}
                                     compact
+                                    hideSummary
                                 />
 
                                 <div className="sm:hidden">

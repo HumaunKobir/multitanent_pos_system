@@ -1076,6 +1076,21 @@ export default function ProductForm({
                             </>
                         )}
 
+                        {showInitialStockField && (
+                            <Field label="Initial Stock" error={form.errors.initial_stock}>
+                                <Input
+                                    className="h-8 text-xs"
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value={form.data.initial_stock}
+                                    onChange={(e) => form.setData('initial_stock', e.target.value)}
+                                    placeholder="0"
+                                    disabled={stockFieldsDisabled}
+                                />
+                            </Field>
+                        )}
+
                         <Field label="YouTube Link" error={form.errors.youtube_link}>
                             <Input className="h-8 text-xs" value={form.data.youtube_link} onChange={(e) => form.setData('youtube_link', e.target.value)} placeholder="https://youtube.com/..." />
                         </Field>
@@ -1144,21 +1159,6 @@ export default function ProductForm({
                         <Field label="Discount Price" error={form.errors.discount_price}>
                             <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.discount_price} onChange={(e) => form.setData('discount_price', e.target.value)} placeholder="0.00" />
                         </Field>
-
-                        {showInitialStockField && (
-                            <Field label="Initial Stock" error={form.errors.initial_stock}>
-                                <Input
-                                    className="h-8 text-xs"
-                                    type="number"
-                                    min="0"
-                                    step="1"
-                                    value={form.data.initial_stock}
-                                    onChange={(e) => form.setData('initial_stock', e.target.value)}
-                                    placeholder="0"
-                                    disabled={stockFieldsDisabled}
-                                />
-                            </Field>
-                        )}
                     </div>
                     {hasVariations && !allCombosHavePrices && combinations.length > 0 && (
                         <p className="mt-2 text-xs text-amber-600">

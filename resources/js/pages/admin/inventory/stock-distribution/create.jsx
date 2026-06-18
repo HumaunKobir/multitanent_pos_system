@@ -148,7 +148,11 @@ export default function StockDistributionCreate({ today, branches = [] }) {
                     </InventoryCard>
 
                     <InventoryCard title="Products from Main Branch" icon={Package}>
-                        <ProductSearchBox onAdd={addItem} apiRoute="api.products.distribution" />
+                        <ProductSearchBox
+                            onAdd={addItem}
+                            apiRoute="api.products.distribution"
+                            listMaxHeightClassName="max-h-80"
+                        />
                         {form.errors.items && <p className="mt-1 text-xs text-destructive">{form.errors.items}</p>}
                         {items.length > 0 && (
                             <div className="mt-4">
@@ -213,7 +217,7 @@ export default function StockDistributionCreate({ today, branches = [] }) {
                         />
                         <InventoryCard title="Summary" icon={Building2}>
                             <p className="text-xs text-muted-foreground">
-                                Stock will be deducted from main branch (id: 1) and added to the selected branch.
+                                Stock will be deducted from the main branch warehouse and added to the selected branch.
                                 All movements are recorded in the product ledger.
                             </p>
                         </InventoryCard>

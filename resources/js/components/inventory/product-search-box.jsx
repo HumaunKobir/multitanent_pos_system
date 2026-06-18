@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { Input } from '@/components/ui/input';
 
-export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell' }) {
+export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell', listMaxHeightClassName = 'max-h-64' }) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -52,6 +52,12 @@ export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell' }) {
     }, []);
 
     function addItem(product, variation) {
+        const availableStock = variation ? parseFloat(variation.stock ?? 0) : parseFloat(product.stock ?? 0);
+
+        if (availableStock <= 0) {
+            return;
+        }
+
         onAdd({
             product_id: product.id,
             product_name: product.name,
@@ -60,10 +66,23 @@ export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell' }) {
             variation_label: variation?.label ?? variation?.variation_data?.label ?? null,
             unit_price: variation ? parseFloat(variation.price ?? variation.sale_price ?? 0) : parseFloat(product.sale_price ?? 0),
             quantity: '1',
-            available_stock: variation ? parseFloat(variation.stock ?? 0) : parseFloat(product.stock ?? 0),
+            available_stock: availableStock,
         });
         setOpen(false);
         setQuery('');
+        setResults([]);
+    }
+
+    function variationRows(product) {
+        return (product.variations ?? []).filter((v) => parseFloat(v.stock ?? 0) > 0);
+    }
+
+    function isSelectableProduct(product) {
+        if (!product.has_variations) {
+            return parseFloat(product.stock ?? 0) > 0;
+        }
+
+        return variationRows(product).length > 0;
     }
 
     return (
@@ -80,11 +99,11 @@ export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell' }) {
                 <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md">
                     {loading ? (
                         <p className="px-3 py-2 text-xs text-muted-foreground">Loading…</p>
-                    ) : results.length === 0 ? (
+                    ) : results.filter(isSelectableProduct).length === 0 ? (
                         <p className="px-3 py-2 text-xs text-muted-foreground">No products found.</p>
                     ) : (
-                        <ul className="max-h-64 overflow-auto">
-                            {results.map((p) => (
+                        <ul className={`${listMaxHeightClassName} overflow-y-auto`}>
+                            {results.filter(isSelectableProduct).map((p) => (
                                 <li key={p.id} className="border-b border-border/50 last:border-0">
                                     {!p.has_variations ? (
                                         <div
@@ -100,7 +119,7 @@ export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell' }) {
                                                 <Package className="size-3 text-muted-foreground" />
                                                 <span className="text-xs font-semibold">{p.name}</span>
                                             </div>
-                                            {(p.variations ?? []).map((v) => (
+                                            {(variationRows(p)).map((v) => (
                                                 <div
                                                     key={v.id}
                                                     className="flex cursor-pointer items-center justify-between py-1.5 pr-3 pl-7 text-xs hover:bg-accent"

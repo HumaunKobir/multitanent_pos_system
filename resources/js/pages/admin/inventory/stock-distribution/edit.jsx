@@ -165,7 +165,11 @@ export default function StockDistributionEdit({ distribution, branches = [], tod
                     </InventoryCard>
 
                     <InventoryCard title="Products from Main Branch" icon={Package}>
-                        <ProductSearchBox onAdd={addItem} apiRoute="api.products.distribution" />
+                        <ProductSearchBox
+                            onAdd={addItem}
+                            apiRoute="api.products.distribution"
+                            listMaxHeightClassName="max-h-80"
+                        />
                         {form.errors.items && <p className="mt-1 text-xs text-destructive">{form.errors.items}</p>}
                         {items.length > 0 && (
                             <div className="mt-4">

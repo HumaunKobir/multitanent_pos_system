@@ -173,7 +173,7 @@ class UserController extends Controller
         $ecommerceBranchId = EcommerceBranchService::resolveIdStatic();
 
         return Rule::exists('branches', 'id')->where(function ($query) use ($ecommerceBranchId): void {
-            $query->where('id', '!=', Branch::MAIN_BRANCH_ID)
+            $query->where('id', '!=', Branch::resolveMainBranchId())
                 ->orWhere('id', $ecommerceBranchId);
         });
     }

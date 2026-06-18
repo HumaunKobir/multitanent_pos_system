@@ -1,12 +1,20 @@
 import { DataTable } from '@/components/ui/data-table';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { Head, router, usePage } from '@inertiajs/react';
-import { Package, Pencil, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
+import { Package, Pencil, Plus, RotateCcw, Search, Trash2, Inbox, ChevronDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogFooter } from '@/components/ui/dialog';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AdminCreateLink, AdminRowActions } from '@/components/admin/row-actions';
@@ -15,7 +23,7 @@ import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { useCan } from '@/hooks/use-can';
 import { route } from '@/lib/route';
 
-export default function ProductIndex({ products, filters, categories, brands, tags, branches = {}, mainBranchId = null }) {
+export default function ProductIndex({ products, filters, categories, brands, tags, branches = {}, mainBranchId = null, pendingReceiveProducts = [] }) {
     const { flash, auth } = usePage().props;
     const isAdmin = !auth.user?.branch_id;
     const defaultBranchId = mainBranchId != null ? String(mainBranchId) : 'all';
@@ -191,13 +199,70 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                             <p className="text-xs text-white/60">Manage your product inventory.</p>
                         </div>
                     </div>
-                    <AdminCreateLink
-                        permission="product.create"
-                        href={route('product.create')}
-                        label="Add Product"
-                        icon={Plus}
-                        className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
-                    />
+                    <div className="flex items-center gap-2">
+                        {isAdmin && pendingReceiveProducts.length > 0 && (
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button
+                                        size="sm"
+                                        className="border border-amber-300/60 bg-amber-400/15 text-amber-50 backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-amber-200/70 hover:bg-amber-400/25 hover:shadow-md"
+                                    >
+                                        <Inbox className="size-3.5" />
+                                        Pending Receive
+                                        <Badge className="ml-1 h-5 min-w-5 border-amber-200/40 bg-amber-500 px-1.5 text-[10px] text-white">
+                                            {pendingReceiveProducts.length}
+                                        </Badge>
+                                        <ChevronDown className="size-3.5 opacity-70" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end" className="w-[min(100vw-2rem,24rem)] p-1">
+                                    <DropdownMenuLabel className="text-xs text-muted-foreground">
+                                        Pending receive from branches
+                                    </DropdownMenuLabel>
+                                    <DropdownMenuSeparator />
+                                    {pendingReceiveProducts.map((item) => (
+                                        <DropdownMenuItem
+                                            key={item.id}
+                                            className="cursor-default items-start rounded-md p-0 focus:bg-transparent"
+                                            onSelect={(event) => event.preventDefault()}
+                                        >
+                                            <div className="flex w-full items-start justify-between gap-2 rounded-md border border-transparent px-2 py-2 hover:border-border hover:bg-accent/40">
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="truncate text-sm font-medium">{item.name}</p>
+                                                    <p className="mt-0.5 text-xs text-muted-foreground">
+                                                        {item.branch_name ?? 'Branch'}
+                                                        {item.code ? ` · ${item.code}` : ''}
+                                                    </p>
+                                                    {item.stock_summary?.total > 0 && (
+                                                        <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                                                            Branch initial stock: {item.stock_summary.total}
+                                                        </p>
+                                                    )}
+                                                </div>
+                                                {can('product.update') && (
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        className="shrink-0"
+                                                        onClick={() => router.post(route('product.receive', { product: item.slug }))}
+                                                    >
+                                                        Receive
+                                                    </Button>
+                                                )}
+                                            </div>
+                                        </DropdownMenuItem>
+                                    ))}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        )}
+                        <AdminCreateLink
+                            permission="product.create"
+                            href={route('product.create')}
+                            label="Add Product"
+                            icon={Plus}
+                            className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md"
+                        />
+                    </div>
                 </div>
 
                 <div className="mb-4 flex flex-wrap gap-2">

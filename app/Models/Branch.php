@@ -36,7 +36,7 @@ class Branch extends Model
 
     public function scopeOperating(Builder $query): Builder
     {
-        return $query->where('id', '!=', self::MAIN_BRANCH_ID);
+        return $query->where('id', '!=', self::resolveMainBranchId());
     }
 
     public function scopeAssignableForUsers(Builder $query): Builder
@@ -44,7 +44,7 @@ class Branch extends Model
         $ecommerceBranchId = EcommerceBranchService::resolveIdStatic();
 
         return $query->where(function (Builder $query) use ($ecommerceBranchId): void {
-            $query->where('id', '!=', self::MAIN_BRANCH_ID)
+            $query->where('id', '!=', self::resolveMainBranchId())
                 ->orWhere('id', $ecommerceBranchId);
         });
     }

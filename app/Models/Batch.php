@@ -45,9 +45,9 @@ class Batch extends Model
 
     public function scopeAtBranchWarehouse(Builder $query, ?int $branchId): Builder
     {
-        if ($branchId === Branch::MAIN_BRANCH_ID) {
-            return $query->where(function (Builder $q) {
-                $q->where('branch_id', Branch::MAIN_BRANCH_ID)
+        if ($branchId === Branch::resolveMainBranchId()) {
+            return $query->where(function (Builder $q) use ($branchId) {
+                $q->where('branch_id', $branchId)
                     ->orWhereNull('branch_id');
             });
         }

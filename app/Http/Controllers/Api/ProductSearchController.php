@@ -115,14 +115,24 @@ class ProductSearchController extends Controller
             403
         );
 
-        $mainBranchId = Branch::MAIN_BRANCH_ID;
+        $mainBranchId = Branch::resolveMainBranchId();
+        $hasSearch = filled($request->search);
 
         $products = Product::forPurchase()
             ->active()
-            ->atBranch(Branch::MAIN_BRANCH_ID)
+            ->atBranch($mainBranchId)
+            ->where(function ($query) use ($mainBranchId) {
+                $query->whereHas('batches', fn ($q) => $q
+                    ->atBranchWarehouse($mainBranchId)
+                    ->where('available', '>', 0))
+                    ->orWhereHas('variations', fn ($q) => $q
+                        ->where('branch_id', $mainBranchId)
+                        ->where('stock', '>', 0));
+            })
             ->with([
                 'variations' => fn ($q) => $q
-                    ->where('branch_id', Branch::MAIN_BRANCH_ID)
+                    ->where('branch_id', $mainBranchId)
+                    ->where('stock', '>', 0)
                     ->select(['id', 'product_id', 'branch_id', 'sku', 'variation_data', 'price', 'stock']),
                 'batches' => fn ($q) => $q->atBranchWarehouse($mainBranchId)
                     ->where('available', '>', 0)
@@ -132,7 +142,8 @@ class ProductSearchController extends Controller
                 $q->where('name', 'like', "%{$s}%")
                     ->orWhere('code', 'like', "%{$s}%");
             }))
-            ->limit(15)
+            ->orderBy('name')
+            ->when($hasSearch, fn ($q) => $q->limit(50))
             ->get(['id', 'name', 'code', 'sale_price', 'discount_price', 'image']);
 
         return response()->json($products->map(function (Product $product) {

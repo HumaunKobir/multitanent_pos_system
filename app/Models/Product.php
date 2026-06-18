@@ -19,6 +19,8 @@ class Product extends Model
     protected $fillable = [
         'branch_id',
         'product_group_id',
+        'source_branch_id',
+        'received_at',
         'category_id',
         'brand_id',
         'unit_id',
@@ -44,6 +46,7 @@ class Product extends Model
         'tags' => 'array',
         'colors' => 'array',
         'sizes' => 'array',
+        'received_at' => 'datetime',
         'purchase_price' => 'decimal:2',
         'sale_price' => 'decimal:2',
         'discount_price' => 'decimal:2',
@@ -62,6 +65,53 @@ class Product extends Model
     public function scopeActive(Builder $query): Builder
     {
         return $query->where('status', 1);
+    }
+
+    public function scopeVisibleInMainCatalog(Builder $query): Builder
+    {
+        return $query->where(function (Builder $query): void {
+            $query->whereNull('source_branch_id')
+                ->orWhereNotNull('received_at');
+        });
+    }
+
+    public function scopePendingMainReceive(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('source_branch_id')
+            ->whereNull('received_at');
+    }
+
+    public function isPendingMainReceive(): bool
+    {
+        return $this->source_branch_id !== null && $this->received_at === null;
+    }
+
+    /**
+     * @return array{quantity: int, variation_quantity: int, total: int}|null
+     */
+    public function submissionBranchStockSummary(): ?array
+    {
+        if ($this->source_branch_id === null) {
+            return null;
+        }
+
+        $branchProduct = $this->siblingForBranch((int) $this->source_branch_id);
+
+        if ($branchProduct === null) {
+            return null;
+        }
+
+        $branchProduct->loadMissing(['initialStockRecord', 'variations:id,product_id,stock']);
+
+        $nonVariantQuantity = (int) ($branchProduct->initialStockRecord?->quantity ?? 0);
+        $variationQuantity = (int) $branchProduct->variations->sum('stock');
+
+        return [
+            'quantity' => $nonVariantQuantity,
+            'variation_quantity' => $variationQuantity,
+            'total' => $nonVariantQuantity + $variationQuantity,
+        ];
     }
 
     public function scopeVisible(Builder $query): Builder
@@ -109,6 +159,11 @@ class Product extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function sourceBranch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class, 'source_branch_id');
     }
 
     public function category(): BelongsTo

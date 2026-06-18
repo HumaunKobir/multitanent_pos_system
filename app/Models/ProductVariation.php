@@ -38,11 +38,13 @@ class ProductVariation extends Model
             return null;
         }
 
+        $mainBranchId = Branch::resolveMainBranchId();
+
         $mainVariation = static::query()
             ->where('product_id', $variation->product_id)
             ->where('sku', $variation->sku)
-            ->where(function ($query) {
-                $query->where('branch_id', Branch::MAIN_BRANCH_ID)
+            ->where(function ($query) use ($mainBranchId) {
+                $query->where('branch_id', $mainBranchId)
                     ->orWhereNull('branch_id');
             })
             ->first();
@@ -53,7 +55,7 @@ class ProductVariation extends Model
 
         return static::query()->create([
             'product_id' => $variation->product_id,
-            'branch_id' => Branch::MAIN_BRANCH_ID,
+            'branch_id' => $mainBranchId,
             'sku' => $variation->sku,
             'sku_code' => $variation->sku_code,
             'variation_data' => $variation->variation_data,

@@ -8,6 +8,7 @@ use App\Models\ProductInOutLog;
 use App\Models\StockDistribution;
 use App\Models\Transaction;
 use App\Models\User;
+use App\Services\EcommerceBranchService;
 use App\Support\AdminNavigation;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -15,14 +16,11 @@ use Spatie\Permission\Models\Permission;
 
 function mainBranchUser(array $permissions = []): User
 {
-    Branch::query()->firstOrCreate(
-        ['id' => Branch::MAIN_BRANCH_ID],
-        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
-    );
+    $mainBranchId = ensureMainBranch();
 
-    seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    seedAccountingAccounts(branchId: $mainBranchId);
 
-    $user = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    $user = User::factory()->create(['branch_id' => $mainBranchId]);
 
     foreach ($permissions as $permission) {
         Permission::findOrCreate($permission, 'web');
@@ -34,12 +32,9 @@ function mainBranchUser(array $permissions = []): User
 
 function superAdminUser(array $permissions = []): User
 {
-    Branch::query()->firstOrCreate(
-        ['id' => Branch::MAIN_BRANCH_ID],
-        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
-    );
+    ensureMainBranch();
 
-    seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    seedAccountingAccounts(branchId: Branch::resolveMainBranchId());
 
     $user = User::factory()->create(['branch_id' => null]);
 
@@ -96,9 +91,9 @@ test('super admin can distribute stock to operating branch', function () {
     $user = superAdminUser(['inventory.stock-distribution.create']);
     $targetBranch = Branch::factory()->create();
 
-    $product = Product::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    $product = Product::factory()->create(['branch_id' => Branch::resolveMainBranchId()]);
     $mainBatch = Batch::factory()->for($product)->withStock(25)->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'purchase_price' => 100,
     ]);
 
@@ -121,7 +116,7 @@ test('super admin can distribute stock to operating branch', function () {
     expect($distribution)->not->toBeNull();
     $response->assertRedirect(route('inventory.stock-distribution.index'));
 
-    expect($distribution->from_branch_id)->toBe(Branch::MAIN_BRANCH_ID);
+    expect($distribution->from_branch_id)->toBe(Branch::resolveMainBranchId());
     expect($distribution->to_branch_id)->toBe($targetBranch->id);
     expect($distribution->products)->toHaveCount(1);
     expect((float) $distribution->products->first()->quantity)->toBe(8.0);
@@ -156,9 +151,9 @@ test('edit form includes current main branch stock for line items', function () 
         'inventory.stock-distribution.update',
     ]);
     $targetBranch = Branch::factory()->create();
-    $product = Product::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    $product = Product::factory()->create(['branch_id' => Branch::resolveMainBranchId()]);
     Batch::factory()->for($product)->withStock(20)->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'purchase_price' => 50,
     ]);
 
@@ -196,9 +191,9 @@ test('main branch user can update and delete a distribution', function () {
     $targetBranch = Branch::factory()->create();
     $otherBranch = Branch::factory()->create();
 
-    $product = Product::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    $product = Product::factory()->create(['branch_id' => Branch::resolveMainBranchId()]);
     Batch::factory()->for($product)->withStock(20)->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'purchase_price' => 50,
     ]);
 
@@ -244,7 +239,7 @@ test('main branch user can update and delete a distribution', function () {
 
     $mainBatch = Batch::query()
         ->where('product_id', $product->id)
-        ->where('branch_id', Branch::MAIN_BRANCH_ID)
+        ->where('branch_id', Branch::resolveMainBranchId())
         ->first();
     expect((float) $mainBatch->available)->toBe(20.0);
 });
@@ -255,7 +250,7 @@ test('main branch user can distribute legacy null branch warehouse stock', funct
     $user = superAdminUser(['inventory.stock-distribution.create']);
     $targetBranch = Branch::factory()->create();
 
-    $product = Product::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    $product = Product::factory()->create(['branch_id' => Branch::resolveMainBranchId()]);
     $mainBatch = Batch::factory()->for($product)->withStock(12)->create([
         'branch_id' => null,
         'purchase_price' => 80,
@@ -299,7 +294,7 @@ test('branch user can sell stock after distribution', function () {
 
     $groupId = (string) Str::uuid();
     $mainProduct = Product::factory()->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'product_group_id' => $groupId,
         'name' => 'Distributed Sell Product '.fake()->unique()->numerify('###'),
     ]);
@@ -310,7 +305,7 @@ test('branch user can sell stock after distribution', function () {
     ]);
 
     Batch::factory()->for($mainProduct)->withStock(10)->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'purchase_price' => 500,
     ]);
 
@@ -347,10 +342,10 @@ test('show page displays main stock snapshot for distributed products', function
         'inventory.stock-distribution.create',
         'inventory.stock-distribution.view',
     ]);
-    $targetBranch = Branch::factory()->create(['name' => 'Gulshan Branch']);
-    $product = Product::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID, 'name' => 'Test Product']);
+    $targetBranch = Branch::factory()->create(['name' => 'Gulshan Branch '.fake()->unique()->numerify('###')]);
+    $product = Product::factory()->create(['branch_id' => Branch::resolveMainBranchId(), 'name' => 'Test Product']);
     Batch::factory()->for($product)->withStock(50)->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'purchase_price' => 100,
     ]);
 
@@ -365,7 +360,10 @@ test('show page displays main stock snapshot for distributed products', function
         ])
         ->assertRedirect();
 
-    $distribution = StockDistribution::query()->latest('id')->first();
+    $distribution = StockDistribution::query()
+        ->where('comment', 'Branch allocation')
+        ->latest('id')
+        ->first();
 
     $this->actingAs($user)
         ->get("/inventory/stock-distribution/{$distribution->id}")
@@ -373,7 +371,7 @@ test('show page displays main stock snapshot for distributed products', function
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/inventory/stock-distribution/show')
             ->where('distribution.invoice_number', $distribution->invoice_number)
-            ->where('distribution.to_branch.name', 'Gulshan Branch')
+            ->where('distribution.to_branch.name', $targetBranch->name)
             ->where('distribution.products.0.main_stock_before', 50)
             ->where('distribution.products.0.quantity', 10)
             ->where('distribution.products.0.main_stock_after', 40));
@@ -419,7 +417,7 @@ test('distribution maps stock to destination branch product copy', function () {
     $groupId = (string) Str::uuid();
 
     $mainProduct = Product::factory()->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'product_group_id' => $groupId,
     ]);
     $branchProduct = Product::factory()->create([
@@ -429,7 +427,7 @@ test('distribution maps stock to destination branch product copy', function () {
     ]);
 
     Batch::factory()->for($mainProduct)->withStock(30)->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'purchase_price' => 80,
     ]);
 
@@ -458,4 +456,91 @@ test('distribution maps stock to destination branch product copy', function () {
             ->where('branch_id', $targetBranch->id)
             ->exists(),
     )->toBeFalse();
+});
+
+test('stock distribution create includes ecommerce branch as destination', function () {
+    $this->artisan('permissions:sync');
+    $this->withoutVite();
+
+    EcommerceBranchService::resetResolvedId();
+
+    $ecommerceBranch = Branch::query()->firstOrCreate(
+        ['name' => Branch::ECOMMERCE_BRANCH_NAME],
+        Branch::factory()->make(['name' => Branch::ECOMMERCE_BRANCH_NAME])->toArray(),
+    );
+
+    $mainBranch = Branch::query()->firstOrCreate(
+        ['name' => Branch::MAIN_BRANCH_NAME],
+        Branch::factory()->make(['name' => Branch::MAIN_BRANCH_NAME])->toArray(),
+    );
+
+    EcommerceBranchService::resetResolvedId();
+
+    expect($ecommerceBranch->id)->not->toBe($mainBranch->id);
+    expect(Branch::resolveMainBranchId())->toBe($mainBranch->id);
+
+    $user = superAdminUser(['inventory.stock-distribution.create']);
+
+    $this->actingAs($user)
+        ->get('/inventory/stock-distribution/create')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/stock-distribution/create')
+            ->where('branches', fn ($branches) => collect($branches)->pluck('id')->contains($ecommerceBranch->id)));
+});
+
+test('super admin can distribute stock to ecommerce branch', function () {
+    $this->artisan('permissions:sync');
+
+    EcommerceBranchService::resetResolvedId();
+
+    $ecommerceBranch = Branch::query()->firstOrCreate(
+        ['name' => Branch::ECOMMERCE_BRANCH_NAME],
+        Branch::factory()->make(['name' => Branch::ECOMMERCE_BRANCH_NAME])->toArray(),
+    );
+
+    Branch::query()->firstOrCreate(
+        ['name' => Branch::MAIN_BRANCH_NAME],
+        Branch::factory()->make(['name' => Branch::MAIN_BRANCH_NAME])->toArray(),
+    );
+
+    EcommerceBranchService::resetResolvedId();
+
+    $mainBranchId = Branch::resolveMainBranchId();
+    $user = superAdminUser(['inventory.stock-distribution.create']);
+    $groupId = (string) Str::uuid();
+
+    $mainProduct = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'product_group_id' => $groupId,
+    ]);
+    $ecommerceProduct = Product::factory()->create([
+        'branch_id' => $ecommerceBranch->id,
+        'product_group_id' => $groupId,
+        'name' => $mainProduct->name,
+    ]);
+
+    Batch::factory()->for($mainProduct)->withStock(15)->create([
+        'branch_id' => $mainBranchId,
+        'purchase_price' => 50,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/stock-distribution', [
+            'to_branch_id' => $ecommerceBranch->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Ecommerce allocation',
+            'items' => [
+                ['product_id' => $mainProduct->id, 'variation_id' => null, 'quantity' => '6'],
+            ],
+        ])
+        ->assertRedirect();
+
+    $destinationBatch = Batch::query()
+        ->where('product_id', $ecommerceProduct->id)
+        ->where('branch_id', $ecommerceBranch->id)
+        ->first();
+
+    expect($destinationBatch)->not->toBeNull();
+    expect((float) $destinationBatch->available)->toBe(6.0);
 });

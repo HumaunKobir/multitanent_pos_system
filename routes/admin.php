@@ -100,6 +100,7 @@ Route::middleware(['auth', 'verified', 'ecommerce.panel'])->group(function () {
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {
+    Route::post('product/{product}/receive', [ProductController::class, 'receive'])->name('product.receive');
     Route::resource('product', ProductController::class)->except(['show']);
     Route::get('barcode', [BarcodeController::class, 'index'])->name('barcode.index');
     Route::get('barcode/serial-range', [BarcodeController::class, 'serialRange'])->name('barcode.serial-range');

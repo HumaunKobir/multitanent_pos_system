@@ -15,17 +15,19 @@ class StockDistributionService
 
     public function mainWarehouseStock(int $productId, ?int $variationId): float
     {
+        $mainBranchId = Branch::resolveMainBranchId();
+
         if ($variationId) {
             return (float) (ProductVariation::query()
                 ->whereKey($variationId)
                 ->where('product_id', $productId)
-                ->where('branch_id', Branch::MAIN_BRANCH_ID)
+                ->where('branch_id', $mainBranchId)
                 ->value('stock') ?? 0);
         }
 
         return (float) Batch::query()
             ->where('product_id', $productId)
-            ->atBranchWarehouse(Branch::MAIN_BRANCH_ID)
+            ->atBranchWarehouse($mainBranchId)
             ->sum('available');
     }
 
@@ -34,7 +36,7 @@ class StockDistributionService
      */
     public function distributeLine(int $toBranchId, int $productId, ?int $variationId, float $qty): array
     {
-        $fromBranchId = Branch::MAIN_BRANCH_ID;
+        $fromBranchId = Branch::resolveMainBranchId();
         $destinationProduct = $this->resolveDestinationProduct($productId, $toBranchId);
 
         if ($variationId) {

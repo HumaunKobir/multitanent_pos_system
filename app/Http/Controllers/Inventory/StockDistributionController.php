@@ -272,7 +272,7 @@ class StockDistributionController extends Controller
     {
         $distribution = StockDistribution::create([
             'branch_id' => $branchId,
-            'from_branch_id' => Branch::MAIN_BRANCH_ID,
+            'from_branch_id' => Branch::resolveMainBranchId(),
             'to_branch_id' => (int) $data['to_branch_id'],
             'date' => $data['date'],
             'comment' => $data['comment'] ?? null,

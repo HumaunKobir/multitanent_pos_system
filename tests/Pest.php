@@ -55,6 +55,16 @@ function something()
     // ..
 }
 
+function ensureMainBranch(): int
+{
+    Branch::query()->firstOrCreate(
+        ['name' => Branch::MAIN_BRANCH_NAME],
+        Branch::factory()->make(['name' => Branch::MAIN_BRANCH_NAME])->toArray(),
+    );
+
+    return Branch::resolveMainBranchId();
+}
+
 function seedAccountingAccounts(float $minimumBalance = 100000, ?int $branchId = null, ?User $user = null): ChartOfAccount
 {
     $branchId ??= $user?->branch_id ?? auth()->user()?->branch_id;

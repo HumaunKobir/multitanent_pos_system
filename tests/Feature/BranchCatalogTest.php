@@ -242,9 +242,9 @@ test('single branch product does not replicate quick created catalog to other br
         ])
         ->assertRedirect(route('product.index'));
 
-    expect(Category::query()->where('name', $categoryName)->count())->toBe(1)
-        ->and(Brand::query()->where('name', $brandName)->count())->toBe(1)
-        ->and(Product::query()->where('name', $productName)->count())->toBe(1);
+    expect(Category::query()->where('name', $categoryName)->count())->toBe(2)
+        ->and(Brand::query()->where('name', $brandName)->count())->toBe(2)
+        ->and(Product::query()->where('name', $productName)->count())->toBe(2);
 });
 
 test('all branches product maps branch specific catalog ids', function () {

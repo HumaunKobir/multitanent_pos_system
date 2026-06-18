@@ -46,6 +46,7 @@ class ProductController extends Controller
         $products = Product::query()
             ->active()
             ->when($listBranchId !== null, fn ($q) => $q->where('branch_id', $listBranchId))
+            ->when($isAdmin && $listBranchId === $mainBranchId, fn ($q) => $q->visibleInMainCatalog())
             ->with([
                 'category',
                 'brand',
@@ -66,8 +67,30 @@ class ProductController extends Controller
             ->paginate(10)
             ->withQueryString();
 
+        $pendingReceiveProducts = $isAdmin
+            ? Product::query()
+                ->active()
+                ->where('branch_id', $mainBranchId)
+                ->pendingMainReceive()
+                ->with(['sourceBranch:id,name'])
+                ->latest()
+                ->get()
+                ->map(fn (Product $product): array => [
+                    'id' => $product->id,
+                    'slug' => $product->slug,
+                    'name' => $product->name,
+                    'code' => $product->code,
+                    'branch_name' => $product->sourceBranch?->name,
+                    'stock_summary' => $product->submissionBranchStockSummary(),
+                    'created_at' => $product->created_at?->toIso8601String(),
+                ])
+                ->values()
+                ->all()
+            : [];
+
         return Inertia::render('admin/product/index', [
             'products' => $products,
+            'pendingReceiveProducts' => $pendingReceiveProducts,
             'mainBranchId' => $mainBranchId,
             'filters' => array_merge(
                 $request->only('search', 'category_id', 'brand_id', 'tag'),
@@ -203,6 +226,30 @@ class ProductController extends Controller
 
         return redirect()->route('product.index')
             ->with('success', 'Product created successfully.');
+    }
+
+    public function receive(Product $product): RedirectResponse
+    {
+        $this->authorize('product.update');
+
+        abort_unless(
+            $product->isPendingMainReceive() && Branch::isMainBranch($product->branch_id),
+            404,
+        );
+
+        $branchName = $product->sourceBranch?->name ?? 'Branch';
+        $stockSummary = $product->submissionBranchStockSummary();
+
+        $product->update(['received_at' => now()]);
+
+        $message = "Product received from {$branchName}.";
+
+        if ($stockSummary !== null && $stockSummary['total'] > 0) {
+            $message .= " Note: {$branchName} already has {$stockSummary['total']} initial stock on this product.";
+        }
+
+        return redirect()->route('product.index')
+            ->with('success', $message);
     }
 
     public function edit(Product $product): Response

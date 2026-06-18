@@ -140,6 +140,20 @@ class ProductBranchReplicationService
         int $mainInitialStock = 0,
         array $photoPaths = [],
     ): array {
+        $userBranchId = Auth::user()?->branch_id;
+
+        if ($userBranchId !== null) {
+            return $this->createBranchSubmissionWithPendingMain(
+                $data,
+                $combinations,
+                $mainPurchasePrice,
+                $mainSalePrice,
+                $mainInitialStock,
+                $photoPaths,
+                (int) $userBranchId,
+            );
+        }
+
         $branchId = $this->resolveStoreBranchId(
             filled($data['branch_id'] ?? null) ? (int) $data['branch_id'] : null,
         );
@@ -157,8 +171,115 @@ class ProductBranchReplicationService
             );
         }
 
+        if (! Branch::isMainBranch($branchId)) {
+            unset($data['branch_id']);
+
+            return $this->createForBranches(
+                $data,
+                $combinations,
+                $mainPurchasePrice,
+                $mainSalePrice,
+                $mainInitialStock,
+                $photoPaths,
+                branchIds: collect([
+                    Branch::resolveMainBranchId(),
+                    $branchId,
+                ])->sort()->values(),
+            );
+        }
+
         $data['branch_id'] = $branchId;
 
+        return [
+            $this->persistProductAtBranch(
+                $data,
+                $combinations,
+                $mainPurchasePrice,
+                $mainSalePrice,
+                $mainInitialStock,
+                $photoPaths,
+                $branchId,
+            ),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<int, array<string, mixed>>  $combinations
+     * @param  list<string>  $photoPaths
+     * @return list<Product>
+     */
+    private function createBranchSubmissionWithPendingMain(
+        array $data,
+        array $combinations,
+        float $mainPurchasePrice,
+        float $mainSalePrice,
+        int $mainInitialStock,
+        array $photoPaths,
+        int $branchId,
+    ): array {
+        $productGroupId = (string) Str::uuid();
+        $mainBranchId = Branch::resolveMainBranchId();
+        $manualCode = filled($data['code'] ?? null) ? (string) $data['code'] : null;
+        $baseSlug = filled($data['slug'] ?? null)
+            ? (string) $data['slug']
+            : Product::generateUniqueSlug((string) $data['name']);
+        $autoCodeBase = $baseSlug;
+
+        $branchData = $this->mapBranchCatalogFields($data, $branchId);
+        $branchData['branch_id'] = $branchId;
+        $branchData['product_group_id'] = $productGroupId;
+        $branchData['slug'] = $this->resolveBranchSlug($baseSlug, $branchId);
+        $branchData['code'] = $this->resolveBranchCode($manualCode ?? $autoCodeBase, $branchId);
+
+        $branchProduct = $this->persistProductAtBranch(
+            $branchData,
+            $combinations,
+            $mainPurchasePrice,
+            $mainSalePrice,
+            $mainInitialStock,
+            $photoPaths,
+            $branchId,
+        );
+
+        $mainData = $this->mapBranchCatalogFields($data, $mainBranchId);
+        $mainData['branch_id'] = $mainBranchId;
+        $mainData['product_group_id'] = $productGroupId;
+        $mainData['source_branch_id'] = $branchId;
+        $mainData['received_at'] = null;
+        $mainData['slug'] = $this->resolveBranchSlug($baseSlug, $mainBranchId);
+        $mainData['code'] = $this->resolveBranchCode($manualCode ?? $autoCodeBase, $mainBranchId);
+
+        $this->persistProductAtBranch(
+            $mainData,
+            $combinations,
+            $mainPurchasePrice,
+            $mainSalePrice,
+            0,
+            $photoPaths,
+            $mainBranchId,
+        );
+
+        $this->ensureTagRecordsForBranch($branchData['tags'] ?? [], $branchId);
+        $this->ensureTagRecordsForBranch($mainData['tags'] ?? [], $mainBranchId);
+
+        return [$branchProduct];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<int, array<string, mixed>>  $combinations
+     * @param  list<string>  $photoPaths
+     */
+    private function persistProductAtBranch(
+        array $data,
+        array $combinations,
+        float $mainPurchasePrice,
+        float $mainSalePrice,
+        int $mainInitialStock,
+        array $photoPaths,
+        int $branchId,
+    ): Product {
         $product = Product::create($data);
 
         foreach ($photoPaths as $path) {
@@ -170,7 +291,7 @@ class ProductBranchReplicationService
 
         if ($combinations === [] && $product->code) {
             Barcode::create([
-                'branch_id' => $product->branch_id,
+                'branch_id' => $branchId,
                 'product_id' => $product->id,
                 'product_variation_id' => null,
                 'code' => $product->code,
@@ -195,7 +316,7 @@ class ProductBranchReplicationService
 
             $variation = ProductVariation::create([
                 'product_id' => $product->id,
-                'branch_id' => $product->branch_id,
+                'branch_id' => $branchId,
                 'sku' => $combo['sku'],
                 'price' => $salePrice,
                 'purchase_price' => $purchasePrice,
@@ -206,7 +327,7 @@ class ProductBranchReplicationService
             $this->initialStock->applyVariationStockOnCreate($variation, $stock, (float) $purchasePrice);
 
             Barcode::create([
-                'branch_id' => $product->branch_id,
+                'branch_id' => $branchId,
                 'product_id' => $product->id,
                 'product_variation_id' => $variation->id,
                 'code' => $combo['sku'],
@@ -214,7 +335,7 @@ class ProductBranchReplicationService
             ]);
         }
 
-        return [$product];
+        return $product;
     }
 
     private function resolveStoreBranchId(?int $requestedBranchId): ?int

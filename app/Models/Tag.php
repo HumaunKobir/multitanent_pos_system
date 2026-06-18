@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\CommonStatus;
+use App\Services\EcommerceBranchService;
 use Database\Factories\TagFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -18,6 +19,7 @@ class Tag extends Model
 
     protected $fillable = [
         'branch_id',
+        'catalog_group_id',
         'parent_id',
         'name',
         'image',
@@ -59,11 +61,11 @@ class Tag extends Model
     {
         $branchId = Auth::user()?->branch_id;
 
-        if ($branchId === null) {
-            return $query->whereNull('branch_id');
+        if ($branchId !== null) {
+            return $query->where('branch_id', $branchId);
         }
 
-        return $query->where('branch_id', $branchId);
+        return $query->where('branch_id', Branch::resolveAdminCatalogBranchId());
     }
 
     public function scopeSelectableForProduct(Builder $query): Builder
@@ -71,5 +73,10 @@ class Tag extends Model
         return $query
             ->forPanel()
             ->whereIn('status', [CommonStatus::Active, CommonStatus::Pending]);
+    }
+
+    public function scopeForStorefront(Builder $query): Builder
+    {
+        return $query->where('branch_id', EcommerceBranchService::resolveIdStatic());
     }
 }

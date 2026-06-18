@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Setting;
 
+use App\Concerns\ManagesBranchCatalog;
 use App\Http\Controllers\Controller;
 use App\Models\Color;
 use Illuminate\Http\JsonResponse;
@@ -12,11 +13,13 @@ use Inertia\Response;
 
 class ColorController extends Controller
 {
+    use ManagesBranchCatalog;
+
     public function index(Request $request): Response
     {
         $this->authorize('setting.color.view');
 
-        $colors = Color::query()
+        $colors = $this->branchCatalogQuery()
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->latest()
             ->paginate(20)
@@ -32,12 +35,7 @@ class ColorController extends Controller
     {
         $this->authorize('setting.color.create');
 
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:191'],
-            'status' => ['required', 'in:0,1'],
-        ]);
-
-        $color = Color::create($data);
+        $color = $this->storeCatalogRecords($this->validatedCatalogData($request));
 
         if ($request->wantsJson()) {
             return response()->json(['value' => $color->name, 'label' => $color->name], 201);
@@ -50,13 +48,12 @@ class ColorController extends Controller
     public function update(Request $request, Color $color): RedirectResponse
     {
         $this->authorize('setting.color.update');
+        $this->authorizeCatalogAccess($color);
 
-        $data = $request->validate([
+        $color->update($request->validate([
             'name' => ['required', 'string', 'max:191'],
             'status' => ['required', 'in:0,1'],
-        ]);
-
-        $color->update($data);
+        ]));
 
         return redirect()->route('setting.color.index')
             ->with('success', 'Color updated successfully.');
@@ -65,10 +62,16 @@ class ColorController extends Controller
     public function destroy(Color $color): RedirectResponse
     {
         $this->authorize('setting.color.delete');
+        $this->authorizeCatalogAccess($color);
 
         $color->delete();
 
         return redirect()->route('setting.color.index')
             ->with('success', 'Color deleted successfully.');
+    }
+
+    protected function catalogModelClass(): string
+    {
+        return Color::class;
     }
 }

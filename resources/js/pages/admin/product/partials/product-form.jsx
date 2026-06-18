@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useCan } from '@/hooks/use-can';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
 import { Link, usePage } from '@inertiajs/react';
@@ -16,7 +17,13 @@ function getXsrf() {
     return decodeURIComponent(document.cookie.split('; ').find((r) => r.startsWith('XSRF-TOKEN='))?.split('=')[1] ?? '');
 }
 
-async function quickCreate(routeName, name) {
+async function quickCreate(routeName, name, branchId = null) {
+    const payload = { name, status: 1 };
+
+    if (branchId) {
+        payload.branch_id = Number(branchId);
+    }
+
     const res = await fetch(route(routeName), {
         method: 'POST',
         credentials: 'include',
@@ -26,7 +33,7 @@ async function quickCreate(routeName, name) {
             'X-Requested-With': 'XMLHttpRequest',
             'X-XSRF-TOKEN': getXsrf(),
         },
-        body: JSON.stringify({ name, status: 1 }),
+        body: JSON.stringify(payload),
     });
     const json = await res.json();
     if (!res.ok) throw new Error(json.message ?? 'Failed to create');
@@ -492,7 +499,7 @@ function VariationBuilder({
                 sale_price: '',
                 purchase_price: '',
                 sku,
-                stock: 0,
+                stock: '',
             };
         });
 
@@ -715,6 +722,7 @@ export default function ProductForm({
     colorOptions = [],
     sizeOptions = [],
     tagOptions = [],
+    ecommerceBranchId = null,
     initialVariations = [],
     variantsLocked = false,
     isEditing = false,
@@ -722,6 +730,7 @@ export default function ProductForm({
     cancelHref = '',
 }) {
     const { auth } = usePage().props;
+    const { can } = useCan();
     const isAdmin = !auth.user?.branch_id;
 
     const branchSelectOptions = useMemo(
@@ -757,7 +766,28 @@ export default function ProductForm({
         combinations.length > 0 &&
         combinations.every((c) => String(c.sale_price ?? '').trim() !== '' && String(c.purchase_price ?? '').trim() !== '');
 
+    const allCombosHaveStock =
+        hasVariations &&
+        combinations.length > 0 &&
+        combinations.every((c) => String(c.stock ?? '').trim() !== '');
+
     const priceFieldsDisabled = allCombosHavePrices;
+    const stockFieldsDisabled = allCombosHaveStock;
+    const showInitialStockField = !hasVariations || hasVariations;
+
+    const effectiveBranchId = isAdmin
+        ? (form.data.branch_id != null && form.data.branch_id !== '' ? String(form.data.branch_id) : null)
+        : (auth.user?.branch_id != null ? String(auth.user.branch_id) : null);
+
+    const showVisibleOnStore = can('product.visible-on-store')
+        && ecommerceBranchId != null
+        && effectiveBranchId === String(ecommerceBranchId);
+
+    useEffect(() => {
+        if (!showVisibleOnStore && form.data.visible !== 'no') {
+            form.setData('visible', 'no');
+        }
+    }, [showVisibleOnStore]);
 
     function handleVariationsToggle(val) {
         setHasVariations(val);
@@ -786,7 +816,7 @@ export default function ProductForm({
                                 <SmartSelect
                                     options={branchSelectOptions}
                                     value={form.data.branch_id ? String(form.data.branch_id) : '__none'}
-                                    onValueChange={(v) => form.setData('branch_id', v === '__none' ? null : v)}
+                                    onValueChange={(v) => form.setData('branch_id', v === '__none' ? '' : v)}
                                     placeholder="Search branch…"
                                     triggerClassName="h-8 text-xs"
                                     optionsClassName="max-h-52"
@@ -805,7 +835,7 @@ export default function ProductForm({
                                 creatable
                                 createMode="instant"
                                 createRowLabel={(q) => `Add "${q}"`}
-                                onModalCreate={({ label }) => quickCreate('setting.category.store', label)}
+                                onModalCreate={({ label }) => quickCreate('setting.category.store', label, effectiveBranchId)}
                             />
                         </Field>
 
@@ -820,7 +850,7 @@ export default function ProductForm({
                                 creatable
                                 createMode="instant"
                                 createRowLabel={(q) => `Add "${q}"`}
-                                onModalCreate={({ label }) => quickCreate('setting.brand.store', label)}
+                                onModalCreate={({ label }) => quickCreate('setting.brand.store', label, effectiveBranchId)}
                             />
                         </Field>
 
@@ -835,7 +865,7 @@ export default function ProductForm({
                                 creatable
                                 createMode="instant"
                                 createRowLabel={(q) => `Add "${q}"`}
-                                onModalCreate={({ label }) => quickCreate('setting.unit.store', label)}
+                                onModalCreate={({ label }) => quickCreate('setting.unit.store', label, effectiveBranchId)}
                             />
                         </Field>
 
@@ -850,7 +880,7 @@ export default function ProductForm({
                                 creatable
                                 createMode="instant"
                                 createRowLabel={(q) => `Add "${q}"`}
-                                onModalCreate={({ label }) => quickCreate('setting.warranty.store', label)}
+                                onModalCreate={({ label }) => quickCreate('setting.warranty.store', label, effectiveBranchId)}
                             />
                         </Field>
 
@@ -911,7 +941,7 @@ export default function ProductForm({
                                 creatable
                                 onCreateOption={async (name) => {
                                     try {
-                                        const opt = await quickCreate('setting.tag.store', name);
+                                        const opt = await quickCreate('setting.tag.store', name, effectiveBranchId);
                                         setLocalTagOptions((prev) => [...prev, opt]);
                                         form.setData('tags', [...(form.data.tags || []), opt.value]);
                                         toast.success(`"${opt.label}" created.`);
@@ -922,16 +952,18 @@ export default function ProductForm({
                             />
                         </Field>
 
-                        <Field label="Visible on Store">
-                            <button
-                                type="button"
-                                onClick={() => form.setData('visible', visibleOn ? 'no' : 'yes')}
-                                className="relative mt-1"
-                            >
-                                <div className={`h-5 w-9 rounded-full transition-colors ${visibleOn ? 'bg-green-600' : 'bg-muted'}`} />
-                                <div className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${visibleOn ? 'translate-x-4' : ''}`} />
-                            </button>
-                        </Field>
+                        {showVisibleOnStore && (
+                            <Field label="Visible on Store">
+                                <button
+                                    type="button"
+                                    onClick={() => form.setData('visible', visibleOn ? 'no' : 'yes')}
+                                    className="relative mt-1"
+                                >
+                                    <div className={`h-5 w-9 rounded-full transition-colors ${visibleOn ? 'bg-green-600' : 'bg-muted'}`} />
+                                    <div className={`absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${visibleOn ? 'translate-x-4' : ''}`} />
+                                </button>
+                            </Field>
+                        )}
                     </div>
                 </Card>
 
@@ -949,8 +981,8 @@ export default function ProductForm({
                     />
                 </Card>
 
-                {/* Price */}
-                <Card title="Price" icon={DollarSign}>
+                {/* Price & Stock */}
+                <Card title="Price & Stock" icon={DollarSign}>
                     <div className="grid grid-cols-3 gap-3">
                         <Field label="Purchase Price" required={!priceFieldsDisabled} error={form.errors.purchase_price}>
                             <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.purchase_price} onChange={(e) => form.setData('purchase_price', e.target.value)} placeholder="0.00" disabled={priceFieldsDisabled} />
@@ -963,6 +995,21 @@ export default function ProductForm({
                         <Field label="Discount Price" error={form.errors.discount_price}>
                             <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.discount_price} onChange={(e) => form.setData('discount_price', e.target.value)} placeholder="0.00" />
                         </Field>
+
+                        {showInitialStockField && (
+                            <Field label="Initial Stock" error={form.errors.initial_stock}>
+                                <Input
+                                    className="h-8 text-xs"
+                                    type="number"
+                                    min="0"
+                                    step="1"
+                                    value={form.data.initial_stock}
+                                    onChange={(e) => form.setData('initial_stock', e.target.value)}
+                                    placeholder="0"
+                                    disabled={stockFieldsDisabled}
+                                />
+                            </Field>
+                        )}
                     </div>
                     {hasVariations && !allCombosHavePrices && combinations.length > 0 && (
                         <p className="mt-2 text-xs text-amber-600">
@@ -972,6 +1019,16 @@ export default function ProductForm({
                     {allCombosHavePrices && (
                         <p className="mt-2 text-xs text-muted-foreground">
                             All combinations have their own prices — these fields are not required.
+                        </p>
+                    )}
+                    {hasVariations && !allCombosHaveStock && combinations.length > 0 && (
+                        <p className="mt-2 text-xs text-amber-600">
+                            Some combinations are missing stock — this initial stock will be applied to those.
+                        </p>
+                    )}
+                    {hasVariations && allCombosHaveStock && combinations.length > 0 && (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                            All combinations have their own stock — initial stock is not required.
                         </p>
                     )}
                 </Card>

@@ -2,15 +2,12 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Builder;
+use App\Traits\HasBranchCatalog;
 use Illuminate\Database\Eloquent\Model;
 
 class Unit extends Model
 {
-    protected $fillable = ['name', 'status'];
+    use HasBranchCatalog;
 
-    public function scopeActive($query): Builder
-    {
-        return $query->where('status', 1);
-    }
+    protected $fillable = ['branch_id', 'catalog_group_id', 'name', 'status'];
 }

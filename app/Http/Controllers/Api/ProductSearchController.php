@@ -77,7 +77,7 @@ class ProductSearchController extends Controller
         return response()->json($products->map(function (Product $product) use ($branchId) {
             $branchVariations = $product->variations
                 ->when($branchId !== null, fn ($variations) => $variations->filter(
-                    fn ($variation) => $variation->branch_id === $branchId || $variation->branch_id === null
+                    fn ($variation) => $variation->branch_id === $branchId
                 ));
 
             return [
@@ -91,7 +91,7 @@ class ProductSearchController extends Controller
                 'has_variations' => $branchVariations->isNotEmpty(),
                 'stock' => (float) $product->batches
                     ->when($branchId !== null, fn ($batches) => $batches->filter(
-                        fn ($batch) => $batch->branch_id === $branchId || $batch->branch_id === null
+                        fn ($batch) => $batch->branch_id === $branchId
                     ))
                     ->sum('available'),
                 'variations' => $branchVariations
@@ -111,7 +111,7 @@ class ProductSearchController extends Controller
         $this->authorize('inventory.stock-distribution.create');
 
         abort_unless(
-            Branch::isMainBranch(Auth::user()?->branch_id) || Auth::user()?->isSuperAdmin(),
+            Auth::user()?->isSuperAdmin(),
             403
         );
 
@@ -119,8 +119,11 @@ class ProductSearchController extends Controller
 
         $products = Product::forPurchase()
             ->active()
+            ->atBranch(Branch::MAIN_BRANCH_ID)
             ->with([
-                'variations:id,product_id,branch_id,sku,variation_data,price,stock',
+                'variations' => fn ($q) => $q
+                    ->where('branch_id', Branch::MAIN_BRANCH_ID)
+                    ->select(['id', 'product_id', 'branch_id', 'sku', 'variation_data', 'price', 'stock']),
                 'batches' => fn ($q) => $q->atBranchWarehouse($mainBranchId)
                     ->where('available', '>', 0)
                     ->select(['id', 'product_id', 'branch_id', 'available']),
@@ -132,10 +135,8 @@ class ProductSearchController extends Controller
             ->limit(15)
             ->get(['id', 'name', 'code', 'sale_price', 'discount_price', 'image']);
 
-        return response()->json($products->map(function (Product $product) use ($mainBranchId) {
-            $mainVariations = $product->variations->filter(
-                fn ($v) => $v->branch_id === $mainBranchId || $v->branch_id === null
-            );
+        return response()->json($products->map(function (Product $product) {
+            $mainVariations = $product->variations;
 
             return [
                 'id' => $product->id,

@@ -68,7 +68,8 @@ class HandleInertiaRequests extends Middleware
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'cart' => $cart,
             'cartCount' => count($cart),
-            'categories' => Category::active()
+            'categories' => Category::forStorefront()
+                ->active()
                 ->orderBy('name')
                 ->get(['id', 'name', 'slug', 'image'])
                 ->map(fn ($c) => [
@@ -77,7 +78,8 @@ class HandleInertiaRequests extends Middleware
                     'slug' => $c->slug,
                     'image' => StorageUrl::public($c->image),
                 ]),
-            'brands' => Brand::active()
+            'brands' => Brand::forStorefront()
+                ->active()
                 ->orderBy('name')
                 ->get(['id', 'name', 'slug'])
                 ->map(fn ($brand) => [
@@ -85,8 +87,7 @@ class HandleInertiaRequests extends Middleware
                     'name' => $brand->name,
                     'slug' => $brand->slug,
                 ]),
-            'tags' => Tag::query()
-                ->whereNull('branch_id')
+            'tags' => Tag::forStorefront()
                 ->where('status', CommonStatus::Active)
                 ->orderBy('name')
                 ->get(['id', 'name'])

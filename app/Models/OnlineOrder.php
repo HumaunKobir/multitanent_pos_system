@@ -93,10 +93,6 @@ class OnlineOrder extends Model
             return 'Delivered or cancelled orders cannot be sent to Steadfast.';
         }
 
-        if ($this->status !== OrderStatus::Confirmed) {
-            return 'Order must be confirmed before sending to Steadfast.';
-        }
-
         if (! filled($this->name) || ! filled($this->phone) || ! filled($this->address)) {
             return 'Recipient name, phone, and address are required.';
         }

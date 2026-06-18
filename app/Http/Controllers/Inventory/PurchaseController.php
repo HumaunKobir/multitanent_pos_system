@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Inventory;
 
 use App\Enums\PurchaseType;
+use App\Http\Controllers\Concerns\AuthorizesBranchUserRecords;
 use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
 use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
@@ -22,6 +23,7 @@ use Inertia\Response;
 
 class PurchaseController extends Controller
 {
+    use AuthorizesBranchUserRecords;
     use ProvidesPaymentAccounts;
     use UsesInventoryAccounting;
 
@@ -31,7 +33,7 @@ class PurchaseController extends Controller
     {
         $this->authorize('inventory.purchase.view');
 
-        $purchases = Purchase::query()->ownBranch()
+        $purchases = Purchase::query()->ownBranchUser()
             ->purchase()
             ->with('supplier:id,name,phone')
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
@@ -149,6 +151,7 @@ class PurchaseController extends Controller
 
             $purchase = Purchase::create([
                 'branch_id' => $branchId,
+                'user_id' => $this->currentUserId(),
                 'supplier_id' => $data['supplier_id'],
                 'date' => $data['date'],
                 'gross_amount' => $grossAmount,
@@ -179,12 +182,7 @@ class PurchaseController extends Controller
     public function show(Purchase $purchase): Response
     {
         $this->authorize('inventory.purchase.view');
-
-        $branchId = Auth::user()?->branch_id;
-
-        if ($branchId !== null && $purchase->branch_id !== $branchId) {
-            abort(404);
-        }
+        $this->authorizeBranchUserRecord($purchase);
 
         $purchase->load([
             'supplier',
@@ -201,12 +199,7 @@ class PurchaseController extends Controller
     public function edit(Purchase $purchase): Response|RedirectResponse
     {
         $this->authorize('inventory.purchase.update');
-
-        $branchId = Auth::user()?->branch_id;
-
-        if ($branchId !== null && $purchase->branch_id !== $branchId) {
-            abort(404);
-        }
+        $this->authorizeBranchUserRecord($purchase);
 
         if (PurchaseReturn::where('purchase_id', $purchase->id)->exists()) {
             return redirect()
@@ -296,12 +289,7 @@ class PurchaseController extends Controller
     public function update(Request $request, Purchase $purchase): RedirectResponse
     {
         $this->authorize('inventory.purchase.update');
-
-        $branchId = Auth::user()?->branch_id;
-
-        if ($branchId !== null && $purchase->branch_id !== $branchId) {
-            abort(404);
-        }
+        $this->authorizeBranchUserRecord($purchase);
 
         if (PurchaseReturn::where('purchase_id', $purchase->id)->exists()) {
             return back()->with('error', 'This purchase cannot be edited because it has returns.');
@@ -481,12 +469,7 @@ class PurchaseController extends Controller
     public function destroy(Purchase $purchase): RedirectResponse
     {
         $this->authorize('inventory.purchase.delete');
-
-        $branchId = Auth::user()?->branch_id;
-
-        if ($branchId !== null && $purchase->branch_id !== $branchId) {
-            abort(404);
-        }
+        $this->authorizeBranchUserRecord($purchase);
 
         $purchase->load(['purchaseProducts']);
 

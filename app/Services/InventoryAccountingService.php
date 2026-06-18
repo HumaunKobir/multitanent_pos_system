@@ -13,6 +13,7 @@ use App\Models\CustomerPayment;
 use App\Models\Damage;
 use App\Models\OnlineOrder;
 use App\Models\ProductExchange;
+use App\Models\ProductInitialStock;
 use App\Models\Purchase;
 use App\Models\SaleReturn;
 use App\Models\Sell;
@@ -612,6 +613,40 @@ class InventoryAccountingService
             "Customer opening balance — {$customer->name}",
             $lines,
             validateBalance: false,
+        );
+    }
+
+    public function postProductInitialStockMovement(
+        ProductInitialStock $record,
+        float $amount,
+        bool $increase,
+        string $productLabel,
+    ): ?Transaction {
+        if ($amount <= 0) {
+            return null;
+        }
+
+        $amount = round($amount, 2);
+        $branchId = $record->branch_id;
+        $direction = $increase ? 'increased' : 'reduced';
+
+        $lines = $increase
+            ? [
+                $this->debitLine(SystemAccountKey::ProductInventory, $amount, "Initial stock {$direction} — {$productLabel}", $branchId),
+                $this->creditLine(SystemAccountKey::OpeningBalanceClearing, $amount, "Opening balance offset — Initial stock {$productLabel}", $branchId),
+            ]
+            : [
+                $this->debitLine(SystemAccountKey::OpeningBalanceClearing, $amount, "Opening balance offset — Initial stock {$productLabel}", $branchId),
+                $this->creditLine(SystemAccountKey::ProductInventory, $amount, "Initial stock {$direction} — {$productLabel}", $branchId),
+            ];
+
+        return $this->postJournal(
+            ProductInitialStock::class,
+            $record->id ?? 0,
+            now()->format('Y-m-d'),
+            "Product initial stock — {$productLabel}",
+            $lines,
+            validateBalance: $increase,
         );
     }
 

@@ -69,10 +69,11 @@ export default function ProductEdit({
     colorOptions = [],
     sizeOptions = [],
     tagOptions = [],
+    ecommerceBranchId = null,
     variantsLocked = false,
 }) {
     const form = useForm({
-        branch_id: product.branch_id ?? null,
+        branch_id: product.product_group_id ? '' : (product.branch_id != null ? String(product.branch_id) : ''),
         category_id: String(product.category_id ?? ''),
         brand_id: String(product.brand_id ?? ''),
         unit_id: String(product.unit_id ?? ''),
@@ -82,6 +83,7 @@ export default function ProductEdit({
         purchase_price: product.purchase_price ?? '',
         sale_price: product.sale_price ?? '',
         discount_price: product.discount_price ?? '',
+        initial_stock: product.initial_stock_record?.quantity != null ? String(product.initial_stock_record.quantity) : '',
         tags: product.tags ?? [],
         visible: product.visible ?? 'yes',
         status: String(product.status ?? '1'),
@@ -136,6 +138,7 @@ export default function ProductEdit({
                             colorOptions={colorOptions}
                             sizeOptions={sizeOptions}
                             tagOptions={tagOptions}
+                            ecommerceBranchId={ecommerceBranchId}
                             initialVariations={product.variations ?? []}
                             variantsLocked={variantsLocked}
                             isEditing

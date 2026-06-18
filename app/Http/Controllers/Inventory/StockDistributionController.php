@@ -27,9 +27,9 @@ class StockDistributionController extends Controller
     public function index(Request $request): Response
     {
         $this->authorize('inventory.stock-distribution.view');
+        $this->authorizeSuperAdminOnly();
 
         $user = Auth::user();
-        $branchId = $user?->branch_id;
 
         $distributions = $this->distributionQueryForUser($user)
             ->with('toBranch:id,name')
@@ -46,7 +46,7 @@ class StockDistributionController extends Controller
             'distributions' => $distributions,
             'filters' => $request->only('search'),
             'canManage' => $this->canManageDistributions($user),
-            'isReceiverView' => $branchId !== null && ! Branch::isMainBranch($branchId),
+            'isReceiverView' => false,
         ]);
     }
 
@@ -98,6 +98,7 @@ class StockDistributionController extends Controller
     public function show(StockDistribution $stockDistribution): Response
     {
         $this->authorize('inventory.stock-distribution.view');
+        $this->authorizeSuperAdminOnly();
         $this->authorizeDistributionAccess($stockDistribution);
 
         $stockDistribution->load(['products.product', 'products.variation', 'toBranch:id,name', 'fromBranch:id,name']);
@@ -335,18 +336,8 @@ class StockDistributionController extends Controller
 
     private function distributionQueryForUser($user)
     {
-        $branchId = $user?->branch_id;
-
         if ($user?->isSuperAdmin()) {
             return StockDistribution::query();
-        }
-
-        if (Branch::isMainBranch($branchId)) {
-            return StockDistribution::query()->where('branch_id', $branchId);
-        }
-
-        if ($branchId !== null) {
-            return StockDistribution::query()->where('to_branch_id', $branchId);
         }
 
         return StockDistribution::query()->whereRaw('1 = 0');
@@ -354,8 +345,7 @@ class StockDistributionController extends Controller
 
     private function canManageDistributions($user): bool
     {
-        return $user !== null
-            && ($user->isSuperAdmin() || Branch::isMainBranch($user->branch_id));
+        return $user !== null && $user->isSuperAdmin();
     }
 
     private function authorizeMainBranchManager(): void
@@ -363,28 +353,13 @@ class StockDistributionController extends Controller
         abort_unless($this->canManageDistributions(Auth::user()), 403);
     }
 
+    private function authorizeSuperAdminOnly(): void
+    {
+        abort_unless(Auth::user()?->isSuperAdmin(), 404);
+    }
+
     private function authorizeDistributionAccess(StockDistribution $distribution, bool $write = false): void
     {
-        $user = Auth::user();
-        $branchId = $user?->branch_id;
-
-        if ($user?->isSuperAdmin()) {
-            return;
-        }
-
-        if ($write) {
-            if (! Branch::isMainBranch($branchId) || $distribution->branch_id !== $branchId) {
-                abort(404);
-            }
-
-            return;
-        }
-
-        $canViewOutgoing = Branch::isMainBranch($branchId) && $distribution->branch_id === $branchId;
-        $canViewIncoming = $branchId !== null && (int) $distribution->to_branch_id === $branchId;
-
-        if (! $canViewOutgoing && ! $canViewIncoming) {
-            abort(404);
-        }
+        abort_unless(Auth::user()?->isSuperAdmin(), 404);
     }
 }

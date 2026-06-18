@@ -14,28 +14,43 @@ use App\Models\Size;
 use App\Models\Tag;
 use App\Models\Unit;
 use App\Models\Warranty;
+use App\Services\EcommerceBranchService;
+use App\Services\ProductBranchReplicationService;
+use App\Services\ProductInitialStockService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\Unique;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class ProductController extends Controller
 {
+    public function __construct(
+        private ProductBranchReplicationService $productReplication,
+        private ProductInitialStockService $initialStock,
+    ) {}
+
     public function index(Request $request): Response
     {
         $this->authorize('product.view');
 
-        $branchId = Auth::user()?->branch_id;
+        $listBranchId = $this->resolveProductListBranchId($request);
+        $isAdmin = Auth::user()?->branch_id === null;
 
-        $products = Product::ownBranch()
+        $products = Product::query()
             ->active()
-            ->with(['category', 'brand', 'variations:id,product_id,sku,variation_data,price,purchase_price,stock'])
-            ->withSum(['variations as variations_sum_stock' => fn ($q) => $q->when($branchId, fn ($q) => $q->where(fn ($q) => $q->where('branch_id', $branchId)->orWhereNull('branch_id')))], 'stock')
-            ->withSum(['batches as batches_sum_available' => fn ($q) => $q->when($branchId, fn ($q) => $q->where(fn ($q) => $q->where('branch_id', $branchId)->orWhereNull('branch_id')))], 'available')
+            ->when($listBranchId !== null, fn ($q) => $q->where('branch_id', $listBranchId))
+            ->with([
+                'category',
+                'brand',
+                'variations' => fn ($q) => $this->scopeProductListVariations($q, $listBranchId),
+            ])
+            ->tap(fn ($q) => $this->applyProductListStockAggregates($q, $listBranchId))
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('name', 'like', "%{$s}%")
                     ->orWhere('code', 'like', "%{$s}%")
@@ -52,9 +67,15 @@ class ProductController extends Controller
 
         return Inertia::render('admin/product/index', [
             'products' => $products,
-            'filters' => $request->only('search', 'category_id', 'brand_id', 'tag'),
-            'categories' => Category::active()->pluck('name', 'id'),
-            'brands' => Brand::active()->pluck('name', 'id'),
+            'filters' => array_merge(
+                $request->only('search', 'category_id', 'brand_id', 'tag'),
+                $isAdmin ? [
+                    'branch_id' => $request->input('branch_id', 'all'),
+                ] : [],
+            ),
+            'branches' => $isAdmin ? Branch::active()->orderBy('name')->pluck('name', 'id') : [],
+            'categories' => Category::forCatalogPanel()->active()->pluck('name', 'id'),
+            'brands' => Brand::forCatalogPanel()->active()->pluck('name', 'id'),
             'tags' => Tag::selectableForProduct()
                 ->with('parent:id,name')
                 ->get(['id', 'name', 'parent_id'])
@@ -105,6 +126,7 @@ class ProductController extends Controller
             'purchase_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'sale_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric'],
+            'initial_stock' => ['nullable', 'integer', 'min:0'],
             'tags' => ['nullable', 'array'],
             'visible' => ['nullable', 'in:yes,no'],
             'status' => ['nullable', 'in:0,1'],
@@ -121,7 +143,7 @@ class ProductController extends Controller
             'combinations.*.sale_price' => ['nullable', 'numeric', 'min:0'],
             'combinations.*.purchase_price' => ['nullable', 'numeric', 'min:0'],
             'combinations.*.sku' => ['required_with:combinations', 'string', 'max:255'],
-            'combinations.*.stock' => ['required_with:combinations', 'integer', 'min:0'],
+            'combinations.*.stock' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $combinations = $data['combinations'] ?? [];
@@ -131,6 +153,8 @@ class ProductController extends Controller
 
         $mainPurchasePrice = $data['purchase_price'] ?? 0;
         $mainSalePrice = $data['sale_price'] ?? 0;
+        $mainInitialStock = (int) ($data['initial_stock'] ?? 0);
+        unset($data['initial_stock']);
 
         // For variation products, don't persist main prices on the product row
         if ($hasVariations) {
@@ -140,7 +164,7 @@ class ProductController extends Controller
             $data['sizes'] = null;
         }
 
-        DB::transaction(function () use ($request, $data, $combinations, $mainPurchasePrice, $mainSalePrice) {
+        DB::transaction(function () use ($request, $data, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock) {
             if ($request->hasFile('image')) {
                 $data['image'] = $request->file('image')->store('products', 'public');
             }
@@ -149,7 +173,7 @@ class ProductController extends Controller
                 $data['chest_size_image'] = $request->file('chest_size_image')->store('products', 'public');
             }
 
-            $data['visible'] = $data['visible'] ?? 'yes';
+            $data['visible'] = $this->resolveProductVisibility($data);
             $data['status'] = (int) ($data['status'] ?? 1);
             $data['discount_price'] = $data['discount_price'] ?? 0;
 
@@ -157,53 +181,22 @@ class ProductController extends Controller
                 $data['code'] = null;
             }
 
-            $product = Product::create($data);
+            $photoPaths = [];
 
             if ($request->hasFile('photos')) {
                 foreach ($request->file('photos') as $photo) {
-                    $path = $photo->store('products/photos', 'public');
-                    ProductPhoto::create(['product_id' => $product->id, 'image' => $path]);
+                    $photoPaths[] = $photo->store('products/photos', 'public');
                 }
             }
 
-            if (empty($combinations) && $product->code) {
-                Barcode::create([
-                    'branch_id' => $product->branch_id,
-                    'product_id' => $product->id,
-                    'product_variation_id' => null,
-                    'code' => $product->code,
-                    'name' => $product->name,
-                ]);
-            }
-
-            foreach ($combinations as $combo) {
-                // Use per-combo price if provided, otherwise fall back to main prices
-                $salePrice = (isset($combo['sale_price']) && (string) $combo['sale_price'] !== '')
-                    ? $combo['sale_price']
-                    : $mainSalePrice;
-
-                $purchasePrice = (isset($combo['purchase_price']) && (string) $combo['purchase_price'] !== '')
-                    ? $combo['purchase_price']
-                    : $mainPurchasePrice;
-
-                $variation = ProductVariation::create([
-                    'product_id' => $product->id,
-                    'branch_id' => $product->branch_id,
-                    'sku' => $combo['sku'],
-                    'price' => $salePrice,
-                    'purchase_price' => $purchasePrice,
-                    'stock' => (int) $combo['stock'],
-                    'variation_data' => $combo['variation_data'] ?? ['label' => $combo['variant']],
-                ]);
-
-                Barcode::create([
-                    'branch_id' => $product->branch_id,
-                    'product_id' => $product->id,
-                    'product_variation_id' => $variation->id,
-                    'code' => $combo['sku'],
-                    'name' => $product->name.' - '.$combo['variant'],
-                ]);
-            }
+            $this->productReplication->createSingle(
+                $data,
+                $combinations,
+                $mainPurchasePrice,
+                $mainSalePrice,
+                $mainInitialStock,
+                $photoPaths,
+            );
         });
 
         return redirect()->route('product.index')
@@ -214,7 +207,7 @@ class ProductController extends Controller
     {
         $this->authorize('product.update');
 
-        $product->load('photos', 'variations');
+        $product->load('photos', 'variations', 'initialStockRecord');
 
         return Inertia::render('admin/product/edit', [
             ...$this->formData(),
@@ -247,11 +240,12 @@ class ProductController extends Controller
             'color_ids.*' => [Rule::exists('colors', 'id')],
             'size_ids' => ['nullable', 'array'],
             'size_ids.*' => [Rule::exists('sizes', 'id')],
-            'name' => ['required', 'string', 'max:255', Rule::unique('products', 'name')->ignore($product->id)],
+            'name' => ['required', 'string', 'max:255', $this->productNameUniqueRule($product)],
             'code' => ['required', 'string', 'max:100', Rule::unique('products', 'code')->ignore($product->id)],
             'purchase_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'sale_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric'],
+            'initial_stock' => ['nullable', 'integer', 'min:0'],
             'tags' => ['nullable', 'array'],
             'visible' => ['nullable', 'in:yes,no'],
             'status' => ['nullable', 'in:0,1'],
@@ -269,7 +263,7 @@ class ProductController extends Controller
             'combinations.*.sale_price' => ['nullable', 'numeric', 'min:0'],
             'combinations.*.purchase_price' => ['nullable', 'numeric', 'min:0'],
             'combinations.*.sku' => ['required_with:combinations', 'string', 'max:255'],
-            'combinations.*.stock' => ['required_with:combinations', 'integer', 'min:0'],
+            'combinations.*.stock' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $combinations = $variantsLocked ? [] : ($data['combinations'] ?? []);
@@ -279,6 +273,8 @@ class ProductController extends Controller
 
         $mainPurchasePrice = $data['purchase_price'] ?? 0;
         $mainSalePrice = $data['sale_price'] ?? 0;
+        $mainInitialStock = (int) ($data['initial_stock'] ?? 0);
+        unset($data['initial_stock']);
 
         if ($hasVariations) {
             $data['purchase_price'] = 0;
@@ -287,7 +283,7 @@ class ProductController extends Controller
             $data['sizes'] = null;
         }
 
-        DB::transaction(function () use ($request, $data, $product, $combinations, $hasVariations, $variantsLocked, $mainPurchasePrice, $mainSalePrice) {
+        DB::transaction(function () use ($request, $data, $product, $combinations, $hasVariations, $variantsLocked, $mainPurchasePrice, $mainSalePrice, $mainInitialStock) {
             if ($request->hasFile('image')) {
                 if ($product->image) {
                     Storage::disk('public')->delete($product->image);
@@ -306,9 +302,23 @@ class ProductController extends Controller
                 unset($data['chest_size_image']);
             }
 
-            $data['visible'] = $data['visible'] ?? 'yes';
+            $data['visible'] = $this->resolveProductVisibility($data, $product);
             $data['status'] = (int) ($data['status'] ?? 1);
             $data['discount_price'] = $data['discount_price'] ?? 0;
+
+            $branchSelectionProvided = $request->exists('branch_id');
+            $requestedAllBranches = $branchSelectionProvided && blank($data['branch_id'] ?? null);
+            $expandingToAllBranches = $requestedAllBranches
+                && $product->product_group_id === null
+                && $product->branch_id !== null;
+            $updatingAllBranchesGroup = $requestedAllBranches
+                && $product->product_group_id !== null;
+
+            if (! $branchSelectionProvided) {
+                unset($data['branch_id']);
+            } elseif ($expandingToAllBranches || $updatingAllBranchesGroup) {
+                unset($data['branch_id']);
+            }
 
             $product->update($data);
 
@@ -319,12 +329,59 @@ class ProductController extends Controller
                 }
             }
 
-            if (! $variantsLocked) {
-                if ($hasVariations) {
-                    $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice);
-                } elseif ($product->variations()->exists()) {
-                    $this->clearProductVariations($product);
+            if ($expandingToAllBranches) {
+                if (! $variantsLocked && $hasVariations) {
+                    $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
                 }
+
+                $this->productReplication->expandToAllBranches(
+                    $product->fresh(),
+                    $data,
+                    $combinations,
+                    (float) $mainPurchasePrice,
+                    (float) $mainSalePrice,
+                    $mainInitialStock,
+                );
+
+                return;
+            }
+
+            if ($updatingAllBranchesGroup) {
+                $this->productReplication->syncGroupCatalog($product->fresh(), $data);
+
+                if (! $variantsLocked) {
+                    if ($hasVariations) {
+                        $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+                    } else {
+                        $mainSibling = $this->productReplication->mainSiblingInGroup($product);
+
+                        if ($mainSibling) {
+                            $this->initialStock->syncNonVariant(
+                                $mainSibling,
+                                $mainInitialStock,
+                                (float) $mainPurchasePrice,
+                            );
+                        }
+                    }
+                }
+
+                return;
+            }
+
+            if ($variantsLocked) {
+                return;
+            }
+
+            if ($hasVariations) {
+                $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+            } elseif ($product->variations()->exists()) {
+                $this->clearProductVariations($product);
+            } else {
+                $this->initialStock->syncNonVariant(
+                    $product->fresh(),
+                    $mainInitialStock,
+                    (float) $mainPurchasePrice,
+                );
             }
         });
 
@@ -374,7 +431,7 @@ class ProductController extends Controller
     /**
      * @param  array<int, array<string, mixed>>  $combinations
      */
-    private function syncProductVariations(Product $product, array $combinations, float $mainPurchasePrice, float $mainSalePrice): void
+    private function syncProductVariations(Product $product, array $combinations, float $mainPurchasePrice, float $mainSalePrice, int $mainInitialStock = 0): void
     {
         $keepIds = collect($combinations)->pluck('id')->filter()->map(fn ($id) => (int) $id)->values();
 
@@ -398,19 +455,35 @@ class ProductController extends Controller
                 ? $combo['purchase_price']
                 : $mainPurchasePrice;
 
+            $stock = $this->initialStock->resolveComboStock($combo, $mainInitialStock);
+
             $variationData = $combo['variation_data'] ?? ['label' => $combo['variant']];
 
             if (! empty($combo['id'])) {
                 $variation = $product->variations()->find((int) $combo['id']);
 
                 if ($variation) {
+                    $oldStock = (int) $variation->stock;
+
                     $variation->update([
                         'sku' => $combo['sku'],
                         'price' => $salePrice,
                         'purchase_price' => $purchasePrice,
-                        'stock' => (int) $combo['stock'],
+                        'stock' => $stock,
                         'variation_data' => $variationData,
                     ]);
+
+                    $stockDelta = $stock - $oldStock;
+
+                    if ($stockDelta !== 0) {
+                        $this->initialStock->postStockQuantityAdjustment(
+                            $product,
+                            $variation,
+                            $stockDelta,
+                            (float) $purchasePrice,
+                            $product->name.' — '.($variationData['label'] ?? $combo['variant']),
+                        );
+                    }
                 }
 
                 continue;
@@ -422,9 +495,11 @@ class ProductController extends Controller
                 'sku' => $combo['sku'],
                 'price' => $salePrice,
                 'purchase_price' => $purchasePrice,
-                'stock' => (int) $combo['stock'],
+                'stock' => 0,
                 'variation_data' => $variationData,
             ]);
+
+            $this->initialStock->applyVariationStockOnCreate($variation, $stock, (float) $purchasePrice);
 
             Barcode::create([
                 'branch_id' => $product->branch_id,
@@ -481,23 +556,148 @@ class ProductController extends Controller
         return $data;
     }
 
+    private function productNameUniqueRule(Product $product): Unique
+    {
+        $rule = Rule::unique('products', 'name')->ignore($product->id);
+
+        if ($product->product_group_id !== null) {
+            $rule->where(function ($query) use ($product) {
+                $query->where(function ($query) use ($product) {
+                    $query->whereNull('product_group_id')
+                        ->orWhere('product_group_id', '!=', $product->product_group_id);
+                });
+            });
+        }
+
+        return $rule;
+    }
+
+    private function resolveProductListBranchId(Request $request): ?int
+    {
+        $userBranchId = Auth::user()?->branch_id;
+
+        if ($userBranchId !== null) {
+            return $userBranchId;
+        }
+
+        $filter = $request->input('branch_id');
+
+        if ($filter === 'all') {
+            return null;
+        }
+
+        if ($filter !== null && $filter !== '') {
+            return (int) $filter;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function resolveProductVisibility(array $data, ?Product $product = null): string
+    {
+        $ecommerceBranchId = EcommerceBranchService::resolveIdStatic();
+        $branchId = $data['branch_id'] ?? $product?->branch_id ?? Auth::user()?->branch_id;
+
+        if (
+            $ecommerceBranchId === null
+            || $branchId === null
+            || (int) $branchId !== $ecommerceBranchId
+            || ! Auth::user()?->can('product.visible-on-store')
+        ) {
+            return $product?->visible ?? 'no';
+        }
+
+        return $data['visible'] ?? ($product?->visible ?? 'no');
+    }
+
+    private function applyProductListStockAggregates(Builder $query, ?int $listBranchId): void
+    {
+        $query
+            ->withSum([
+                'variations as variations_sum_stock' => fn ($q) => $this->scopeProductListVariationStock($q, $listBranchId),
+            ], 'stock')
+            ->withSum([
+                'batches as batches_sum_available' => fn ($q) => $this->scopeProductListBatchStock($q, $listBranchId),
+            ], 'available');
+    }
+
+    private function scopeProductListVariationStock($query, ?int $listBranchId): void
+    {
+        if ($listBranchId !== null) {
+            $query->where('branch_id', $listBranchId);
+
+            return;
+        }
+
+        $mainBranchId = Branch::resolveMainBranchId();
+
+        $query->where(function (Builder $query) use ($mainBranchId) {
+            $query->whereColumn('product_variations.branch_id', 'products.branch_id')
+                ->orWhere(function (Builder $query) use ($mainBranchId) {
+                    $query->where('products.branch_id', $mainBranchId)
+                        ->whereNull('product_variations.branch_id');
+                });
+        });
+    }
+
+    private function scopeProductListVariations($query, ?int $listBranchId): void
+    {
+        $query->select([
+            'id',
+            'product_id',
+            'sku',
+            'variation_data',
+            'price',
+            'purchase_price',
+            'stock',
+            'branch_id',
+        ]);
+
+        if ($listBranchId !== null) {
+            $query->where('branch_id', $listBranchId);
+        }
+    }
+
+    private function scopeProductListBatchStock($query, ?int $listBranchId): void
+    {
+        if ($listBranchId !== null) {
+            $query->atBranchWarehouse($listBranchId);
+
+            return;
+        }
+
+        $mainBranchId = Branch::resolveMainBranchId();
+
+        $query->where(function (Builder $query) use ($mainBranchId) {
+            $query->whereColumn('batches.branch_id', 'products.branch_id')
+                ->orWhere(function (Builder $query) use ($mainBranchId) {
+                    $query->where('products.branch_id', $mainBranchId)
+                        ->whereNull('batches.branch_id');
+                });
+        });
+    }
+
     /** @return array<string, mixed> */
     private function formData(): array
     {
         return [
-            'categories' => Category::active()->pluck('name', 'id'),
-            'brands' => Brand::active()->pluck('name', 'id'),
-            'units' => Unit::active()->pluck('name', 'id'),
-            'warranties' => Warranty::active()->pluck('name', 'id'),
+            'ecommerceBranchId' => EcommerceBranchService::resolveIdStatic(),
+            'categories' => Category::forCatalogPanel()->active()->pluck('name', 'id'),
+            'brands' => Brand::forCatalogPanel()->active()->pluck('name', 'id'),
+            'units' => Unit::forCatalogPanel()->active()->pluck('name', 'id'),
+            'warranties' => Warranty::forCatalogPanel()->active()->pluck('name', 'id'),
             'branches' => Branch::active()->orderBy('name')->pluck('name', 'id'),
-            'colorOptions' => Color::active()->orderBy('name')->get(['id', 'name'])
+            'colorOptions' => Color::forCatalogPanel()->active()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Color $color): array => [
                     'value' => $color->name,
                     'label' => $color->name,
                     'id' => (string) $color->id,
                 ])
                 ->all(),
-            'sizeOptions' => Size::active()->orderBy('name')->get(['id', 'name'])
+            'sizeOptions' => Size::forCatalogPanel()->active()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Size $size): array => [
                     'value' => $size->name,
                     'label' => $size->name,

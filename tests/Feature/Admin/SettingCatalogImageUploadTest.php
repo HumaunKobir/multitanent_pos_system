@@ -180,7 +180,7 @@ test('category index hides broken image paths that are missing on disk', functio
     ]);
 
     $this->actingAs($admin)
-        ->get(route('setting.category.index'))
+        ->get(route('setting.category.index', ['search' => $category->name]))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('admin/setting/category/index')

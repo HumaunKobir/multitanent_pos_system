@@ -274,6 +274,7 @@ test('superadmin sees full navigation', function () {
     expect($titles)->not->toContain('Contact Messages');
     expect($titles)->not->toContain('Online Orders');
     expect($titles)->not->toContain('Subscribers');
+    expect($titles)->not->toContain('Website Manage');
     expect($titles)->toContain('Dashboard');
 });
 
@@ -301,7 +302,7 @@ test('ecommerce branch user sees contact messages in navigation', function () {
     $user = User::factory()->create(['branch_id' => $branch->id]);
     $titles = collect(app(AdminNavigation::class)->build($user))->pluck('title')->toArray();
 
-    expect($titles)->toContain('Contact Messages');
+    expect($titles)->toContain('Website Manage');
     expect($titles)->not->toContain('Branch');
 });
 

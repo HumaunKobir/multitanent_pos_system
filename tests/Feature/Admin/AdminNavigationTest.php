@@ -2,8 +2,10 @@
 
 use App\Models\Branch;
 use App\Models\User;
+use App\Services\EcommerceBranchService;
 use App\Support\AdminNavigation;
 use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\Models\Role;
 
 test('guests receive empty admin navigation', function () {
     $navigation = app(AdminNavigation::class)->build(null);
@@ -16,7 +18,7 @@ test('authenticated users see the full navigation tree', function () {
 
     $navigation = app(AdminNavigation::class)->build($user);
 
-    expect($navigation)->toHaveCount(9)
+    expect($navigation)->toHaveCount(10)
         ->and(collect($navigation)->pluck('title'))->toContain(
             'Dashboard',
             'Branch',
@@ -27,7 +29,7 @@ test('authenticated users see the full navigation tree', function () {
         );
 });
 
-test('settings section includes all child links', function () {
+test('settings section includes catalog child links only', function () {
     $user = User::factory()->create();
 
     $navigation = app(AdminNavigation::class)->build($user);
@@ -44,9 +46,47 @@ test('settings section includes all child links', function () {
             'Warranty',
             'Product',
             'Barcode',
-            'Product Section',
-            'Slider',
         ]);
+});
+
+test('website section groups all ecommerce frontend links', function () {
+    $this->artisan('permissions:sync');
+
+    EcommerceBranchService::resetResolvedId();
+
+    $branch = Branch::query()->firstOrCreate(
+        ['name' => EcommerceBranchService::BRANCH_NAME],
+        Branch::factory()->make(['name' => EcommerceBranchService::BRANCH_NAME])->toArray(),
+    );
+
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    $role = Role::create(['name' => 'Website Manager '.uniqid(), 'guard_name' => 'web']);
+    $role->givePermissionTo([
+        'online-order.view',
+        'online-customer.view',
+        'setting.slider.view',
+        'setting.productsection.view',
+        'setting.website.view',
+        'setting.page-content.view',
+        'setting.faq.view',
+    ]);
+    $user->assignRole($role);
+
+    $navigation = app(AdminNavigation::class)->build($user);
+    $website = collect($navigation)->firstWhere('title', 'Website Manage');
+
+    expect($website)->not->toBeNull()
+        ->and(collect($website['children'])->pluck('title')->all())->toContain(
+            'Online Orders',
+            'Online Customers',
+            'Contact Messages',
+            'Subscribers',
+            'Slider',
+            'Product Section',
+            'Website Setting',
+            'About Us',
+            'FAQ',
+        );
 });
 
 test('branch profile appears last for branch users', function () {
@@ -67,6 +107,6 @@ test('authenticated admin dashboard shares navigation', function () {
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/dashboard')
-            ->has('adminNavigation', 9)
+            ->has('adminNavigation', 10)
             ->where('adminNavigation.0.title', 'Dashboard'));
 });

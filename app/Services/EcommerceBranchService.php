@@ -22,9 +22,15 @@ class EcommerceBranchService
             return self::$resolvedId;
         }
 
-        $branchId = User::query()
-            ->where('email', User::ECOMMERCE_BRANCH_ADMIN_EMAIL)
-            ->value('branch_id');
+        $branchId = Branch::query()
+            ->where('name', self::BRANCH_NAME)
+            ->value('id');
+
+        if ($branchId === null) {
+            $branchId = User::query()
+                ->where('email', User::ECOMMERCE_BRANCH_ADMIN_EMAIL)
+                ->value('branch_id');
+        }
 
         self::$resolvedId = $branchId ?? Branch::MAIN_BRANCH_ID;
 

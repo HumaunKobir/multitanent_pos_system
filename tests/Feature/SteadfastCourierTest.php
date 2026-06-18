@@ -215,15 +215,20 @@ test('send order to steadfast allows confirmed unpaid sslcommerz orders', functi
         ->and($updated->status)->toBe(OrderStatus::Shipping);
 });
 
-test('send order to steadfast blocks unconfirmed orders', function () {
+test('send order to steadfast from pending status marks shipping', function () {
     steadfastTestConfig();
 
     $order = createSteadfastReadyOrder([
-        'status' => OrderStatus::Processing,
+        'status' => OrderStatus::Pending,
     ]);
 
-    app(SendOrderToSteadfast::class)->execute($order);
-})->throws(SteadfastCourierException::class, 'Order must be confirmed before sending to Steadfast.');
+    steadfastCreateOrderFake($order->id);
+
+    $updated = app(SendOrderToSteadfast::class)->execute($order);
+
+    expect($updated->status)->toBe(OrderStatus::Shipping)
+        ->and($updated->courier)->toBe('steadfast');
+});
 
 test('send order to steadfast blocks duplicate submissions', function () {
     steadfastTestConfig();

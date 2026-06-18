@@ -9,7 +9,30 @@ use App\Models\ProductReview;
 use App\Models\ProductSection;
 use App\Models\ProductVariation;
 use App\Models\Tag;
+use App\Models\User;
 use App\Services\EcommerceBranchService;
+
+function storefrontEcommerceBranch(): Branch
+{
+    EcommerceBranchService::resetResolvedId();
+
+    $branch = Branch::query()->firstOrCreate(
+        ['name' => EcommerceBranchService::BRANCH_NAME],
+        Branch::factory()->make(['name' => EcommerceBranchService::BRANCH_NAME])->toArray(),
+    );
+
+    User::query()->updateOrCreate(
+        ['email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL],
+        User::factory()->make([
+            'email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL,
+            'branch_id' => $branch->id,
+        ])->toArray(),
+    );
+
+    EcommerceBranchService::resetResolvedId();
+
+    return $branch;
+}
 
 test('home page loads successfully', function () {
     $this->get(route('home'))
@@ -18,12 +41,35 @@ test('home page loads successfully', function () {
 });
 
 test('home page shares storefront navigation filters', function () {
-    $category = Category::factory()->create(['status' => 1]);
-    $brand = Brand::factory()->create(['status' => 1]);
+    $ecommerceBranch = storefrontEcommerceBranch();
+    $otherBranch = Branch::factory()->create();
+
+    $category = Category::factory()->create([
+        'branch_id' => $ecommerceBranch->id,
+        'status' => 1,
+    ]);
+    $brand = Brand::factory()->create([
+        'branch_id' => $ecommerceBranch->id,
+        'status' => 1,
+    ]);
     $tag = Tag::create([
         'name' => 'Nav Tag '.fake()->unique()->numerify('####'),
         'status' => CommonStatus::Active,
-        'branch_id' => null,
+        'branch_id' => $ecommerceBranch->id,
+    ]);
+
+    $otherCategory = Category::factory()->create([
+        'branch_id' => $otherBranch->id,
+        'status' => 1,
+    ]);
+    $otherBrand = Brand::factory()->create([
+        'branch_id' => $otherBranch->id,
+        'status' => 1,
+    ]);
+    $otherTag = Tag::create([
+        'name' => 'Other Nav Tag '.fake()->unique()->numerify('####'),
+        'status' => CommonStatus::Active,
+        'branch_id' => $otherBranch->id,
     ]);
 
     $this->get(route('home'))
@@ -32,9 +78,12 @@ test('home page shares storefront navigation filters', function () {
             ->has('categories')
             ->has('brands')
             ->has('tags')
-            ->where('categories', fn ($categories) => collect($categories)->contains('slug', $category->slug))
-            ->where('brands', fn ($brands) => collect($brands)->contains('slug', $brand->slug))
-            ->where('tags', fn ($tags) => collect($tags)->contains('name', $tag->name))
+            ->where('categories', fn ($categories) => collect($categories)->contains('slug', $category->slug)
+                && ! collect($categories)->contains('slug', $otherCategory->slug))
+            ->where('brands', fn ($brands) => collect($brands)->contains('slug', $brand->slug)
+                && ! collect($brands)->contains('slug', $otherBrand->slug))
+            ->where('tags', fn ($tags) => collect($tags)->contains('name', $tag->name)
+                && ! collect($tags)->contains('name', $otherTag->name))
         );
 });
 
@@ -288,7 +337,11 @@ test('single product page still resolves when all products route exists', functi
 });
 
 test('category products page renders for valid category slug', function () {
-    $category = Category::factory()->create(['name' => 'Summer Wear']);
+    $ecommerceBranch = storefrontEcommerceBranch();
+    $category = Category::factory()->create([
+        'branch_id' => $ecommerceBranch->id,
+        'name' => 'Summer Wear',
+    ]);
 
     $this->get(route('category.products', $category->slug))
         ->assertOk()
@@ -299,7 +352,11 @@ test('category products page renders for valid category slug', function () {
 });
 
 test('category products include variation summary for variant products', function () {
-    $category = Category::factory()->create(['name' => 'Variant Wear']);
+    $ecommerceBranch = storefrontEcommerceBranch();
+    $category = Category::factory()->create([
+        'branch_id' => $ecommerceBranch->id,
+        'name' => 'Variant Wear',
+    ]);
     $product = Product::factory()->create([
         'category_id' => $category->id,
         'status' => 1,
@@ -338,19 +395,41 @@ test('category products include variation summary for variant products', functio
 });
 
 test('category products page redirects legacy id urls to slug', function () {
-    $category = Category::factory()->create(['name' => 'Winter Wear']);
+    $ecommerceBranch = storefrontEcommerceBranch();
+    $category = Category::factory()->create([
+        'branch_id' => $ecommerceBranch->id,
+        'name' => 'Winter Wear',
+    ]);
 
     $this->get("/category/{$category->id}/products")
         ->assertRedirect(route('category.products', $category->slug));
 });
 
 test('category products page returns 404 for invalid category slug', function () {
+    storefrontEcommerceBranch();
+
     $this->get(route('category.products', 'non-existent-category'))
         ->assertNotFound();
 });
 
+test('category products page returns 404 for category from another branch', function () {
+    storefrontEcommerceBranch();
+    $otherBranch = Branch::factory()->create();
+    $category = Category::factory()->create([
+        'branch_id' => $otherBranch->id,
+        'name' => 'Other Branch Wear',
+    ]);
+
+    $this->get(route('category.products', $category->slug))
+        ->assertNotFound();
+});
+
 test('brand products page renders for valid brand slug', function () {
-    $brand = Brand::factory()->create(['name' => 'Cool Brand']);
+    $ecommerceBranch = storefrontEcommerceBranch();
+    $brand = Brand::factory()->create([
+        'branch_id' => $ecommerceBranch->id,
+        'name' => 'Cool Brand',
+    ]);
 
     $this->get(route('brand.products', $brand->slug))
         ->assertOk()
@@ -361,7 +440,11 @@ test('brand products page renders for valid brand slug', function () {
 });
 
 test('brand products page redirects legacy id urls to slug', function () {
-    $brand = Brand::factory()->create(['name' => 'Legacy Brand']);
+    $ecommerceBranch = storefrontEcommerceBranch();
+    $brand = Brand::factory()->create([
+        'branch_id' => $ecommerceBranch->id,
+        'name' => 'Legacy Brand',
+    ]);
 
     $this->get("/brand/{$brand->id}/products")
         ->assertRedirect(route('brand.products', $brand->slug));

@@ -25,7 +25,7 @@ class PurchaseLookupController extends Controller
         }
 
         $purchase = Purchase::query()
-            ->ownBranch()
+            ->ownBranchUser()
             ->purchase()
             ->with([
                 'supplier:id,name,phone',

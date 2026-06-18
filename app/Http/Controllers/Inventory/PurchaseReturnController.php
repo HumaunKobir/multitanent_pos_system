@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Inventory;
 
 use App\Enums\PurchaseReceivedPayment;
+use App\Http\Controllers\Concerns\AuthorizesBranchUserRecords;
 use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
@@ -20,6 +21,7 @@ use Inertia\Response;
 
 class PurchaseReturnController extends Controller
 {
+    use AuthorizesBranchUserRecords;
     use ProvidesPaymentAccounts;
 
     public function __construct(private InventoryStockService $stock) {}
@@ -28,7 +30,7 @@ class PurchaseReturnController extends Controller
     {
         $this->authorize('inventory.purchase-return.view');
 
-        $returns = PurchaseReturn::query()->ownBranch()
+        $returns = PurchaseReturn::query()->ownBranchUser()
             ->with(['supplier:id,name', 'purchase:id'])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('id', 'like', "%{$s}%")
@@ -74,7 +76,7 @@ class PurchaseReturnController extends Controller
         try {
             DB::transaction(function () use ($data, $branchId) {
                 $parent = Purchase::query()
-                    ->ownBranch()
+                    ->ownBranchUser()
                     ->purchase()
                     ->with(['purchaseProducts', 'supplier'])
                     ->lockForUpdate()
@@ -133,6 +135,7 @@ class PurchaseReturnController extends Controller
 
                 $purchaseReturn = PurchaseReturn::create([
                     'branch_id' => $branchId,
+                    'user_id' => $this->currentUserId(),
                     'purchase_id' => $parent->id,
                     'supplier_id' => $parent->supplier_id,
                     'date' => $data['date'],
@@ -169,7 +172,7 @@ class PurchaseReturnController extends Controller
     public function show(PurchaseReturn $purchaseReturn): Response
     {
         $this->authorize('inventory.purchase-return.view');
-        $this->authorizeBranch($purchaseReturn);
+        $this->authorizeBranchUserRecord($purchaseReturn);
 
         $purchaseReturn->load([
             'supplier',
@@ -186,12 +189,12 @@ class PurchaseReturnController extends Controller
     public function edit(PurchaseReturn $purchaseReturn): Response
     {
         $this->authorize('inventory.purchase-return.update');
-        $this->authorizeBranch($purchaseReturn);
+        $this->authorizeBranchUserRecord($purchaseReturn);
 
         $purchaseReturn->load(['supplier', 'purchase', 'products.product']);
 
         $parent = Purchase::query()
-            ->ownBranch()
+            ->ownBranchUser()
             ->purchase()
             ->with(['purchaseProducts.product'])
             ->findOrFail($purchaseReturn->purchase_id);
@@ -241,7 +244,7 @@ class PurchaseReturnController extends Controller
     public function update(Request $request, PurchaseReturn $purchaseReturn): RedirectResponse
     {
         $this->authorize('inventory.purchase-return.update');
-        $this->authorizeBranch($purchaseReturn);
+        $this->authorizeBranchUserRecord($purchaseReturn);
 
         $data = $request->validate([
             'date' => ['required', 'date'],
@@ -263,7 +266,7 @@ class PurchaseReturnController extends Controller
                 $purchaseReturn->products()->delete();
 
                 $parent = Purchase::query()
-                    ->ownBranch()
+                    ->ownBranchUser()
                     ->purchase()
                     ->with(['purchaseProducts', 'supplier'])
                     ->lockForUpdate()
@@ -354,7 +357,7 @@ class PurchaseReturnController extends Controller
     public function destroy(PurchaseReturn $purchaseReturn): RedirectResponse
     {
         $this->authorize('inventory.purchase-return.delete');
-        $this->authorizeBranch($purchaseReturn);
+        $this->authorizeBranchUserRecord($purchaseReturn);
 
         $purchaseReturn->load(['products']);
 
@@ -370,14 +373,6 @@ class PurchaseReturnController extends Controller
 
         return redirect()->route('inventory.purchase-return.index')
             ->with('success', 'Purchase return deleted successfully.');
-    }
-
-    private function authorizeBranch(PurchaseReturn $purchaseReturn): void
-    {
-        $branchId = Auth::user()?->branch_id;
-        if ($branchId !== null && $purchaseReturn->branch_id !== $branchId) {
-            abort(404);
-        }
     }
 
     private function rollbackPurchaseReturn(PurchaseReturn $purchaseReturn): void

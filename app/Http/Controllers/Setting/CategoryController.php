@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Setting;
 
+use App\Concerns\ManagesBranchCatalog;
 use App\Concerns\StoresPublicImages;
 use App\Http\Controllers\Controller;
 use App\Models\Category;
@@ -13,13 +14,13 @@ use Inertia\Response;
 
 class CategoryController extends Controller
 {
-    use StoresPublicImages;
+    use ManagesBranchCatalog, StoresPublicImages;
 
     public function index(Request $request): Response
     {
         $this->authorize('setting.category.view');
 
-        $categories = Category::query()
+        $categories = $this->branchCatalogQuery()
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->latest()
             ->paginate(20)
@@ -44,16 +45,15 @@ class CategoryController extends Controller
         $this->authorize('setting.category.create');
 
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:191'],
+            ...$this->catalogValidationRules(),
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
-            'status' => ['required', 'in:0,1'],
         ]);
 
         if ($storedImage = $this->storePublicImage($request, 'image', 'categories')) {
             $data['image'] = $storedImage;
         }
 
-        $category = Category::create($data);
+        $category = $this->storeCatalogRecords($data);
 
         if ($request->wantsJson()) {
             return response()->json(['value' => (string) $category->id, 'label' => $category->name], 201);
@@ -66,6 +66,7 @@ class CategoryController extends Controller
     public function update(Request $request, Category $category): RedirectResponse
     {
         $this->authorize('setting.category.update');
+        $this->authorizeCatalogAccess($category);
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:191'],
@@ -89,6 +90,7 @@ class CategoryController extends Controller
     public function destroy(Category $category): RedirectResponse
     {
         $this->authorize('setting.category.delete');
+        $this->authorizeCatalogAccess($category);
 
         if ($category->products()->exists()) {
             return back()->with('error', 'Cannot delete category with existing products.');
@@ -100,5 +102,10 @@ class CategoryController extends Controller
 
         return redirect()->route('setting.category.index')
             ->with('success', 'Category deleted successfully.');
+    }
+
+    protected function catalogModelClass(): string
+    {
+        return Category::class;
     }
 }

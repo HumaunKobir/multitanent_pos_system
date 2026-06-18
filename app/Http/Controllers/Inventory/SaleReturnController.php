@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Inventory;
 
 use App\Enums\ReceivedPaymentMethod;
+use App\Http\Controllers\Concerns\AuthorizesBranchUserRecords;
 use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
 use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
@@ -22,6 +23,7 @@ use Inertia\Response;
 
 class SaleReturnController extends Controller
 {
+    use AuthorizesBranchUserRecords;
     use ProvidesPaymentAccounts;
     use UsesInventoryAccounting;
 
@@ -35,7 +37,7 @@ class SaleReturnController extends Controller
     {
         $this->authorize('inventory.sale-return.view');
 
-        $returns = SaleReturn::query()->ownBranch()
+        $returns = SaleReturn::query()->ownBranchUser()
             ->with(['customer:id,name', 'sell:id'])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('id', 'like', "%{$s}%")
@@ -86,7 +88,7 @@ class SaleReturnController extends Controller
         try {
             DB::transaction(function () use ($data, $branchId, $paymentAccountId, $paymentType) {
                 $parent = Sell::query()
-                    ->ownBranch()
+                    ->ownBranchUser()
                     ->sale()
                     ->with(['products'])
                     ->lockForUpdate()
@@ -154,6 +156,7 @@ class SaleReturnController extends Controller
 
                 $saleReturn = SaleReturn::create([
                     'branch_id' => $branchId,
+                    'user_id' => $this->currentUserId(),
                     'sell_id' => $parent->id,
                     'customer_id' => $parent->customer_id,
                     'date' => $data['date'],
@@ -195,7 +198,7 @@ class SaleReturnController extends Controller
     public function show(SaleReturn $saleReturn): Response
     {
         $this->authorize('inventory.sale-return.view');
-        $this->authorizeBranch($saleReturn);
+        $this->authorizeBranchUserRecord($saleReturn);
 
         $saleReturn->load([
             'customer',
@@ -212,12 +215,12 @@ class SaleReturnController extends Controller
     public function edit(SaleReturn $saleReturn): Response
     {
         $this->authorize('inventory.sale-return.update');
-        $this->authorizeBranch($saleReturn);
+        $this->authorizeBranchUserRecord($saleReturn);
 
         $saleReturn->load(['customer', 'sell', 'products.product']);
 
         $parent = Sell::query()
-            ->ownBranch()
+            ->ownBranchUser()
             ->sale()
             ->with(['products.product'])
             ->findOrFail($saleReturn->sell_id);
@@ -269,7 +272,7 @@ class SaleReturnController extends Controller
 
     public function update(Request $request, SaleReturn $saleReturn): RedirectResponse
     {
-        $this->authorizeBranch($saleReturn);
+        $this->authorizeBranchUserRecord($saleReturn);
 
         $data = $request->validate([
             'date' => ['required', 'date'],
@@ -297,7 +300,7 @@ class SaleReturnController extends Controller
                 $saleReturn->products()->delete();
 
                 $parent = Sell::query()
-                    ->ownBranch()
+                    ->ownBranchUser()
                     ->sale()
                     ->with(['products'])
                     ->lockForUpdate()
@@ -402,7 +405,7 @@ class SaleReturnController extends Controller
 
     public function destroy(SaleReturn $saleReturn): RedirectResponse
     {
-        $this->authorizeBranch($saleReturn);
+        $this->authorizeBranchUserRecord($saleReturn);
 
         $saleReturn->load(['products']);
 
@@ -419,14 +422,6 @@ class SaleReturnController extends Controller
 
         return redirect()->route('inventory.sale-return.index')
             ->with('success', 'Sale return deleted successfully.');
-    }
-
-    private function authorizeBranch(SaleReturn $saleReturn): void
-    {
-        $branchId = Auth::user()?->branch_id;
-        if ($branchId !== null && $saleReturn->branch_id !== $branchId) {
-            abort(404);
-        }
     }
 
     private function rollbackSaleReturn(SaleReturn $saleReturn): void

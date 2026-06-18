@@ -112,6 +112,8 @@ class HomeController extends Controller
             ? round((float) $product->reviews()->approved()->avg('rating'), 1)
             : 0;
 
+        $customer = auth('customer')->user();
+
         return Inertia::render('frontend/single-product', [
             'product' => $this->formatProduct($product, true),
             'reviews' => $reviews,
@@ -119,6 +121,7 @@ class HomeController extends Controller
                 'average' => $averageRating,
                 'count' => $reviewCount,
             ],
+            'canReview' => $customer !== null && $customer->hasReceivedProduct($product),
         ]);
     }
 
@@ -145,7 +148,7 @@ class HomeController extends Controller
             ],
             'products' => $products,
             'filters' => $request->only(['min_price', 'max_price', 'brands', 'sort_by']),
-            'allBrands' => Brand::active()->pluck('name'),
+            'allBrands' => Brand::forStorefront()->active()->orderBy('name')->pluck('name'),
         ]);
     }
 
@@ -165,19 +168,19 @@ class HomeController extends Controller
             'collectionName' => $name,
             'products' => $products,
             'filters' => $request->only(['min_price', 'max_price', 'brands', 'sort_by']),
-            'allBrands' => Brand::active()->pluck('name'),
+            'allBrands' => Brand::forStorefront()->active()->orderBy('name')->pluck('name'),
         ]);
     }
 
     public function categoryProducts(string $category, Request $request): Response|RedirectResponse
     {
         if (ctype_digit($category)) {
-            $model = Category::findOrFail((int) $category);
+            $model = Category::forStorefront()->findOrFail((int) $category);
 
             return redirect()->route('category.products', $model->slug, 301);
         }
 
-        $model = Category::where('slug', $category)->firstOrFail();
+        $model = Category::forStorefront()->where('slug', $category)->firstOrFail();
 
         return $this->renderCategoryProducts($model, $request);
     }
@@ -196,19 +199,19 @@ class HomeController extends Controller
         return Inertia::render('frontend/all-products', [
             'products' => $products,
             'filters' => $request->only(['min_price', 'max_price', 'brands', 'sort_by']),
-            'allBrands' => Brand::active()->pluck('name'),
+            'allBrands' => Brand::forStorefront()->active()->orderBy('name')->pluck('name'),
         ]);
     }
 
     public function brandProducts(string $brand, Request $request): Response|RedirectResponse
     {
         if (ctype_digit($brand)) {
-            $model = Brand::findOrFail((int) $brand);
+            $model = Brand::forStorefront()->findOrFail((int) $brand);
 
             return redirect()->route('brand.products', $model->slug, 301);
         }
 
-        $model = Brand::where('slug', $brand)->firstOrFail();
+        $model = Brand::forStorefront()->where('slug', $brand)->firstOrFail();
 
         return $this->renderBrandProducts($model, $request);
     }
@@ -234,7 +237,7 @@ class HomeController extends Controller
             ],
             'products' => $products,
             'filters' => $request->only(['min_price', 'max_price', 'brands', 'sort_by']),
-            'allBrands' => Brand::active()->pluck('name'),
+            'allBrands' => Brand::forStorefront()->active()->orderBy('name')->pluck('name'),
         ]);
     }
 
@@ -254,7 +257,7 @@ class HomeController extends Controller
             'brand' => $brand->only(['id', 'name', 'slug', 'image']),
             'products' => $products,
             'filters' => $request->only(['min_price', 'max_price', 'brands', 'sort_by']),
-            'allBrands' => Brand::active()->pluck('name'),
+            'allBrands' => Brand::forStorefront()->active()->orderBy('name')->pluck('name'),
         ]);
     }
 

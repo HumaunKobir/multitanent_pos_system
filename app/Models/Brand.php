@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Builder;
+use App\Traits\HasBranchCatalog;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,9 +10,9 @@ use Illuminate\Support\Str;
 
 class Brand extends Model
 {
-    use HasFactory;
+    use HasBranchCatalog, HasFactory;
 
-    protected $fillable = ['name', 'slug', 'image', 'status'];
+    protected $fillable = ['branch_id', 'catalog_group_id', 'name', 'slug', 'image', 'status'];
 
     public function getRouteKeyName(): string
     {
@@ -22,11 +22,6 @@ class Brand extends Model
     public function products(): HasMany
     {
         return $this->hasMany(Product::class);
-    }
-
-    public function scopeActive($query): Builder
-    {
-        return $query->where('status', 1);
     }
 
     protected static function booted(): void

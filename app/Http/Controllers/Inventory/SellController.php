@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Inventory;
 
 use App\Enums\DiscountType;
 use App\Enums\SaleType;
+use App\Http\Controllers\Concerns\AuthorizesBranchUserRecords;
 use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
 use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
@@ -20,7 +21,6 @@ use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
 use App\Services\SpecialDiscountService;
 use App\Support\StorageUrl;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -32,6 +32,7 @@ use Inertia\Response;
 
 class SellController extends Controller
 {
+    use AuthorizesBranchUserRecords;
     use ProvidesPaymentAccounts;
     use UsesInventoryAccounting;
 
@@ -46,7 +47,7 @@ class SellController extends Controller
     {
         $this->authorize('inventory.sell.view');
 
-        $sells = $this->forCurrentBranch(Sell::query())
+        $sells = $this->forCurrentBranchUser(Sell::query())
             ->sale()
             ->withSum('products as line_discount_total', 'discount')
             ->with('customer:id,name,phone')
@@ -76,7 +77,7 @@ class SellController extends Controller
 
         $resumedSell = null;
         if ($request->filled('paused')) {
-            $pausedSell = $this->forCurrentBranch(Sell::query())
+            $pausedSell = $this->forCurrentBranchUser(Sell::query())
                 ->paused()
                 ->with([
                     'customer:id,name,phone',
@@ -86,7 +87,7 @@ class SellController extends Controller
                 ])
                 ->findOrFail((int) $request->query('paused'));
 
-            $this->authorizeBranch($pausedSell);
+            $this->authorizeBranchUserRecord($pausedSell);
             $resumedSell = $this->buildPosSellPayload($pausedSell, $branchId);
         }
 
@@ -99,7 +100,7 @@ class SellController extends Controller
                 'value' => $type->value,
                 'label' => $type->label(),
             ])->values(),
-            'categories' => Category::active()
+            'categories' => Category::forCatalogPanel()->active()
                 ->orderBy('name')
                 ->get(['id', 'name', 'image'])
                 ->map(fn (Category $category) => [
@@ -133,12 +134,13 @@ class SellController extends Controller
                 $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId);
 
                 if ($pausedSellId !== null) {
-                    $sell = $this->forCurrentBranch(Sell::query())->paused()->findOrFail($pausedSellId);
-                    $this->authorizeBranch($sell);
+                    $sell = $this->forCurrentBranchUser(Sell::query())->paused()->findOrFail($pausedSellId);
+                    $this->authorizeBranchUserRecord($sell);
                     $sell->products()->delete();
                 } else {
                     $sell = new Sell;
                     $sell->branch_id = $branchId;
+                    $sell->user_id = $this->currentUserId();
                     $sell->type = SaleType::Paused;
                 }
 
@@ -212,11 +214,11 @@ class SellController extends Controller
                 $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId);
 
                 if ($pausedSellId !== null) {
-                    $sell = $this->forCurrentBranch(Sell::query())->paused()->findOrFail($pausedSellId);
-                    $this->authorizeBranch($sell);
+                    $sell = $this->forCurrentBranchUser(Sell::query())->paused()->findOrFail($pausedSellId);
+                    $this->authorizeBranchUserRecord($sell);
                     $sell->products()->delete();
                 } else {
-                    $sell = new Sell(['branch_id' => $branchId]);
+                    $sell = new Sell(['branch_id' => $branchId, 'user_id' => $this->currentUserId()]);
                 }
 
                 $sell->fill([
@@ -283,7 +285,7 @@ class SellController extends Controller
     public function show(Sell $sell): Response
     {
         $this->authorize('inventory.sell.view');
-        $this->authorizeBranch($sell);
+        $this->authorizeBranchUserRecord($sell);
 
         $sell->load([
             'customer',
@@ -302,7 +304,7 @@ class SellController extends Controller
     public function edit(Sell $sell): Response|RedirectResponse
     {
         $this->authorize('inventory.sell.update');
-        $this->authorizeBranch($sell);
+        $this->authorizeBranchUserRecord($sell);
 
         if ($sell->type === SaleType::Paused) {
             return redirect()
@@ -411,7 +413,7 @@ class SellController extends Controller
     public function update(Request $request, Sell $sell): RedirectResponse
     {
         $this->authorize('inventory.sell.update');
-        $this->authorizeBranch($sell);
+        $this->authorizeBranchUserRecord($sell);
 
         if (SaleReturn::where('sell_id', $sell->id)->exists()) {
             return back()->with('error', 'This sale cannot be edited because it has returns.');
@@ -560,7 +562,7 @@ class SellController extends Controller
     public function destroy(Sell $sell): RedirectResponse
     {
         $this->authorize('inventory.sell.delete');
-        $this->authorizeBranch($sell);
+        $this->authorizeBranchUserRecord($sell);
 
         $sell->load(['products']);
 
@@ -702,7 +704,7 @@ class SellController extends Controller
     /** @return list<array<string, mixed>> */
     private function pausedSalesList(?int $branchId): array
     {
-        return $this->forCurrentBranch(Sell::query())
+        return $this->forCurrentBranchUser(Sell::query())
             ->paused()
             ->with('customer:id,name,phone')
             ->withSum('products as item_count', 'quantity')
@@ -856,30 +858,6 @@ class SellController extends Controller
         }
 
         return $batchMap;
-    }
-
-    private function forCurrentBranch(Builder $query): Builder
-    {
-        $branchId = Auth::user()?->branch_id;
-
-        if ($branchId === null) {
-            return $query;
-        }
-
-        return $query->where('branch_id', $branchId);
-    }
-
-    private function authorizeBranch(Sell $sell): void
-    {
-        $branchId = Auth::user()?->branch_id;
-
-        if ($branchId === null) {
-            return;
-        }
-
-        if ($sell->branch_id !== $branchId) {
-            abort(404);
-        }
     }
 
     private function assertCustomerForDueSale(?int $customerId, float $dueAmount): void

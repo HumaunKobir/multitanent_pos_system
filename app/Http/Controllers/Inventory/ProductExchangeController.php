@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Inventory;
 
 use App\Enums\ReceivedPaymentMethod;
+use App\Http\Controllers\Concerns\AuthorizesBranchUserRecords;
 use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
 use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
@@ -22,6 +23,7 @@ use Inertia\Response;
 
 class ProductExchangeController extends Controller
 {
+    use AuthorizesBranchUserRecords;
     use ProvidesPaymentAccounts;
     use UsesInventoryAccounting;
 
@@ -35,7 +37,7 @@ class ProductExchangeController extends Controller
     {
         $this->authorize('inventory.product-exchange.view');
 
-        $exchanges = ProductExchange::query()->ownBranch()
+        $exchanges = ProductExchange::query()->ownBranchUser()
             ->with(['customer:id,name', 'sell:id'])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('id', 'like', "%{$s}%")
@@ -93,7 +95,7 @@ class ProductExchangeController extends Controller
         try {
             DB::transaction(function () use ($data, $branchId, $paymentAccountId, $paymentType) {
                 $parent = Sell::query()
-                    ->ownBranch()
+                    ->ownBranchUser()
                     ->sale()
                     ->with(['products'])
                     ->lockForUpdate()
@@ -188,6 +190,7 @@ class ProductExchangeController extends Controller
 
                 $exchange = ProductExchange::create([
                     'branch_id' => $branchId,
+                    'user_id' => $this->currentUserId(),
                     'sell_id' => $parent->id,
                     'customer_id' => $parent->customer_id,
                     'date' => $data['date'],
@@ -231,7 +234,7 @@ class ProductExchangeController extends Controller
     public function show(ProductExchange $productExchange): Response
     {
         $this->authorize('inventory.product-exchange.view');
-        $this->authorizeBranch($productExchange);
+        $this->authorizeBranchUserRecord($productExchange);
 
         $productExchange->load([
             'customer',
@@ -251,7 +254,7 @@ class ProductExchangeController extends Controller
     public function edit(ProductExchange $productExchange): Response
     {
         $this->authorize('inventory.product-exchange.update');
-        $this->authorizeBranch($productExchange);
+        $this->authorizeBranchUserRecord($productExchange);
 
         $productExchange->load([
             'customer',
@@ -305,7 +308,7 @@ class ProductExchangeController extends Controller
     public function update(Request $request, ProductExchange $productExchange): RedirectResponse
     {
         $this->authorize('inventory.product-exchange.update');
-        $this->authorizeBranch($productExchange);
+        $this->authorizeBranchUserRecord($productExchange);
 
         $data = $request->validate([
             'date' => ['required', 'date'],
@@ -337,7 +340,7 @@ class ProductExchangeController extends Controller
                 $productExchange->products()->delete();
 
                 $parent = Sell::query()
-                    ->ownBranch()
+                    ->ownBranchUser()
                     ->sale()
                     ->with(['products'])
                     ->lockForUpdate()
@@ -472,7 +475,7 @@ class ProductExchangeController extends Controller
     public function destroy(ProductExchange $productExchange): RedirectResponse
     {
         $this->authorize('inventory.product-exchange.delete');
-        $this->authorizeBranch($productExchange);
+        $this->authorizeBranchUserRecord($productExchange);
 
         $productExchange->load(['products', 'sell']);
 
@@ -537,14 +540,6 @@ class ProductExchangeController extends Controller
             } elseif ($priceDifference < 0) {
                 Customer::whereKey($productExchange->customer_id)->decrement('balance', abs($priceDifference));
             }
-        }
-    }
-
-    private function authorizeBranch(ProductExchange $productExchange): void
-    {
-        $branchId = Auth::user()?->branch_id;
-        if ($branchId !== null && $productExchange->branch_id !== $branchId) {
-            abort(404);
         }
     }
 

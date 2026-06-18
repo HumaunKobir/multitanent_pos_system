@@ -1,4 +1,4 @@
-import { Form } from '@inertiajs/react';
+import { Form, Link } from '@inertiajs/react';
 import { MessageSquare, PenLine, Star } from 'lucide-react';
 import { useState } from 'react';
 import { StarRating } from '@/components/frontend/star-rating';
@@ -115,6 +115,10 @@ function ReviewFormCard({ productSlug, selectedRating, onRatingChange, onSuccess
             >
                 {({ errors, processing }) => (
                     <>
+                        {errors.review && (
+                            <p className="rounded-lg bg-red-50 px-3 py-2 text-[11px] text-red-600">{errors.review}</p>
+                        )}
+
                         <div>
                             <label className="mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-store-muted">
                                 Your rating
@@ -176,6 +180,30 @@ function ReviewFormCard({ productSlug, selectedRating, onRatingChange, onSuccess
     );
 }
 
+function ReviewUnavailableCard({ isLoggedIn }) {
+    return (
+        <div className="flex h-full min-h-56 flex-col items-center justify-center rounded-xl bg-linear-to-br from-store-surface/80 via-white to-white px-6 py-10 text-center ring-1 ring-gray-200">
+            <div className="inline-flex size-12 items-center justify-center rounded-full bg-store-accent/10 ring-1 ring-store-accent/20">
+                <PenLine className="size-5 text-store-accent" strokeWidth={1.5} aria-hidden />
+            </div>
+            <p className="mt-3 text-sm font-bold text-store-primary">Reviews are for verified buyers</p>
+            <p className="mt-1 max-w-xs text-[11px] leading-relaxed text-store-muted">
+                {isLoggedIn
+                    ? 'You can leave a review after this product has been delivered on one of your orders.'
+                    : 'Please log in and purchase this product. You can review it once your order is delivered.'}
+            </p>
+            {!isLoggedIn && (
+                <Link
+                    href="/customer/login"
+                    className="mt-4 text-xs font-semibold text-store-accent underline-offset-2 hover:underline"
+                >
+                    Log in to your account
+                </Link>
+            )}
+        </div>
+    );
+}
+
 function ReviewList({ reviews }) {
     if (reviews.length === 0) {
         return (
@@ -224,7 +252,13 @@ function ReviewList({ reviews }) {
     );
 }
 
-export function ProductReviews({ productSlug, reviews = [], reviewSummary = { average: 0, count: 0 } }) {
+export function ProductReviews({
+    productSlug,
+    reviews = [],
+    reviewSummary = { average: 0, count: 0 },
+    canReview = false,
+    isLoggedIn = false,
+}) {
     const [selectedRating, setSelectedRating] = useState(0);
 
     return (
@@ -232,12 +266,16 @@ export function ProductReviews({ productSlug, reviews = [], reviewSummary = { av
             <ReviewSummaryHeader reviewSummary={reviewSummary} />
 
             <div className="grid gap-3 lg:grid-cols-2 lg:items-start">
-                <ReviewFormCard
-                    productSlug={productSlug}
-                    selectedRating={selectedRating}
-                    onRatingChange={setSelectedRating}
-                    onSuccess={() => setSelectedRating(0)}
-                />
+                {canReview ? (
+                    <ReviewFormCard
+                        productSlug={productSlug}
+                        selectedRating={selectedRating}
+                        onRatingChange={setSelectedRating}
+                        onSuccess={() => setSelectedRating(0)}
+                    />
+                ) : (
+                    <ReviewUnavailableCard isLoggedIn={isLoggedIn} />
+                )}
 
                 <ReviewList reviews={reviews} />
             </div>

@@ -30,7 +30,7 @@ class SaleLookupController extends Controller
         }
 
         $sell = Sell::query()
-            ->ownBranch()
+            ->ownBranchUser()
             ->sale()
             ->with([
                 'customer:id,name,phone',

@@ -17,7 +17,11 @@ class Branch extends Model
 
     public const int MAIN_BRANCH_ID = 1;
 
+    public const string MAIN_BRANCH_NAME = 'Main Branch';
+
     public const string ECOMMERCE_BRANCH_NAME = 'Ecommerce Branch';
+
+    public const string OPERATING_BRANCH_NAME = 'Gulshan Branch';
 
     protected $fillable = ['name', 'phone', 'address', 'status'];
 
@@ -54,7 +58,60 @@ class Branch extends Model
 
     public static function isMainBranch(?int $branchId): bool
     {
-        return $branchId === self::MAIN_BRANCH_ID;
+        return $branchId === self::resolveMainBranchId();
+    }
+
+    public static function resolveMainBranchId(): int
+    {
+        $byName = static::query()
+            ->where('name', self::MAIN_BRANCH_NAME)
+            ->value('id');
+
+        if ($byName !== null) {
+            return (int) $byName;
+        }
+
+        $ecommerceBranchId = EcommerceBranchService::resolveIdStatic();
+
+        if ($ecommerceBranchId !== self::MAIN_BRANCH_ID) {
+            return self::MAIN_BRANCH_ID;
+        }
+
+        $fallbackId = static::query()
+            ->active()
+            ->where('id', '!=', $ecommerceBranchId)
+            ->orderBy('id')
+            ->value('id');
+
+        return $fallbackId !== null ? (int) $fallbackId : self::MAIN_BRANCH_ID;
+    }
+
+    /**
+     * Superadmin settings catalog branch. Isolated from the ecommerce branch panel.
+     */
+    public static function resolveAdminCatalogBranchId(): int
+    {
+        $mainBranchId = static::query()
+            ->where('name', self::MAIN_BRANCH_NAME)
+            ->value('id');
+
+        if ($mainBranchId !== null) {
+            return (int) $mainBranchId;
+        }
+
+        $ecommerceBranchId = EcommerceBranchService::resolveIdStatic();
+
+        $nonEcommerceBranchId = static::query()
+            ->active()
+            ->where('id', '!=', $ecommerceBranchId)
+            ->orderBy('id')
+            ->value('id');
+
+        if ($nonEcommerceBranchId !== null) {
+            return (int) $nonEcommerceBranchId;
+        }
+
+        return (int) $ecommerceBranchId;
     }
 
     public function users(): HasMany

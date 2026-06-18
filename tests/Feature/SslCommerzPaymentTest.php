@@ -125,7 +125,8 @@ test('sslcommerz success callback marks order paid after validation', function (
         ->assertRedirect(route('checkout.success', ['order' => $order->id]))
         ->assertSessionHas('success', 'Payment completed successfully!');
 
-    expect($order->fresh()->payment_status)->toBe('Paid');
+    expect($order->fresh()->payment_status)->toBe('Paid')
+        ->and($order->fresh()->status)->toBe(OrderStatus::Confirmed);
 });
 
 test('sslcommerz failure callback marks pending order as failed', function () {
@@ -173,7 +174,8 @@ test('sslcommerz ipn marks order paid and is idempotent', function () {
         ->assertOk()
         ->assertSee('Transaction is successfully Completed');
 
-    expect($order->fresh()->payment_status)->toBe('Paid');
+    expect($order->fresh()->payment_status)->toBe('Paid')
+        ->and($order->fresh()->status)->toBe(OrderStatus::Confirmed);
 
     $this->post(route('payment.ipn'), [
         'tran_id' => $transactionId,

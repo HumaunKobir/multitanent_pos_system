@@ -121,6 +121,10 @@ class AdminNavigation
      */
     protected function userCanSeeBranchScope(User $user, array $item): bool
     {
+        if ($item['admin_panel_only'] ?? false) {
+            return $user->isSuperAdmin();
+        }
+
         if ($item['main_branch_only'] ?? false) {
             return Branch::isMainBranch($user->branch_id) || $user->isSuperAdmin();
         }

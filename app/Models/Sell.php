@@ -4,7 +4,7 @@ namespace App\Models;
 
 use App\Enums\DiscountType;
 use App\Enums\SaleType;
-use App\Traits\HasBranch;
+use App\Traits\HasBranchUser;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -14,10 +14,11 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Sell extends Model
 {
-    use HasBranch, HasFactory;
+    use HasBranchUser, HasFactory;
 
     protected $fillable = [
         'branch_id',
+        'user_id',
         'customer_id',
         'date',
         'gross_amount',
@@ -95,6 +96,11 @@ class Sell extends Model
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);
+    }
+
+    public function creator(): BelongsTo
+    {
+        return $this->user();
     }
 
     public function products(): HasMany

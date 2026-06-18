@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Setting;
 
+use App\Concerns\ManagesBranchCatalog;
 use App\Concerns\StoresPublicImages;
 use App\Http\Controllers\Controller;
 use App\Models\Brand;
@@ -13,13 +14,13 @@ use Inertia\Response;
 
 class BrandController extends Controller
 {
-    use StoresPublicImages;
+    use ManagesBranchCatalog, StoresPublicImages;
 
     public function index(Request $request): Response
     {
         $this->authorize('setting.brand.view');
 
-        $brands = Brand::query()
+        $brands = $this->branchCatalogQuery()
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->latest()
             ->paginate(20)
@@ -44,16 +45,15 @@ class BrandController extends Controller
         $this->authorize('setting.brand.create');
 
         $data = $request->validate([
-            'name' => ['required', 'string', 'max:191'],
+            ...$this->catalogValidationRules(),
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
-            'status' => ['required', 'in:0,1'],
         ]);
 
         if ($storedImage = $this->storePublicImage($request, 'image', 'brands')) {
             $data['image'] = $storedImage;
         }
 
-        $brand = Brand::create($data);
+        $brand = $this->storeCatalogRecords($data);
 
         if ($request->wantsJson()) {
             return response()->json(['value' => (string) $brand->id, 'label' => $brand->name], 201);
@@ -66,6 +66,7 @@ class BrandController extends Controller
     public function update(Request $request, Brand $brand): RedirectResponse
     {
         $this->authorize('setting.brand.update');
+        $this->authorizeCatalogAccess($brand);
 
         $data = $request->validate([
             'name' => ['required', 'string', 'max:191'],
@@ -89,6 +90,7 @@ class BrandController extends Controller
     public function destroy(Brand $brand): RedirectResponse
     {
         $this->authorize('setting.brand.delete');
+        $this->authorizeCatalogAccess($brand);
 
         if ($brand->products()->exists()) {
             return back()->with('error', 'Cannot delete brand with existing products.');
@@ -100,5 +102,10 @@ class BrandController extends Controller
 
         return redirect()->route('setting.brand.index')
             ->with('success', 'Brand deleted successfully.');
+    }
+
+    protected function catalogModelClass(): string
+    {
+        return Brand::class;
     }
 }

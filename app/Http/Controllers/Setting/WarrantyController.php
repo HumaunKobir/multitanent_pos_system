@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Setting;
 
+use App\Concerns\ManagesBranchCatalog;
 use App\Http\Controllers\Controller;
 use App\Models\Warranty;
 use Illuminate\Http\JsonResponse;
@@ -12,11 +13,13 @@ use Inertia\Response;
 
 class WarrantyController extends Controller
 {
+    use ManagesBranchCatalog;
+
     public function index(Request $request): Response
     {
         $this->authorize('setting.warranty.view');
 
-        $warranties = Warranty::query()
+        $warranties = $this->branchCatalogQuery()
             ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
             ->latest()
             ->paginate(20)
@@ -32,13 +35,10 @@ class WarrantyController extends Controller
     {
         $this->authorize('setting.warranty.create');
 
-        $data = $request->validate([
-            'name' => ['required', 'string', 'max:191'],
+        $warranty = $this->storeCatalogRecords($request->validate([
+            ...$this->catalogValidationRules(),
             'duration' => ['nullable', 'string', 'max:191'],
-            'status' => ['required', 'in:0,1'],
-        ]);
-
-        $warranty = Warranty::create($data);
+        ]));
 
         if ($request->wantsJson()) {
             return response()->json(['value' => (string) $warranty->id, 'label' => $warranty->name], 201);
@@ -51,14 +51,13 @@ class WarrantyController extends Controller
     public function update(Request $request, Warranty $warranty): RedirectResponse
     {
         $this->authorize('setting.warranty.update');
+        $this->authorizeCatalogAccess($warranty);
 
-        $data = $request->validate([
+        $warranty->update($request->validate([
             'name' => ['required', 'string', 'max:191'],
             'duration' => ['nullable', 'string', 'max:191'],
             'status' => ['required', 'in:0,1'],
-        ]);
-
-        $warranty->update($data);
+        ]));
 
         return redirect()->route('setting.warranty.index')
             ->with('success', 'Warranty updated successfully.');
@@ -67,10 +66,16 @@ class WarrantyController extends Controller
     public function destroy(Warranty $warranty): RedirectResponse
     {
         $this->authorize('setting.warranty.delete');
+        $this->authorizeCatalogAccess($warranty);
 
         $warranty->delete();
 
         return redirect()->route('setting.warranty.index')
             ->with('success', 'Warranty deleted successfully.');
+    }
+
+    protected function catalogModelClass(): string
+    {
+        return Warranty::class;
     }
 }

@@ -2,8 +2,11 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Customer;
+use App\Models\Product;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Validator;
 
 class StoreProductReviewRequest extends FormRequest
 {
@@ -21,6 +24,35 @@ class StoreProductReviewRequest extends FormRequest
             'reviewer_name' => ['required', 'string', 'max:255'],
             'rating' => ['required', 'integer', 'min:1', 'max:5'],
             'comment' => ['required', 'string', 'max:1000'],
+        ];
+    }
+
+    /**
+     * @return array<int, callable(Validator): void>
+     */
+    public function after(): array
+    {
+        return [
+            function (Validator $validator): void {
+                $customer = $this->user('customer');
+
+                if (! $customer instanceof Customer) {
+                    return;
+                }
+
+                $product = $this->route('product');
+
+                if (! $product instanceof Product) {
+                    return;
+                }
+
+                if (! $customer->hasReceivedProduct($product)) {
+                    $validator->errors()->add(
+                        'review',
+                        'You can only review products you have purchased and received.',
+                    );
+                }
+            },
         ];
     }
 }

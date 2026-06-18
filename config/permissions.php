@@ -274,7 +274,7 @@ return [
 
         'setting.slider' => [
             'label' => 'Sliders',
-            'group' => 'Settings',
+            'group' => 'Ecommerce',
             'permissions' => [
                 'setting.slider.view' => 'View Sliders',
                 'setting.slider.create' => 'Create Slider',
@@ -285,7 +285,7 @@ return [
 
         'setting.productsection' => [
             'label' => 'Product Sections',
-            'group' => 'Settings',
+            'group' => 'Ecommerce',
             'permissions' => [
                 'setting.productsection.view' => 'View Product Sections',
                 'setting.productsection.create' => 'Create Product Section',
@@ -296,7 +296,7 @@ return [
 
         'setting.website' => [
             'label' => 'Website Settings',
-            'group' => 'Settings',
+            'group' => 'Ecommerce',
             'permissions' => [
                 'setting.website.view' => 'View Website Settings',
                 'setting.website.update' => 'Update Website Settings',
@@ -305,7 +305,7 @@ return [
 
         'setting.page-content' => [
             'label' => 'Website Pages',
-            'group' => 'Settings',
+            'group' => 'Ecommerce',
             'permissions' => [
                 'setting.page-content.view' => 'View Website Pages',
                 'setting.page-content.update' => 'Update Website Pages',
@@ -314,7 +314,7 @@ return [
 
         'setting.faq' => [
             'label' => 'FAQ',
-            'group' => 'Settings',
+            'group' => 'Ecommerce',
             'permissions' => [
                 'setting.faq.view' => 'View FAQ',
                 'setting.faq.create' => 'Create FAQ',
@@ -348,6 +348,14 @@ return [
             'group' => 'Ecommerce',
             'permissions' => [
                 'online-customer.view' => 'View Online Customers',
+            ],
+        ],
+
+        'product.visible-on-store' => [
+            'label' => 'Product Store Visibility',
+            'group' => 'Ecommerce',
+            'permissions' => [
+                'product.visible-on-store' => 'Visible on Store',
             ],
         ],
 

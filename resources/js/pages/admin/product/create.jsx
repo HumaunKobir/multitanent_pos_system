@@ -4,9 +4,9 @@ import { ArrowLeft, PackagePlus } from 'lucide-react';
 import { route } from '@/lib/route';
 import ProductForm from './partials/product-form';
 
-export default function ProductCreate({ categories, brands, units, warranties, branches, colorOptions = [], sizeOptions = [], tagOptions = [] }) {
+export default function ProductCreate({ categories, brands, units, warranties, branches, colorOptions = [], sizeOptions = [], tagOptions = [], ecommerceBranchId = null }) {
     const form = useForm({
-        branch_id: null,
+        branch_id: '',
         category_id: '',
         brand_id: '',
         unit_id: '',
@@ -16,6 +16,7 @@ export default function ProductCreate({ categories, brands, units, warranties, b
         purchase_price: '',
         sale_price: '',
         discount_price: '',
+        initial_stock: '',
         tags: [],
         visible: 'no',
         status: '1',
@@ -68,6 +69,7 @@ export default function ProductCreate({ categories, brands, units, warranties, b
                         colorOptions={colorOptions}
                         sizeOptions={sizeOptions}
                         tagOptions={tagOptions}
+                        ecommerceBranchId={ecommerceBranchId}
                         processing={form.processing}
                         cancelHref={route('product.index')}
                     />

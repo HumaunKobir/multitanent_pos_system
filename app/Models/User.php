@@ -23,6 +23,10 @@ class User extends Authenticatable
 
     public const string ECOMMERCE_BRANCH_ADMIN_EMAIL = 'branchadmin@coolness.com';
 
+    public const string ECOMMERCE_BRANCH_USER_EMAIL = 'ecommerce@coolness.com';
+
+    public const string OPERATING_BRANCH_ADMIN_EMAIL = 'branchmanager@coolness.com';
+
     /** @use HasFactory<UserFactory> */
     use HasBranch, HasFactory, HasRoles, Notifiable, TwoFactorAuthenticatable;
 

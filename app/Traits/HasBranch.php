@@ -20,9 +20,6 @@ trait HasBranch
 
     public function scopeAccessibleAtBranch(Builder $query, int $branchId): Builder
     {
-        return $query->where(function (Builder $q) use ($branchId) {
-            $q->where('branch_id', $branchId)
-                ->orWhereNull('branch_id');
-        });
+        return $query->where('branch_id', $branchId);
     }
 }

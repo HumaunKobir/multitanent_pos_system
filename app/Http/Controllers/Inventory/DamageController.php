@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\Http\Controllers\Concerns\AuthorizesBranchUserRecords;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Damage;
@@ -17,6 +18,8 @@ use Inertia\Response;
 
 class DamageController extends Controller
 {
+    use AuthorizesBranchUserRecords;
+
     public function __construct(
         private InventoryStockService $stock,
         private InventoryAccountingService $accounting,
@@ -27,7 +30,7 @@ class DamageController extends Controller
     {
         $this->authorize('inventory.damage.view');
 
-        $damages = Damage::query()->ownBranch()
+        $damages = Damage::query()->ownBranchUser()
             ->when($request->search, fn ($q, $s) => $q->where('id', 'like', "%{$s}%")
                 ->orWhere('comment', 'like', "%{$s}%"))
             ->latest()
@@ -105,6 +108,7 @@ class DamageController extends Controller
 
                 $damage = Damage::create([
                     'branch_id' => $branchId,
+                    'user_id' => $this->currentUserId(),
                     'date' => $data['date'],
                     'comment' => $data['comment'] ?? null,
                     'serial' => 'INVD'.str_pad((string) (Damage::max('id') + 1), 8, '0', STR_PAD_LEFT),
@@ -134,7 +138,7 @@ class DamageController extends Controller
     public function show(Damage $damage): Response
     {
         $this->authorize('inventory.damage.view');
-        $this->authorizeBranch($damage);
+        $this->authorizeBranchUserRecord($damage);
 
         $damage->load(['products.product', 'products.variation']);
 
@@ -146,7 +150,7 @@ class DamageController extends Controller
     public function edit(Damage $damage): Response
     {
         $this->authorize('inventory.damage.update');
-        $this->authorizeBranch($damage);
+        $this->authorizeBranchUserRecord($damage);
 
         $damage->load(['products.product', 'products.variation']);
 
@@ -172,7 +176,7 @@ class DamageController extends Controller
     public function update(Request $request, Damage $damage): RedirectResponse
     {
         $this->authorize('inventory.damage.update');
-        $this->authorizeBranch($damage);
+        $this->authorizeBranchUserRecord($damage);
 
         $data = $request->validate([
             'date' => ['required', 'date'],
@@ -259,7 +263,7 @@ class DamageController extends Controller
     public function destroy(Damage $damage): RedirectResponse
     {
         $this->authorize('inventory.damage.delete');
-        $this->authorizeBranch($damage);
+        $this->authorizeBranchUserRecord($damage);
 
         $damage->load(['products']);
 
@@ -291,14 +295,6 @@ class DamageController extends Controller
             if ($line->variation_id) {
                 $this->stock->restoreVariation((int) $line->variation_id, $qty);
             }
-        }
-    }
-
-    private function authorizeBranch(Damage $damage): void
-    {
-        $branchId = Auth::user()?->branch_id;
-        if ($branchId !== null && $damage->branch_id !== $branchId) {
-            abort(404);
         }
     }
 }

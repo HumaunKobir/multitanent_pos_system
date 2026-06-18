@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CommonStatus;
 use App\Enums\CustomerRegistrationType;
+use App\Enums\OrderStatus;
 use App\Support\StorageUrl;
 use App\Traits\HasAccount;
 use App\Traits\HasBranch;
@@ -67,5 +68,15 @@ class Customer extends Authenticatable
     public function payments(): HasMany
     {
         return $this->hasMany(CustomerPayment::class);
+    }
+
+    public function hasReceivedProduct(Product $product): bool
+    {
+        return OnlineOrderProduct::query()
+            ->where('product_id', $product->id)
+            ->whereHas('order', fn ($query) => $query
+                ->where('customer_id', $this->id)
+                ->where('status', OrderStatus::Delivered))
+            ->exists();
     }
 }

@@ -3,19 +3,20 @@
 namespace App\Models;
 
 use App\Enums\ReceivedPaymentMethod;
-use App\Traits\HasBranch;
+use App\Traits\HasBranchUser;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProductExchange extends Model
 {
-    use HasBranch;
+    use HasBranchUser;
 
     protected $appends = ['invoice_number'];
 
     protected $fillable = [
         'branch_id',
+        'user_id',
         'sell_id',
         'customer_id',
         'date',

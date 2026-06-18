@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Batch;
 use App\Models\Branch;
+use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Models\StockDistribution;
 use App\Models\StockDistributionProduct;
@@ -18,9 +19,7 @@ class StockDistributionService
             return (float) (ProductVariation::query()
                 ->whereKey($variationId)
                 ->where('product_id', $productId)
-                ->where(function ($q) {
-                    $q->where('branch_id', Branch::MAIN_BRANCH_ID)->orWhereNull('branch_id');
-                })
+                ->where('branch_id', Branch::MAIN_BRANCH_ID)
                 ->value('stock') ?? 0);
         }
 
@@ -36,9 +35,17 @@ class StockDistributionService
     public function distributeLine(int $toBranchId, int $productId, ?int $variationId, float $qty): array
     {
         $fromBranchId = Branch::MAIN_BRANCH_ID;
+        $destinationProduct = $this->resolveDestinationProduct($productId, $toBranchId);
 
         if ($variationId) {
-            return $this->distributeVariation($fromBranchId, $toBranchId, $productId, $variationId, $qty);
+            return $this->distributeVariation(
+                $fromBranchId,
+                $toBranchId,
+                $productId,
+                $destinationProduct->id,
+                $variationId,
+                $qty,
+            );
         }
 
         $sourceBatchMap = $this->stock->deductFifo(
@@ -64,7 +71,7 @@ class StockDistributionService
             $destinationBatch = Batch::firstOrCreate(
                 [
                     'branch_id' => $toBranchId,
-                    'product_id' => $productId,
+                    'product_id' => $destinationProduct->id,
                     'purchase_price' => $sourceBatch->purchase_price,
                     'expiry_date' => $sourceBatch->expiry_date,
                     'serial' => $sourceBatch->serial,
@@ -117,21 +124,32 @@ class StockDistributionService
         }
 
         if ($line->variation_id) {
-            $this->rollbackVariation((int) $line->variation_id, $toBranchId, (int) $line->product_id, $qty);
+            $destinationProduct = $this->resolveDestinationProduct((int) $line->product_id, $toBranchId);
+            $this->rollbackVariation(
+                (int) $line->variation_id,
+                $toBranchId,
+                (int) $line->product_id,
+                $destinationProduct->id,
+                $qty,
+            );
         }
     }
 
     /**
      * @return array{source_batches: array<int|string, float>, destination_batches: array<int|string, float>}
      */
-    private function distributeVariation(int $fromBranchId, int $toBranchId, int $productId, int $variationId, float $qty): array
-    {
+    private function distributeVariation(
+        int $fromBranchId,
+        int $toBranchId,
+        int $sourceProductId,
+        int $destinationProductId,
+        int $variationId,
+        float $qty,
+    ): array {
         $sourceVariation = ProductVariation::query()
             ->whereKey($variationId)
-            ->where('product_id', $productId)
-            ->where(function ($q) use ($fromBranchId) {
-                $q->where('branch_id', $fromBranchId)->orWhereNull('branch_id');
-            })
+            ->where('product_id', $sourceProductId)
+            ->where('branch_id', $fromBranchId)
             ->lockForUpdate()
             ->first();
 
@@ -147,7 +165,7 @@ class StockDistributionService
 
         $destinationVariation = ProductVariation::query()->firstOrCreate(
             [
-                'product_id' => $productId,
+                'product_id' => $destinationProductId,
                 'branch_id' => $toBranchId,
                 'sku' => $sourceVariation->sku,
             ],
@@ -169,8 +187,13 @@ class StockDistributionService
         ];
     }
 
-    private function rollbackVariation(int $sourceVariationId, int $toBranchId, int $productId, float $qty): void
-    {
+    private function rollbackVariation(
+        int $sourceVariationId,
+        int $toBranchId,
+        int $sourceProductId,
+        int $destinationProductId,
+        float $qty,
+    ): void {
         $sourceVariation = ProductVariation::query()->whereKey($sourceVariationId)->first();
 
         if (! $sourceVariation) {
@@ -178,7 +201,7 @@ class StockDistributionService
         }
 
         $destinationVariation = ProductVariation::query()
-            ->where('product_id', $productId)
+            ->where('product_id', $destinationProductId)
             ->where('branch_id', $toBranchId)
             ->where('sku', $sourceVariation->sku)
             ->lockForUpdate()
@@ -194,5 +217,26 @@ class StockDistributionService
 
         $destinationVariation->decrement('stock', $qty);
         ProductVariation::whereKey($sourceVariationId)->increment('stock', $qty);
+    }
+
+    private function resolveDestinationProduct(int $sourceProductId, int $toBranchId): Product
+    {
+        $sourceProduct = Product::query()->findOrFail($sourceProductId);
+
+        if ((int) $sourceProduct->branch_id === $toBranchId) {
+            return $sourceProduct;
+        }
+
+        $destinationProduct = $sourceProduct->siblingForBranch($toBranchId);
+
+        if ($destinationProduct !== null) {
+            return $destinationProduct;
+        }
+
+        if ($sourceProduct->product_group_id === null) {
+            return $sourceProduct;
+        }
+
+        throw new \RuntimeException('No product catalog entry exists for the destination branch.');
     }
 }

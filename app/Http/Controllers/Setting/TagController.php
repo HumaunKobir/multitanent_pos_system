@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Setting;
 use App\Concerns\StoresPublicImages;
 use App\Enums\CommonStatus;
 use App\Http\Controllers\Controller;
+use App\Models\Branch;
 use App\Models\Product;
 use App\Models\Tag;
 use Illuminate\Http\JsonResponse;
@@ -171,13 +172,31 @@ class TagController extends Controller
             'name' => ['required', 'string', 'max:191'],
             'image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:2048'],
             'status' => ['required', Rule::in(CommonStatus::getValues())],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
         ]);
 
         $data['parent_id'] = $data['parent_id'] ?? null;
         $data['status'] = (int) $data['status'];
-        $data['branch_id'] = Auth::user()?->branch_id;
+        $data['branch_id'] = $this->resolveTagBranchId($request);
 
         return $data;
+    }
+
+    protected function resolveTagBranchId(Request $request): ?int
+    {
+        $userBranchId = Auth::user()?->branch_id;
+
+        if ($userBranchId !== null) {
+            return $userBranchId;
+        }
+
+        $requestedBranchId = $request->input('branch_id');
+
+        if (filled($requestedBranchId)) {
+            return (int) $requestedBranchId;
+        }
+
+        return Branch::resolveAdminCatalogBranchId();
     }
 
     protected function resolveTag(Tag $tag): Tag
@@ -189,13 +208,10 @@ class TagController extends Controller
     {
         $branchId = Auth::user()?->branch_id;
 
-        if ($branchId === null) {
-            $query->whereNull('branch_id');
-
-            return;
-        }
-
-        $query->where('branch_id', $branchId);
+        $query->where(
+            'branch_id',
+            $branchId ?? Branch::resolveAdminCatalogBranchId(),
+        );
     }
 
     /**

@@ -13,10 +13,15 @@ return new class extends Migration
     {
         Schema::create('warranties', function (Blueprint $table) {
             $table->id();
+            $table->unsignedBigInteger('branch_id')->nullable();
+            $table->uuid('catalog_group_id')->nullable();
             $table->string('name');
             $table->string('duration')->nullable();
             $table->tinyInteger('status')->default(1);
             $table->timestamps();
+
+            $table->index('branch_id');
+            $table->index('catalog_group_id');
         });
     }
 

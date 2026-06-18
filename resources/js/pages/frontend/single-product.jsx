@@ -14,16 +14,28 @@ import FrontendLayout from '@/layouts/frontend/frontend-layout';
 import { cn } from '@/lib/utils';
 import { StoreButton } from '@/components/frontend/store-button';
 
-export default function SingleProduct({ product, reviews = [], reviewSummary = { average: 0, count: 0 } }) {
+export default function SingleProduct({
+    product,
+    reviews = [],
+    reviewSummary = { average: 0, count: 0 },
+    canReview = false,
+    auth,
+}) {
     return (
         <FrontendLayout>
             <Head title={product.name} />
-            <SingleProductContent product={product} reviews={reviews} reviewSummary={reviewSummary} />
+            <SingleProductContent
+                product={product}
+                reviews={reviews}
+                reviewSummary={reviewSummary}
+                canReview={canReview}
+                isLoggedIn={Boolean(auth?.customer)}
+            />
         </FrontendLayout>
     );
 }
 
-function SingleProductContent({ product, reviews, reviewSummary }) {
+function SingleProductContent({ product, reviews, reviewSummary, canReview, isLoggedIn }) {
     const [selectedPhoto, setSelectedPhoto] = useState(0);
     const [selectedVariation, setSelectedVariation] = useState(null);
     const [tailorService, setTailorService] = useState('standard');
@@ -221,6 +233,8 @@ function SingleProductContent({ product, reviews, reviewSummary }) {
                                     productSlug={product.slug}
                                     reviews={reviews}
                                     reviewSummary={reviewSummary}
+                                    canReview={canReview}
+                                    isLoggedIn={isLoggedIn}
                                 />
                             )}
                         </div>

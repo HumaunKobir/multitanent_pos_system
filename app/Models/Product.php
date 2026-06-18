@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
@@ -17,6 +18,7 @@ class Product extends Model
 
     protected $fillable = [
         'branch_id',
+        'product_group_id',
         'category_id',
         'brand_id',
         'unit_id',
@@ -76,11 +78,32 @@ class Product extends Model
     {
         $branchId = Auth::user()?->branch_id;
 
-        if ($branchId === null || Branch::isMainBranch($branchId)) {
+        if ($branchId === null) {
             return $query;
         }
 
-        return $query->accessibleAtBranch($branchId);
+        return $query->where('branch_id', $branchId);
+    }
+
+    public function scopeAtBranch(Builder $query, int $branchId): Builder
+    {
+        return $query->where('branch_id', $branchId);
+    }
+
+    public function siblingForBranch(int $branchId): ?self
+    {
+        if ($this->branch_id === $branchId) {
+            return $this;
+        }
+
+        if ($this->product_group_id === null) {
+            return null;
+        }
+
+        return static::query()
+            ->where('product_group_id', $this->product_group_id)
+            ->where('branch_id', $branchId)
+            ->first();
     }
 
     public function branch(): BelongsTo
@@ -135,9 +158,22 @@ class Product extends Model
         return $this->hasMany(Batch::class);
     }
 
+    public function initialStockRecord(): HasOne
+    {
+        return $this->hasOne(ProductInitialStock::class)->whereNull('product_variation_id');
+    }
+
     public function resolveStockBranchId(?int $actingBranchId = null): int
     {
-        return Branch::MAIN_BRANCH_ID;
+        if ($actingBranchId !== null) {
+            return $actingBranchId;
+        }
+
+        if ($this->branch_id !== null) {
+            return (int) $this->branch_id;
+        }
+
+        return Branch::resolveMainBranchId();
     }
 
     public function purchaseProducts(): HasMany

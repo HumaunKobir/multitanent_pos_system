@@ -16,6 +16,7 @@ use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\SystemAccountService;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\Permission\Models\Permission;
 
@@ -371,32 +372,42 @@ test('purchase stores stock in main warehouse until manually distributed', funct
     $mainUser = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
     Permission::findOrCreate('inventory.purchase.create', 'web');
     $mainUser->givePermissionTo('inventory.purchase.create');
+
+    $superAdmin = User::factory()->create(['branch_id' => null]);
     Permission::findOrCreate('inventory.stock-distribution.create', 'web');
-    $mainUser->givePermissionTo('inventory.stock-distribution.create');
+    $superAdmin->givePermissionTo('inventory.stock-distribution.create');
 
     $targetBranch = Branch::factory()->create();
     $branchUser = User::factory()->create(['branch_id' => $targetBranch->id]);
     Permission::findOrCreate('inventory.sell.create', 'web');
     $branchUser->givePermissionTo('inventory.sell.create');
 
-    $cash = seedAccountingAccounts();
+    $cash = seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    $branchCash = seedAccountingAccounts(branchId: $targetBranch->id);
     $supplier = Supplier::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
-    $product = Product::factory()->create(['branch_id' => $targetBranch->id]);
+    $productGroupId = (string) Str::uuid();
+    $mainProduct = Product::factory()->create([
+        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'product_group_id' => $productGroupId,
+    ]);
+    $product = Product::factory()->create([
+        'branch_id' => $targetBranch->id,
+        'product_group_id' => $productGroupId,
+        'name' => $mainProduct->name,
+    ]);
 
     $this->actingAs($mainUser)
         ->post('/inventory/purchase', [
             'supplier_id' => $supplier->id,
             'date' => now()->format('Y-m-d'),
-            'discount_type' => 'flat',
-            'discount_value' => '0',
-            'special_discount_id' => null,
+            'discount' => '0',
             'vat' => '0',
             'paid_amount' => '1000',
             'payment_account_id' => $cash->id,
             'comment' => null,
             'items' => [
                 [
-                    'product_id' => $product->id,
+                    'product_id' => $mainProduct->id,
                     'variation_id' => null,
                     'unit_price' => '1000',
                     'quantity' => '10',
@@ -406,7 +417,7 @@ test('purchase stores stock in main warehouse until manually distributed', funct
         ])
         ->assertRedirect(route('inventory.purchase.index'));
 
-    $batch = Batch::query()->where('product_id', $product->id)->first();
+    $batch = Batch::query()->where('product_id', $mainProduct->id)->first();
     expect($batch)->not->toBeNull();
     expect($batch->branch_id)->toBe(Branch::MAIN_BRANCH_ID);
     expect((float) $batch->available)->toBe(10.0);
@@ -419,14 +430,14 @@ test('purchase stores stock in main warehouse until manually distributed', funct
     expect($match)->not->toBeNull();
     expect((float) $match['stock'])->toBe(0.0);
 
-    $this->actingAs($mainUser)
+    $this->actingAs($superAdmin)
         ->post('/inventory/stock-distribution', [
             'to_branch_id' => $targetBranch->id,
             'date' => now()->format('Y-m-d'),
             'comment' => null,
             'items' => [
                 [
-                    'product_id' => $product->id,
+                    'product_id' => $mainProduct->id,
                     'variation_id' => null,
                     'quantity' => '10',
                 ],
@@ -451,7 +462,7 @@ test('purchase stores stock in main warehouse until manually distributed', funct
             'special_discount_id' => null,
             'vat' => '0',
             'paid_amount' => '2000',
-            'payment_account_id' => $cash->id,
+            'payment_account_id' => $branchCash->id,
             'comment' => null,
             'items' => [
                 [
@@ -874,6 +885,7 @@ test('branch user can open actions for their own branch sale', function () {
 
     $sell = Sell::factory()->create([
         'branch_id' => $branch->id,
+        'user_id' => $user->id,
         'type' => SaleType::Sale,
     ]);
 
@@ -895,7 +907,11 @@ test('branch user does not see sales without a branch on index', function () {
     $user = User::factory()->create(['branch_id' => $branch->id]);
     Permission::findOrCreate('inventory.sell.view', 'web');
     $user->givePermissionTo('inventory.sell.view');
-    $ownSell = Sell::factory()->create(['branch_id' => $branch->id, 'type' => SaleType::Sale]);
+    $ownSell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+    ]);
     $globalSell = Sell::factory()->create(['branch_id' => null, 'type' => SaleType::Sale]);
 
     $this->actingAs($user)

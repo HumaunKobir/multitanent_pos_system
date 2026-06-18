@@ -15,14 +15,16 @@ import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { useCan } from '@/hooks/use-can';
 import { route } from '@/lib/route';
 
-export default function ProductIndex({ products, filters, categories, brands, tags }) {
-    const { flash } = usePage().props;
+export default function ProductIndex({ products, filters, categories, brands, tags, branches = {} }) {
+    const { flash, auth } = usePage().props;
+    const isAdmin = !auth.user?.branch_id;
     const toast = useAppToast();
     const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [categoryId, setCategoryId] = useState(filters.category_id ?? '__all');
     const [brandId, setBrandId] = useState(filters.brand_id ?? '__all');
     const [tag, setTag] = useState(filters.tag ?? '__all');
+    const [branchId, setBranchId] = useState(filters.branch_id ?? 'all');
     const [deleting, setDeleting] = useState(null);
 
     useEffect(() => {
@@ -39,11 +41,12 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                     category_id: categoryId === '__all' ? undefined : categoryId,
                     brand_id: brandId === '__all' ? undefined : brandId,
                     tag: tag === '__all' ? undefined : tag,
+                    ...(isAdmin ? { branch_id: branchId } : {}),
                 },
                 { preserveState: true, replace: true },
             );
         },
-        [search, categoryId, brandId, tag],
+        [search, categoryId, brandId, tag, branchId, isAdmin],
         350,
         { skipFirstRun: true },
     );
@@ -53,6 +56,9 @@ export default function ProductIndex({ products, filters, categories, brands, ta
         setCategoryId('__all');
         setBrandId('__all');
         setTag('__all');
+        if (isAdmin) {
+            setBranchId('all');
+        }
     }
 
     function handleDelete() {
@@ -64,6 +70,7 @@ export default function ProductIndex({ products, filters, categories, brands, ta
 
     const categoryOptions = Object.entries(categories || {}).map(([value, label]) => ({ value, label }));
     const brandOptions = Object.entries(brands || {}).map(([value, label]) => ({ value, label }));
+    const branchOptions = Object.entries(branches || {}).map(([value, label]) => ({ value, label }));
 
     const flatRows = (products.data ?? []).flatMap((product) => {
         if (!product.variations?.length) {
@@ -199,6 +206,21 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                         placeholder="Search by name, code, brand, category, tag..."
                         className="max-w-xs"
                     />
+                    {isAdmin && (
+                        <Select value={branchId} onValueChange={(v) => setBranchId(v)}>
+                            <SelectTrigger className="w-48">
+                                <SelectValue placeholder="Branch" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All branches</SelectItem>
+                                {branchOptions.map((opt) => (
+                                    <SelectItem key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
                     <Select value={categoryId} onValueChange={(v) => setCategoryId(v)}>
                         <SelectTrigger className="w-48">
                             <SelectValue placeholder="All categories" />

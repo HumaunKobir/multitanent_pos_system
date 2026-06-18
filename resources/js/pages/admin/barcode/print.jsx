@@ -135,6 +135,7 @@ function LabelPreview({ row, settings }) {
                         }}
                     >
                         {row?.name ?? 'Product Name'}
+                        {row?.code ? ` - ${row.code}` : ''}
                     </div>
                     <BarcodeBars
                         code={row?.code ?? '123456789'}
@@ -144,16 +145,15 @@ function LabelPreview({ row, settings }) {
                     <div
                         style={{
                             display: 'flex',
-                            justifyContent: 'space-between',
+                            justifyContent: 'center',
                             fontSize: `${settings.fontSize}px`,
                             fontWeight: fw,
                             fontFamily: 'monospace',
-                            marginTop: '1px',
+                            marginTop: '-6px',
                             lineHeight: 1,
                         }}
                     >
                         <span>{formatLabelPrice(price)}</span>
-                        <span>{row?.code ?? ''}</span>
                     </div>
                 </div>
             </div>
@@ -173,11 +173,10 @@ function buildPrintHtml(rows, settings) {
             return `
       <div class="label">
         <div class="label-inner">
-          <div class="name">${row.name ?? ''}</div>
+          <div class="name">${row.name ?? ''}${row.code ? ` - ${row.code}` : ''}</div>
           <div class="bars-wrap"><div class="bars">${row.code}</div></div>
           <div class="footer">
             <span>${formatLabelPrice(price)}</span>
-            <span>${row.code}</span>
           </div>
         </div>
       </div>`;
@@ -200,7 +199,7 @@ function buildPrintHtml(rows, settings) {
     .name { font-size: ${fontSize}px; font-weight: ${fw}; font-family: sans-serif; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; margin-bottom: 1px; }
     .bars-wrap { overflow: hidden; }
     .bars { font-family: 'Libre Barcode 128', monospace; font-weight: ${fw}; font-size: ${barHeight}px; line-height: 1; white-space: nowrap; display: inline-block; transform-origin: 0 0; }
-    .footer { display: flex; justify-content: space-between; font-size: ${fontSize}px; font-weight: ${fw}; font-family: monospace; margin-top: 1px; line-height: 1; }
+    .footer { display: flex; justify-content: center; font-size: ${fontSize}px; font-weight: ${fw}; font-family: monospace; margin-top: -6px; line-height: 1; }
     @media print { @page { margin: 0; } body { margin: 0; } }
   </style>
 </head>

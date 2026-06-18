@@ -3,6 +3,7 @@
 use App\Http\Controllers\Account\AccountController;
 use App\Http\Controllers\Account\VoucherController;
 use App\Http\Controllers\Api\CustomerSearchController;
+use App\Http\Controllers\Api\ProductCatalogOptionsController;
 use App\Http\Controllers\Api\ProductSearchController;
 use App\Http\Controllers\Api\PurchaseLookupController;
 use App\Http\Controllers\Api\SaleLookupController;
@@ -129,6 +130,7 @@ Route::middleware(['auth', 'verified'])->prefix('party')->name('party.')->group(
 });
 
 Route::middleware(['auth', 'verified'])->prefix('api')->name('api.')->group(function () {
+    Route::get('products/catalog-options', ProductCatalogOptionsController::class)->name('products.catalog-options');
     Route::get('suppliers', [SupplierApiController::class, 'index'])->name('suppliers');
     Route::post('suppliers', [SupplierApiController::class, 'store'])->name('suppliers.store');
     Route::get('products/for-purchase', [ProductSearchController::class, 'forPurchase'])->name('products.purchase');

@@ -614,3 +614,109 @@ test('all branches product creates one product per active branch with correct br
         ->and($products->pluck('product_group_id')->unique())->toHaveCount(1)
         ->and($products->pluck('branch_id')->contains($mainBranch->id))->toBeTrue();
 });
+
+test('branch user product creation stays on own branch even without branch input', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $otherBranch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    $user->givePermissionTo('product.create');
+
+    $category = Category::query()->create([
+        'branch_id' => $branch->id,
+        'name' => 'Branch Scoped Category '.Str::uuid(),
+        'status' => 1,
+    ]);
+
+    $brand = Brand::query()->create([
+        'branch_id' => $branch->id,
+        'name' => 'Branch Scoped Brand '.Str::uuid(),
+        'status' => 1,
+    ]);
+
+    $unit = Unit::query()->create([
+        'branch_id' => $branch->id,
+        'name' => 'Branch Scoped Unit '.Str::uuid(),
+        'status' => 1,
+    ]);
+
+    $productName = 'Branch Scoped Product '.Str::uuid();
+
+    $this->actingAs($user)
+        ->post(route('product.store'), [
+            'category_id' => (string) $category->id,
+            'brand_id' => (string) $brand->id,
+            'unit_id' => (string) $unit->id,
+            'name' => $productName,
+            'purchase_price' => '100',
+            'sale_price' => '150',
+            'visible' => 'no',
+            'status' => '1',
+        ])
+        ->assertRedirect(route('product.index'));
+
+    expect(Product::query()->where('name', $productName)->count())->toBe(1)
+        ->and(
+            Product::query()->where('name', $productName)->value('branch_id'),
+        )->toBe($branch->id)
+        ->and(
+            Product::query()->where('name', $productName)->where('branch_id', $otherBranch->id)->exists(),
+        )->toBeFalse();
+});
+
+test('product catalog options api returns records for selected admin branch only', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranch = ensureMainBranchForCatalog();
+    $operatingBranch = Branch::factory()->create();
+    $admin = User::factory()->create(['branch_id' => null]);
+    $admin->givePermissionTo('product.create');
+
+    $mainCategory = Category::query()->create([
+        'branch_id' => $mainBranch->id,
+        'name' => 'Main API Category '.Str::uuid(),
+        'status' => 1,
+    ]);
+
+    $operatingCategory = Category::query()->create([
+        'branch_id' => $operatingBranch->id,
+        'name' => 'Operating API Category '.Str::uuid(),
+        'status' => 1,
+    ]);
+
+    $this->actingAs($admin)
+        ->getJson(route('api.products.catalog-options', ['branch_id' => $operatingBranch->id]))
+        ->assertOk()
+        ->assertJsonPath('branch_id', $operatingBranch->id)
+        ->assertJsonPath("categories.{$operatingCategory->id}", $operatingCategory->name)
+        ->assertJsonMissingPath("categories.{$mainCategory->id}");
+});
+
+test('product catalog options api ignores requested branch for branch user', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $otherBranch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    $user->givePermissionTo('product.create');
+
+    $ownCategory = Category::query()->create([
+        'branch_id' => $branch->id,
+        'name' => 'Own API Category '.Str::uuid(),
+        'status' => 1,
+    ]);
+
+    $otherCategory = Category::query()->create([
+        'branch_id' => $otherBranch->id,
+        'name' => 'Other API Category '.Str::uuid(),
+        'status' => 1,
+    ]);
+
+    $this->actingAs($user)
+        ->getJson(route('api.products.catalog-options', ['branch_id' => $otherBranch->id]))
+        ->assertOk()
+        ->assertJsonPath('branch_id', $branch->id)
+        ->assertJsonPath("categories.{$ownCategory->id}", $ownCategory->name)
+        ->assertJsonMissingPath("categories.{$otherCategory->id}");
+});

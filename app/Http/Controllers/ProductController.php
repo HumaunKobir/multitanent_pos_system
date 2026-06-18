@@ -683,21 +683,25 @@ class ProductController extends Controller
     /** @return array<string, mixed> */
     private function formData(): array
     {
+        $defaultCatalogBranchId = Branch::resolveAdminCatalogBranchId();
+        $catalogBranchId = Auth::user()?->branch_id ?? $defaultCatalogBranchId;
+
         return [
+            'defaultCatalogBranchId' => $defaultCatalogBranchId,
             'ecommerceBranchId' => EcommerceBranchService::resolveIdStatic(),
-            'categories' => Category::forCatalogPanel()->active()->pluck('name', 'id'),
-            'brands' => Brand::forCatalogPanel()->active()->pluck('name', 'id'),
-            'units' => Unit::forCatalogPanel()->active()->pluck('name', 'id'),
-            'warranties' => Warranty::forCatalogPanel()->active()->pluck('name', 'id'),
+            'categories' => Category::query()->where('branch_id', $catalogBranchId)->active()->pluck('name', 'id'),
+            'brands' => Brand::query()->where('branch_id', $catalogBranchId)->active()->pluck('name', 'id'),
+            'units' => Unit::query()->where('branch_id', $catalogBranchId)->active()->pluck('name', 'id'),
+            'warranties' => Warranty::query()->where('branch_id', $catalogBranchId)->active()->pluck('name', 'id'),
             'branches' => Branch::active()->orderBy('name')->pluck('name', 'id'),
-            'colorOptions' => Color::forCatalogPanel()->active()->orderBy('name')->get(['id', 'name'])
+            'colorOptions' => Color::query()->where('branch_id', $catalogBranchId)->active()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Color $color): array => [
                     'value' => $color->name,
                     'label' => $color->name,
                     'id' => (string) $color->id,
                 ])
                 ->all(),
-            'sizeOptions' => Size::forCatalogPanel()->active()->orderBy('name')->get(['id', 'name'])
+            'sizeOptions' => Size::query()->where('branch_id', $catalogBranchId)->active()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Size $size): array => [
                     'value' => $size->name,
                     'label' => $size->name,

@@ -40,6 +40,34 @@ async function quickCreate(routeName, name, branchId = null) {
     return { value: String(json.value), label: json.label };
 }
 
+function mapSelectOptions(records = {}) {
+    return Object.entries(records).map(([value, label]) => ({ value: String(value), label }));
+}
+
+function syncSingleSelectValue(form, field, options) {
+    const selectedValue = form.data[field];
+
+    if (selectedValue == null || selectedValue === '') {
+        return;
+    }
+
+    const exists = options.some((option) => String(option.value) === String(selectedValue));
+
+    if (!exists) {
+        form.setData(field, '');
+    }
+}
+
+function syncMultiSelectValues(form, field, options) {
+    const currentValues = form.data[field] || [];
+    const optionIds = new Set(options.map((option) => String(option.id ?? option.value)));
+    const nextValues = currentValues.filter((value) => optionIds.has(String(value)));
+
+    if (nextValues.length !== currentValues.length) {
+        form.setData(field, nextValues);
+    }
+}
+
 function CKEditorField({ id, value, onChange }) {
     const textareaRef = useRef(null);
     const editorRef = useRef(null);
@@ -741,23 +769,25 @@ export default function ProductForm({
         [branches],
     );
 
-    const [localCategoryOptions, setLocalCategoryOptions] = useState(() => Object.entries(categories || {}).map(([value, label]) => ({ value, label })));
-    const [localBrandOptions, setLocalBrandOptions] = useState(() => Object.entries(brands || {}).map(([value, label]) => ({ value, label })));
-    const [localUnitOptions, setLocalUnitOptions] = useState(() => Object.entries(units || {}).map(([value, label]) => ({ value, label })));
-    const [localWarrantyOptions, setLocalWarrantyOptions] = useState(() => Object.entries(warranties || {}).map(([value, label]) => ({ value, label })));
+    const [localCategoryOptions, setLocalCategoryOptions] = useState(() => mapSelectOptions(categories));
+    const [localBrandOptions, setLocalBrandOptions] = useState(() => mapSelectOptions(brands));
+    const [localUnitOptions, setLocalUnitOptions] = useState(() => mapSelectOptions(units));
+    const [localWarrantyOptions, setLocalWarrantyOptions] = useState(() => mapSelectOptions(warranties));
     const [localTagOptions, setLocalTagOptions] = useState(() => tagOptions);
+    const [branchColorOptions, setBranchColorOptions] = useState(() => colorOptions);
+    const [branchSizeOptions, setBranchSizeOptions] = useState(() => sizeOptions);
 
     const toast = useAppToast();
     const [hasVariations, setHasVariations] = useState(isEditing && initialVariations.length > 0);
 
     const colorSelectOptions = useMemo(
-        () => colorOptions.map((opt) => ({ value: String(opt.id), label: opt.label })),
-        [colorOptions],
+        () => branchColorOptions.map((opt) => ({ value: String(opt.id), label: opt.label })),
+        [branchColorOptions],
     );
 
     const sizeSelectOptions = useMemo(
-        () => sizeOptions.map((opt) => ({ value: String(opt.id), label: opt.label })),
-        [sizeOptions],
+        () => branchSizeOptions.map((opt) => ({ value: String(opt.id), label: opt.label })),
+        [branchSizeOptions],
     );
 
     const combinations = form.data.combinations || [];
@@ -788,6 +818,82 @@ export default function ProductForm({
             form.setData('visible', 'no');
         }
     }, [showVisibleOnStore]);
+
+    useEffect(() => {
+        let cancelled = false;
+
+        async function loadBranchCatalogOptions() {
+            if (!effectiveBranchId) {
+                setLocalCategoryOptions([]);
+                setLocalBrandOptions([]);
+                setLocalUnitOptions([]);
+                setLocalWarrantyOptions([]);
+                setBranchColorOptions([]);
+                setBranchSizeOptions([]);
+                form.setData((data) => ({
+                    ...data,
+                    category_id: '',
+                    brand_id: '',
+                    unit_id: '',
+                    warranty_id: null,
+                    color_ids: [],
+                    size_ids: [],
+                }));
+
+                return;
+            }
+
+            const response = await fetch(route('api.products.catalog-options', { query: { branch_id: effectiveBranchId } }), {
+                method: 'GET',
+                credentials: 'include',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to load branch catalog options.');
+            }
+
+            const payload = await response.json();
+
+            if (cancelled) {
+                return;
+            }
+
+            const nextCategoryOptions = mapSelectOptions(payload.categories);
+            const nextBrandOptions = mapSelectOptions(payload.brands);
+            const nextUnitOptions = mapSelectOptions(payload.units);
+            const nextWarrantyOptions = mapSelectOptions(payload.warranties);
+            const nextColorOptions = payload.colorOptions ?? [];
+            const nextSizeOptions = payload.sizeOptions ?? [];
+
+            setLocalCategoryOptions(nextCategoryOptions);
+            setLocalBrandOptions(nextBrandOptions);
+            setLocalUnitOptions(nextUnitOptions);
+            setLocalWarrantyOptions(nextWarrantyOptions);
+            setBranchColorOptions(nextColorOptions);
+            setBranchSizeOptions(nextSizeOptions);
+
+            syncSingleSelectValue(form, 'category_id', nextCategoryOptions);
+            syncSingleSelectValue(form, 'brand_id', nextBrandOptions);
+            syncSingleSelectValue(form, 'unit_id', nextUnitOptions);
+            syncSingleSelectValue(form, 'warranty_id', nextWarrantyOptions);
+            syncMultiSelectValues(form, 'color_ids', nextColorOptions);
+            syncMultiSelectValues(form, 'size_ids', nextSizeOptions);
+        }
+
+        loadBranchCatalogOptions().catch(() => {
+            if (!cancelled) {
+                toast.error('Failed to load branch-specific catalog options.');
+            }
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [effectiveBranchId]);
 
     function handleVariationsToggle(val) {
         setHasVariations(val);
@@ -971,8 +1077,8 @@ export default function ProductForm({
                 <Card title="Variations" icon={GitBranch}>
                     <VariationBuilder
                         productCode={form.data.code}
-                        colorOptions={colorOptions}
-                        sizeOptions={sizeOptions}
+                        colorOptions={branchColorOptions}
+                        sizeOptions={branchSizeOptions}
                         initialVariations={initialVariations}
                         locked={variantsLocked}
                         onChange={(combos) => form.setData('combinations', combos)}

@@ -200,6 +200,7 @@ const routes = {
     'report.balance-sheet': '/report/balance-sheet',
     'api.suppliers': '/api/suppliers',
     'api.suppliers.store': '/api/suppliers',
+    'api.products.catalog-options': '/api/products/catalog-options',
     'api.products.purchase': '/api/products/for-purchase',
     'api.products.sell': '/api/products/for-sell',
     'api.products.distribution': '/api/products/for-distribution',

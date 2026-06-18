@@ -17,6 +17,7 @@ use App\Models\Unit;
 use App\Models\Warranty;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
 
 class ProductBranchReplicationService
@@ -135,7 +136,9 @@ class ProductBranchReplicationService
         int $mainInitialStock = 0,
         array $photoPaths = [],
     ): array {
-        $branchId = filled($data['branch_id'] ?? null) ? (int) $data['branch_id'] : null;
+        $branchId = $this->resolveStoreBranchId(
+            filled($data['branch_id'] ?? null) ? (int) $data['branch_id'] : null,
+        );
 
         if ($branchId === null) {
             unset($data['branch_id']);
@@ -208,6 +211,17 @@ class ProductBranchReplicationService
         }
 
         return [$product];
+    }
+
+    private function resolveStoreBranchId(?int $requestedBranchId): ?int
+    {
+        $userBranchId = Auth::user()?->branch_id;
+
+        if ($userBranchId !== null) {
+            return (int) $userBranchId;
+        }
+
+        return $requestedBranchId;
     }
 
     /**

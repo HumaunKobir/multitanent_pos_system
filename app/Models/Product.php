@@ -196,7 +196,9 @@ class Product extends Model
 
         static::creating(function (Product $product) {
             if (blank(trim((string) ($product->code ?? '')))) {
-                $product->code = static::generateUniqueCode();
+                $product->code = filled($product->slug)
+                    ? $product->slug
+                    : static::generateUniqueCode();
             }
         });
     }

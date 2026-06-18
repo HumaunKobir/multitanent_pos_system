@@ -41,6 +41,7 @@ class ProductController extends Controller
 
         $listBranchId = $this->resolveProductListBranchId($request);
         $isAdmin = Auth::user()?->branch_id === null;
+        $mainBranchId = Branch::resolveMainBranchId();
 
         $products = Product::query()
             ->active()
@@ -67,10 +68,11 @@ class ProductController extends Controller
 
         return Inertia::render('admin/product/index', [
             'products' => $products,
+            'mainBranchId' => $mainBranchId,
             'filters' => array_merge(
                 $request->only('search', 'category_id', 'brand_id', 'tag'),
                 $isAdmin ? [
-                    'branch_id' => $request->input('branch_id', 'all'),
+                    'branch_id' => $request->input('branch_id', (string) $mainBranchId),
                 ] : [],
             ),
             'branches' => $isAdmin ? Branch::active()->orderBy('name')->pluck('name', 'id') : [],
@@ -590,7 +592,7 @@ class ProductController extends Controller
             return (int) $filter;
         }
 
-        return null;
+        return Branch::resolveMainBranchId();
     }
 
     /**

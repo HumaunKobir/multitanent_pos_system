@@ -26,12 +26,12 @@ function productIndexBranchUser(int $branchId): User
     return $user;
 }
 
-function productIndexMainBranch(): void
+function productIndexMainBranch(): int
 {
-    Branch::query()->firstOrCreate(
-        ['id' => Branch::MAIN_BRANCH_ID],
-        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
-    );
+    return Branch::query()->firstOrCreate(
+        ['name' => Branch::MAIN_BRANCH_NAME],
+        Branch::factory()->make(['name' => Branch::MAIN_BRANCH_NAME])->toArray(),
+    )->id;
 }
 
 test('product index page passes brands and tags props', function () {
@@ -57,14 +57,14 @@ test('product index can filter by brand', function () {
     $category = Category::factory()->create(['status' => 1]);
 
     Product::factory()->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'category_id' => $category->id,
         'brand_id' => $brand1->id,
         'name' => 'Product A '.fake()->unique()->numerify('######'),
         'status' => 1,
     ]);
     Product::factory()->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'category_id' => $category->id,
         'brand_id' => $brand2->id,
         'name' => 'Product B '.fake()->unique()->numerify('######'),
@@ -86,14 +86,14 @@ test('product index can filter by tag', function () {
     $category = Category::factory()->create(['status' => 1]);
 
     Product::factory()->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'category_id' => $category->id,
         'tags' => ['Casual'],
         'name' => 'Casual Shirt '.fake()->unique()->numerify('######'),
         'status' => 1,
     ]);
     Product::factory()->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'category_id' => $category->id,
         'tags' => ['Formal'],
         'name' => 'Formal Shirt '.fake()->unique()->numerify('######'),
@@ -115,7 +115,7 @@ test('product index search includes brand name', function () {
     $category = Category::factory()->create(['status' => 1]);
 
     Product::factory()->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'category_id' => $category->id,
         'brand_id' => $brand->id,
         'name' => 'Running Shoe '.fake()->unique()->numerify('######'),
@@ -136,7 +136,7 @@ test('product index search includes category name', function () {
     $category = Category::factory()->create(['name' => 'Electronics Pro '.fake()->unique()->numerify('####'), 'status' => 1]);
 
     Product::factory()->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'category_id' => $category->id,
         'name' => 'Widget Device '.fake()->unique()->numerify('######'),
         'status' => 1,
@@ -157,7 +157,7 @@ test('product index search includes tag name', function () {
     $tag = 'Summer Vibes '.fake()->unique()->numerify('####');
 
     Product::factory()->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'category_id' => $category->id,
         'tags' => [$tag],
         'name' => 'Beach Towel '.fake()->unique()->numerify('######'),
@@ -172,7 +172,7 @@ test('product index search includes tag name', function () {
             ->where('products.data', fn ($data) => count($data) >= 1));
 });
 
-test('product index returns all branches as default filter for admin', function () {
+test('product index returns main branch as default filter for admin', function () {
     productIndexMainBranch();
     $admin = productIndexAdmin();
 
@@ -181,22 +181,55 @@ test('product index returns all branches as default filter for admin', function 
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('admin/product/index')
-            ->where('filters.branch_id', 'all')
+            ->where('filters.branch_id', (string) Branch::resolveMainBranchId())
             ->missing('filters.search'));
 });
 
-test('admin product index shows products from all branches by default', function () {
+test('admin product index shows products from all branches when explicitly filtered', function () {
     productIndexMainBranch();
     $admin = productIndexAdmin();
 
     $otherBranch = Branch::factory()->create();
-    $category = Category::factory()->create(['status' => 1, 'branch_id' => Branch::MAIN_BRANCH_ID]);
+    $category = Category::factory()->create(['status' => 1, 'branch_id' => Branch::resolveMainBranchId()]);
     $sharedPrefix = 'Shared Prefix Product '.fake()->unique()->numerify('######');
     $mainName = $sharedPrefix.' Main';
     $otherName = $sharedPrefix.' Other';
 
     Product::factory()->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
+        'category_id' => $category->id,
+        'name' => $mainName,
+        'status' => 1,
+    ]);
+
+    Product::factory()->create([
+        'branch_id' => $otherBranch->id,
+        'category_id' => $category->id,
+        'name' => $otherName,
+        'status' => 1,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('product.index', ['branch_id' => 'all', 'search' => $sharedPrefix]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/product/index')
+            ->where('filters.branch_id', 'all')
+            ->has('products.data', 2));
+});
+
+test('admin product index defaults to main branch products only', function () {
+    productIndexMainBranch();
+    $admin = productIndexAdmin();
+
+    $otherBranch = Branch::factory()->create();
+    $category = Category::factory()->create(['status' => 1, 'branch_id' => Branch::resolveMainBranchId()]);
+    $sharedPrefix = 'Default Branch Product '.fake()->unique()->numerify('######');
+    $mainName = $sharedPrefix.' Main';
+    $otherName = $sharedPrefix.' Other';
+
+    Product::factory()->create([
+        'branch_id' => Branch::resolveMainBranchId(),
         'category_id' => $category->id,
         'name' => $mainName,
         'status' => 1,
@@ -214,8 +247,9 @@ test('admin product index shows products from all branches by default', function
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('admin/product/index')
-            ->where('filters.branch_id', 'all')
-            ->has('products.data', 2));
+            ->where('filters.branch_id', (string) Branch::resolveMainBranchId())
+            ->has('products.data', 1)
+            ->where('products.data.0.name', $mainName));
 });
 
 test('admin product index can filter to a single branch', function () {
@@ -223,11 +257,11 @@ test('admin product index can filter to a single branch', function () {
     $admin = productIndexAdmin();
 
     $otherBranch = Branch::factory()->create();
-    $category = Category::factory()->create(['status' => 1, 'branch_id' => Branch::MAIN_BRANCH_ID]);
+    $category = Category::factory()->create(['status' => 1, 'branch_id' => Branch::resolveMainBranchId()]);
     $uniqueName = 'Main Only Product '.fake()->unique()->numerify('######');
 
     Product::factory()->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'category_id' => $category->id,
         'name' => $uniqueName,
         'status' => 1,
@@ -241,7 +275,7 @@ test('admin product index can filter to a single branch', function () {
     ]);
 
     $this->actingAs($admin)
-        ->get(route('product.index', ['branch_id' => (string) Branch::MAIN_BRANCH_ID, 'search' => $uniqueName]))
+        ->get(route('product.index', ['branch_id' => (string) Branch::resolveMainBranchId(), 'search' => $uniqueName]))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('admin/product/index')
@@ -290,7 +324,7 @@ test('branch user product index only shows own branch products', function () {
     ]);
 
     Product::factory()->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'category_id' => $category->id,
         'name' => 'Main Branch Product '.fake()->unique()->numerify('######'),
         'status' => 1,
@@ -322,7 +356,7 @@ test('admin product index shows distributed branch stock for filtered branch', f
     ]);
 
     Product::factory()->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'branch_id' => Branch::resolveMainBranchId(),
         'product_group_id' => $groupId,
         'name' => $uniqueName,
         'status' => 1,

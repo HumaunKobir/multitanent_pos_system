@@ -15,16 +15,17 @@ import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { useCan } from '@/hooks/use-can';
 import { route } from '@/lib/route';
 
-export default function ProductIndex({ products, filters, categories, brands, tags, branches = {} }) {
+export default function ProductIndex({ products, filters, categories, brands, tags, branches = {}, mainBranchId = null }) {
     const { flash, auth } = usePage().props;
     const isAdmin = !auth.user?.branch_id;
+    const defaultBranchId = mainBranchId != null ? String(mainBranchId) : 'all';
     const toast = useAppToast();
     const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [categoryId, setCategoryId] = useState(filters.category_id ?? '__all');
     const [brandId, setBrandId] = useState(filters.brand_id ?? '__all');
     const [tag, setTag] = useState(filters.tag ?? '__all');
-    const [branchId, setBranchId] = useState(filters.branch_id ?? 'all');
+    const [branchId, setBranchId] = useState(filters.branch_id ?? defaultBranchId);
     const [deleting, setDeleting] = useState(null);
 
     useEffect(() => {
@@ -57,7 +58,7 @@ export default function ProductIndex({ products, filters, categories, brands, ta
         setBrandId('__all');
         setTag('__all');
         if (isAdmin) {
-            setBranchId('all');
+            setBranchId(defaultBranchId);
         }
     }
 

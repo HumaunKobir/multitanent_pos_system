@@ -57,7 +57,7 @@ test('product without manual code gets auto-generated code and barcode', functio
     $product = Product::query()->where('name', $payload['name'])->first();
 
     expect($product)->not->toBeNull()
-        ->and($product->code)->toStartWith('PRD-');
+        ->and($product->code)->toBe($product->slug);
 
     expect(
         Barcode::query()
@@ -210,6 +210,47 @@ test('all branches product creates isolated copy for each active branch', functi
 
     expect(
         Barcode::query()->where('product_id', $mainCopy->id)->where('code', $manualCode)->exists(),
+    )->toBeTrue();
+
+    expect(
+        Barcode::query()->where('product_id', $branchCopy->id)->where('code', $branchCopy->code)->exists(),
+    )->toBeTrue();
+});
+
+test('all branches product auto-generated barcode uses slug base across branches', function () {
+    $admin = productStoreAdmin();
+
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    $operatingBranch = Branch::factory()->create();
+    $productName = 'Slug Barcode Product '.fake()->unique()->numerify('######');
+
+    $payload = validProductPayload([
+        'branch_id' => null,
+        'name' => $productName,
+        'code' => '',
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('product.store'), $payload)
+        ->assertRedirect(route('product.index'));
+
+    $products = Product::query()->where('name', $productName)->get();
+    $mainBranchId = Branch::resolveMainBranchId();
+    $mainCopy = $products->firstWhere('branch_id', $mainBranchId);
+    $branchCopy = $products->firstWhere('branch_id', $operatingBranch->id);
+
+    expect($mainCopy)->not->toBeNull()
+        ->and($branchCopy)->not->toBeNull()
+        ->and($mainCopy->code)->toBe($mainCopy->slug)
+        ->and($branchCopy->code)->toBe($mainCopy->slug.'-B'.$operatingBranch->id)
+        ->and($branchCopy->slug)->toBe($mainCopy->slug.'-b'.$operatingBranch->id);
+
+    expect(
+        Barcode::query()->where('product_id', $mainCopy->id)->where('code', $mainCopy->slug)->exists(),
     )->toBeTrue();
 
     expect(

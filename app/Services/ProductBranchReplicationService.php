@@ -46,6 +46,10 @@ class ProductBranchReplicationService
         $productGroupId ??= (string) Str::uuid();
         $branchIds ??= Branch::query()->active()->orderBy('id')->pluck('id');
         $manualCode = filled($data['code'] ?? null) ? (string) $data['code'] : null;
+        $baseSlug = filled($data['slug'] ?? null)
+            ? (string) $data['slug']
+            : Product::generateUniqueSlug((string) $data['name']);
+        $autoCodeBase = $baseSlug;
         $created = [];
 
         foreach ($branchIds as $branchId) {
@@ -53,8 +57,8 @@ class ProductBranchReplicationService
             $branchData = $this->mapBranchCatalogFields($data, $branchId);
             $branchData['branch_id'] = $branchId;
             $branchData['product_group_id'] = $productGroupId;
-            $branchData['slug'] = '';
-            $branchData['code'] = $this->resolveBranchCode($manualCode, $branchId);
+            $branchData['slug'] = $this->resolveBranchSlug($baseSlug, $branchId);
+            $branchData['code'] = $this->resolveBranchCode($manualCode ?? $autoCodeBase, $branchId);
 
             $product = Product::create($branchData);
 
@@ -264,7 +268,8 @@ class ProductBranchReplicationService
         }
 
         $replicationData = $data;
-        unset($replicationData['branch_id'], $replicationData['slug']);
+        unset($replicationData['branch_id']);
+        $replicationData['slug'] = $sourceProduct->slug;
         $replicationData['code'] = $manualCode;
 
         $photoPaths = $sourceProduct->photos()->pluck('image')->all();
@@ -362,6 +367,15 @@ class ProductBranchReplicationService
         }
 
         return $manualCode.'-B'.$branchId;
+    }
+
+    private function resolveBranchSlug(string $baseSlug, int $branchId): string
+    {
+        if (Branch::isMainBranch($branchId)) {
+            return $baseSlug;
+        }
+
+        return $baseSlug.'-b'.$branchId;
     }
 
     /**

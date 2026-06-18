@@ -70,6 +70,9 @@ export default function ProductEdit({
     sizeOptions = [],
     tagOptions = [],
     ecommerceBranchId = null,
+    defaultCatalogBranchId = null,
+    selectedColors = [],
+    selectedSizes = [],
     variantsLocked = false,
 }) {
     const form = useForm({
@@ -139,6 +142,24 @@ export default function ProductEdit({
                             sizeOptions={sizeOptions}
                             tagOptions={tagOptions}
                             ecommerceBranchId={ecommerceBranchId}
+                            defaultCatalogBranchId={defaultCatalogBranchId}
+                            sourceBranchId={product.branch_id}
+                            selectedCatalog={{
+                                category: product.category
+                                    ? { id: product.category_id, label: product.category.name }
+                                    : null,
+                                brand: product.brand
+                                    ? { id: product.brand_id, label: product.brand.name }
+                                    : null,
+                                unit: product.unit
+                                    ? { id: product.unit_id, label: product.unit.name }
+                                    : null,
+                                warranty: product.warranty
+                                    ? { id: product.warranty_id, label: product.warranty.name }
+                                    : null,
+                            }}
+                            selectedColors={selectedColors}
+                            selectedSizes={selectedSizes}
                             initialVariations={product.variations ?? []}
                             variantsLocked={variantsLocked}
                             isEditing

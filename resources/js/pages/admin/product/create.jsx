@@ -81,6 +81,7 @@ export default function ProductCreate({
                         sizeOptions={sizeOptions}
                         tagOptions={tagOptions}
                         ecommerceBranchId={ecommerceBranchId}
+                        defaultCatalogBranchId={defaultCatalogBranchId}
                         processing={form.processing}
                         cancelHref={route('product.index')}
                     />

@@ -58,6 +58,38 @@ function syncSingleSelectValue(form, field, options) {
     }
 }
 
+function mergePresetOptions(options, selected = []) {
+    const merged = [...options];
+
+    selected.forEach((item) => {
+        const id = String(item.id);
+
+        if (!merged.some((option) => String(option.id) === id)) {
+            merged.push({
+                id,
+                value: item.label,
+                label: item.label,
+            });
+        }
+    });
+
+    return merged;
+}
+
+function withSelectedOption(options, selectedId, selectedLabel) {
+    if (!selectedId || !selectedLabel) {
+        return options;
+    }
+
+    const value = String(selectedId);
+
+    if (options.some((option) => option.value === value)) {
+        return options;
+    }
+
+    return [{ value, label: selectedLabel }, ...options];
+}
+
 function syncMultiSelectValues(form, field, options) {
     const currentValues = form.data[field] || [];
     const optionIds = new Set(options.map((option) => String(option.id ?? option.value)));
@@ -751,6 +783,11 @@ export default function ProductForm({
     sizeOptions = [],
     tagOptions = [],
     ecommerceBranchId = null,
+    defaultCatalogBranchId = null,
+    sourceBranchId = null,
+    selectedCatalog = {},
+    selectedColors = [],
+    selectedSizes = [],
     initialVariations = [],
     variantsLocked = false,
     isEditing = false,
@@ -774,8 +811,8 @@ export default function ProductForm({
     const [localUnitOptions, setLocalUnitOptions] = useState(() => mapSelectOptions(units));
     const [localWarrantyOptions, setLocalWarrantyOptions] = useState(() => mapSelectOptions(warranties));
     const [localTagOptions, setLocalTagOptions] = useState(() => tagOptions);
-    const [branchColorOptions, setBranchColorOptions] = useState(() => colorOptions);
-    const [branchSizeOptions, setBranchSizeOptions] = useState(() => sizeOptions);
+    const [branchColorOptions, setBranchColorOptions] = useState(() => mergePresetOptions(colorOptions, selectedColors));
+    const [branchSizeOptions, setBranchSizeOptions] = useState(() => mergePresetOptions(sizeOptions, selectedSizes));
 
     const toast = useAppToast();
     const [hasVariations, setHasVariations] = useState(isEditing && initialVariations.length > 0);
@@ -809,6 +846,12 @@ export default function ProductForm({
         ? (form.data.branch_id != null && form.data.branch_id !== '' ? String(form.data.branch_id) : null)
         : (auth.user?.branch_id != null ? String(auth.user.branch_id) : null);
 
+    const catalogOptionsBranchId = isAdmin
+        ? (form.data.branch_id != null && form.data.branch_id !== ''
+            ? String(form.data.branch_id)
+            : String(sourceBranchId ?? defaultCatalogBranchId ?? ''))
+        : (auth.user?.branch_id != null ? String(auth.user.branch_id) : null);
+
     const showVisibleOnStore = can('product.visible-on-store')
         && ecommerceBranchId != null
         && effectiveBranchId === String(ecommerceBranchId);
@@ -823,27 +866,11 @@ export default function ProductForm({
         let cancelled = false;
 
         async function loadBranchCatalogOptions() {
-            if (!effectiveBranchId) {
-                setLocalCategoryOptions([]);
-                setLocalBrandOptions([]);
-                setLocalUnitOptions([]);
-                setLocalWarrantyOptions([]);
-                setBranchColorOptions([]);
-                setBranchSizeOptions([]);
-                form.setData((data) => ({
-                    ...data,
-                    category_id: '',
-                    brand_id: '',
-                    unit_id: '',
-                    warranty_id: null,
-                    color_ids: [],
-                    size_ids: [],
-                }));
-
+            if (!catalogOptionsBranchId) {
                 return;
             }
 
-            const response = await fetch(route('api.products.catalog-options', { query: { branch_id: effectiveBranchId } }), {
+            const response = await fetch(route('api.products.catalog-options', { query: { branch_id: catalogOptionsBranchId } }), {
                 method: 'GET',
                 credentials: 'include',
                 headers: {
@@ -862,10 +889,26 @@ export default function ProductForm({
                 return;
             }
 
-            const nextCategoryOptions = mapSelectOptions(payload.categories);
-            const nextBrandOptions = mapSelectOptions(payload.brands);
-            const nextUnitOptions = mapSelectOptions(payload.units);
-            const nextWarrantyOptions = mapSelectOptions(payload.warranties);
+            const nextCategoryOptions = withSelectedOption(
+                mapSelectOptions(payload.categories),
+                selectedCatalog.category?.id,
+                selectedCatalog.category?.label,
+            );
+            const nextBrandOptions = withSelectedOption(
+                mapSelectOptions(payload.brands),
+                selectedCatalog.brand?.id,
+                selectedCatalog.brand?.label,
+            );
+            const nextUnitOptions = withSelectedOption(
+                mapSelectOptions(payload.units),
+                selectedCatalog.unit?.id,
+                selectedCatalog.unit?.label,
+            );
+            const nextWarrantyOptions = withSelectedOption(
+                mapSelectOptions(payload.warranties),
+                selectedCatalog.warranty?.id,
+                selectedCatalog.warranty?.label,
+            );
             const nextColorOptions = payload.colorOptions ?? [];
             const nextSizeOptions = payload.sizeOptions ?? [];
 
@@ -873,8 +916,8 @@ export default function ProductForm({
             setLocalBrandOptions(nextBrandOptions);
             setLocalUnitOptions(nextUnitOptions);
             setLocalWarrantyOptions(nextWarrantyOptions);
-            setBranchColorOptions(nextColorOptions);
-            setBranchSizeOptions(nextSizeOptions);
+            setBranchColorOptions(mergePresetOptions(nextColorOptions, selectedColors));
+            setBranchSizeOptions(mergePresetOptions(nextSizeOptions, selectedSizes));
 
             syncSingleSelectValue(form, 'category_id', nextCategoryOptions);
             syncSingleSelectValue(form, 'brand_id', nextBrandOptions);
@@ -893,7 +936,7 @@ export default function ProductForm({
         return () => {
             cancelled = true;
         };
-    }, [effectiveBranchId]);
+    }, [catalogOptionsBranchId]);
 
     function handleVariationsToggle(val) {
         setHasVariations(val);
@@ -941,7 +984,7 @@ export default function ProductForm({
                                 creatable
                                 createMode="instant"
                                 createRowLabel={(q) => `Add "${q}"`}
-                                onModalCreate={({ label }) => quickCreate('setting.category.store', label, effectiveBranchId)}
+                                onModalCreate={({ label }) => quickCreate('setting.category.store', label, catalogOptionsBranchId)}
                             />
                         </Field>
 
@@ -956,7 +999,7 @@ export default function ProductForm({
                                 creatable
                                 createMode="instant"
                                 createRowLabel={(q) => `Add "${q}"`}
-                                onModalCreate={({ label }) => quickCreate('setting.brand.store', label, effectiveBranchId)}
+                                onModalCreate={({ label }) => quickCreate('setting.brand.store', label, catalogOptionsBranchId)}
                             />
                         </Field>
 
@@ -971,7 +1014,7 @@ export default function ProductForm({
                                 creatable
                                 createMode="instant"
                                 createRowLabel={(q) => `Add "${q}"`}
-                                onModalCreate={({ label }) => quickCreate('setting.unit.store', label, effectiveBranchId)}
+                                onModalCreate={({ label }) => quickCreate('setting.unit.store', label, catalogOptionsBranchId)}
                             />
                         </Field>
 
@@ -986,7 +1029,7 @@ export default function ProductForm({
                                 creatable
                                 createMode="instant"
                                 createRowLabel={(q) => `Add "${q}"`}
-                                onModalCreate={({ label }) => quickCreate('setting.warranty.store', label, effectiveBranchId)}
+                                onModalCreate={({ label }) => quickCreate('setting.warranty.store', label, catalogOptionsBranchId)}
                             />
                         </Field>
 
@@ -1047,7 +1090,7 @@ export default function ProductForm({
                                 creatable
                                 onCreateOption={async (name) => {
                                     try {
-                                        const opt = await quickCreate('setting.tag.store', name, effectiveBranchId);
+                                        const opt = await quickCreate('setting.tag.store', name, catalogOptionsBranchId);
                                         setLocalTagOptions((prev) => [...prev, opt]);
                                         form.setData('tags', [...(form.data.tags || []), opt.value]);
                                         toast.success(`"${opt.label}" created.`);

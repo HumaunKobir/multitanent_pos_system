@@ -109,6 +109,60 @@ test('product edit page locks variants when product has sales history', function
             ->where('variantsLocked', true));
 });
 
+test('all branches product edit page includes catalog relations for form', function () {
+    $admin = productUpdateAdmin();
+
+    Branch::query()->firstOrCreate(
+        ['name' => Branch::MAIN_BRANCH_NAME],
+        Branch::factory()->make(['name' => Branch::MAIN_BRANCH_NAME])->toArray(),
+    );
+
+    $mainBranchId = Branch::resolveMainBranchId();
+    $category = Category::factory()->create(['status' => 1, 'branch_id' => $mainBranchId]);
+    $brand = Brand::factory()->create(['status' => 1, 'branch_id' => $mainBranchId]);
+    $unit = Unit::query()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Edit Unit '.fake()->unique()->numerify('####'),
+        'status' => 1,
+    ]);
+    $color = Color::query()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Edit Color '.fake()->unique()->numerify('####'),
+        'status' => 1,
+    ]);
+    $size = Size::query()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Edit Size '.fake()->unique()->numerify('####'),
+        'status' => 1,
+    ]);
+
+    $product = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'product_group_id' => (string) Str::uuid(),
+        'category_id' => $category->id,
+        'brand_id' => $brand->id,
+        'unit_id' => $unit->id,
+        'colors' => [$color->id],
+        'sizes' => [$size->id],
+        'code' => 'edit-group-'.fake()->unique()->numerify('######'),
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('product.edit', $product))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/product/edit')
+            ->where('product.category_id', $category->id)
+            ->where('product.brand_id', $brand->id)
+            ->where('product.unit_id', $unit->id)
+            ->where('product.category.name', $category->name)
+            ->where('product.brand.name', $brand->name)
+            ->where('product.unit.name', $unit->name)
+            ->has('selectedColors', 1)
+            ->has('selectedSizes', 1)
+            ->where('defaultCatalogBranchId', $mainBranchId));
+});
+
 test('product update syncs variations when not locked', function () {
     $admin = productUpdateAdmin();
     $product = Product::factory()->create([

@@ -209,12 +209,32 @@ class ProductController extends Controller
     {
         $this->authorize('product.update');
 
-        $product->load('photos', 'variations', 'initialStockRecord');
+        $product->load('photos', 'variations', 'initialStockRecord', 'category', 'brand', 'unit', 'warranty');
 
         return Inertia::render('admin/product/edit', [
             ...$this->formData(),
             'product' => $product,
             'variantsLocked' => $this->variantsAreLocked($product),
+            'selectedColors' => Color::query()
+                ->whereIn('id', $product->colors ?? [])
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn (Color $color): array => [
+                    'id' => (string) $color->id,
+                    'label' => $color->name,
+                ])
+                ->values()
+                ->all(),
+            'selectedSizes' => Size::query()
+                ->whereIn('id', $product->sizes ?? [])
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn (Size $size): array => [
+                    'id' => (string) $size->id,
+                    'label' => $size->name,
+                ])
+                ->values()
+                ->all(),
         ]);
     }
 

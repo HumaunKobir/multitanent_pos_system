@@ -7,6 +7,38 @@ import { ProductCard } from '@/components/frontend/product-card';
 const LAYOUT_SLIDER = 2;
 const BLOCK_IMAGE = 1;
 
+function resolveBlockPerLine(value) {
+    const perLine = Number.parseInt(String(value), 10);
+
+    if (!Number.isFinite(perLine) || perLine < 1) {
+        return 4;
+    }
+
+    return Math.min(perLine, 6);
+}
+
+function gridColsClass(blockPerLine) {
+    return {
+        1: 'grid-cols-1',
+        2: 'grid-cols-2',
+        3: 'grid-cols-2 sm:grid-cols-3',
+        4: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4',
+        5: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5',
+        6: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6',
+    }[blockPerLine] ?? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4';
+}
+
+function slideWidthClass(blockPerLine) {
+    return {
+        1: 'min-w-full',
+        2: 'min-w-[calc(50%-0.375rem)]',
+        3: 'min-w-[calc(50%-0.375rem)] sm:min-w-[calc(33.333%-0.55rem)]',
+        4: 'min-w-[calc(50%-0.375rem)] sm:min-w-[calc(33.333%-0.55rem)] lg:min-w-[calc(25%-0.75rem)]',
+        5: 'min-w-[calc(50%-0.375rem)] sm:min-w-[calc(33.333%-0.55rem)] lg:min-w-[calc(20%-0.8rem)]',
+        6: 'min-w-[calc(50%-0.375rem)] sm:min-w-[calc(33.333%-0.55rem)] lg:min-w-[calc(16.666%-0.85rem)]',
+    }[blockPerLine] ?? 'min-w-[calc(50%-0.375rem)] sm:min-w-[calc(33.333%-0.55rem)] lg:min-w-[calc(25%-0.75rem)]';
+}
+
 export function SectionBlock({ section }) {
     if (section.block_type === BLOCK_IMAGE) {
         return section.layout_type === LAYOUT_SLIDER ? (
@@ -53,11 +85,7 @@ function ProductGridSection({ section }) {
         return null;
     }
 
-    const cols = {
-        2: 'grid-cols-2',
-        3: 'grid-cols-2 sm:grid-cols-3',
-        4: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4',
-    }[section.block_per_line] ?? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4';
+    const cols = gridColsClass(resolveBlockPerLine(section.block_per_line));
 
     return (
         <section className="store-container py-6">
@@ -76,11 +104,7 @@ function ProductSliderSection({ section }) {
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(false);
 
-    const slideWidth = {
-        2: 'min-w-[calc(50%-0.375rem)]',
-        3: 'min-w-[calc(50%-0.375rem)] sm:min-w-[calc(33.333%-0.55rem)]',
-        4: 'min-w-[calc(50%-0.375rem)] sm:min-w-[calc(33.333%-0.55rem)] lg:min-w-[calc(25%-0.75rem)]',
-    }[section.block_per_line] ?? 'min-w-[calc(50%-0.375rem)] sm:min-w-[calc(33.333%-0.55rem)] lg:min-w-[calc(25%-0.75rem)]';
+    const slideWidth = slideWidthClass(resolveBlockPerLine(section.block_per_line));
 
     const updateScrollState = useCallback(() => {
         const track = trackRef.current;
@@ -171,16 +195,14 @@ function ImageBlockSection({ section }) {
 
     const cols = section.images.length === 1
         ? 'grid-cols-1'
-        : section.images.length === 2
-            ? 'grid-cols-1 sm:grid-cols-2'
-            : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
+        : gridColsClass(resolveBlockPerLine(section.block_per_line));
 
     return (
         <section className="store-container py-6">
             <SectionHeading section={section} showViewAll={false} />
             <div className={`grid gap-3 sm:gap-4 ${cols}`}>
                 {section.images.map((block, index) => (
-                    <ImageBanner key={`${block.image}-${index}`} block={block} tall={section.images.length === 1} />
+                    <ImageBanner key={`${block.image}-${index}`} block={block} />
                 ))}
             </div>
         </section>
@@ -301,15 +323,17 @@ function ImageSliderSection({ section }) {
     );
 }
 
-function ImageBanner({ block, tall = false }) {
+function ImageBanner({ block }) {
+    const hasOverlay = Boolean(block.image_name || block.description || block.button_text);
+
     const content = (
-        <>
+        <div className="relative aspect-5/4 w-full overflow-hidden bg-gray-100">
             <img
                 src={block.image}
                 alt={block.image_name || 'Promotion'}
-                className={`w-full object-cover ${tall ? 'h-56 sm:h-72 lg:h-80' : 'h-40 sm:h-48'}`}
+                className="size-full object-cover"
             />
-            {(block.image_name || block.description) && (
+            {hasOverlay && (
                 <div className="absolute inset-0 flex flex-col justify-end bg-linear-to-t from-store-primary/75 via-store-primary/15 to-transparent p-4">
                     {block.image_name && (
                         <p className="text-sm font-bold text-white sm:text-base">{block.image_name}</p>
@@ -324,7 +348,7 @@ function ImageBanner({ block, tall = false }) {
                     )}
                 </div>
             )}
-        </>
+        </div>
     );
 
     if (block.link) {

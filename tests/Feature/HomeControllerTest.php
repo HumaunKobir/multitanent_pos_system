@@ -164,6 +164,7 @@ test('home page product section includes formatted products in admin order', fun
             ->where('productSections', fn ($sections) => ($section = collect($sections)->firstWhere('name', $name)) !== null
                 && $section['layout_type'] === 1
                 && $section['block_type'] === 2
+                && $section['block_per_line'] === 4
                 && count($section['products']) === 2
                 && $section['products'][0]['slug'] === $second->slug
                 && $section['products'][1]['slug'] === $first->slug
@@ -221,6 +222,7 @@ test('home page image section includes banner metadata', function () {
         ->assertInertia(fn ($page) => $page
             ->where('productSections', fn ($sections) => ($section = collect($sections)->firstWhere('name', $name)) !== null
                 && $section['block_type'] === 1
+                && $section['block_per_line'] === 2
                 && $section['images'][0]['image_name'] === 'Summer Sale'
                 && $section['images'][0]['button_text'] === 'Shop Now'
                 && $section['images'][0]['link'] === '/products'

@@ -121,6 +121,7 @@ class InventoryAccountingService
             $sell->date->format('Y-m-d'),
             "Sale {$invoice}",
             $lines,
+            validateBalance: false,
         );
     }
 

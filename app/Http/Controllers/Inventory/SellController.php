@@ -21,6 +21,7 @@ use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
 use App\Services\SpecialDiscountService;
 use App\Support\StorageUrl;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -268,11 +269,11 @@ class SellController extends Controller
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
+            report($e);
+
             return back()
                 ->withErrors([
-                    'items' => $e instanceof \RuntimeException
-                        ? $e->getMessage()
-                        : 'Unable to create sale.',
+                    'items' => $this->saleStoreErrorMessage($e),
                 ])
                 ->withInput();
         }
@@ -546,11 +547,11 @@ class SellController extends Controller
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Throwable $e) {
+            report($e);
+
             return back()
                 ->withErrors([
-                    'items' => $e instanceof \RuntimeException
-                        ? $e->getMessage()
-                        : 'Unable to update sale.',
+                    'items' => $this->saleStoreErrorMessage($e, 'Unable to update sale.'),
                 ])
                 ->withInput();
         }
@@ -905,5 +906,18 @@ class SellController extends Controller
                 'due_alert_action' => 'This customer already has an active due alert. Choose to merge or create a separate alert.',
             ]);
         }
+    }
+
+    private function saleStoreErrorMessage(\Throwable $e, string $fallback = 'Unable to create sale.'): string
+    {
+        if ($e instanceof \RuntimeException) {
+            return $e->getMessage();
+        }
+
+        if ($e instanceof \Exception && ! $e instanceof QueryException) {
+            return $e->getMessage();
+        }
+
+        return $fallback;
     }
 }

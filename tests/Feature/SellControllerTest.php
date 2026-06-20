@@ -5,6 +5,7 @@ use App\Enums\SaleType;
 use App\Enums\SystemAccountKey;
 use App\Models\Batch;
 use App\Models\Branch;
+use App\Models\ChartOfAccount;
 use App\Models\Customer;
 use App\Models\CustomerDueAlert;
 use App\Models\Ledger;
@@ -860,6 +861,67 @@ test('store requires at least one item', function () {
             'items' => [],
         ])
         ->assertSessionHasErrors('items');
+});
+
+test('sale succeeds when product inventory account balance is lower than cogs', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product, 'batch' => $batch] = sellProduct(10, $user->branch_id);
+
+    $inventoryAccountId = SystemAccountService::id(SystemAccountKey::ProductInventory, $user->branch_id);
+    ChartOfAccount::query()->whereKey($inventoryAccountId)->update(['current_balance' => 0]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '500',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [[
+                'product_id' => $product->id,
+                'variation_id' => null,
+                'unit_price' => '500',
+                'quantity' => '1',
+            ]],
+        ])
+        ->assertRedirect()
+        ->assertSessionDoesntHaveErrors();
+
+    $sell = Sell::query()->latest('id')->first();
+    expect($sell)->not->toBeNull();
+
+    $batch->refresh();
+    expect((float) $batch->available)->toBe(9.0);
+});
+
+test('due sale with registered customer succeeds when inventory account balance is zero', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'is_default' => false,
+        'balance' => 50,
+    ]);
+
+    $inventoryAccountId = SystemAccountService::id(SystemAccountKey::ProductInventory, $user->branch_id);
+    ChartOfAccount::query()->whereKey($inventoryAccountId)->update(['current_balance' => 0]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', dueSalePayload($user, $product, $customer, $cash, [
+            'paid_amount' => '100',
+        ]))
+        ->assertRedirect()
+        ->assertSessionDoesntHaveErrors();
+
+    $customer->refresh();
+    expect((float) $customer->balance)->toBeGreaterThan(50.0);
 });
 
 // ── Show ──────────────────────────────────────────────────────────────────────

@@ -127,11 +127,7 @@ class Product extends Model
 
     public function scopeForPurchase(Builder $query): Builder
     {
-        $branchId = Auth::user()?->branch_id;
-
-        if ($branchId === null) {
-            return $query;
-        }
+        $branchId = Auth::user()?->branch_id ?? Branch::resolveMainBranchId();
 
         return $query->where('branch_id', $branchId);
     }

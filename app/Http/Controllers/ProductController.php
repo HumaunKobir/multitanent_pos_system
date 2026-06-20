@@ -809,19 +809,19 @@ class ProductController extends Controller
         return [
             'defaultCatalogBranchId' => $defaultCatalogBranchId,
             'ecommerceBranchId' => EcommerceBranchService::resolveIdStatic(),
-            'categories' => Category::query()->active()->orderBy('name')->pluck('name', 'id'),
-            'brands' => Brand::query()->active()->orderBy('name')->pluck('name', 'id'),
-            'units' => Unit::query()->active()->orderBy('name')->pluck('name', 'id'),
-            'warranties' => Warranty::query()->active()->orderBy('name')->pluck('name', 'id'),
+            'categories' => Category::forCatalogPanel()->active()->orderBy('name')->pluck('name', 'id'),
+            'brands' => Brand::forCatalogPanel()->active()->orderBy('name')->pluck('name', 'id'),
+            'units' => Unit::forCatalogPanel()->active()->orderBy('name')->pluck('name', 'id'),
+            'warranties' => Warranty::forCatalogPanel()->active()->orderBy('name')->pluck('name', 'id'),
             'branches' => Branch::active()->orderBy('name')->pluck('name', 'id'),
-            'colorOptions' => Color::query()->active()->orderBy('name')->get(['id', 'name'])
+            'colorOptions' => Color::forCatalogPanel()->active()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Color $color): array => [
                     'value' => $color->name,
                     'label' => $color->name,
                     'id' => (string) $color->id,
                 ])
                 ->all(),
-            'sizeOptions' => Size::query()->active()->orderBy('name')->get(['id', 'name'])
+            'sizeOptions' => Size::forCatalogPanel()->active()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Size $size): array => [
                     'value' => $size->name,
                     'label' => $size->name,

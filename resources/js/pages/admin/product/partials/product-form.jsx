@@ -90,6 +90,10 @@ function withSelectedOption(options, selectedId, selectedLabel) {
     return [{ value, label: selectedLabel }, ...options];
 }
 
+function mapSelectOptionsWithSelected(records = {}, selected = null) {
+    return withSelectedOption(mapSelectOptions(records), selected?.id, selected?.label);
+}
+
 function syncMultiSelectValues(form, field, options) {
     const currentValues = form.data[field] || [];
     const optionIds = new Set(options.map((option) => String(option.id ?? option.value)));
@@ -806,10 +810,10 @@ export default function ProductForm({
         [branches],
     );
 
-    const [localCategoryOptions, setLocalCategoryOptions] = useState(() => mapSelectOptions(categories));
-    const [localBrandOptions, setLocalBrandOptions] = useState(() => mapSelectOptions(brands));
-    const [localUnitOptions, setLocalUnitOptions] = useState(() => mapSelectOptions(units));
-    const [localWarrantyOptions, setLocalWarrantyOptions] = useState(() => mapSelectOptions(warranties));
+    const [localCategoryOptions, setLocalCategoryOptions] = useState(() => mapSelectOptionsWithSelected(categories, selectedCatalog.category));
+    const [localBrandOptions, setLocalBrandOptions] = useState(() => mapSelectOptionsWithSelected(brands, selectedCatalog.brand));
+    const [localUnitOptions, setLocalUnitOptions] = useState(() => mapSelectOptionsWithSelected(units, selectedCatalog.unit));
+    const [localWarrantyOptions, setLocalWarrantyOptions] = useState(() => mapSelectOptionsWithSelected(warranties, selectedCatalog.warranty));
     const [localTagOptions, setLocalTagOptions] = useState(() => tagOptions);
     const [branchColorOptions, setBranchColorOptions] = useState(() => mergePresetOptions(colorOptions, selectedColors));
     const [branchSizeOptions, setBranchSizeOptions] = useState(() => mergePresetOptions(sizeOptions, selectedSizes));
@@ -847,9 +851,7 @@ export default function ProductForm({
         : (auth.user?.branch_id != null ? String(auth.user.branch_id) : null);
 
     const quickCreateBranchId = isAdmin
-        ? (form.data.branch_id != null && form.data.branch_id !== ''
-            ? String(form.data.branch_id)
-            : String(defaultCatalogBranchId ?? ''))
+        ? (defaultCatalogBranchId != null ? String(defaultCatalogBranchId) : null)
         : (auth.user?.branch_id != null ? String(auth.user.branch_id) : null);
 
     const showVisibleOnStore = can('product.visible-on-store')

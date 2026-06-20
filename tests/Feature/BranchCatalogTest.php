@@ -673,6 +673,36 @@ test('branch user product submission creates branch and pending main copies', fu
         )->toBeNull();
 });
 
+test('product form only lists catalog options for admin panel branch not product branch field', function () {
+    $this->artisan('permissions:sync');
+    $this->withoutVite();
+
+    $mainBranch = ensureMainBranchForCatalog();
+    $operatingBranch = Branch::factory()->create();
+    $admin = User::factory()->create(['branch_id' => null]);
+    $admin->givePermissionTo('product.create');
+
+    $mainCategory = Category::query()->create([
+        'branch_id' => $mainBranch->id,
+        'name' => 'Main Form Category '.fake()->unique()->numerify('####'),
+        'status' => 1,
+    ]);
+
+    $otherCategory = Category::query()->create([
+        'branch_id' => $operatingBranch->id,
+        'name' => 'Other Form Category '.fake()->unique()->numerify('####'),
+        'status' => 1,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('product.create'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/product/create')
+            ->where("categories.{$mainCategory->id}", $mainCategory->name)
+            ->missing("categories.{$otherCategory->id}"));
+});
+
 test('product catalog options api returns records for selected admin branch only', function () {
     $this->artisan('permissions:sync');
 

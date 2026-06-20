@@ -62,6 +62,82 @@ test('operating branch user does not see other branch products in purchase searc
     expect($ids)->not->toContain($otherProduct->id);
 });
 
+test('superadmin only sees main branch products in purchase search', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = ensureMainBranch();
+    $operatingBranch = Branch::factory()->create();
+    $admin = User::factory()->create(['branch_id' => null]);
+    Permission::findOrCreate('inventory.purchase.create', 'web');
+    $admin->givePermissionTo('inventory.purchase.create');
+
+    $mainProduct = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Admin Purchase Product '.fake()->unique()->numerify('###'),
+    ]);
+
+    $operatingProduct = Product::factory()->create([
+        'branch_id' => $operatingBranch->id,
+        'name' => 'Other Branch Purchase Product '.fake()->unique()->numerify('###'),
+    ]);
+
+    $response = $this->actingAs($admin)
+        ->getJson('/api/products/for-purchase?search='.urlencode($mainProduct->name));
+
+    $response->assertOk();
+
+    $ids = collect($response->json())->pluck('id');
+
+    expect($ids)->toContain($mainProduct->id);
+    expect($ids)->not->toContain($operatingProduct->id);
+});
+
+test('purchase search only includes variations for the resolved branch', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = ensureMainBranch();
+    $operatingBranch = Branch::factory()->create();
+    $admin = User::factory()->create(['branch_id' => null]);
+    Permission::findOrCreate('inventory.purchase.create', 'web');
+    $admin->givePermissionTo('inventory.purchase.create');
+
+    $product = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Variant Purchase Product '.fake()->unique()->numerify('###'),
+    ]);
+
+    $mainVariation = \App\Models\ProductVariation::query()->create([
+        'product_id' => $product->id,
+        'branch_id' => $mainBranchId,
+        'sku' => 'MAIN-'.fake()->unique()->numerify('####'),
+        'price' => 150,
+        'purchase_price' => 100,
+        'stock' => 0,
+        'variation_data' => ['label' => 'Main Red'],
+    ]);
+
+    \App\Models\ProductVariation::query()->create([
+        'product_id' => $product->id,
+        'branch_id' => $operatingBranch->id,
+        'sku' => 'OTHER-'.fake()->unique()->numerify('####'),
+        'price' => 150,
+        'purchase_price' => 100,
+        'stock' => 0,
+        'variation_data' => ['label' => 'Other Blue'],
+    ]);
+
+    $response = $this->actingAs($admin)
+        ->getJson('/api/products/for-purchase?search='.urlencode($product->name));
+
+    $response->assertOk();
+
+    $match = collect($response->json())->firstWhere('id', $product->id);
+
+    expect($match)->not->toBeNull()
+        ->and(collect($match['variations'])->pluck('id'))->toContain($mainVariation->id)
+        ->and(collect($match['variations'])->pluck('label'))->not->toContain('Other Blue');
+});
+
 test('sell search can filter products by category', function () {
     $this->artisan('permissions:sync');
 

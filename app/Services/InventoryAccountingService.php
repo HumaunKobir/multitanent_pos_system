@@ -216,6 +216,14 @@ class InventoryAccountingService
 
         $fromBranchId = $distribution->from_branch_id;
         $toBranchId = $distribution->to_branch_id;
+        $totalCost = round($totalCost, 2);
+
+        if ($totalCost <= 0) {
+            throw new \RuntimeException('Stock distribution cost must be greater than zero.');
+        }
+
+        SystemAccountService::ensureConfigured($fromBranchId);
+        SystemAccountService::ensureConfigured($toBranchId);
 
         $serial = $distribution->serial ?? $distribution->invoice_number;
         $branchName = $distribution->toBranch?->name ?? 'Branch';
@@ -230,6 +238,16 @@ class InventoryAccountingService
                 SystemAccountService::resolve(SystemAccountKey::ProductInventory, $fromBranchId),
                 $totalCost,
                 "Main inventory reduced — Distribution {$serial}, to {$branchName}",
+            ),
+            $this->debitAccount(
+                SystemAccountService::resolve(SystemAccountKey::IntercompanyReceivable, $fromBranchId),
+                $totalCost,
+                "Intercompany receivable — Distribution {$serial}, {$branchName}",
+            ),
+            $this->creditAccount(
+                SystemAccountService::resolve(SystemAccountKey::IntercompanyPayable, $toBranchId),
+                $totalCost,
+                "Intercompany payable — Distribution {$serial}, to {$branchName}",
             ),
         ];
 

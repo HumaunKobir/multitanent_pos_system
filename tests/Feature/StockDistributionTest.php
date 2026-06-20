@@ -1,14 +1,17 @@
 <?php
 
 use App\Enums\ProductLogType;
+use App\Enums\SystemAccountKey;
 use App\Models\Batch;
 use App\Models\Branch;
+use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\ProductInOutLog;
 use App\Models\StockDistribution;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\EcommerceBranchService;
+use App\Services\SystemAccountService;
 use App\Support\AdminNavigation;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -140,6 +143,78 @@ test('super admin can distribute stock to operating branch', function () {
         ->where('source_type', StockDistribution::class)
         ->where('source_id', $distribution->id)
         ->exists())->toBeTrue();
+});
+
+test('stock distribution posts intercompany inventory journal entries', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = Branch::resolveMainBranchId();
+    $user = superAdminUser(['inventory.stock-distribution.create']);
+    $targetBranch = Branch::factory()->create();
+
+    seedAccountingAccounts(branchId: $mainBranchId);
+    seedAccountingAccounts(branchId: $targetBranch->id);
+
+    $product = Product::factory()->create(['branch_id' => $mainBranchId]);
+    Batch::factory()->for($product)->withStock(20)->create([
+        'branch_id' => $mainBranchId,
+        'purchase_price' => 100,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/stock-distribution', [
+            'to_branch_id' => $targetBranch->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Intercompany transfer',
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'quantity' => '5',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('inventory.stock-distribution.index'));
+
+    $distribution = StockDistribution::query()->latest('id')->first();
+    expect($distribution)->not->toBeNull();
+
+    $transaction = Transaction::query()
+        ->where('source_type', StockDistribution::class)
+        ->where('source_id', $distribution->id)
+        ->first();
+
+    expect($transaction)->not->toBeNull();
+
+    $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
+    expect($ledgers)->toHaveCount(4);
+
+    $expectedCost = 500.0;
+    $mainInventoryId = SystemAccountService::id(SystemAccountKey::ProductInventory, $mainBranchId);
+    $branchInventoryId = SystemAccountService::id(SystemAccountKey::ProductInventory, $targetBranch->id);
+    $mainReceivableId = SystemAccountService::id(SystemAccountKey::IntercompanyReceivable, $mainBranchId);
+    $branchPayableId = SystemAccountService::id(SystemAccountKey::IntercompanyPayable, $targetBranch->id);
+
+    $debits = $ledgers->where('debit', '>', 0);
+    $credits = $ledgers->where('credit', '>', 0);
+
+    expect(round((float) $debits->sum('debit'), 2))->toBe(round($expectedCost * 2, 2));
+    expect(round((float) $credits->sum('credit'), 2))->toBe(round($expectedCost * 2, 2));
+    expect(round((float) $ledgers->sum('debit'), 2))->toBe(round((float) $ledgers->sum('credit'), 2));
+
+    expect($debits->pluck('account_id')->all())->toEqualCanonicalizing([
+        $branchInventoryId,
+        $mainReceivableId,
+    ]);
+    expect($credits->pluck('account_id')->all())->toEqualCanonicalizing([
+        $mainInventoryId,
+        $branchPayableId,
+    ]);
+
+    expect(round((float) $debits->firstWhere('account_id', $branchInventoryId)?->debit, 2))->toBe($expectedCost);
+    expect(round((float) $debits->firstWhere('account_id', $mainReceivableId)?->debit, 2))->toBe($expectedCost);
+    expect(round((float) $credits->firstWhere('account_id', $mainInventoryId)?->credit, 2))->toBe($expectedCost);
+    expect(round((float) $credits->firstWhere('account_id', $branchPayableId)?->credit, 2))->toBe($expectedCost);
 });
 
 test('edit form includes current main branch stock for line items', function () {
@@ -525,7 +600,7 @@ test('super admin can distribute stock to ecommerce branch', function () {
         'purchase_price' => 50,
     ]);
 
-    $this->actingAs($user)
+    $response = $this->actingAs($user)
         ->post('/inventory/stock-distribution', [
             'to_branch_id' => $ecommerceBranch->id,
             'date' => now()->format('Y-m-d'),
@@ -533,8 +608,10 @@ test('super admin can distribute stock to ecommerce branch', function () {
             'items' => [
                 ['product_id' => $mainProduct->id, 'variation_id' => null, 'quantity' => '6'],
             ],
-        ])
-        ->assertRedirect();
+        ]);
+
+    $response->assertRedirect(route('inventory.stock-distribution.index'))
+        ->assertSessionHasNoErrors();
 
     $destinationBatch = Batch::query()
         ->where('product_id', $ecommerceProduct->id)

@@ -59,8 +59,14 @@ test('chart of accounts seeder creates child accounts under parent heads', funct
         [SystemAccountKey::Inventory, [
             SystemAccountKey::ProductInventory,
         ]],
-        [SystemAccountKey::AccountsReceivable, [SystemAccountKey::CustomerReceivables]],
-        [SystemAccountKey::AccountsPayable, [SystemAccountKey::SupplierPayables]],
+        [SystemAccountKey::AccountsReceivable, [
+            SystemAccountKey::CustomerReceivables,
+            SystemAccountKey::IntercompanyReceivable,
+        ]],
+        [SystemAccountKey::AccountsPayable, [
+            SystemAccountKey::SupplierPayables,
+            SystemAccountKey::IntercompanyPayable,
+        ]],
         [SystemAccountKey::TaxesPayable, [SystemAccountKey::OutputVat]],
         [SystemAccountKey::OpeningBalanceEquity, [SystemAccountKey::OpeningBalanceClearing]],
         [SystemAccountKey::SalesRevenue, [

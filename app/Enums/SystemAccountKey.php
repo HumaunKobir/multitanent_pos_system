@@ -15,8 +15,10 @@ enum SystemAccountKey: string
     case BranchInventory = 'branch_inventory';
     case AccountsReceivable = 'accounts_receivable';
     case CustomerReceivables = 'customer_receivables';
+    case IntercompanyReceivable = 'intercompany_receivable';
     case AccountsPayable = 'accounts_payable';
     case SupplierPayables = 'supplier_payables';
+    case IntercompanyPayable = 'intercompany_payable';
     case LoansPayable = 'loans_payable';
     case AdvanceFromCustomer = 'advance_from_customer';
     case TaxesPayable = 'taxes_payable';
@@ -57,8 +59,10 @@ enum SystemAccountKey: string
             self::BranchInventory => 'Branch Inventory',
             self::AccountsReceivable => 'Accounts Receivable',
             self::CustomerReceivables => 'Customer Receivables',
+            self::IntercompanyReceivable => 'Intercompany Receivable',
             self::AccountsPayable => 'Accounts Payable',
             self::SupplierPayables => 'Supplier Payables',
+            self::IntercompanyPayable => 'Intercompany Payable',
             self::LoansPayable => 'Loans Payable',
             self::AdvanceFromCustomer => 'Advance from Customer',
             self::TaxesPayable => 'Taxes Payable',
@@ -87,8 +91,8 @@ enum SystemAccountKey: string
         return match ($this) {
             self::CashAndBank, self::CashInHand, self::BankAccount, self::SslCommerz, self::Bkash, self::Nagad,
             self::Inventory, self::ProductInventory, self::BranchInventory,
-            self::AccountsReceivable, self::CustomerReceivables => AccountType::Asset,
-            self::AccountsPayable, self::SupplierPayables, self::LoansPayable,
+            self::AccountsReceivable, self::CustomerReceivables, self::IntercompanyReceivable => AccountType::Asset,
+            self::AccountsPayable, self::SupplierPayables, self::IntercompanyPayable, self::LoansPayable,
             self::AdvanceFromCustomer, self::TaxesPayable, self::OutputVat => AccountType::Liability,
             self::OwnersCapital, self::RetainedEarnings, self::OwnersDrawings,
             self::OpeningBalanceEquity, self::OpeningBalanceClearing => AccountType::Equity,
@@ -115,8 +119,8 @@ enum SystemAccountKey: string
             self::BankAccount => self::CashAndBank,
             self::ProductInventory => self::Inventory,
             self::BranchInventory => self::Inventory,
-            self::CustomerReceivables => self::AccountsReceivable,
-            self::SupplierPayables => self::AccountsPayable,
+            self::CustomerReceivables, self::IntercompanyReceivable => self::AccountsReceivable,
+            self::SupplierPayables, self::IntercompanyPayable => self::AccountsPayable,
             self::OutputVat => self::TaxesPayable,
             self::OpeningBalanceClearing => self::OpeningBalanceEquity,
             self::ProductSales, self::SalesReturns => self::SalesRevenue,

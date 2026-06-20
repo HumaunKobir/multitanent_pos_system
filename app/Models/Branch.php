@@ -71,19 +71,7 @@ class Branch extends Model
             return (int) $byName;
         }
 
-        $ecommerceBranchId = EcommerceBranchService::resolveIdStatic();
-
-        if ($ecommerceBranchId !== self::MAIN_BRANCH_ID) {
-            return self::MAIN_BRANCH_ID;
-        }
-
-        $fallbackId = static::query()
-            ->active()
-            ->where('id', '!=', $ecommerceBranchId)
-            ->orderBy('id')
-            ->value('id');
-
-        return $fallbackId !== null ? (int) $fallbackId : self::MAIN_BRANCH_ID;
+        return self::MAIN_BRANCH_ID;
     }
 
     /**

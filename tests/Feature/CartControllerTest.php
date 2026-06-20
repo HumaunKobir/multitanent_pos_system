@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Branch;
 use App\Models\Product;
 
 test('cart page loads', function () {
@@ -9,7 +10,7 @@ test('cart page loads', function () {
 });
 
 test('can add product to cart', function () {
-    $product = Product::factory()->create(['sale_price' => 1000, 'discount_price' => 0]);
+    $product = storefrontProduct(['sale_price' => 1000, 'discount_price' => 0]);
 
     $this->post(route('cart.add'), [
         'product_id' => $product->id,
@@ -21,7 +22,7 @@ test('can add product to cart', function () {
 });
 
 test('cart count reflects line items not total quantity', function () {
-    $product = Product::factory()->create(['sale_price' => 1000, 'discount_price' => 0]);
+    $product = storefrontProduct(['sale_price' => 1000, 'discount_price' => 0]);
 
     $this->post(route('cart.add'), [
         'product_id' => $product->id,
@@ -33,7 +34,7 @@ test('cart count reflects line items not total quantity', function () {
 });
 
 test('adding same product increments quantity', function () {
-    $product = Product::factory()->create(['sale_price' => 1000, 'discount_price' => 0]);
+    $product = storefrontProduct(['sale_price' => 1000, 'discount_price' => 0]);
 
     $this->post(route('cart.add'), ['product_id' => $product->id, 'quantity' => 1]);
     $this->post(route('cart.add'), ['product_id' => $product->id, 'quantity' => 2]);
@@ -44,7 +45,7 @@ test('adding same product increments quantity', function () {
 });
 
 test('add to cart uses discount price when set', function () {
-    $product = Product::factory()->create(['sale_price' => 1000, 'discount_price' => 750]);
+    $product = storefrontProduct(['sale_price' => 1000, 'discount_price' => 750]);
 
     $this->post(route('cart.add'), ['product_id' => $product->id, 'quantity' => 1]);
 
@@ -63,8 +64,21 @@ test('add to cart rejects non-existent product', function () {
         ->assertSessionHasErrors(['product_id']);
 });
 
+test('add to cart rejects product from another branch', function () {
+    storefrontEcommerceBranch();
+    $otherBranch = Branch::factory()->create();
+    $product = Product::factory()->create([
+        'branch_id' => $otherBranch->id,
+        'sale_price' => 1000,
+        'discount_price' => 0,
+    ]);
+
+    $this->post(route('cart.add'), ['product_id' => $product->id, 'quantity' => 1])
+        ->assertNotFound();
+});
+
 test('can update cart item quantity', function () {
-    $product = Product::factory()->create(['sale_price' => 500, 'discount_price' => 0]);
+    $product = storefrontProduct(['sale_price' => 500, 'discount_price' => 0]);
     $cartKey = $product->id.'-0';
     session(['cart' => [
         $cartKey => [
@@ -88,7 +102,7 @@ test('can update cart item quantity', function () {
 });
 
 test('can remove item from cart', function () {
-    $product = Product::factory()->create(['sale_price' => 500, 'discount_price' => 0]);
+    $product = storefrontProduct(['sale_price' => 500, 'discount_price' => 0]);
     $cartKey = $product->id.'-0';
     session(['cart' => [$cartKey => ['product_id' => $product->id, 'quantity' => 1]]]);
 

@@ -9,30 +9,47 @@ use App\Models\ProductReview;
 use App\Models\ProductSection;
 use App\Models\ProductVariation;
 use App\Models\Tag;
-use App\Models\User;
 use App\Services\EcommerceBranchService;
 
-function storefrontEcommerceBranch(): Branch
-{
-    EcommerceBranchService::resetResolvedId();
+test('all products page only lists ecommerce branch products', function () {
+    $ecommerceBranch = storefrontEcommerceBranch();
+    $otherBranch = Branch::factory()->create();
 
-    $branch = Branch::query()->firstOrCreate(
-        ['name' => EcommerceBranchService::BRANCH_NAME],
-        Branch::factory()->make(['name' => EcommerceBranchService::BRANCH_NAME])->toArray(),
-    );
+    $visibleProduct = storefrontProduct([
+        'name' => 'Ecommerce Visible '.fake()->unique()->numerify('####'),
+        'status' => 1,
+        'visible' => 'yes',
+    ]);
 
-    User::query()->updateOrCreate(
-        ['email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL],
-        User::factory()->make([
-            'email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL,
-            'branch_id' => $branch->id,
-        ])->toArray(),
-    );
+    $otherBranchProduct = Product::factory()->create([
+        'branch_id' => $otherBranch->id,
+        'name' => 'Other Branch Visible '.fake()->unique()->numerify('####'),
+        'status' => 1,
+        'visible' => 'yes',
+    ]);
 
-    EcommerceBranchService::resetResolvedId();
+    $this->get(route('products.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('frontend/all-products')
+            ->where('products.data', fn ($products) => collect($products)->contains('slug', $visibleProduct->slug)
+                && ! collect($products)->contains('slug', $otherBranchProduct->slug))
+        );
+});
 
-    return $branch;
-}
+test('single product page returns 404 for product from another branch', function () {
+    storefrontEcommerceBranch();
+    $otherBranch = Branch::factory()->create();
+
+    $product = Product::factory()->create([
+        'branch_id' => $otherBranch->id,
+        'status' => 1,
+        'visible' => 'yes',
+    ]);
+
+    $this->get(route('product.show', $product->slug))
+        ->assertNotFound();
+});
 
 test('home page loads successfully', function () {
     $this->get(route('home'))
@@ -88,7 +105,7 @@ test('home page shares storefront navigation filters', function () {
 });
 
 test('home page contains product sections', function () {
-    $product = Product::factory()->create();
+    $product = storefrontProduct();
     $name = 'Test Section '.fake()->unique()->numerify('####');
 
     ProductSection::create([
@@ -112,17 +129,17 @@ test('home page contains product sections', function () {
 });
 
 test('home page product section includes formatted products in admin order', function () {
-    $first = Product::factory()->create([
+    $first = storefrontProduct([
         'name' => 'Section First '.fake()->unique()->numerify('####'),
         'status' => 1,
         'visible' => 'yes',
     ]);
-    $second = Product::factory()->create([
+    $second = storefrontProduct([
         'name' => 'Section Second '.fake()->unique()->numerify('####'),
         'status' => 1,
         'visible' => 'yes',
     ]);
-    $inactive = Product::factory()->create([
+    $inactive = storefrontProduct([
         'name' => 'Section Inactive '.fake()->unique()->numerify('####'),
         'status' => 0,
         'visible' => 'yes',
@@ -155,7 +172,7 @@ test('home page product section includes formatted products in admin order', fun
 });
 
 test('home page product section slider layout is exposed to frontend', function () {
-    $product = Product::factory()->create(['status' => 1, 'visible' => 'yes']);
+    $product = storefrontProduct(['status' => 1, 'visible' => 'yes']);
     $name = 'Slider Section '.fake()->unique()->numerify('####');
 
     ProductSection::create([
@@ -233,7 +250,7 @@ test('home page excludes inactive product sections', function () {
 });
 
 test('single product page shows product by slug', function () {
-    $product = Product::factory()->create([
+    $product = storefrontProduct([
         'status' => 1,
         'image' => 'products/sample.jpg',
     ]);
@@ -255,7 +272,7 @@ test('single product page returns 404 for invalid slug', function () {
 });
 
 test('single product page returns 404 for inactive product', function () {
-    $product = Product::factory()->create(['status' => 0]);
+    $product = storefrontProduct(['status' => 0]);
 
     $this->get(route('product.show', $product->slug))
         ->assertNotFound();
@@ -271,13 +288,13 @@ test('collection products page renders', function () {
 });
 
 test('all products page renders visible products', function () {
-    $visibleProduct = Product::factory()->create([
+    $visibleProduct = storefrontProduct([
         'name' => 'All Products Visible '.fake()->unique()->numerify('####'),
         'status' => 1,
         'visible' => 'yes',
     ]);
 
-    Product::factory()->create([
+    storefrontProduct([
         'name' => 'All Products Hidden '.fake()->unique()->numerify('####'),
         'status' => 0,
         'visible' => 'yes',
@@ -292,7 +309,7 @@ test('all products page renders visible products', function () {
 });
 
 test('product listings include approved review summary', function () {
-    $product = Product::factory()->create([
+    $product = storefrontProduct([
         'status' => 1,
         'visible' => 'yes',
     ]);
@@ -326,7 +343,7 @@ test('product listings include approved review summary', function () {
 });
 
 test('single product page still resolves when all products route exists', function () {
-    $product = Product::factory()->create(['status' => 1, 'visible' => 'yes']);
+    $product = storefrontProduct(['status' => 1, 'visible' => 'yes']);
 
     $this->get(route('product.show', $product->slug))
         ->assertOk()
@@ -357,7 +374,7 @@ test('category products include variation summary for variant products', functio
         'branch_id' => $ecommerceBranch->id,
         'name' => 'Variant Wear',
     ]);
-    $product = Product::factory()->create([
+    $product = storefrontProduct([
         'category_id' => $category->id,
         'status' => 1,
         'visible' => 'yes',
@@ -452,7 +469,7 @@ test('brand products page redirects legacy id urls to slug', function () {
 
 test('search page returns matching products', function () {
     $term = 'Unique Search Term '.fake()->unique()->numerify('####');
-    Product::factory()->create(['name' => $term.' Shirt', 'status' => 1, 'visible' => 'yes']);
+    storefrontProduct(['name' => $term.' Shirt', 'status' => 1, 'visible' => 'yes']);
 
     $this->get(route('search', ['q' => $term]))
         ->assertOk()
@@ -464,8 +481,13 @@ test('search page returns matching products', function () {
 });
 
 test('search page matches products by brand name', function () {
-    $brand = Brand::factory()->create(['name' => 'Search Brand '.fake()->unique()->numerify('####'), 'status' => 1]);
-    Product::factory()->create([
+    $ecommerceBranch = storefrontEcommerceBranch();
+    $brand = Brand::factory()->create([
+        'name' => 'Search Brand '.fake()->unique()->numerify('####'),
+        'status' => 1,
+        'branch_id' => $ecommerceBranch->id,
+    ]);
+    storefrontProduct([
         'name' => 'Hidden Label Product',
         'brand_id' => $brand->id,
         'status' => 1,
@@ -483,8 +505,10 @@ test('search page matches products by brand name', function () {
 
 test('search page preserves query string in pagination links', function () {
     $term = 'Paged Search Term '.fake()->unique()->numerify('####');
+    $ecommerceBranch = storefrontEcommerceBranch();
 
     Product::factory()->count(13)->create([
+        'branch_id' => $ecommerceBranch->id,
         'name' => $term.' Item',
         'status' => 1,
         'visible' => 'yes',
@@ -503,7 +527,7 @@ test('search page preserves query string in pagination links', function () {
 
 test('search suggestions returns matching products with images', function () {
     $term = 'Suggestion Term '.fake()->unique()->numerify('####');
-    $product = Product::factory()->create([
+    $product = storefrontProduct([
         'name' => $term.' Jacket',
         'image' => 'products/test-image.jpg',
         'status' => 1,
@@ -528,7 +552,7 @@ test('search suggestions returns empty array for short queries', function () {
 });
 
 test('search page returns no products when query is empty', function () {
-    Product::factory()->create(['name' => 'Visible Product', 'status' => 1, 'visible' => 'yes']);
+    storefrontProduct(['name' => 'Visible Product', 'status' => 1, 'visible' => 'yes']);
 
     $this->get(route('search'))
         ->assertOk()

@@ -45,7 +45,7 @@ function validReviewPayload(): array
 }
 
 test('single product page includes reviews and summary', function () {
-    $product = Product::factory()->create(['status' => 1]);
+    $product = storefrontProduct(['status' => 1]);
 
     ProductReview::factory()->create([
         'product_id' => $product->id,
@@ -77,7 +77,7 @@ test('single product page includes reviews and summary', function () {
 
 test('single product page allows review when customer received product', function () {
     $customer = Customer::factory()->create();
-    $product = Product::factory()->create(['status' => 1]);
+    $product = storefrontProduct(['status' => 1]);
 
     createDeliveredOrderWithProduct($customer, $product);
 
@@ -90,7 +90,7 @@ test('single product page allows review when customer received product', functio
 });
 
 test('guest cannot submit a product review', function () {
-    $product = Product::factory()->create(['status' => 1]);
+    $product = storefrontProduct(['status' => 1]);
 
     $this->post(route('product.reviews.store', $product->slug), validReviewPayload())
         ->assertRedirect()
@@ -104,7 +104,7 @@ test('guest cannot submit a product review', function () {
 
 test('logged in customer cannot review without a delivered order', function () {
     $customer = Customer::factory()->create();
-    $product = Product::factory()->create(['status' => 1]);
+    $product = storefrontProduct(['status' => 1]);
 
     $this->actingAs($customer, 'customer')
         ->post(route('product.reviews.store', $product->slug), validReviewPayload())
@@ -118,7 +118,7 @@ test('logged in customer cannot review without a delivered order', function () {
 
 test('logged in customer cannot review when order is not delivered', function () {
     $customer = Customer::factory()->create();
-    $product = Product::factory()->create(['status' => 1]);
+    $product = storefrontProduct(['status' => 1]);
 
     createDeliveredOrderWithProduct($customer, $product, ['status' => OrderStatus::Shipping]);
 
@@ -129,7 +129,7 @@ test('logged in customer cannot review when order is not delivered', function ()
 
 test('customer can submit review after product is delivered', function () {
     $customer = Customer::factory()->create();
-    $product = Product::factory()->create(['status' => 1]);
+    $product = storefrontProduct(['status' => 1]);
 
     createDeliveredOrderWithProduct($customer, $product);
 
@@ -149,8 +149,8 @@ test('customer can submit review after product is delivered', function () {
 
 test('customer can review product from any delivered order containing it', function () {
     $customer = Customer::factory()->create();
-    $product = Product::factory()->create(['status' => 1]);
-    $otherProduct = Product::factory()->create(['status' => 1]);
+    $product = storefrontProduct(['status' => 1]);
+    $otherProduct = storefrontProduct(['status' => 1]);
 
     $order = createDeliveredOrderWithProduct($customer, $otherProduct);
 
@@ -177,7 +177,7 @@ test('customer can review product from any delivered order containing it', funct
 test('customer cannot review product purchased by another customer', function () {
     $customer = Customer::factory()->create();
     $otherCustomer = Customer::factory()->create();
-    $product = Product::factory()->create(['status' => 1]);
+    $product = storefrontProduct(['status' => 1]);
 
     createDeliveredOrderWithProduct($otherCustomer, $product);
 
@@ -187,14 +187,14 @@ test('customer cannot review product purchased by another customer', function ()
 });
 
 test('product review submission requires valid data', function () {
-    $product = Product::factory()->create(['status' => 1]);
+    $product = storefrontProduct(['status' => 1]);
 
     $this->post(route('product.reviews.store', $product->slug), [])
         ->assertSessionHasErrors(['reviewer_name', 'rating', 'comment']);
 });
 
 test('product review submission rejects invalid rating', function () {
-    $product = Product::factory()->create(['status' => 1]);
+    $product = storefrontProduct(['status' => 1]);
 
     $this->post(route('product.reviews.store', $product->slug), [
         'reviewer_name' => 'Jane Doe',

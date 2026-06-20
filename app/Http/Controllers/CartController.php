@@ -41,7 +41,7 @@ class CartController extends Controller
             'tailormeasurement' => 'nullable|array',
         ]);
 
-        $product = Product::findOrFail($validated['product_id']);
+        $product = Product::query()->forStorefront()->findOrFail($validated['product_id']);
         $price = $product->discount_price > 0 ? $product->discount_price : $product->sale_price;
         $sku = null;
         $tailorSuffix = '';

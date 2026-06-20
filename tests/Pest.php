@@ -3,6 +3,7 @@
 use App\Enums\SystemAccountKey;
 use App\Models\Branch;
 use App\Models\ChartOfAccount;
+use App\Models\Product;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\EcommerceBranchService;
@@ -49,11 +50,6 @@ expect()->extend('toBeOne', function () {
 | global functions to help you to reduce the number of lines of code in your test files.
 |
 */
-
-function something()
-{
-    // ..
-}
 
 function ensureMainBranch(): int
 {
@@ -141,4 +137,35 @@ function seedEcommerceBranchAccounts(): array
         'sslCommerz' => SystemAccountService::resolve(SystemAccountKey::SslCommerz, $branch->id),
         'cashInHand' => SystemAccountService::resolve(SystemAccountKey::CashInHand, $branch->id),
     ];
+}
+
+function storefrontEcommerceBranch(): Branch
+{
+    EcommerceBranchService::resetResolvedId();
+
+    $branch = Branch::query()->firstOrCreate(
+        ['name' => EcommerceBranchService::BRANCH_NAME],
+        Branch::factory()->make(['name' => EcommerceBranchService::BRANCH_NAME])->toArray(),
+    );
+
+    User::query()->updateOrCreate(
+        ['email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL],
+        User::factory()->make([
+            'email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL,
+            'branch_id' => $branch->id,
+        ])->toArray(),
+    );
+
+    EcommerceBranchService::resetResolvedId();
+
+    return $branch;
+}
+
+function storefrontProduct(array $attributes = []): Product
+{
+    $ecommerceBranch = storefrontEcommerceBranch();
+
+    return Product::factory()->create(array_merge([
+        'branch_id' => $ecommerceBranch->id,
+    ], $attributes));
 }

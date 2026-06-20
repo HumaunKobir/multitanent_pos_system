@@ -86,7 +86,8 @@ class HomeController extends Controller
 
     public function show(string $slug): Response
     {
-        $product = Product::with(['photos', 'variations', 'category', 'brand'])
+        $product = $this->storefrontProducts()
+            ->with(['photos', 'variations', 'category', 'brand'])
             ->withReviewSummary()
             ->where('slug', $slug)
             ->where('status', 1)
@@ -130,7 +131,8 @@ class HomeController extends Controller
         $section = ProductSection::findOrFail($id);
         $productIds = $section->items ?? [];
 
-        $query = Product::with(['photos', 'variations'])->withCount('variations')
+        $query = $this->storefrontProducts()
+            ->with(['photos', 'variations'])->withCount('variations')
             ->withReviewSummary()
             ->where('status', 1)
             ->where('visible', 'yes')
@@ -154,7 +156,8 @@ class HomeController extends Controller
 
     public function collectionProducts(string $name, Request $request): Response
     {
-        $query = Product::with(['photos', 'variations'])->withCount('variations')
+        $query = $this->storefrontProducts()
+            ->with(['photos', 'variations'])->withCount('variations')
             ->withReviewSummary()
             ->where('status', 1)
             ->where('visible', 'yes')
@@ -187,7 +190,8 @@ class HomeController extends Controller
 
     public function allProducts(Request $request): Response
     {
-        $query = Product::with(['photos', 'variations'])->withCount('variations')
+        $query = $this->storefrontProducts()
+            ->with(['photos', 'variations'])->withCount('variations')
             ->withReviewSummary()
             ->where('status', 1)
             ->where('visible', 'yes');
@@ -218,7 +222,8 @@ class HomeController extends Controller
 
     private function renderCategoryProducts(Category $category, Request $request): Response
     {
-        $query = Product::with(['photos', 'variations'])->withCount('variations')
+        $query = $this->storefrontProducts()
+            ->with(['photos', 'variations'])->withCount('variations')
             ->withReviewSummary()
             ->where('status', 1)
             ->where('visible', 'yes')
@@ -243,7 +248,8 @@ class HomeController extends Controller
 
     private function renderBrandProducts(Brand $brand, Request $request): Response
     {
-        $query = Product::with(['photos', 'variations'])->withCount('variations')
+        $query = $this->storefrontProducts()
+            ->with(['photos', 'variations'])->withCount('variations')
             ->withReviewSummary()
             ->where('status', 1)
             ->where('visible', 'yes')
@@ -379,9 +385,14 @@ class HomeController extends Controller
         return PageContent::forFrontend($slug, $heroImage);
     }
 
+    private function storefrontProducts(): Builder
+    {
+        return Product::query()->forStorefront();
+    }
+
     private function storefrontSearchQuery(string $query): Builder
     {
-        $productsQuery = Product::query()
+        $productsQuery = $this->storefrontProducts()
             ->active()
             ->visible();
 

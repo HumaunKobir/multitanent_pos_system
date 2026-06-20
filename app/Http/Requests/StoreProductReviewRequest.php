@@ -40,7 +40,16 @@ class StoreProductReviewRequest extends FormRequest
                     return;
                 }
 
-                $product = $this->route('product');
+                $slug = $this->route('product');
+
+                if (! is_string($slug)) {
+                    return;
+                }
+
+                $product = Product::query()
+                    ->forStorefront()
+                    ->where('slug', $slug)
+                    ->first();
 
                 if (! $product instanceof Product) {
                     return;

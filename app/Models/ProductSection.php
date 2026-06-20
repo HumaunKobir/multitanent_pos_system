@@ -87,10 +87,12 @@ class ProductSection extends Model
             return collect();
         }
 
-        $products = Product::with(['photos', 'variations'])
+        $products = Product::forStorefront()
+            ->with(['photos', 'variations'])
             ->withReviewSummary()
             ->whereIn('id', $this->items)
             ->where('status', 1)
+            ->where('visible', 'yes')
             ->get()
             ->keyBy('id');
 

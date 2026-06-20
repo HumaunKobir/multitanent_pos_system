@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\EcommerceBranchService;
 use App\Traits\HasBranch;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -118,6 +119,11 @@ class Product extends Model
     public function scopeVisible(Builder $query): Builder
     {
         return $query->where('visible', 'yes');
+    }
+
+    public function scopeForStorefront(Builder $query): Builder
+    {
+        return $query->accessibleAtBranch(EcommerceBranchService::resolveIdStatic());
     }
 
     public function scopeBranchWise(Builder $query, int $branchId): Builder

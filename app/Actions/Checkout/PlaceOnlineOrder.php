@@ -33,7 +33,7 @@ class PlaceOnlineOrder
         }
 
         $productIds = collect($cart)->pluck('product_id')->unique()->values();
-        $existingCount = Product::query()->whereIn('id', $productIds)->count();
+        $existingCount = Product::query()->forStorefront()->whereIn('id', $productIds)->count();
 
         if ($existingCount !== $productIds->count()) {
             throw new InvalidArgumentException('One or more items in your cart are no longer available.');

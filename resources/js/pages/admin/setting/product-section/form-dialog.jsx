@@ -111,7 +111,13 @@ export default function ProductSectionFormDialog({
     function handleSubmit(e) {
         e.preventDefault();
 
-        const options = { forceFormData: true, onSuccess: () => onOpenChange(false) };
+        const options = {
+            forceFormData: true,
+            onSuccess: () => {
+                onOpenChange(false);
+                form.reset();
+            },
+        };
 
         if (isEditing) {
             form.transform(() => buildPayload());

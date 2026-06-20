@@ -31,7 +31,10 @@ export default function FaqFormDialog({ open, onOpenChange, item, routes }) {
         event.preventDefault();
 
         const options = {
-            onSuccess: () => onOpenChange(false),
+            onSuccess: () => {
+                onOpenChange(false);
+                form.reset();
+            },
         };
 
         if (isEditing) {

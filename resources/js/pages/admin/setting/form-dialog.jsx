@@ -27,7 +27,10 @@ export default function SettingFormDialog({ open, onOpenChange, title, item, rou
         e.preventDefault();
 
         const options = {
-            onSuccess: () => onOpenChange(false),
+            onSuccess: () => {
+                onOpenChange(false);
+                form.reset();
+            },
         };
 
         const hasFileUpload = fields.some(

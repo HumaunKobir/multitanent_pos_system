@@ -21,7 +21,12 @@ export default function RoleFormDialog({ open, onOpenChange, item, routes }) {
     function handleSubmit(e) {
         e.preventDefault();
 
-        const options = { onSuccess: () => onOpenChange(false) };
+        const options = {
+            onSuccess: () => {
+                onOpenChange(false);
+                form.reset();
+            },
+        };
 
         if (isEditing) {
             form.patch(routes.update(item.id), options);

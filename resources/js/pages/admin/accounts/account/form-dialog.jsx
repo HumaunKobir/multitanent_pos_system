@@ -75,7 +75,12 @@ export default function AccountFormDialog({ open, onOpenChange, item, accountTyp
     function handleSubmit(e) {
         e.preventDefault();
 
-        const options = { onSuccess: () => onOpenChange(false) };
+        const options = {
+            onSuccess: () => {
+                onOpenChange(false);
+                form.reset();
+            },
+        };
 
         if (isEditing) {
             form.patch(route('accounts.update', { chartOfAccount: item.id }), options);

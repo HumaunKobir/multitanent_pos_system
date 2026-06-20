@@ -156,7 +156,11 @@ export default function CustomerDueAlertIndex({ alerts, customers, filters, toda
         e.preventDefault();
         if (!editing) return;
         editForm.patch(route('party.customer-due-alert.update', editing.id), {
-            onSuccess: () => setEditing(null),
+            onSuccess: () => {
+                setEditing(null);
+                editForm.reset();
+                editForm.setData('due_given_date', today);
+            },
         });
     }
 

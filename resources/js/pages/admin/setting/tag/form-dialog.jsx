@@ -55,7 +55,10 @@ export default function TagFormDialog({ open, onOpenChange, item, routes, parent
         e.preventDefault();
 
         const options = {
-            onSuccess: () => onOpenChange(false),
+            onSuccess: () => {
+                onOpenChange(false);
+                form.reset();
+            },
             forceFormData: form.data.image instanceof File,
         };
 

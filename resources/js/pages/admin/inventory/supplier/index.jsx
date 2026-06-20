@@ -136,7 +136,10 @@ export default function SupplierIndex({ suppliers, filters }) {
         e.preventDefault();
         if (!editing) return;
         editForm.patch(route('party.supplier.update', editing.id), {
-            onSuccess: () => setEditing(null),
+            onSuccess: () => {
+                setEditing(null);
+                editForm.reset();
+            },
         });
     }
 

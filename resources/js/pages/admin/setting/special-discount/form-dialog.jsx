@@ -43,7 +43,12 @@ export default function SpecialDiscountFormDialog({ open, onOpenChange, item, ro
 
         form.transform(() => payload);
 
-        const options = { onSuccess: () => onOpenChange(false) };
+        const options = {
+            onSuccess: () => {
+                onOpenChange(false);
+                form.reset();
+            },
+        };
 
         if (isEditing) {
             form.patch(routes.update(item.id), options);

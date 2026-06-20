@@ -70,7 +70,12 @@ export default function UserFormDialog({ open, onOpenChange, item, routes, branc
             return next;
         });
 
-        const options = { onSuccess: () => onOpenChange(false) };
+        const options = {
+            onSuccess: () => {
+                onOpenChange(false);
+                form.reset();
+            },
+        };
 
         if (isEditing) {
             form.patch(routes.update(item.id), options);

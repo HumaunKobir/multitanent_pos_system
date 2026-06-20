@@ -188,7 +188,10 @@ export default function CustomerIndex({ customers, filters, statuses }) {
         e.preventDefault();
         if (!editing) return;
         editForm.patch(route('party.customer.update', editing.id), {
-            onSuccess: () => setEditing(null),
+            onSuccess: () => {
+                setEditing(null);
+                editForm.reset();
+            },
         });
     }
 

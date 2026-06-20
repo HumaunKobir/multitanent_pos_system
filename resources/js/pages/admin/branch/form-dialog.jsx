@@ -41,7 +41,10 @@ export default function BranchFormDialog({ open, onOpenChange, item, routes }) {
         e.preventDefault();
 
         const options = {
-            onSuccess: () => onOpenChange(false),
+            onSuccess: () => {
+                onOpenChange(false);
+                form.reset();
+            },
         };
 
         if (isEditing) {

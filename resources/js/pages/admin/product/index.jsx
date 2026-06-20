@@ -137,6 +137,11 @@ export default function ProductIndex({ products, filters, categories, brands, ta
             render: (row) => row.brand?.name ?? '—',
         },
         {
+            id: 'selected_branch',
+            header: 'Selected Branch',
+            render: (row) => row.selected_branch?.name ?? '—',
+        },
+        {
             id: 'price',
             header: 'Price',
             render: (row) => {

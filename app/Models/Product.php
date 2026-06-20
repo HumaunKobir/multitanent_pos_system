@@ -18,6 +18,7 @@ class Product extends Model
 
     protected $fillable = [
         'branch_id',
+        'selected_branch_id',
         'product_group_id',
         'source_branch_id',
         'received_at',
@@ -164,6 +165,11 @@ class Product extends Model
     public function sourceBranch(): BelongsTo
     {
         return $this->belongsTo(Branch::class, 'source_branch_id');
+    }
+
+    public function selectedBranch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class, 'selected_branch_id');
     }
 
     public function category(): BelongsTo

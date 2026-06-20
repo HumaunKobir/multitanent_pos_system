@@ -50,6 +50,7 @@ class ProductController extends Controller
             ->with([
                 'category',
                 'brand',
+                'selectedBranch:id,name',
                 'variations' => fn ($q) => $this->scopeProductListVariations($q, $listBranchId),
             ])
             ->tap(fn ($q) => $this->applyProductListStockAggregates($q, $listBranchId))
@@ -181,6 +182,8 @@ class ProductController extends Controller
         $mainInitialStock = (int) ($data['initial_stock'] ?? 0);
         unset($data['initial_stock']);
 
+        $data['selected_branch_id'] = filled($data['branch_id'] ?? null) ? (int) $data['branch_id'] : null;
+
         // For variation products, don't persist main prices on the product row
         if ($hasVariations) {
             $data['purchase_price'] = 0;
@@ -261,6 +264,7 @@ class ProductController extends Controller
         return Inertia::render('admin/product/edit', [
             ...$this->formData(),
             'product' => $product,
+            'formBranchId' => $this->productReplication->resolveFormBranchSelection($product),
             'variantsLocked' => $this->variantsAreLocked($product),
             'selectedColors' => Color::query()
                 ->whereIn('id', $product->colors ?? [])
@@ -345,6 +349,10 @@ class ProductController extends Controller
         $mainInitialStock = (int) ($data['initial_stock'] ?? 0);
         unset($data['initial_stock']);
 
+        if ($request->exists('branch_id')) {
+            $data['selected_branch_id'] = filled($data['branch_id']) ? (int) $data['branch_id'] : null;
+        }
+
         if ($hasVariations) {
             $data['purchase_price'] = 0;
             $data['sale_price'] = 0;
@@ -376,20 +384,37 @@ class ProductController extends Controller
             $data['discount_price'] = $data['discount_price'] ?? 0;
 
             $branchSelectionProvided = $request->exists('branch_id');
+            $selectedBranchId = filled($data['branch_id'] ?? null) ? (int) $data['branch_id'] : null;
             $requestedAllBranches = $branchSelectionProvided && blank($data['branch_id'] ?? null);
+            $previousSelection = $this->productReplication->resolveStoredSelection($product);
+
+            if ($branchSelectionProvided) {
+                $data['selected_branch_id'] = $selectedBranchId;
+            }
+
             $expandingToAllBranches = $requestedAllBranches
                 && $product->product_group_id === null
-                && $product->branch_id !== null;
-            $updatingAllBranchesGroup = $requestedAllBranches
-                && $product->product_group_id !== null;
+                && $product->branch_id !== null
+                && $previousSelection === null
+                && ! Branch::isMainBranch((int) $product->branch_id);
+            $isBranchSelectionChange = $branchSelectionProvided
+                && ! $requestedAllBranches
+                && $selectedBranchId !== null
+                && $selectedBranchId !== $previousSelection;
 
-            if (! $branchSelectionProvided) {
-                unset($data['branch_id']);
-            } elseif ($expandingToAllBranches || $updatingAllBranchesGroup) {
-                unset($data['branch_id']);
+            unset($data['branch_id']);
+
+            if (! Branch::isMainBranch((int) $product->branch_id)) {
+                unset($data['selected_branch_id']);
             }
 
             $product->update($data);
+
+            if ($branchSelectionProvided && ! Branch::isMainBranch((int) $product->branch_id)) {
+                $this->productReplication->mainSiblingInGroup($product)?->update([
+                    'selected_branch_id' => $selectedBranchId,
+                ]);
+            }
 
             if ($request->hasFile('photos')) {
                 foreach ($request->file('photos') as $photo) {
@@ -398,13 +423,78 @@ class ProductController extends Controller
                 }
             }
 
-            if ($expandingToAllBranches) {
-                if (! $variantsLocked && $hasVariations) {
-                    $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+            if ($requestedAllBranches) {
+                $anchorProduct = $this->productReplication->mainSiblingInGroup($product);
+
+                if ($anchorProduct === null && Branch::isMainBranch((int) $product->branch_id)) {
+                    $anchorProduct = $product;
                 }
 
-                $this->productReplication->expandToAllBranches(
+                if ($anchorProduct !== null) {
+                    if (! $variantsLocked && $hasVariations) {
+                        $this->syncProductVariations($anchorProduct, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+                    }
+
+                    $this->productReplication->expandGroupToAllBranches(
+                        $anchorProduct->fresh(),
+                        $data,
+                        $combinations,
+                        (float) $mainPurchasePrice,
+                        (float) $mainSalePrice,
+                        $mainInitialStock,
+                    );
+
+                    $this->productReplication->syncGroupCatalog($anchorProduct->fresh(), $data);
+
+                    if (! $variantsLocked && ! $hasVariations) {
+                        $this->initialStock->syncNonVariant(
+                            $anchorProduct->fresh(),
+                            $mainInitialStock,
+                            (float) $mainPurchasePrice,
+                        );
+                    }
+
+                    return;
+                }
+
+                if ($expandingToAllBranches) {
+                    if (! $variantsLocked && $hasVariations) {
+                        $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+                    }
+
+                    $this->productReplication->expandToAllBranches(
+                        $product->fresh(),
+                        $data,
+                        $combinations,
+                        (float) $mainPurchasePrice,
+                        (float) $mainSalePrice,
+                        $mainInitialStock,
+                    );
+
+                    return;
+                }
+
+                return;
+            }
+
+            if (! $variantsLocked) {
+                if ($hasVariations) {
+                    $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+                } elseif ($product->variations()->exists()) {
+                    $this->clearProductVariations($product);
+                } else {
+                    $this->initialStock->syncNonVariant(
+                        $product->fresh(),
+                        $mainInitialStock,
+                        (float) $mainPurchasePrice,
+                    );
+                }
+            }
+
+            if ($isBranchSelectionChange) {
+                $this->productReplication->applyBranchSelectionChange(
                     $product->fresh(),
+                    $selectedBranchId,
                     $data,
                     $combinations,
                     (float) $mainPurchasePrice,
@@ -413,44 +503,6 @@ class ProductController extends Controller
                 );
 
                 return;
-            }
-
-            if ($updatingAllBranchesGroup) {
-                $this->productReplication->syncGroupCatalog($product->fresh(), $data);
-
-                if (! $variantsLocked) {
-                    if ($hasVariations) {
-                        $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
-                    } else {
-                        $mainSibling = $this->productReplication->mainSiblingInGroup($product);
-
-                        if ($mainSibling) {
-                            $this->initialStock->syncNonVariant(
-                                $mainSibling,
-                                $mainInitialStock,
-                                (float) $mainPurchasePrice,
-                            );
-                        }
-                    }
-                }
-
-                return;
-            }
-
-            if ($variantsLocked) {
-                return;
-            }
-
-            if ($hasVariations) {
-                $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
-            } elseif ($product->variations()->exists()) {
-                $this->clearProductVariations($product);
-            } else {
-                $this->initialStock->syncNonVariant(
-                    $product->fresh(),
-                    $mainInitialStock,
-                    (float) $mainPurchasePrice,
-                );
             }
         });
 
@@ -753,24 +805,23 @@ class ProductController extends Controller
     private function formData(): array
     {
         $defaultCatalogBranchId = Branch::resolveAdminCatalogBranchId();
-        $catalogBranchId = Auth::user()?->branch_id ?? $defaultCatalogBranchId;
 
         return [
             'defaultCatalogBranchId' => $defaultCatalogBranchId,
             'ecommerceBranchId' => EcommerceBranchService::resolveIdStatic(),
-            'categories' => Category::query()->where('branch_id', $catalogBranchId)->active()->pluck('name', 'id'),
-            'brands' => Brand::query()->where('branch_id', $catalogBranchId)->active()->pluck('name', 'id'),
-            'units' => Unit::query()->where('branch_id', $catalogBranchId)->active()->pluck('name', 'id'),
-            'warranties' => Warranty::query()->where('branch_id', $catalogBranchId)->active()->pluck('name', 'id'),
+            'categories' => Category::query()->active()->orderBy('name')->pluck('name', 'id'),
+            'brands' => Brand::query()->active()->orderBy('name')->pluck('name', 'id'),
+            'units' => Unit::query()->active()->orderBy('name')->pluck('name', 'id'),
+            'warranties' => Warranty::query()->active()->orderBy('name')->pluck('name', 'id'),
             'branches' => Branch::active()->orderBy('name')->pluck('name', 'id'),
-            'colorOptions' => Color::query()->where('branch_id', $catalogBranchId)->active()->orderBy('name')->get(['id', 'name'])
+            'colorOptions' => Color::query()->active()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Color $color): array => [
                     'value' => $color->name,
                     'label' => $color->name,
                     'id' => (string) $color->id,
                 ])
                 ->all(),
-            'sizeOptions' => Size::query()->where('branch_id', $catalogBranchId)->active()->orderBy('name')->get(['id', 'name'])
+            'sizeOptions' => Size::query()->active()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Size $size): array => [
                     'value' => $size->name,
                     'label' => $size->name,

@@ -846,10 +846,10 @@ export default function ProductForm({
         ? (form.data.branch_id != null && form.data.branch_id !== '' ? String(form.data.branch_id) : null)
         : (auth.user?.branch_id != null ? String(auth.user.branch_id) : null);
 
-    const catalogOptionsBranchId = isAdmin
+    const quickCreateBranchId = isAdmin
         ? (form.data.branch_id != null && form.data.branch_id !== ''
             ? String(form.data.branch_id)
-            : String(sourceBranchId ?? defaultCatalogBranchId ?? ''))
+            : String(defaultCatalogBranchId ?? ''))
         : (auth.user?.branch_id != null ? String(auth.user.branch_id) : null);
 
     const showVisibleOnStore = can('product.visible-on-store')
@@ -861,82 +861,6 @@ export default function ProductForm({
             form.setData('visible', 'no');
         }
     }, [showVisibleOnStore]);
-
-    useEffect(() => {
-        let cancelled = false;
-
-        async function loadBranchCatalogOptions() {
-            if (!catalogOptionsBranchId) {
-                return;
-            }
-
-            const response = await fetch(route('api.products.catalog-options', { query: { branch_id: catalogOptionsBranchId } }), {
-                method: 'GET',
-                credentials: 'include',
-                headers: {
-                    Accept: 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to load branch catalog options.');
-            }
-
-            const payload = await response.json();
-
-            if (cancelled) {
-                return;
-            }
-
-            const nextCategoryOptions = withSelectedOption(
-                mapSelectOptions(payload.categories),
-                selectedCatalog.category?.id,
-                selectedCatalog.category?.label,
-            );
-            const nextBrandOptions = withSelectedOption(
-                mapSelectOptions(payload.brands),
-                selectedCatalog.brand?.id,
-                selectedCatalog.brand?.label,
-            );
-            const nextUnitOptions = withSelectedOption(
-                mapSelectOptions(payload.units),
-                selectedCatalog.unit?.id,
-                selectedCatalog.unit?.label,
-            );
-            const nextWarrantyOptions = withSelectedOption(
-                mapSelectOptions(payload.warranties),
-                selectedCatalog.warranty?.id,
-                selectedCatalog.warranty?.label,
-            );
-            const nextColorOptions = payload.colorOptions ?? [];
-            const nextSizeOptions = payload.sizeOptions ?? [];
-
-            setLocalCategoryOptions(nextCategoryOptions);
-            setLocalBrandOptions(nextBrandOptions);
-            setLocalUnitOptions(nextUnitOptions);
-            setLocalWarrantyOptions(nextWarrantyOptions);
-            setBranchColorOptions(mergePresetOptions(nextColorOptions, selectedColors));
-            setBranchSizeOptions(mergePresetOptions(nextSizeOptions, selectedSizes));
-
-            syncSingleSelectValue(form, 'category_id', nextCategoryOptions);
-            syncSingleSelectValue(form, 'brand_id', nextBrandOptions);
-            syncSingleSelectValue(form, 'unit_id', nextUnitOptions);
-            syncSingleSelectValue(form, 'warranty_id', nextWarrantyOptions);
-            syncMultiSelectValues(form, 'color_ids', nextColorOptions);
-            syncMultiSelectValues(form, 'size_ids', nextSizeOptions);
-        }
-
-        loadBranchCatalogOptions().catch(() => {
-            if (!cancelled) {
-                toast.error('Failed to load branch-specific catalog options.');
-            }
-        });
-
-        return () => {
-            cancelled = true;
-        };
-    }, [catalogOptionsBranchId]);
 
     function handleVariationsToggle(val) {
         setHasVariations(val);
@@ -984,7 +908,7 @@ export default function ProductForm({
                                 creatable
                                 createMode="instant"
                                 createRowLabel={(q) => `Add "${q}"`}
-                                onModalCreate={({ label }) => quickCreate('setting.category.store', label, catalogOptionsBranchId)}
+                                onModalCreate={({ label }) => quickCreate('setting.category.store', label, quickCreateBranchId)}
                             />
                         </Field>
 
@@ -999,7 +923,7 @@ export default function ProductForm({
                                 creatable
                                 createMode="instant"
                                 createRowLabel={(q) => `Add "${q}"`}
-                                onModalCreate={({ label }) => quickCreate('setting.brand.store', label, catalogOptionsBranchId)}
+                                onModalCreate={({ label }) => quickCreate('setting.brand.store', label, quickCreateBranchId)}
                             />
                         </Field>
 
@@ -1014,7 +938,7 @@ export default function ProductForm({
                                 creatable
                                 createMode="instant"
                                 createRowLabel={(q) => `Add "${q}"`}
-                                onModalCreate={({ label }) => quickCreate('setting.unit.store', label, catalogOptionsBranchId)}
+                                onModalCreate={({ label }) => quickCreate('setting.unit.store', label, quickCreateBranchId)}
                             />
                         </Field>
 
@@ -1029,7 +953,7 @@ export default function ProductForm({
                                 creatable
                                 createMode="instant"
                                 createRowLabel={(q) => `Add "${q}"`}
-                                onModalCreate={({ label }) => quickCreate('setting.warranty.store', label, catalogOptionsBranchId)}
+                                onModalCreate={({ label }) => quickCreate('setting.warranty.store', label, quickCreateBranchId)}
                             />
                         </Field>
 
@@ -1105,7 +1029,7 @@ export default function ProductForm({
                                 creatable
                                 onCreateOption={async (name) => {
                                     try {
-                                        const opt = await quickCreate('setting.tag.store', name, catalogOptionsBranchId);
+                                        const opt = await quickCreate('setting.tag.store', name, quickCreateBranchId);
                                         setLocalTagOptions((prev) => [...prev, opt]);
                                         form.setData('tags', [...(form.data.tags || []), opt.value]);
                                         toast.success(`"${opt.label}" created.`);

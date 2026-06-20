@@ -29,7 +29,6 @@ function productUpdatePayload(Product $product, array $overrides = []): array
         'unit_id' => (string) $product->unit_id,
         'name' => $product->name,
         'code' => $product->code,
-        'branch_id' => $product->branch_id,
         'purchase_price' => '100',
         'sale_price' => '150',
         'visible' => 'yes',
@@ -410,7 +409,7 @@ test('product update applies global initial stock to new variation without stock
         ->and($variation->stock)->toBe(15);
 });
 
-test('updating single branch product to all branches keeps source branch copy and stock', function () {
+test('updating main branch product to specific branch creates copy with same stock', function () {
     $admin = productUpdateAdmin();
     seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
 
@@ -420,8 +419,8 @@ test('updating single branch product to all branches keeps source branch copy an
     );
 
     $operatingBranch = Branch::factory()->create();
-    $productName = 'Expand Branch Product '.fake()->unique()->numerify('######');
-    $manualCode = 'EXP-'.fake()->unique()->numerify('######');
+    $productName = 'Copy Branch Product '.fake()->unique()->numerify('######');
+    $manualCode = 'CPY-'.fake()->unique()->numerify('######');
 
     $category = Category::factory()->create(['status' => 1, 'branch_id' => Branch::MAIN_BRANCH_ID]);
     $brand = Brand::factory()->create(['status' => 1, 'branch_id' => Branch::MAIN_BRANCH_ID]);
@@ -435,7 +434,7 @@ test('updating single branch product to all branches keeps source branch copy an
 
     $this->actingAs($admin)
         ->post(route('product.store'), [
-            'branch_id' => (string) $operatingBranch->id,
+            'branch_id' => (string) $mainBranchId,
             'category_id' => (string) $category->id,
             'brand_id' => (string) $brand->id,
             'unit_id' => (string) $unit->id,
@@ -449,44 +448,44 @@ test('updating single branch product to all branches keeps source branch copy an
         ])
         ->assertRedirect(route('product.index'));
 
-    $branchProduct = Product::query()
+    $mainProduct = Product::query()
         ->where('name', $productName)
-        ->where('branch_id', $operatingBranch->id)
+        ->where('branch_id', $mainBranchId)
         ->firstOrFail();
 
-    $branchBatch = Batch::query()->where('product_id', $branchProduct->id)->first();
-    expect($branchBatch)->not->toBeNull()
-        ->and((float) $branchBatch->available)->toBe(30.0);
+    $mainBatch = Batch::query()->where('product_id', $mainProduct->id)->first();
+    expect($mainBatch)->not->toBeNull()
+        ->and((float) $mainBatch->available)->toBe(30.0);
 
-    $payload = productUpdatePayload($branchProduct, [
-        'branch_id' => '',
+    $payload = productUpdatePayload($mainProduct, [
+        'branch_id' => (string) $operatingBranch->id,
         'initial_stock' => '30',
         'purchase_price' => '300',
         'sale_price' => '500',
     ]);
 
     $this->actingAs($admin)
-        ->patch(route('product.update', $branchProduct), $payload)
+        ->patch(route('product.update', $mainProduct), $payload)
         ->assertRedirect(route('product.index'));
 
     $copies = Product::query()->where('name', $productName)->get();
-    $activeBranchCount = Branch::query()->active()->count();
 
-    expect($copies)->toHaveCount($activeBranchCount);
+    expect($copies)->toHaveCount(2);
 
-    $branchProduct->refresh();
-    $mainCopy = $copies->firstWhere('branch_id', $mainBranchId);
+    $mainProduct->refresh();
+    $branchCopy = $copies->firstWhere('branch_id', $operatingBranch->id);
 
-    expect($branchProduct->branch_id)->toBe($operatingBranch->id)
-        ->and($branchProduct->product_group_id)->not->toBeNull()
-        ->and($mainCopy)->not->toBeNull();
+    expect($mainProduct->branch_id)->toBe($mainBranchId)
+        ->and($mainProduct->selected_branch_id)->toBe($operatingBranch->id)
+        ->and($branchCopy)->not->toBeNull()
+        ->and($branchCopy->name)->toBe($productName)
+        ->and((float) $branchCopy->purchase_price)->toBe(300.0)
+        ->and((float) $branchCopy->sale_price)->toBe(500.0)
+        ->and($branchCopy->selected_branch_id)->toBeNull();
 
-    $branchBatch->refresh();
-    expect((float) $branchBatch->available)->toBe(30.0);
-
-    $mainBatch = Batch::query()->where('product_id', $mainCopy->id)->first();
-    expect($mainBatch)->not->toBeNull()
-        ->and((float) $mainBatch->available)->toBe(30.0);
+    $branchBatch = Batch::query()->where('product_id', $branchCopy->id)->first();
+    expect($branchBatch)->not->toBeNull()
+        ->and((float) $branchBatch->available)->toBe(30.0);
 
     $this->actingAs($admin)
         ->get(route('product.index', ['branch_id' => (string) $operatingBranch->id, 'search' => $productName]))
@@ -577,4 +576,237 @@ test('product update still rejects duplicate name outside product group', functi
     $this->actingAs($admin)
         ->patch(route('product.update', $productA), $payload)
         ->assertSessionHasErrors('name');
+});
+
+test('product edit page exposes selected branch for form', function () {
+    $admin = productUpdateAdmin();
+    $operatingBranch = Branch::factory()->create();
+
+    $product = Product::factory()->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'selected_branch_id' => $operatingBranch->id,
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => 'SEL-'.fake()->unique()->numerify('######'),
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('product.edit', $product))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('formBranchId', (string) $operatingBranch->id));
+});
+
+test('updating all branches product to specific branch removes other branch copies', function () {
+    $admin = productUpdateAdmin();
+    seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    $operatingBranch = Branch::factory()->create();
+    $productName = 'Narrow Branch Product '.fake()->unique()->numerify('######');
+    $manualCode = 'NAR-'.fake()->unique()->numerify('######');
+
+    $category = Category::factory()->create(['status' => 1, 'branch_id' => Branch::MAIN_BRANCH_ID]);
+    $brand = Brand::factory()->create(['status' => 1, 'branch_id' => Branch::MAIN_BRANCH_ID]);
+    $unit = Unit::query()->create([
+        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'name' => 'Unit '.fake()->unique()->numerify('####'),
+        'status' => 1,
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('product.store'), [
+            'branch_id' => '',
+            'category_id' => (string) $category->id,
+            'brand_id' => (string) $brand->id,
+            'unit_id' => (string) $unit->id,
+            'name' => $productName,
+            'code' => $manualCode,
+            'initial_stock' => '10',
+            'purchase_price' => '100',
+            'sale_price' => '150',
+            'visible' => 'no',
+            'status' => '1',
+        ])
+        ->assertRedirect(route('product.index'));
+
+    $mainProduct = Product::query()
+        ->where('name', $productName)
+        ->where('branch_id', Branch::resolveMainBranchId())
+        ->firstOrFail();
+
+    expect(Product::query()->where('name', $productName)->count())->toBeGreaterThan(2);
+
+    $payload = productUpdatePayload($mainProduct, [
+        'branch_id' => (string) $operatingBranch->id,
+        'initial_stock' => '10',
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $mainProduct), $payload)
+        ->assertRedirect(route('product.index'));
+
+    $copies = Product::query()->where('name', $productName)->get();
+
+    expect($copies)->toHaveCount(2)
+        ->and($copies->pluck('branch_id')->sort()->values()->all())
+        ->toBe(collect([Branch::resolveMainBranchId(), $operatingBranch->id])->sort()->values()->all())
+        ->and($mainProduct->fresh()->selected_branch_id)->toBe($operatingBranch->id)
+        ->and($copies->firstWhere('branch_id', $operatingBranch->id)?->selected_branch_id)->toBeNull();
+});
+
+test('narrowing branch selection is blocked when another branch has sales history', function () {
+    $admin = productUpdateAdmin();
+
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    $branchWithSale = Branch::factory()->create();
+    $targetBranch = Branch::factory()->create();
+    $groupId = (string) Str::uuid();
+    $productName = 'Blocked Narrow Product '.fake()->unique()->numerify('######');
+
+    $categoryId = Category::factory()->create(['status' => 1])->id;
+    $brandId = Brand::factory()->create(['status' => 1])->id;
+    $unitId = Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id;
+
+    $mainProduct = Product::factory()->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'product_group_id' => $groupId,
+        'selected_branch_id' => null,
+        'category_id' => $categoryId,
+        'brand_id' => $brandId,
+        'unit_id' => $unitId,
+        'name' => $productName,
+        'code' => 'BLK-M-'.fake()->unique()->numerify('######'),
+    ]);
+
+    $soldBranchProduct = Product::factory()->create([
+        'branch_id' => $branchWithSale->id,
+        'product_group_id' => $groupId,
+        'category_id' => $categoryId,
+        'brand_id' => $brandId,
+        'unit_id' => $unitId,
+        'name' => $productName,
+        'code' => 'BLK-S-'.fake()->unique()->numerify('######'),
+    ]);
+
+    Product::factory()->create([
+        'branch_id' => $targetBranch->id,
+        'product_group_id' => $groupId,
+        'category_id' => $categoryId,
+        'brand_id' => $brandId,
+        'unit_id' => $unitId,
+        'name' => $productName,
+        'code' => 'BLK-T-'.fake()->unique()->numerify('######'),
+    ]);
+
+    $sell = Sell::query()->create([
+        'date' => now()->toDateString(),
+        'gross_amount' => 150,
+        'paid_amount' => 150,
+    ]);
+
+    SellProduct::query()->create([
+        'sell_id' => $sell->id,
+        'product_id' => $soldBranchProduct->id,
+        'quantity' => 1,
+        'unit_price' => 150,
+        'total_price' => 150,
+    ]);
+
+    $payload = productUpdatePayload($mainProduct, [
+        'branch_id' => (string) $targetBranch->id,
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $mainProduct), $payload)
+        ->assertSessionHasErrors('branch_id');
+
+    expect(Product::query()->where('name', $productName)->count())->toBe(3);
+});
+
+test('updating specific branch product to all branches creates missing branch copies', function () {
+    $admin = productUpdateAdmin();
+    seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    $operatingBranch = Branch::factory()->create();
+    $productName = 'Expand All Branch Product '.fake()->unique()->numerify('######');
+    $manualCode = 'EXP-'.fake()->unique()->numerify('######');
+
+    $category = Category::factory()->create(['status' => 1, 'branch_id' => Branch::MAIN_BRANCH_ID]);
+    $brand = Brand::factory()->create(['status' => 1, 'branch_id' => Branch::MAIN_BRANCH_ID]);
+    $unit = Unit::query()->create([
+        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'name' => 'Unit '.fake()->unique()->numerify('####'),
+        'status' => 1,
+    ]);
+
+    $mainBranchId = Branch::resolveMainBranchId();
+
+    $this->actingAs($admin)
+        ->post(route('product.store'), [
+            'branch_id' => (string) $mainBranchId,
+            'category_id' => (string) $category->id,
+            'brand_id' => (string) $brand->id,
+            'unit_id' => (string) $unit->id,
+            'name' => $productName,
+            'code' => $manualCode,
+            'initial_stock' => '20',
+            'purchase_price' => '200',
+            'sale_price' => '300',
+            'visible' => 'no',
+            'status' => '1',
+        ])
+        ->assertRedirect(route('product.index'));
+
+    $mainProduct = Product::query()
+        ->where('name', $productName)
+        ->where('branch_id', $mainBranchId)
+        ->firstOrFail();
+
+    $payload = productUpdatePayload($mainProduct, [
+        'branch_id' => (string) $operatingBranch->id,
+        'initial_stock' => '20',
+        'purchase_price' => '200',
+        'sale_price' => '300',
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $mainProduct), $payload)
+        ->assertRedirect(route('product.index'));
+
+    expect(Product::query()->where('name', $productName)->count())->toBe(2);
+
+    $expandPayload = productUpdatePayload($mainProduct->fresh(), [
+        'branch_id' => '',
+        'initial_stock' => '20',
+        'purchase_price' => '200',
+        'sale_price' => '300',
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $mainProduct->fresh()), $expandPayload)
+        ->assertRedirect(route('product.index'));
+
+    $activeBranchCount = Branch::query()->active()->count();
+    $products = Product::query()->where('name', $productName)->get();
+
+    expect($products)->toHaveCount($activeBranchCount)
+        ->and($mainProduct->fresh()->selected_branch_id)->toBeNull()
+        ->and($products->pluck('product_group_id')->unique())->toHaveCount(1)
+        ->and($products->pluck('branch_id')->sort()->values()->all())
+        ->toBe(Branch::query()->active()->orderBy('id')->pluck('id')->sort()->values()->all());
 });

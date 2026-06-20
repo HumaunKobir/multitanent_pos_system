@@ -8,6 +8,7 @@ use App\Models\Branch;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Color;
+use App\Models\OnlineOrderProduct;
 use App\Models\Product;
 use App\Models\ProductPhoto;
 use App\Models\ProductVariation;
@@ -18,7 +19,9 @@ use App\Models\Warranty;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class ProductBranchReplicationService
 {
@@ -59,6 +62,10 @@ class ProductBranchReplicationService
             $branchData['product_group_id'] = $productGroupId;
             $branchData['slug'] = $this->resolveBranchSlug($baseSlug, $branchId);
             $branchData['code'] = $this->resolveBranchCode($manualCode ?? $autoCodeBase, $branchId);
+
+            if (! Branch::isMainBranch($branchId)) {
+                unset($branchData['selected_branch_id']);
+            }
 
             $product = Product::create($branchData);
 
@@ -353,6 +360,223 @@ class ProductBranchReplicationService
      * @param  array<string, mixed>  $data
      * @param  array<int, array<string, mixed>>  $combinations
      */
+    public function resolveStoredSelection(Product $product): ?int
+    {
+        if ($product->selected_branch_id !== null) {
+            return (int) $product->selected_branch_id;
+        }
+
+        if ($product->product_group_id !== null) {
+            $mainProduct = $this->mainSiblingInGroup($product);
+
+            if ($mainProduct?->selected_branch_id !== null) {
+                return (int) $mainProduct->selected_branch_id;
+            }
+        }
+
+        return null;
+    }
+
+    public function resolveFormBranchSelection(Product $product): string
+    {
+        $selection = $this->resolveStoredSelection($product);
+
+        if ($selection !== null) {
+            return (string) $selection;
+        }
+
+        if ($product->product_group_id !== null) {
+            return '';
+        }
+
+        if (Branch::isMainBranch((int) $product->branch_id)) {
+            return (string) $product->branch_id;
+        }
+
+        return '';
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<int, array<string, mixed>>  $combinations
+     */
+    public function applyBranchSelectionChange(
+        Product $sourceProduct,
+        int $targetBranchId,
+        array $data,
+        array $combinations,
+        float $mainPurchasePrice,
+        float $mainSalePrice,
+        int $mainInitialStock = 0,
+    ): void {
+        $mainBranchId = Branch::resolveMainBranchId();
+        $mainProduct = $this->mainSiblingInGroup($sourceProduct);
+
+        if ($mainProduct === null && Branch::isMainBranch((int) $sourceProduct->branch_id)) {
+            $mainProduct = $sourceProduct;
+        }
+
+        if ($mainProduct === null) {
+            return;
+        }
+
+        $siblings = $this->siblings($mainProduct);
+        $keepBranchIds = collect([$mainBranchId, $targetBranchId])->unique()->values();
+
+        $toRemove = $siblings->filter(
+            fn (Product $sibling): bool => ! $keepBranchIds->contains((int) $sibling->branch_id),
+        );
+
+        foreach ($toRemove as $sibling) {
+            if ($this->productHasBranchActivity($sibling)) {
+                throw ValidationException::withMessages([
+                    'branch_id' => 'Branch selection cannot be changed because another branch already has purchase, sale, or online order history for this product.',
+                ]);
+            }
+        }
+
+        $targetCopy = $siblings->first(
+            fn (Product $sibling): bool => (int) $sibling->branch_id === $targetBranchId,
+        );
+
+        if ($targetCopy === null) {
+            $this->copyToBranch(
+                $mainProduct->fresh(['photos', 'variations']),
+                $targetBranchId,
+                $data,
+                $combinations,
+                $mainPurchasePrice,
+                $mainSalePrice,
+                $mainInitialStock,
+            );
+        }
+
+        foreach ($toRemove as $sibling) {
+            $this->deleteCatalogProduct($sibling);
+        }
+
+        $mainProduct->update(['selected_branch_id' => $targetBranchId]);
+
+        $this->siblings($mainProduct->fresh())
+            ->filter(fn (Product $sibling): bool => ! Branch::isMainBranch((int) $sibling->branch_id))
+            ->each(fn (Product $sibling) => $sibling->update(['selected_branch_id' => null]));
+    }
+
+    public function copyToBranch(
+        Product $source,
+        int $targetBranchId,
+        array $data,
+        array $combinations,
+        float $mainPurchasePrice,
+        float $mainSalePrice,
+        int $mainInitialStock = 0,
+    ): Product {
+        $baseSlug = $this->resolveBaseSlug($source->slug, (int) $source->branch_id);
+        $baseCode = $this->resolveBaseCode($source->code, (int) $source->branch_id);
+        $productGroupId = $source->product_group_id ?? (string) Str::uuid();
+
+        if ($source->product_group_id === null) {
+            $source->update(['product_group_id' => $productGroupId]);
+        }
+
+        $copyData = $this->mapBranchCatalogFields($data, $targetBranchId);
+        $copyData['branch_id'] = $targetBranchId;
+        $copyData['product_group_id'] = $productGroupId;
+        unset($copyData['selected_branch_id']);
+        $copyData['slug'] = $this->resolveBranchSlug($baseSlug, $targetBranchId);
+        $copyData['code'] = $this->resolveBranchCode($baseCode, $targetBranchId);
+        $copyData['image'] = filled($data['image'] ?? null) ? $data['image'] : $source->image;
+        $copyData['chest_size_image'] = filled($data['chest_size_image'] ?? null) ? $data['chest_size_image'] : $source->chest_size_image;
+
+        $copyCombinations = $combinations;
+        if ($copyCombinations === [] && $source->variations()->exists()) {
+            $copyCombinations = $source->variations->map(fn (ProductVariation $variation): array => [
+                'variant' => $variation->variation_data['label'] ?? '',
+                'variation_data' => $variation->variation_data,
+                'sale_price' => $variation->price,
+                'purchase_price' => $variation->purchase_price,
+                'sku' => $variation->sku,
+                'stock' => $variation->stock,
+            ])->all();
+        }
+
+        $copy = $this->persistProductAtBranch(
+            $copyData,
+            $copyCombinations,
+            $mainPurchasePrice,
+            $mainSalePrice,
+            $mainInitialStock,
+            $source->photos()->pluck('image')->all(),
+            $targetBranchId,
+        );
+
+        return $copy;
+    }
+
+    public function expandGroupToAllBranches(
+        Product $sourceProduct,
+        array $data,
+        array $combinations,
+        float $mainPurchasePrice,
+        float $mainSalePrice,
+        int $mainInitialStock = 0,
+    ): void {
+        $mainBranchId = Branch::resolveMainBranchId();
+        $mainProduct = $this->mainSiblingInGroup($sourceProduct);
+
+        if ($mainProduct === null && Branch::isMainBranch((int) $sourceProduct->branch_id)) {
+            $mainProduct = $sourceProduct;
+        }
+
+        if ($mainProduct === null) {
+            return;
+        }
+
+        $productGroupId = $mainProduct->product_group_id ?? (string) Str::uuid();
+
+        if ($mainProduct->product_group_id === null) {
+            $mainProduct->update(['product_group_id' => $productGroupId]);
+        }
+
+        $existingBranchIds = $this->siblings($mainProduct->fresh())
+            ->pluck('branch_id')
+            ->map(fn ($branchId): int => (int) $branchId);
+
+        $missingBranchIds = Branch::query()
+            ->active()
+            ->orderBy('id')
+            ->pluck('id')
+            ->filter(fn (int $branchId): bool => ! $existingBranchIds->contains($branchId));
+
+        $manualCode = filled($data['code'] ?? null) ? (string) $data['code'] : $mainProduct->code;
+        $replicationData = $data;
+        unset($replicationData['branch_id'], $replicationData['selected_branch_id']);
+        $replicationData['slug'] = $this->resolveBaseSlug($mainProduct->slug, (int) $mainProduct->branch_id);
+        $replicationData['code'] = $this->resolveBaseCode($manualCode, (int) $mainProduct->branch_id);
+
+        $photoPaths = $mainProduct->photos()->pluck('image')->all();
+
+        if ($missingBranchIds->isNotEmpty()) {
+            $this->createForBranches(
+                $replicationData,
+                $combinations,
+                $mainPurchasePrice,
+                $mainSalePrice,
+                $mainInitialStock,
+                $photoPaths,
+                $productGroupId,
+                $missingBranchIds,
+            );
+        }
+
+        $mainProduct->update(['selected_branch_id' => null]);
+
+        Product::query()
+            ->where('product_group_id', $productGroupId)
+            ->where('branch_id', '!=', $mainBranchId)
+            ->update(['selected_branch_id' => null]);
+    }
+
     public function expandToAllBranches(
         Product $sourceProduct,
         array $data,
@@ -390,8 +614,8 @@ class ProductBranchReplicationService
 
         $replicationData = $data;
         unset($replicationData['branch_id']);
-        $replicationData['slug'] = $sourceProduct->slug;
-        $replicationData['code'] = $manualCode;
+        $replicationData['slug'] = $this->resolveBaseSlug($sourceProduct->slug, (int) $sourceProduct->branch_id);
+        $replicationData['code'] = $this->resolveBaseCode($manualCode, (int) $sourceProduct->branch_id);
 
         $photoPaths = $sourceProduct->photos()->pluck('image')->all();
 
@@ -499,6 +723,36 @@ class ProductBranchReplicationService
         return $baseSlug.'-b'.$branchId;
     }
 
+    private function resolveBaseSlug(string $slug, int $branchId): string
+    {
+        if (Branch::isMainBranch($branchId)) {
+            return $slug;
+        }
+
+        $suffix = '-b'.$branchId;
+
+        if (Str::endsWith($slug, $suffix)) {
+            return Str::beforeLast($slug, $suffix);
+        }
+
+        return $slug;
+    }
+
+    private function resolveBaseCode(?string $code, int $branchId): ?string
+    {
+        if ($code === null || Branch::isMainBranch($branchId)) {
+            return $code;
+        }
+
+        $suffix = '-B'.$branchId;
+
+        if (Str::endsWith($code, $suffix)) {
+            return Str::beforeLast($code, $suffix);
+        }
+
+        return $code;
+    }
+
     /**
      * @param  array<string, mixed>  $data
      * @return array<string, mixed>
@@ -545,5 +799,31 @@ class ProductBranchReplicationService
         }
 
         return $mapped;
+    }
+
+    private function productHasBranchActivity(Product $product): bool
+    {
+        return $product->purchaseProducts()->exists()
+            || $product->sellProducts()->exists()
+            || OnlineOrderProduct::query()->where('product_id', $product->id)->exists();
+    }
+
+    private function deleteCatalogProduct(Product $product): void
+    {
+        $product->loadMissing('photos');
+
+        foreach ($product->photos as $photo) {
+            Storage::disk('public')->delete($photo->image);
+        }
+
+        if ($product->image) {
+            Storage::disk('public')->delete($product->image);
+        }
+
+        if ($product->chest_size_image) {
+            Storage::disk('public')->delete($product->chest_size_image);
+        }
+
+        $product->delete();
     }
 }

@@ -615,11 +615,11 @@ test('all branches product creates one product per active branch with correct br
         ->and($products->pluck('branch_id')->contains($mainBranch->id))->toBeTrue();
 });
 
-test('branch user product creation stays on own branch even without branch input', function () {
+test('branch user product submission creates branch and pending main copies', function () {
     $this->artisan('permissions:sync');
 
+    $mainBranch = ensureMainBranchForCatalog();
     $branch = Branch::factory()->create();
-    $otherBranch = Branch::factory()->create();
     $user = User::factory()->create(['branch_id' => $branch->id]);
     $user->givePermissionTo('product.create');
 
@@ -656,13 +656,21 @@ test('branch user product creation stays on own branch even without branch input
         ])
         ->assertRedirect(route('product.index'));
 
-    expect(Product::query()->where('name', $productName)->count())->toBe(1)
+    $products = Product::query()->where('name', $productName)->get();
+
+    expect($products)->toHaveCount(2)
         ->and(
-            Product::query()->where('name', $productName)->value('branch_id'),
+            $products->firstWhere('branch_id', $branch->id),
+        )->not->toBeNull()
+        ->and(
+            $products->firstWhere('branch_id', $mainBranch->id),
+        )->not->toBeNull()
+        ->and(
+            $products->firstWhere('branch_id', $mainBranch->id)?->source_branch_id,
         )->toBe($branch->id)
         ->and(
-            Product::query()->where('name', $productName)->where('branch_id', $otherBranch->id)->exists(),
-        )->toBeFalse();
+            $products->firstWhere('branch_id', $mainBranch->id)?->received_at,
+        )->toBeNull();
 });
 
 test('product catalog options api returns records for selected admin branch only', function () {

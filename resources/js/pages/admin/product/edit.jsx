@@ -74,9 +74,10 @@ export default function ProductEdit({
     selectedColors = [],
     selectedSizes = [],
     variantsLocked = false,
+    formBranchId = '',
 }) {
     const form = useForm({
-        branch_id: product.product_group_id ? '' : (product.branch_id != null ? String(product.branch_id) : ''),
+        branch_id: formBranchId,
         category_id: String(product.category_id ?? ''),
         brand_id: String(product.brand_id ?? ''),
         unit_id: String(product.unit_id ?? ''),

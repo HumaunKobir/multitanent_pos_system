@@ -23,7 +23,16 @@ class Branch extends Model
 
     public const string OPERATING_BRANCH_NAME = 'Gulshan Branch';
 
-    protected $fillable = ['name', 'phone', 'address', 'status'];
+    protected $fillable = ['name', 'phone', 'address', 'pos_terms_and_conditions', 'status'];
+
+    public static function hasPosTerms(?string $content): bool
+    {
+        if ($content === null || $content === '') {
+            return false;
+        }
+
+        return trim(strip_tags($content)) !== '';
+    }
 
     protected $casts = [
         'status' => CommonStatus::class,

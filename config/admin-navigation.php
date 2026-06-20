@@ -120,6 +120,7 @@ return [
                 ['title' => 'Color', 'href' => '/setting/color', 'permission' => 'setting.color.view'],
                 ['title' => 'Size', 'href' => '/setting/size', 'permission' => 'setting.size.view'],
                 ['title' => 'Warranty', 'href' => '/setting/warranty', 'permission' => 'setting.warranty.view'],
+                ['title' => 'POS Terms & Conditions', 'href' => '/setting/pos-terms', 'permission' => 'setting.pos-terms.view', 'branch_only' => true],
                 ['title' => 'Product', 'href' => '/product', 'permission' => 'product.view'],
                 ['title' => 'Barcode', 'href' => '/barcode', 'permission' => 'barcode.view'],
             ],

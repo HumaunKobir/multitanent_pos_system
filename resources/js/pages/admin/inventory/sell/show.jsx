@@ -53,6 +53,7 @@ export default function SellShow({ sell }) {
                 logoUrl: logo,
                 branchName: sell.branch?.name || '',
                 change: flash?.pos_change ?? 0,
+                termsAndConditions: sell.branch?.pos_terms_and_conditions ?? '',
             }),
         );
     }, [sell, logo, siteName, contact, flash?.pos_change]);

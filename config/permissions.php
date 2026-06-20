@@ -334,6 +334,15 @@ return [
             ],
         ],
 
+        'setting.pos-terms' => [
+            'label' => 'POS Terms & Conditions',
+            'group' => 'Settings',
+            'permissions' => [
+                'setting.pos-terms.view' => 'View POS Terms & Conditions',
+                'setting.pos-terms.update' => 'Update POS Terms & Conditions',
+            ],
+        ],
+
         'online-order' => [
             'label' => 'Online Orders',
             'group' => 'Ecommerce',

@@ -189,6 +189,33 @@ body {
     border: 1px dashed #000;
     font-size: 10px;
 }
+
+.pos-terms {
+    margin-top: 10px;
+    margin-bottom: 10px;
+    padding: 6px 4px;
+    border-top: 1px dashed #000;
+    font-size: 9px;
+    line-height: 1.3;
+    text-align: left;
+}
+
+.pos-terms-title {
+    font-weight: bold;
+    font-size: 10px;
+    margin-bottom: 4px;
+    text-align: center;
+}
+
+.pos-terms p {
+    margin: 0 0 4px 0;
+}
+
+.pos-terms ul,
+.pos-terms ol {
+    margin: 0 0 4px 14px;
+    padding: 0;
+}
 `;
 
 function escapeHtml(value) {
@@ -301,6 +328,14 @@ function totalRow(label, value) {
         </div>`;
 }
 
+export function hasRichTextContent(html) {
+    if (!html) {
+        return false;
+    }
+
+    return html.replace(/<[^>]*>/g, '').trim().length > 0;
+}
+
 /**
  * Transform a sell record into POS print data (similar to buildPosOrderData).
  */
@@ -362,6 +397,8 @@ export function buildSellPosPrintPayload(sell, options = {}) {
             companyWebsite: options.companyWebsite || '',
             companyLogo: options.logoUrl || options.companyLogo || '',
             branchName: options.branchName || sell.branch?.name || '',
+            termsAndConditions:
+                options.termsAndConditions ?? sell.branch?.pos_terms_and_conditions ?? '',
         },
         order: {
             id: sell.id,
@@ -485,6 +522,11 @@ function renderPosInvoice(data) {
         ? `<div class="pos-note"><span class="pos-bold">Note:</span> ${escapeHtml(order.comment)}</div>`
         : '';
 
+    const termsBlock =
+        hasRichTextContent(options.termsAndConditions)
+            ? `<div class="pos-terms"><div class="pos-terms-title">Terms & Conditions</div>${options.termsAndConditions}</div>`
+            : '';
+
     const footerBlock = options.showFooter
         ? `
         <div class="pos-footer">
@@ -513,6 +555,7 @@ function renderPosInvoice(data) {
         ${noteBlock}
         ${itemsBlock}
         ${totalsBlock}
+        ${termsBlock}
         ${footerBlock}
     </div>
 </body>

@@ -9,6 +9,7 @@ use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
 use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
+use App\Models\Branch;
 use App\Models\Category;
 use App\Models\Customer;
 use App\Models\ProductExchange;
@@ -112,6 +113,7 @@ class SellController extends Controller
                 ->values(),
             'pausedSales' => $this->pausedSalesList($branchId),
             'resumedSell' => $resumedSell,
+            'posTerms' => $this->currentBranchPosTerms(),
         ]);
     }
 
@@ -290,7 +292,7 @@ class SellController extends Controller
 
         $sell->load([
             'customer',
-            'branch:id,name,phone,address',
+            'branch:id,name,phone,address,pos_terms_and_conditions',
             'specialDiscount:id,name,discount_type,discount_value',
             'products.product',
             'products.variation',
@@ -919,5 +921,20 @@ class SellController extends Controller
         }
 
         return $fallback;
+    }
+
+    private function currentBranchPosTerms(): ?string
+    {
+        $branchId = Auth::user()?->branch_id;
+
+        if ($branchId === null) {
+            return null;
+        }
+
+        $content = Branch::query()
+            ->whereKey($branchId)
+            ->value('pos_terms_and_conditions');
+
+        return Branch::hasPosTerms($content) ? $content : null;
     }
 }

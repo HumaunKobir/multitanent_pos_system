@@ -16,6 +16,7 @@ import {
 import { useAppToast } from '@/contexts/app-toast-context';
 import { customerModalDefaultsFromSearch } from '@/lib/customer-modal-defaults';
 import { route } from '@/lib/route';
+import { hasRichTextContent } from '@/lib/pos-print';
 import { cn } from '@/lib/utils';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import {
@@ -825,6 +826,7 @@ export default function SellCreate({
     discountTypes = [],
     pausedSales = [],
     resumedSell = null,
+    posTerms = null,
 }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
@@ -1257,6 +1259,18 @@ export default function SellCreate({
                                         className="min-h-0 resize-none text-[11px] lg:text-xs"
                                     />
                                 </div>
+
+                                {hasRichTextContent(posTerms) && (
+                                    <div className="border border-blue-200 bg-white px-2 py-1.5">
+                                        <p className="mb-1 text-[9px] font-semibold uppercase tracking-wide text-blue-950 lg:text-[10px]">
+                                            Terms & Conditions
+                                        </p>
+                                        <div
+                                            className="prose prose-sm max-h-28 max-w-none overflow-y-auto text-[10px] leading-snug text-muted-foreground prose-p:my-1 prose-ul:my-1 prose-ol:my-1 lg:max-h-36 lg:text-[11px]"
+                                            dangerouslySetInnerHTML={{ __html: posTerms }}
+                                        />
+                                    </div>
+                                )}
                             </div>
                         </div>
 

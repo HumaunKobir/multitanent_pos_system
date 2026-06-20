@@ -125,6 +125,10 @@ class AdminNavigation
             return $user->isSuperAdmin();
         }
 
+        if ($item['branch_only'] ?? false) {
+            return $user->isBranchUser();
+        }
+
         if ($item['main_branch_only'] ?? false) {
             return Branch::isMainBranch($user->branch_id) || $user->isSuperAdmin();
         }

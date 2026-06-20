@@ -35,6 +35,7 @@ use App\Http\Controllers\Setting\CategoryController;
 use App\Http\Controllers\Setting\ColorController;
 use App\Http\Controllers\Setting\FaqController;
 use App\Http\Controllers\Setting\PageContentController;
+use App\Http\Controllers\Setting\PosTermsController;
 use App\Http\Controllers\Setting\ProductSectionController;
 use App\Http\Controllers\Setting\SizeController;
 use App\Http\Controllers\Setting\SliderController;
@@ -198,4 +199,6 @@ Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->gr
     Route::put('admin-profile', [AdminProfileController::class, 'update'])->name('admin-profile.update');
     Route::get('branch-profile', [BranchProfileController::class, 'edit'])->name('branch-profile.edit');
     Route::put('branch-profile', [BranchProfileController::class, 'update'])->name('branch-profile.update');
+    Route::get('pos-terms', [PosTermsController::class, 'edit'])->name('pos-terms.edit');
+    Route::put('pos-terms', [PosTermsController::class, 'update'])->name('pos-terms.update');
 });

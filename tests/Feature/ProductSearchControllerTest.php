@@ -232,6 +232,113 @@ test('main branch user can find products with main branch stock in sell search',
     expect((float) $match['stock'])->toBe(12.0);
 });
 
+test('superadmin only sees main branch products in sell search', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = ensureMainBranch();
+    $operatingBranch = Branch::factory()->create();
+    $admin = User::factory()->create(['branch_id' => null]);
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    $admin->givePermissionTo('inventory.sell.create');
+
+    $mainProduct = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Admin Sell Product '.fake()->unique()->numerify('###'),
+    ]);
+    Batch::factory()->for($mainProduct)->withStock(5)->create(['branch_id' => $mainBranchId]);
+
+    $operatingProduct = Product::factory()->create([
+        'branch_id' => $operatingBranch->id,
+        'name' => 'Other Branch Sell Product '.fake()->unique()->numerify('###'),
+    ]);
+    Batch::factory()->for($operatingProduct)->withStock(5)->create(['branch_id' => $operatingBranch->id]);
+
+    $response = $this->actingAs($admin)
+        ->getJson('/api/products/for-sell?search='.urlencode($mainProduct->name));
+
+    $response->assertOk();
+
+    $ids = collect($response->json())->pluck('id');
+
+    expect($ids)->toContain($mainProduct->id);
+    expect($ids)->not->toContain($operatingProduct->id);
+});
+
+test('sell search only includes stock and variations for the resolved branch', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = ensureMainBranch();
+    $operatingBranch = Branch::factory()->create();
+    $admin = User::factory()->create(['branch_id' => null]);
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    $admin->givePermissionTo('inventory.sell.create');
+
+    $product = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Branch Stock Sell Product '.fake()->unique()->numerify('###'),
+    ]);
+
+    Batch::factory()->for($product)->withStock(8)->create(['branch_id' => $mainBranchId]);
+    Batch::factory()->for($product)->withStock(20)->create(['branch_id' => $operatingBranch->id]);
+
+    $mainVariation = \App\Models\ProductVariation::query()->create([
+        'product_id' => $product->id,
+        'branch_id' => $mainBranchId,
+        'sku' => 'SELL-MAIN-'.fake()->unique()->numerify('####'),
+        'price' => 150,
+        'purchase_price' => 100,
+        'stock' => 3,
+        'variation_data' => ['label' => 'Main Sell Red'],
+    ]);
+
+    \App\Models\ProductVariation::query()->create([
+        'product_id' => $product->id,
+        'branch_id' => $operatingBranch->id,
+        'sku' => 'SELL-OTHER-'.fake()->unique()->numerify('####'),
+        'price' => 150,
+        'purchase_price' => 100,
+        'stock' => 9,
+        'variation_data' => ['label' => 'Other Sell Blue'],
+    ]);
+
+    $response = $this->actingAs($admin)
+        ->getJson('/api/products/for-sell?search='.urlencode($product->name));
+
+    $response->assertOk();
+
+    $match = collect($response->json())->firstWhere('id', $product->id);
+
+    expect($match)->not->toBeNull()
+        ->and((float) $match['stock'])->toBe(8.0)
+        ->and(collect($match['variations'])->pluck('id'))->toContain($mainVariation->id)
+        ->and(collect($match['variations'])->pluck('label'))->not->toContain('Other Sell Blue');
+});
+
+test('main branch user can find legacy null branch stock in sell search', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = ensureMainBranch();
+    $mainUser = User::factory()->create(['branch_id' => $mainBranchId]);
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    $mainUser->givePermissionTo('inventory.sell.create');
+
+    $product = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Legacy Sell Product '.fake()->unique()->numerify('###'),
+    ]);
+    Batch::factory()->for($product)->withStock(14)->create(['branch_id' => null]);
+
+    $response = $this->actingAs($mainUser)
+        ->getJson('/api/products/for-sell?search='.urlencode($product->name));
+
+    $response->assertOk();
+
+    $match = collect($response->json())->firstWhere('id', $product->id);
+
+    expect($match)->not->toBeNull();
+    expect((float) $match['stock'])->toBe(14.0);
+});
+
 test('main branch user can find products with main branch stock in distribution search', function () {
     $this->artisan('permissions:sync');
 

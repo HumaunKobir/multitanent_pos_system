@@ -64,7 +64,8 @@ class ProductSearchController extends Controller
             'category_id' => ['nullable', 'integer', Rule::exists('categories', 'id')],
         ]);
 
-        $branchId = Auth::user()?->branch_id;
+        $branchId = Auth::user()?->branch_id ?? Branch::resolveMainBranchId();
+        $mainBranchId = Branch::resolveMainBranchId();
         $hasSearch = filled($request->search);
 
         $limit = $hasSearch ? 15 : 48;
@@ -73,8 +74,18 @@ class ProductSearchController extends Controller
             ->active()
             ->with([
                 'category:id,name',
-                'variations:id,product_id,branch_id,sku,variation_data,price,stock',
-                'batches' => fn ($q) => $q->where('available', '>', 0)
+                'variations' => fn ($q) => $q
+                    ->where(function ($query) use ($branchId, $mainBranchId) {
+                        if ($branchId === $mainBranchId) {
+                            $query->where('branch_id', $branchId)
+                                ->orWhereNull('branch_id');
+                        } else {
+                            $query->where('branch_id', $branchId);
+                        }
+                    })
+                    ->select(['id', 'product_id', 'branch_id', 'sku', 'variation_data', 'price', 'stock']),
+                'batches' => fn ($q) => $q->atBranchWarehouse($branchId)
+                    ->where('available', '>', 0)
                     ->select(['id', 'product_id', 'branch_id', 'available']),
             ])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
@@ -85,12 +96,7 @@ class ProductSearchController extends Controller
             ->limit($limit)
             ->get(['id', 'name', 'code', 'category_id', 'branch_id', 'sale_price', 'discount_price', 'image']);
 
-        return response()->json($products->map(function (Product $product) use ($branchId) {
-            $branchVariations = $product->variations
-                ->when($branchId !== null, fn ($variations) => $variations->filter(
-                    fn ($variation) => $variation->branch_id === $branchId
-                ));
-
+        return response()->json($products->map(function (Product $product) {
             return [
                 'id' => $product->id,
                 'name' => $product->name,
@@ -99,13 +105,9 @@ class ProductSearchController extends Controller
                 'category_name' => $product->category?->name,
                 'sale_price' => $product->discount_price > 0 ? (float) $product->discount_price : (float) $product->sale_price,
                 'image' => StorageUrl::public($product->image),
-                'has_variations' => $branchVariations->isNotEmpty(),
-                'stock' => (float) $product->batches
-                    ->when($branchId !== null, fn ($batches) => $batches->filter(
-                        fn ($batch) => $batch->branch_id === $branchId
-                    ))
-                    ->sum('available'),
-                'variations' => $branchVariations
+                'has_variations' => $product->variations->isNotEmpty(),
+                'stock' => (float) $product->batches->sum('available'),
+                'variations' => $product->variations
                     ->map(fn ($v) => [
                         'id' => $v->id,
                         'label' => $v->variation_data['label'] ?? $v->sku,

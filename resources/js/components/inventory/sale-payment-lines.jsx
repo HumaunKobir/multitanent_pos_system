@@ -1,10 +1,79 @@
 import { computeSplitSalePayment } from '@/lib/sale-payment';
 import { cn } from '@/lib/utils';
 import { Plus, Trash2 } from 'lucide-react';
+import { useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+
+function PaymentLineRow({ line, index, paymentAccounts, onUpdate, onRemove, selectClassName, inputClassName, errors }) {
+    const [localAmount, setLocalAmount] = useState(line.amount ?? '');
+
+    // Sync from parent only when the parent externally changed the amount
+    // (not from our own onUpdate call that already updated local state).
+    const lastSentRef = useRef(line.amount ?? '');
+    const parentAmount = line.amount ?? '';
+    if (parentAmount !== lastSentRef.current && parentAmount !== localAmount) {
+        lastSentRef.current = parentAmount;
+        setLocalAmount(parentAmount);
+    }
+
+    function handleAmountChange(e) {
+        const val = e.target.value;
+        setLocalAmount(val);
+        lastSentRef.current = val;
+        onUpdate(index, 'amount', val);
+    }
+
+    return (
+        <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_auto] items-start gap-1.5">
+            <div>
+                <select
+                    className={selectClassName}
+                    value={line.payment_account_id ?? ''}
+                    onChange={(e) => onUpdate(index, 'payment_account_id', e.target.value)}
+                >
+                    <option value="">Account</option>
+                    {paymentAccounts.map((account) => (
+                        <option key={account.id} value={String(account.id)}>
+                            {account.label}
+                        </option>
+                    ))}
+                </select>
+                {errors[`payments.${index}.payment_account_id`] && (
+                    <p className="mt-0.5 text-[10px] text-destructive">
+                        {errors[`payments.${index}.payment_account_id`]}
+                    </p>
+                )}
+            </div>
+            <div>
+                <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={localAmount}
+                    onChange={handleAmountChange}
+                    className={cn(inputClassName, 'text-right tabular-nums')}
+                    placeholder="0"
+                />
+                {errors[`payments.${index}.amount`] && (
+                    <p className="mt-0.5 text-[10px] text-destructive">{errors[`payments.${index}.amount`]}</p>
+                )}
+            </div>
+            <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="mt-0.5 size-8 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:bg-red-100"
+                onClick={() => onRemove(index)}
+                aria-label="Remove payment line"
+            >
+                <Trash2 className="size-3.5" />
+            </Button>
+        </div>
+    );
+}
 
 export function SalePaymentLines({
     payments = [],
@@ -71,51 +140,17 @@ export function SalePaymentLines({
             </div>
 
             {payments.map((line, index) => (
-                <div key={index} className="grid grid-cols-[minmax(0,1fr)_5.5rem_auto] items-start gap-1.5">
-                    <div>
-                        <select
-                            className={selectClassName}
-                            value={line.payment_account_id}
-                            onChange={(e) => updateLine(index, 'payment_account_id', e.target.value)}
-                        >
-                            <option value="">Account</option>
-                            {paymentAccounts.map((account) => (
-                                <option key={account.id} value={String(account.id)}>
-                                    {account.label}
-                                </option>
-                            ))}
-                        </select>
-                        {errors[`payments.${index}.payment_account_id`] && (
-                            <p className="mt-0.5 text-[10px] text-destructive">
-                                {errors[`payments.${index}.payment_account_id`]}
-                            </p>
-                        )}
-                    </div>
-                    <div>
-                        <Input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={line.amount}
-                            onChange={(e) => updateLine(index, 'amount', e.target.value)}
-                            className={cn(inputClassName, 'text-right tabular-nums')}
-                            placeholder="0"
-                        />
-                        {errors[`payments.${index}.amount`] && (
-                            <p className="mt-0.5 text-[10px] text-destructive">{errors[`payments.${index}.amount`]}</p>
-                        )}
-                    </div>
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="mt-0.5 size-8 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:bg-red-100"
-                        onClick={() => removeLine(index)}
-                        aria-label="Remove payment line"
-                    >
-                        <Trash2 className="size-3.5" />
-                    </Button>
-                </div>
+                <PaymentLineRow
+                    key={index}
+                    line={line}
+                    index={index}
+                    paymentAccounts={paymentAccounts}
+                    onUpdate={updateLine}
+                    onRemove={removeLine}
+                    selectClassName={selectClassName}
+                    inputClassName={inputClassName}
+                    errors={errors}
+                />
             ))}
 
             {!hideSummary && (

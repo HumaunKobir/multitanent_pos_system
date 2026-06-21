@@ -37,7 +37,7 @@ import {
     Trash2,
     User,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { RequiredMark } from '@/components/form-field';
 import { Badge } from '@/components/ui/badge';
@@ -839,7 +839,6 @@ export default function SellCreate({
 
     const [pausedSellId, setPausedSellId] = useState(resumedSell?.id ?? null);
     const [items, setItems] = useState(resumedSell?.items ?? []);
-    const [matchedSpecialDiscount, setMatchedSpecialDiscount] = useState(null);
 
     useEffect(() => {
         if (flash.success) {
@@ -853,6 +852,10 @@ export default function SellCreate({
     const grossAmount = items.reduce((sum, it) => sum + lineGross(it), 0);
     const lineDiscountTotal = items.reduce((sum, it) => sum + parseFloat(it.discount || 0), 0);
     const taxableAmount = Math.max(0, grossAmount - lineDiscountTotal);
+    const matchedSpecialDiscount = useMemo(
+        () => findBestSpecialDiscount(specialDiscounts, taxableAmount),
+        [specialDiscounts, taxableAmount],
+    );
     const vatAmount = taxableAmount * (parseFloat(form.data.vat || 0) / 100);
     const invoiceDiscountAmount = computeDiscountAmount(
         form.data.discount_type,
@@ -868,11 +871,6 @@ export default function SellCreate({
         : 0;
     const netAmount = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
 
-    useEffect(() => {
-        const match = findBestSpecialDiscount(specialDiscounts, taxableAmount);
-        setMatchedSpecialDiscount(match);
-        form.setData('special_discount_id', match ? String(match.id) : '');
-    }, [taxableAmount, specialDiscounts]);
     const { totalPaid, dueAmount } = computeSplitSalePayment(form.data.payments, netAmount);
     const dueCustomerError = dueSaleCustomerError(form.data.customer_id, defaultCustomer?.id ?? null, dueAmount);
     const hasOverStock = items.some((item) => parseFloat(item.quantity || 0) > parseFloat(item.available_stock ?? 0));
@@ -958,6 +956,7 @@ export default function SellCreate({
             items,
             paused_sell_id: pausedSellId ?? '',
             paid_amount: String(totalPaid),
+            special_discount_id: matchedSpecialDiscount ? String(matchedSpecialDiscount.id) : '',
             payments: serializedPayments.length > 0 ? serializedPayments : undefined,
         }));
         form.post(route('inventory.sell.store'));
@@ -972,6 +971,7 @@ export default function SellCreate({
                 items,
                 paused_sell_id: pausedSellId ?? '',
                 paid_amount: '0',
+                special_discount_id: matchedSpecialDiscount ? String(matchedSpecialDiscount.id) : '',
             },
             {
                 onSuccess: () => {

@@ -44,7 +44,7 @@ createInertiaApp({
                 return AppLayout;
         }
     },
-    strictMode: false,
+    strictMode: true,
     setup({ el, App, props }) {
         const root = window.__inertia_root__ ?? createRoot(el);
         window.__inertia_root__ = root;

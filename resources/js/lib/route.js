@@ -109,6 +109,8 @@ const routes = {
     'online-customer.index': '/online-customer',
     'online-customer.show': '/online-customer/:customer',
     'subscriber-list.index': '/subscriber-list',
+    'subscriber-list.send-bulk-mail': '/subscriber-list/mail/bulk',
+    'subscriber-list.send-mail': '/subscriber-list/:subscriber/mail',
     'subscriber-list.destroy': '/subscriber-list/:subscriber',
     'subscribe.store': '/subscribe',
     'barcode.index': '/barcode',
@@ -351,6 +353,8 @@ const methods = {
     'online-order.sync-steadfast': 'patch',
     'online-order.fulfill': 'patch',
     'online-order.update-status': 'patch',
+    'subscriber-list.send-bulk-mail': 'post',
+    'subscriber-list.send-mail': 'post',
     'subscriber-list.destroy': 'delete',
     'subscribe.store': 'post',
 };

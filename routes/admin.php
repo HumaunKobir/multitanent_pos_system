@@ -70,6 +70,8 @@ Route::middleware(['auth', 'verified', 'ecommerce.panel'])->group(function () {
     Route::get('contact-list', [ContactListController::class, 'index'])->name('contact-list.index');
     Route::delete('contact-list/{contact}', [ContactListController::class, 'destroy'])->name('contact-list.destroy');
     Route::get('subscriber-list', [SubscriberListController::class, 'index'])->name('subscriber-list.index');
+    Route::post('subscriber-list/mail/bulk', [SubscriberListController::class, 'sendBulkMail'])->name('subscriber-list.send-bulk-mail');
+    Route::post('subscriber-list/{subscriber}/mail', [SubscriberListController::class, 'sendMail'])->name('subscriber-list.send-mail');
     Route::delete('subscriber-list/{subscriber}', [SubscriberListController::class, 'destroy'])->name('subscriber-list.destroy');
     Route::get('setting/website', [WebsiteSettingController::class, 'edit'])->name('setting.website.edit');
     Route::put('setting/website', [WebsiteSettingController::class, 'update'])->name('setting.website.update');

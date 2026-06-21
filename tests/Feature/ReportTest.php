@@ -1,10 +1,13 @@
 <?php
 
+use App\Enums\AccountType;
+use App\Enums\CommonStatus;
 use App\Enums\SaleType;
 use App\Enums\VoucherType;
 use App\Http\Controllers\Reports\ReportController;
 use App\Models\Batch;
 use App\Models\Branch;
+use App\Models\ChartOfAccount;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Sell;
@@ -371,6 +374,37 @@ test('superadmin stock ledger shows all movements by default', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->where('product.current_stock', 12)
             ->has('entries', 1));
+});
+
+test('branch user account ledger cannot see another branch account metadata', function () {
+    $this->artisan('permissions:sync');
+
+    $branchA = Branch::factory()->create();
+    $branchB = Branch::factory()->create();
+    $userA = reportUser([ReportController::PERMISSION_ACCOUNT_LEDGER]);
+    $userA->update(['branch_id' => $branchA->id]);
+
+    ChartOfAccount::$skipCodeGeneration = true;
+    $branchBAccount = ChartOfAccount::query()->create([
+        'code' => 'A999-TEST',
+        'name' => 'Branch B Secret Account',
+        'type' => AccountType::Asset,
+        'source_type' => Branch::class,
+        'source_id' => $branchB->id,
+        'parent_id' => null,
+        'current_balance' => 9999,
+        'is_system' => false,
+        'status' => CommonStatus::Active,
+    ]);
+    ChartOfAccount::$skipCodeGeneration = false;
+
+    $this->actingAs($userA)
+        ->get('/report/account-ledger?account_id='.$branchBAccount->id)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/account-ledger')
+            ->where('account', null)
+            ->where('entries', []));
 });
 
 test('stock ledger calculates opening balance before date range', function () {

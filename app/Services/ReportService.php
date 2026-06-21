@@ -572,7 +572,7 @@ class ReportService
      */
     public function accountLedger(int $accountId, ?string $dateFrom, ?string $dateTo): array
     {
-        $account = ChartOfAccount::query()->find($accountId);
+        $account = ChartOfAccount::query()->forPanel()->find($accountId);
 
         if ($account === null) {
             return [

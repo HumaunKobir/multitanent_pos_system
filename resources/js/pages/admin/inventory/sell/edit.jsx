@@ -28,6 +28,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
 
+function lineGross(item) {
+    return parseFloat(item.quantity || 0) * parseFloat(item.unit_price || 0);
+}
+
+function clampLineDiscount(value, item) {
+    if (value === '' || value === null || value === undefined) {
+        return '';
+    }
+    const parsed = parseFloat(value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+        return '0';
+    }
+    return String(Math.min(parsed, lineGross(item)));
+}
+
 function Card({ title, icon: Icon, children }) {
     return (
         <div className="rounded-lg border bg-card shadow-sm">
@@ -516,11 +531,20 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
         if (maxStock <= 0) {
             return;
         }
-        setItems((prev) => [...prev, { ...item, quantity: 1 }]);
+        setItems((prev) => [...prev, { ...item, quantity: 1, discount: '0' }]);
     }
 
     function updateItem(index, field, value) {
-        setItems((prev) => prev.map((it, i) => (i === index ? { ...it, [field]: value } : it)));
+        setItems((prev) =>
+            prev.map((it, i) => {
+                if (i !== index) return it;
+                const next = { ...it, [field]: value };
+                if (field === 'quantity' || field === 'unit_price' || field === 'discount') {
+                    next.discount = clampLineDiscount(next.discount, next);
+                }
+                return next;
+            }),
+        );
     }
 
     function removeItem(index) {
@@ -564,7 +588,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
         });
     }
 
-    const inputCls = 'h-7 rounded-md border-border/60 text-xs px-2 focus:border-primary';
+    const inputCls = 'h-7 rounded-md border-border/60 text-xs text-foreground px-2 focus:border-primary';
 
     return (
         <>
@@ -629,6 +653,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                             <th className="whitespace-nowrap px-3 py-2 text-left font-semibold">Product</th>
                                             <th className="whitespace-nowrap px-2 py-2 text-right font-semibold">Unit Price</th>
                                             <th className="whitespace-nowrap px-2 py-2 text-right font-semibold">Qty</th>
+                                            <th className="whitespace-nowrap px-2 py-2 text-right font-semibold">Disc</th>
                                             <th className="whitespace-nowrap px-2 py-2 text-right font-semibold">Stock</th>
                                             <th className="whitespace-nowrap px-3 py-2 text-right font-semibold">Sub Total</th>
                                             <th className="px-2 py-2"></th>
@@ -640,7 +665,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                             const stock = parseFloat(item.available_stock ?? 0);
                                             const remaining = Math.max(0, stock - qty);
                                             const overStock = item.available_stock !== null && item.available_stock !== undefined && qty > stock;
-                                            const subTotal = qty * parseFloat(item.unit_price || 0);
+                                            const subTotal = qty * parseFloat(item.unit_price || 0) - parseFloat(item.discount || 0);
                                             return (
                                                 <tr key={i} className="hover:bg-muted/20">
                                                     <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
@@ -655,7 +680,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                                             type="number"
                                                             min="0"
                                                             step="0.01"
-                                                            value={item.unit_price}
+                                                            value={item.unit_price ?? ''}
                                                             onChange={(e) => updateItem(i, 'unit_price', e.target.value)}
                                                             className={`${inputCls} w-full text-right`}
                                                         />
@@ -665,7 +690,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                                             type="number"
                                                             min="1"
                                                             step="1"
-                                                            value={item.quantity}
+                                                            value={item.quantity ?? ''}
                                                             onChange={(e) =>
                                                                 updateItem(
                                                                     i,
@@ -674,6 +699,19 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                                                 )
                                                             }
                                                             className={`${inputCls} w-full text-right ${overStock ? 'border-destructive' : ''}`}
+                                                        />
+                                                    </td>
+                                                    <td className="px-2 py-1.5">
+                                                        <Input
+                                                            type="number"
+                                                            min="0"
+                                                            step="0.01"
+                                                            value={item.discount ?? '0'}
+                                                            onChange={(e) => updateItem(i, 'discount', clampLineDiscount(e.target.value, item))}
+                                                            onBlur={(e) => {
+                                                                if (e.target.value === '') updateItem(i, 'discount', '0');
+                                                            }}
+                                                            className={`${inputCls} w-full text-right text-green-700`}
                                                         />
                                                     </td>
                                                     <td className={`px-3 py-2 text-right font-medium ${overStock ? 'text-destructive' : 'text-muted-foreground'}`}>

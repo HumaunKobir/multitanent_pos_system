@@ -48,7 +48,7 @@ export function SalePaymentLines({
     }
 
     const selectClassName = cn(
-        'h-8 w-full rounded-none border border-blue-200 bg-white px-2 text-xs outline-none focus:border-blue-600',
+        'h-8 w-full rounded-none border border-blue-200 bg-white px-2 text-xs text-blue-950 outline-none focus:border-blue-600',
         compact && 'h-8',
     );
 

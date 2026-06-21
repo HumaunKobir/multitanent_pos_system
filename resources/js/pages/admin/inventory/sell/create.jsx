@@ -167,7 +167,7 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
                         className={cn(
                             'flex min-h-8 cursor-pointer items-center justify-between rounded-none border px-2 py-1 text-xs transition-colors',
                             onDarkHeader
-                                ? 'border-blue-200 bg-white text-foreground hover:border-blue-400'
+                                ? 'border-blue-200 bg-white text-blue-950 hover:border-blue-400'
                                 : 'border-border bg-muted/30 hover:border-primary/40',
                             error && 'border-destructive',
                         )}
@@ -183,7 +183,7 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
                                 <User className="size-3.5" />
                             </div>
                             <div className="min-w-0 truncate">
-                                <span className="font-medium text-foreground">{selected.name}</span>
+                                <span className="font-medium text-blue-950">{selected.name}</span>
                                 {selected.phone && (
                                     <span className={cn('ml-1.5', onDarkHeader ? 'text-slate-500' : 'text-muted-foreground')}>
                                         ({selected.phone})
@@ -626,7 +626,7 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                         type="number"
                         min="0"
                         step="0.01"
-                        value={item.unit_price}
+                        value={item.unit_price ?? ''}
                         onChange={(e) => onUpdate(index, 'unit_price', e.target.value)}
                         className={cn(inputCls, 'h-5 px-0.5 text-right text-[11px] sm:h-6 sm:px-1 lg:h-7')}
                     />
@@ -648,7 +648,7 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                             type="number"
                             min="1"
                             step="1"
-                            value={item.quantity}
+                            value={item.quantity ?? ''}
                             onChange={(e) =>
                                 onUpdate(index, 'quantity', clampQuantityInput(e.target.value, item.available_stock))
                             }
@@ -674,6 +674,9 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                         step="0.01"
                         value={item.discount ?? '0'}
                         onChange={(e) => onUpdate(index, 'discount', clampLineDiscount(e.target.value, item))}
+                        onBlur={(e) => {
+                            if (e.target.value === '') onUpdate(index, 'discount', '0');
+                        }}
                         className={cn(inputCls, 'h-5 px-0.5 text-right text-[11px] text-green-700 sm:h-6 sm:px-1 lg:h-7')}
                     />
                 </div>
@@ -772,7 +775,7 @@ function PausedSalesPanel({ pausedSales = [], currentPausedId, onResume }) {
 
 function clampLineDiscount(value, item) {
     if (value === '' || value === null || value === undefined) {
-        return '0';
+        return '';
     }
 
     const parsed = parseFloat(value);
@@ -984,7 +987,7 @@ export default function SellCreate({
         router.get(route('inventory.sell.create'), { paused: saleId });
     }
 
-    const inputCls = 'h-7 rounded-none border-blue-200 bg-white text-[11px] tabular-nums focus:border-blue-600 lg:h-8 lg:text-xs';
+    const inputCls = 'h-7 rounded-none border-blue-200 bg-white text-[11px] tabular-nums text-blue-950 focus:border-blue-600 lg:h-8 lg:text-xs';
 
     return (
         <>
@@ -1043,7 +1046,7 @@ export default function SellCreate({
                                         value={form.data.date}
                                         onChange={(e) => form.setData('date', e.target.value)}
                                         className={cn(
-                                            'h-7 w-[7rem] rounded-none border-blue-200 bg-white pl-6 text-[11px] lg:h-8 lg:w-[8.75rem] lg:pl-7 lg:text-xs',
+                                            'h-7 w-[7rem] rounded-none border-blue-200 bg-white pl-6 text-[11px] text-blue-950 lg:h-8 lg:w-[8.75rem] lg:pl-7 lg:text-xs',
                                             dateInputRightIconClassName,
                                         )}
                                     />
@@ -1058,7 +1061,7 @@ export default function SellCreate({
 
                 <form onSubmit={handleSubmit} className="grid min-h-0 flex-1 grid-cols-1 gap-1 bg-slate-100 p-1 md:grid-cols-5 md:grid-rows-[1fr_auto] md:gap-1.5 md:p-1.5 lg:grid-cols-11 lg:grid-rows-1 lg:gap-1.5 lg:p-1.5 2xl:grid-cols-12 2xl:gap-2 2xl:p-2">
                     {/* Left — Products */}
-                    <section className="flex h-[50vh] flex-col overflow-hidden border border-blue-200 bg-white shadow-sm md:h-auto md:min-h-0 md:col-span-2 md:row-span-2 lg:col-span-3 lg:row-span-1 2xl:col-span-3">
+                    <section className="flex h-[50vh] flex-col overflow-hidden border border-blue-200 bg-white text-blue-950 shadow-sm md:h-auto md:min-h-0 md:col-span-2 md:row-span-2 lg:col-span-3 lg:row-span-1 2xl:col-span-3">
                         <PosPanelHeader title="Products" icon={Grid3x3} />
                         <div className="flex min-h-0 flex-1 flex-col p-1 lg:p-1.5 2xl:p-2">
                             <PosProductPicker categories={categories} onAdd={addItem} />
@@ -1067,7 +1070,7 @@ export default function SellCreate({
                     </section>
 
                     {/* Middle — Cart */}
-                    <section className="flex flex-col border border-blue-200 bg-white shadow-sm md:min-h-0 md:overflow-hidden md:col-span-3 lg:col-span-4 2xl:col-span-5">
+                    <section className="flex flex-col border border-blue-200 bg-white text-blue-950 shadow-sm md:min-h-0 md:overflow-hidden md:col-span-3 lg:col-span-4 2xl:col-span-5">
                         <PosPanelHeader
                             title="Cart"
                             icon={Package}
@@ -1097,7 +1100,7 @@ export default function SellCreate({
                     </section>
 
                     {/* Right — Payment */}
-                    <aside className="flex flex-col border border-blue-200 bg-white shadow-sm md:min-h-0 md:overflow-hidden md:col-span-3 md:col-start-3 lg:col-span-4 lg:col-start-auto 2xl:col-span-4">
+                    <aside className="flex flex-col border border-blue-200 bg-white text-blue-950 shadow-sm md:min-h-0 md:overflow-hidden md:col-span-3 md:col-start-3 lg:col-span-4 lg:col-start-auto 2xl:col-span-4">
                         <PosPanelHeader title="Checkout" icon={HandCoins} />
 
                         <div className="border-b border-blue-200 bg-blue-950 px-2 py-2.5 lg:px-3 lg:py-3">
@@ -1170,7 +1173,7 @@ export default function SellCreate({
                                     <div>
                                         <Label className="mb-0.5 block text-[9px] text-muted-foreground lg:text-[10px]">Inv. Disc. Type</Label>
                                         <select
-                                            className="h-7 w-full rounded-none border border-blue-200 bg-white px-1 text-[11px] outline-none focus:border-blue-600 lg:h-8 lg:px-2 lg:text-xs"
+                                            className="h-7 w-full rounded-none border border-blue-200 bg-white px-1 text-[11px] text-blue-950 outline-none focus:border-blue-600 lg:h-8 lg:px-2 lg:text-xs"
                                             value={form.data.discount_type}
                                             onChange={(e) => form.setData('discount_type', e.target.value)}
                                         >

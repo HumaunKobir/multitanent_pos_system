@@ -119,11 +119,11 @@ export default function ProductSectionFormDialog({
             },
         };
 
+        form.transform(() => buildPayload());
+
         if (isEditing) {
-            form.transform(() => buildPayload());
-            form.post(routes.update(item.id), { ...options, _method: 'patch' });
+            form.submit('patch', routes.update(item.id), options);
         } else {
-            form.transform(() => buildPayload());
             form.post(routes.store, options);
         }
     }

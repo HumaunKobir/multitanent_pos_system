@@ -183,7 +183,7 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
                                 <User className="size-3.5" />
                             </div>
                             <div className="min-w-0 truncate">
-                                <span className="font-medium text-blue-950">{selected.name}</span>
+                                <span className={cn('font-medium', onDarkHeader ? 'text-blue-950' : 'text-foreground')}>{selected.name}</span>
                                 {selected.phone && (
                                     <span className={cn('ml-1.5', onDarkHeader ? 'text-slate-500' : 'text-muted-foreground')}>
                                         ({selected.phone})
@@ -214,7 +214,7 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
                             placeholder="Search customer by name or phone…"
                             className={cn(
                                 'h-8 rounded-none pl-8 text-xs',
-                                onDarkHeader && 'border-blue-200 bg-white text-foreground placeholder:text-slate-400',
+                                onDarkHeader && 'border-blue-200 bg-white text-slate-900 placeholder:text-slate-400',
                                 error && 'border-destructive',
                             )}
                         />
@@ -222,7 +222,7 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
                 )}
 
                 {open && (
-                    <div className="absolute z-50 mt-1.5 w-full overflow-hidden rounded-none border border-border bg-popover shadow-lg">
+                    <div className="absolute z-50 mt-1.5 w-full overflow-hidden rounded-none border border-border bg-popover text-popover-foreground shadow-lg">
                         {selected && (
                             <div className="border-b border-border p-2">
                                 <Input autoFocus placeholder="Search customer…" value={q} onChange={(e) => { setQ(e.target.value); handleChange(e); }} className="h-9 text-sm" />

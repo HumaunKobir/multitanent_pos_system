@@ -196,7 +196,7 @@ function CustomerSearch({ initialCustomer, value, onChange, error }) {
                 )}
 
                 {open && (
-                    <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md">
+                    <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover text-popover-foreground shadow-md">
                         {selected && (
                             <div className="p-2">
                                 <Input autoFocus placeholder="Search customer…" value={q} onChange={(e) => { setQ(e.target.value); handleChange(e); }} className="h-7 text-xs" />

@@ -94,16 +94,7 @@ export function SalePaymentLines({
     }
 
     function addLine() {
-        const usedAccountIds = new Set(payments.map((line) => String(line.payment_account_id)));
-        const nextAccount = paymentAccounts.find((account) => !usedAccountIds.has(String(account.id)));
-
-        onChange([
-            ...payments,
-            {
-                payment_account_id: nextAccount ? String(nextAccount.id) : '',
-                amount: remaining > 0 ? String(remaining.toFixed(2)) : '0',
-            },
-        ]);
+        onChange([...payments, { payment_account_id: '', amount: '' }]);
     }
 
     function removeLine(index) {

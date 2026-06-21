@@ -16,16 +16,13 @@ export function SellDueAlertFields({ customerId, walkInCustomerId, dueAmount, fo
     useEffect(() => {
         if (!showDueDateField) {
             setActiveAlert(null);
-            form.setData({
-                due_given_date: '',
-                due_alert_action: '',
-            });
+            form.setData((d) => ({ ...d, due_given_date: '', due_alert_action: '' }));
             return;
         }
 
         if (!canManageAlert) {
             setActiveAlert(null);
-            form.setData('due_alert_action', '');
+            form.setData((d) => ({ ...d, due_alert_action: '' }));
             return;
         }
 
@@ -45,9 +42,9 @@ export function SellDueAlertFields({ customerId, walkInCustomerId, dueAmount, fo
                 if (!cancelled) {
                     setActiveAlert(payload.active ?? null);
                     if (payload.active) {
-                        form.setData('due_alert_action', form.data.due_alert_action || 'merge');
+                        form.setData((d) => ({ ...d, due_alert_action: d.due_alert_action || 'merge' }));
                     } else {
-                        form.setData('due_alert_action', '');
+                        form.setData((d) => ({ ...d, due_alert_action: '' }));
                     }
                 }
             } catch {
@@ -66,7 +63,7 @@ export function SellDueAlertFields({ customerId, walkInCustomerId, dueAmount, fo
         return () => {
             cancelled = true;
         };
-    }, [customerId, showDueDateField, canManageAlert]);
+    }, [customerId, showDueDateField]);
 
     if (!showDueDateField) {
         return null;

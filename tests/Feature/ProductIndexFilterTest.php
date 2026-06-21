@@ -308,6 +308,49 @@ test('admin product index can filter by specific branch', function () {
             ->where('products.data.0.name', $uniqueName));
 });
 
+test('product index shows selected branch column only on main catalog views', function () {
+    productIndexMainBranch();
+    $admin = productIndexAdmin();
+    $otherBranch = Branch::factory()->create();
+    $branchUser = productIndexBranchUser($otherBranch->id);
+    $mainBranchId = Branch::resolveMainBranchId();
+
+    $this->actingAs($admin)
+        ->get(route('product.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/product/index')
+            ->where('showSelectedBranchColumn', true));
+
+    $this->actingAs($admin)
+        ->get(route('product.index', ['branch_id' => 'all']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/product/index')
+            ->where('showSelectedBranchColumn', true));
+
+    $this->actingAs($admin)
+        ->get(route('product.index', ['branch_id' => (string) $mainBranchId]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/product/index')
+            ->where('showSelectedBranchColumn', true));
+
+    $this->actingAs($admin)
+        ->get(route('product.index', ['branch_id' => (string) $otherBranch->id]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/product/index')
+            ->where('showSelectedBranchColumn', false));
+
+    $this->actingAs($branchUser)
+        ->get(route('product.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/product/index')
+            ->where('showSelectedBranchColumn', false));
+});
+
 test('branch user product index only shows own branch products', function () {
     productIndexMainBranch();
 

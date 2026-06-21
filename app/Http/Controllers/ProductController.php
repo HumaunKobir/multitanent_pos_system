@@ -42,6 +42,7 @@ class ProductController extends Controller
         $listBranchId = $this->resolveProductListBranchId($request);
         $isAdmin = Auth::user()?->branch_id === null;
         $mainBranchId = Branch::resolveMainBranchId();
+        $showSelectedBranchColumn = $isAdmin && ($listBranchId === null || $listBranchId === $mainBranchId);
 
         $products = Product::query()
             ->active()
@@ -50,7 +51,7 @@ class ProductController extends Controller
             ->with([
                 'category',
                 'brand',
-                'selectedBranch:id,name',
+                ...($showSelectedBranchColumn ? ['selectedBranch:id,name'] : []),
                 'variations' => fn ($q) => $this->scopeProductListVariations($q, $listBranchId),
             ])
             ->tap(fn ($q) => $this->applyProductListStockAggregates($q, $listBranchId))
@@ -103,6 +104,7 @@ class ProductController extends Controller
             'products' => $products,
             'pendingReceiveProducts' => $pendingReceiveProducts,
             'mainBranchId' => $mainBranchId,
+            'showSelectedBranchColumn' => $showSelectedBranchColumn,
             'filters' => array_merge(
                 $request->only('search', 'category_id', 'brand_id', 'tag'),
                 $isAdmin ? [

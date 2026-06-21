@@ -23,7 +23,7 @@ import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { useCan } from '@/hooks/use-can';
 import { route } from '@/lib/route';
 
-export default function ProductIndex({ products, filters, categories, brands, tags, branches = {}, mainBranchId = null, pendingReceiveProducts = [] }) {
+export default function ProductIndex({ products, filters, categories, brands, tags, branches = {}, mainBranchId = null, pendingReceiveProducts = [], showSelectedBranchColumn = false }) {
     const { flash, auth } = usePage().props;
     const isAdmin = !auth.user?.branch_id;
     const defaultBranchId = mainBranchId != null ? String(mainBranchId) : 'all';
@@ -136,11 +136,15 @@ export default function ProductIndex({ products, filters, categories, brands, ta
             header: 'Brand',
             render: (row) => row.brand?.name ?? '—',
         },
-        {
-            id: 'selected_branch',
-            header: 'Selected Branch',
-            render: (row) => row.selected_branch?.name ?? '—',
-        },
+        ...(showSelectedBranchColumn
+            ? [
+                  {
+                      id: 'selected_branch',
+                      header: 'Selected Branch',
+                      render: (row) => row.selected_branch?.name ?? '—',
+                  },
+              ]
+            : []),
         {
             id: 'price',
             header: 'Price',

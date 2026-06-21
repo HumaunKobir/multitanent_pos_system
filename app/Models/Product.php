@@ -71,10 +71,24 @@ class Product extends Model
 
     public function scopeVisibleInMainCatalog(Builder $query): Builder
     {
-        return $query->where(function (Builder $query): void {
-            $query->whereNull('source_branch_id')
-                ->orWhereNotNull('received_at');
-        });
+        $mainBranchId = Branch::resolveMainBranchId();
+
+        return $query
+            ->where(function (Builder $query): void {
+                $query->whereNull('source_branch_id')
+                    ->orWhereNotNull('received_at');
+            })
+            ->where(function (Builder $query) use ($mainBranchId): void {
+                $query->whereNull('product_group_id')
+                    ->orWhereNotExists(function ($sub) use ($mainBranchId): void {
+                        $sub->selectRaw('1')
+                            ->from('products as pending_main')
+                            ->whereColumn('pending_main.product_group_id', 'products.product_group_id')
+                            ->where('pending_main.branch_id', $mainBranchId)
+                            ->whereNotNull('pending_main.source_branch_id')
+                            ->whereNull('pending_main.received_at');
+                    });
+            });
     }
 
     public function scopePendingMainReceive(Builder $query): Builder

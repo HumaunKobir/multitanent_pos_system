@@ -46,7 +46,7 @@ class ProductController extends Controller
         $products = Product::query()
             ->active()
             ->when($listBranchId !== null, fn ($q) => $q->where('branch_id', $listBranchId))
-            ->when($isAdmin && $listBranchId === $mainBranchId, fn ($q) => $q->visibleInMainCatalog())
+            ->when($isAdmin, fn ($q) => $q->visibleInMainCatalog())
             ->with([
                 'category',
                 'brand',
@@ -66,7 +66,17 @@ class ProductController extends Controller
             ->when($request->tag, fn ($q, $t) => $q->whereJsonContains('tags', $t))
             ->latest()
             ->paginate(10)
-            ->withQueryString();
+            ->withQueryString()
+            ->through(function (Product $product): Product {
+                if ($product->source_branch_id !== null) {
+                    $product->setAttribute(
+                        'submission_stock_summary',
+                        $product->submissionBranchStockSummary(),
+                    );
+                }
+
+                return $product;
+            });
 
         $pendingReceiveProducts = $isAdmin
             ? Product::query()
@@ -241,18 +251,11 @@ class ProductController extends Controller
         );
 
         $branchName = $product->sourceBranch?->name ?? 'Branch';
-        $stockSummary = $product->submissionBranchStockSummary();
 
         $product->update(['received_at' => now()]);
 
-        $message = "Product received from {$branchName}.";
-
-        if ($stockSummary !== null && $stockSummary['total'] > 0) {
-            $message .= " Note: {$branchName} already has {$stockSummary['total']} initial stock on this product.";
-        }
-
         return redirect()->route('product.index')
-            ->with('success', $message);
+            ->with('success', "Product received from {$branchName}.");
     }
 
     public function edit(Product $product): Response

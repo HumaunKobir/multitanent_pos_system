@@ -192,6 +192,168 @@ test('admin can receive pending branch submission and product appears in main li
         });
 });
 
+test('pending branch submission branch copy is hidden from all-branches product list until received', function () {
+    $admin = branchSubmissionAdmin();
+
+    ensureSubmissionMainBranch();
+    $operatingBranch = Branch::factory()->create();
+    $mainBranchId = Branch::resolveMainBranchId();
+    $user = User::factory()->create(['branch_id' => $operatingBranch->id]);
+    $user->givePermissionTo('product.create');
+
+    $payload = submissionProductPayload($operatingBranch->id);
+    unset($payload['branch_id']);
+
+    $this->actingAs($user)->post(route('product.store'), $payload);
+
+    $mainCopy = Product::query()
+        ->where('name', $payload['name'])
+        ->where('branch_id', $mainBranchId)
+        ->firstOrFail();
+
+    $branchCopy = Product::query()
+        ->where('name', $payload['name'])
+        ->where('branch_id', $operatingBranch->id)
+        ->firstOrFail();
+
+    $this->actingAs($admin)
+        ->get(route('product.index', ['branch_id' => 'all', 'search' => $payload['name']]))
+        ->assertOk()
+        ->assertInertia(function ($page) use ($mainCopy, $branchCopy) {
+            $page->component('admin/product/index');
+
+            $listed = collect($page->toArray()['props']['products']['data'] ?? []);
+
+            expect($listed->pluck('slug'))->not->toContain($mainCopy->slug)
+                ->and($listed->pluck('slug'))->not->toContain($branchCopy->slug);
+        });
+});
+
+test('received branch submission shows zero main stock with branch initial stock summary in list', function () {
+    $admin = branchSubmissionAdmin();
+
+    ensureSubmissionMainBranch();
+    $operatingBranch = Branch::factory()->create(['name' => 'Stock Hint Branch']);
+    $mainBranchId = Branch::resolveMainBranchId();
+    $user = User::factory()->create(['branch_id' => $operatingBranch->id]);
+    $user->givePermissionTo('product.create');
+
+    $payload = submissionProductPayload($operatingBranch->id, ['initial_stock' => '15']);
+    unset($payload['branch_id']);
+
+    $this->actingAs($user)->post(route('product.store'), $payload);
+
+    $mainCopy = Product::query()
+        ->where('name', $payload['name'])
+        ->where('branch_id', $mainBranchId)
+        ->firstOrFail();
+
+    $this->actingAs($admin)->post(route('product.receive', $mainCopy));
+
+    $this->actingAs($admin)
+        ->get(route('product.index', ['branch_id' => $mainBranchId, 'search' => $payload['name']]))
+        ->assertOk()
+        ->assertInertia(function ($page) use ($mainCopy) {
+            $page->component('admin/product/index');
+
+            $listed = collect($page->toArray()['props']['products']['data'] ?? []);
+            $row = $listed->firstWhere('slug', $mainCopy->slug);
+
+            expect($row)->not->toBeNull()
+                ->and((int) ($row['batches_sum_available'] ?? 0))->toBe(0)
+                ->and($row['submission_stock_summary']['total'] ?? null)->toBe(15);
+        });
+});
+
+test('pending main branch submission is hidden from all-branches product list until received', function () {
+    $admin = branchSubmissionAdmin();
+
+    ensureSubmissionMainBranch();
+    $operatingBranch = Branch::factory()->create();
+    $mainBranchId = Branch::resolveMainBranchId();
+    $user = User::factory()->create(['branch_id' => $operatingBranch->id]);
+    $user->givePermissionTo('product.create');
+
+    $payload = submissionProductPayload($operatingBranch->id);
+    unset($payload['branch_id']);
+
+    $this->actingAs($user)->post(route('product.store'), $payload);
+
+    $mainCopy = Product::query()
+        ->where('name', $payload['name'])
+        ->where('branch_id', $mainBranchId)
+        ->first();
+
+    $this->actingAs($admin)
+        ->get(route('product.index', ['branch_id' => 'all', 'search' => $payload['name']]))
+        ->assertOk()
+        ->assertInertia(function ($page) use ($mainCopy) {
+            $page->component('admin/product/index');
+
+            $listed = collect($page->toArray()['props']['products']['data'] ?? []);
+
+            expect($listed->pluck('slug'))->not->toContain($mainCopy->slug);
+        });
+});
+
+test('branch user variant product submission creates main copy with zero variation stock', function () {
+    Permission::findOrCreate('product.create', 'web');
+
+    ensureSubmissionMainBranch();
+    $operatingBranch = Branch::factory()->create();
+    $mainBranchId = Branch::resolveMainBranchId();
+    $user = User::factory()->create(['branch_id' => $operatingBranch->id]);
+    $user->givePermissionTo('product.create');
+
+    $payload = submissionProductPayload($operatingBranch->id, [
+        'purchase_price' => null,
+        'sale_price' => null,
+        'initial_stock' => null,
+        'combinations' => [
+            [
+                'variant' => 'Red / M',
+                'variation_data' => ['label' => 'Red / M'],
+                'sale_price' => '200',
+                'purchase_price' => '120',
+                'sku' => 'SKU-RED-M-'.fake()->unique()->numerify('####'),
+                'stock' => '5',
+            ],
+            [
+                'variant' => 'Blue / L',
+                'variation_data' => ['label' => 'Blue / L'],
+                'sale_price' => '200',
+                'purchase_price' => '120',
+                'sku' => 'SKU-BLUE-L-'.fake()->unique()->numerify('####'),
+                'stock' => '3',
+            ],
+        ],
+    ]);
+    unset($payload['branch_id']);
+
+    $this->actingAs($user)->post(route('product.store'), $payload);
+
+    $mainCopy = Product::query()
+        ->where('name', $payload['name'])
+        ->where('branch_id', $mainBranchId)
+        ->first();
+
+    $branchCopy = Product::query()
+        ->where('name', $payload['name'])
+        ->where('branch_id', $operatingBranch->id)
+        ->first();
+
+    expect($mainCopy)->not->toBeNull()
+        ->and($branchCopy)->not->toBeNull()
+        ->and($mainCopy->source_branch_id)->toBe($operatingBranch->id)
+        ->and($mainCopy->received_at)->toBeNull();
+
+    $mainVariationStock = $mainCopy->variations->sum('stock');
+    $branchVariationStock = $branchCopy->variations->sum('stock');
+
+    expect($mainVariationStock)->toBe(0)
+        ->and($branchVariationStock)->toBe(8);
+});
+
 test('branch submission initial stock posts accounting on branch accounts only', function () {
     Permission::findOrCreate('product.create', 'web');
 

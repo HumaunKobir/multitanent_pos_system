@@ -257,9 +257,15 @@ class ProductBranchReplicationService
         $mainData['slug'] = $this->resolveBranchSlug($baseSlug, $mainBranchId);
         $mainData['code'] = $this->resolveBranchCode($manualCode ?? $autoCodeBase, $mainBranchId);
 
+        $mainCombinations = array_map(function (array $combo): array {
+            unset($combo['stock']);
+
+            return $combo;
+        }, $combinations);
+
         $this->persistProductAtBranch(
             $mainData,
-            $combinations,
+            $mainCombinations,
             $mainPurchasePrice,
             $mainSalePrice,
             0,

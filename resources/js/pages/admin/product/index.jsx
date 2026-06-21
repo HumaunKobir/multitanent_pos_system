@@ -162,6 +162,20 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                 const stock = row._isVariant
                     ? parseFloat(row._variantStock ?? 0)
                     : parseFloat(row.batches_sum_available ?? 0) || 0;
+                const branchInitialStock = row.submission_stock_summary?.total ?? 0;
+                const isReceivedFromBranch = row.source_branch_id != null && row.received_at != null;
+
+                if (isReceivedFromBranch && stock === 0 && branchInitialStock > 0) {
+                    return (
+                        <div>
+                            <span className="font-medium">0</span>
+                            <p className="text-xs font-medium text-amber-700 dark:text-amber-400">
+                                Branch initial stock: {branchInitialStock}
+                            </p>
+                        </div>
+                    );
+                }
+
                 return <span className="font-medium">{stock}</span>;
             },
         },

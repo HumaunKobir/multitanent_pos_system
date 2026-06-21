@@ -221,8 +221,16 @@ export function InvoiceDocument({
                 <TotalsSummary gross={gross} vat={vat} discount={discount} lineDiscount={lineDiscount} net={net} paid={paid} due={due} />
 
                 <div className="mt-4 flex items-center gap-2 print:hidden">
-                    <Badge className={due > 0 ? 'bg-red-600 text-white' : 'bg-green-600 text-white'}>
-                        {due > 0 ? 'Partially Paid' : 'Paid'}
+                    <Badge
+                        className={
+                            due <= 0
+                                ? 'bg-green-600 text-white'
+                                : paid <= 0
+                                  ? 'bg-red-600 text-white'
+                                  : 'bg-orange-500 text-white'
+                        }
+                    >
+                        {due <= 0 ? 'Paid' : paid <= 0 ? 'Unpaid' : 'Partially Paid'}
                     </Badge>
                 </div>
 

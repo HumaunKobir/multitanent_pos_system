@@ -62,7 +62,7 @@ export function SalePaymentLines({
                     type="button"
                     variant="outline"
                     size="sm"
-                    className={cn('h-7 gap-1 px-2 text-[10px]', compact && 'h-7')}
+                    className={cn('h-7 gap-1 px-2 text-[10px] dark:bg-white dark:border-blue-200 dark:text-blue-950 dark:hover:bg-blue-50', compact && 'h-7')}
                     onClick={addLine}
                 >
                     <Plus className="size-3" />
@@ -109,7 +109,7 @@ export function SalePaymentLines({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="mt-0.5 size-8 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                        className="mt-0.5 size-8 shrink-0 text-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:bg-red-100"
                         onClick={() => removeLine(index)}
                         aria-label="Remove payment line"
                     >

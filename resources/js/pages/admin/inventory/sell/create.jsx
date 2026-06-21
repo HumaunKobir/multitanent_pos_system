@@ -613,7 +613,7 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                     size="icon"
                     variant="ghost"
                     onClick={() => onRemove(index)}
-                    className="size-6 shrink-0 text-muted-foreground hover:text-destructive lg:size-7"
+                    className="size-6 shrink-0 text-blue-400 hover:text-destructive dark:text-blue-400 dark:hover:bg-red-50 dark:hover:text-destructive lg:size-7"
                 >
                     <Trash2 className="size-3 lg:size-3.5" />
                 </Button>
@@ -638,7 +638,7 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                             type="button"
                             variant="outline"
                             size="icon"
-                            className="size-5 shrink-0 sm:size-6 lg:size-7"
+                            className="size-5 shrink-0 sm:size-6 lg:size-7 dark:bg-white dark:border-blue-200 dark:text-blue-950 dark:hover:bg-blue-50"
                             onClick={() => onAdjust(index, -1)}
                             disabled={qty <= 1}
                         >
@@ -658,7 +658,7 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                             type="button"
                             variant="outline"
                             size="icon"
-                            className="size-5 shrink-0 sm:size-6 lg:size-7"
+                            className="size-5 shrink-0 sm:size-6 lg:size-7 dark:bg-white dark:border-blue-200 dark:text-blue-950 dark:hover:bg-blue-50"
                             onClick={() => onAdjust(index, 1)}
                             disabled={qty >= stock}
                         >
@@ -1061,7 +1061,7 @@ export default function SellCreate({
 
                 <form onSubmit={handleSubmit} className="grid min-h-0 flex-1 grid-cols-1 gap-1 bg-slate-100 p-1 md:grid-cols-5 md:grid-rows-[1fr_auto] md:gap-1.5 md:p-1.5 lg:grid-cols-11 lg:grid-rows-1 lg:gap-1.5 lg:p-1.5 2xl:grid-cols-12 2xl:gap-2 2xl:p-2">
                     {/* Left — Products */}
-                    <section className="flex h-[50vh] flex-col overflow-hidden border border-blue-200 bg-white text-blue-950 shadow-sm md:h-auto md:min-h-0 md:col-span-2 md:row-span-2 lg:col-span-3 lg:row-span-1 2xl:col-span-3">
+                    <section className="pos-panel flex h-[50vh] flex-col overflow-hidden border border-blue-200 bg-white text-blue-950 shadow-sm md:h-auto md:min-h-0 md:col-span-2 md:row-span-2 lg:col-span-3 lg:row-span-1 2xl:col-span-3">
                         <PosPanelHeader title="Products" icon={Grid3x3} />
                         <div className="flex min-h-0 flex-1 flex-col p-1 lg:p-1.5 2xl:p-2">
                             <PosProductPicker categories={categories} onAdd={addItem} />
@@ -1070,7 +1070,7 @@ export default function SellCreate({
                     </section>
 
                     {/* Middle — Cart */}
-                    <section className="flex flex-col border border-blue-200 bg-white text-blue-950 shadow-sm md:min-h-0 md:overflow-hidden md:col-span-3 lg:col-span-4 2xl:col-span-5">
+                    <section className="pos-panel flex flex-col border border-blue-200 bg-white text-blue-950 shadow-sm md:min-h-0 md:overflow-hidden md:col-span-3 lg:col-span-4 2xl:col-span-5">
                         <PosPanelHeader
                             title="Cart"
                             icon={Package}
@@ -1100,7 +1100,7 @@ export default function SellCreate({
                     </section>
 
                     {/* Right — Payment */}
-                    <aside className="flex flex-col border border-blue-200 bg-white text-blue-950 shadow-sm md:min-h-0 md:overflow-hidden md:col-span-3 md:col-start-3 lg:col-span-4 lg:col-start-auto 2xl:col-span-4">
+                    <aside className="pos-panel flex flex-col border border-blue-200 bg-white text-blue-950 shadow-sm md:min-h-0 md:overflow-hidden md:col-span-3 md:col-start-3 lg:col-span-4 lg:col-start-auto 2xl:col-span-4">
                         <PosPanelHeader title="Checkout" icon={HandCoins} />
 
                         <div className="border-b border-blue-200 bg-blue-950 px-2 py-2.5 lg:px-3 lg:py-3">
@@ -1285,7 +1285,7 @@ export default function SellCreate({
                             )}
 
                             <div className="grid grid-cols-3 gap-1 lg:gap-1.5">
-                                <Button type="button" variant="outline" size="sm" className="h-7 border-red-400 text-[11px] text-red-600 hover:bg-red-50 lg:h-8 lg:text-xs" asChild>
+                                <Button type="button" variant="outline" size="sm" className="h-7 border-red-400 text-[11px] text-red-600 hover:bg-red-50 hover:text-red-600 dark:bg-white dark:hover:bg-red-50 dark:hover:text-red-600 lg:h-8 lg:text-xs" asChild>
                                     <Link href={route('inventory.sell.index')}>Cancel</Link>
                                 </Button>
                                 <Button
@@ -1294,7 +1294,7 @@ export default function SellCreate({
                                     variant="outline"
                                     disabled={form.processing || items.length === 0 || hasOverStock}
                                     onClick={handlePause}
-                                    className="h-7 border-amber-400 text-[11px] text-amber-700 hover:bg-amber-50 lg:h-8 lg:text-xs"
+                                    className="h-7 border-amber-400 text-[11px] text-amber-700 hover:bg-amber-50 hover:text-amber-700 dark:bg-white dark:hover:bg-amber-50 dark:hover:text-amber-700 lg:h-8 lg:text-xs"
                                 >
                                     Pause
                                 </Button>

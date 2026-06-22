@@ -40,29 +40,25 @@ trait UsesInventoryAccounting
         $paymentLines = $this->normalizeSalePaymentLines($data);
 
         if ($paymentLines !== []) {
-            $effectivePaid = round(array_sum(array_column($paymentLines, 'amount')), 2);
-
-            if ($effectivePaid > $netAmount) {
-                throw ValidationException::withMessages([
-                    'payments' => 'Total payment amount cannot exceed the net payable.',
-                ]);
-            }
+            $tenderedAmount = round(array_sum(array_column($paymentLines, 'amount')), 2);
+            $payment = $this->resolveSalePaymentAmounts($netAmount, $tenderedAmount);
 
             return [
-                'effective_paid' => $effectivePaid,
-                'due_amount' => round(max(0, $netAmount - $effectivePaid), 2),
-                'change_amount' => 0.0,
+                'effective_paid' => $payment['effective_paid'],
+                'due_amount' => $payment['due_amount'],
+                'change_amount' => $payment['change_amount'],
                 'payment_lines' => $paymentLines,
             ];
         }
 
-        $payment = $this->resolveSalePaymentAmounts($netAmount, (float) ($data['paid_amount'] ?? 0));
-        $legacyLines = [];
+        $tenderedAmount = round(max(0, (float) ($data['paid_amount'] ?? 0)), 2);
+        $payment = $this->resolveSalePaymentAmounts($netAmount, $tenderedAmount);
+        $tenderedLines = [];
 
-        if ($payment['effective_paid'] > 0) {
-            $legacyLines[] = [
+        if ($tenderedAmount > 0) {
+            $tenderedLines[] = [
                 'payment_account_id' => $this->resolvePaymentAccountIdFromData($data, $payment['effective_paid']),
-                'amount' => $payment['effective_paid'],
+                'amount' => $tenderedAmount,
             ];
         }
 
@@ -70,7 +66,7 @@ trait UsesInventoryAccounting
             'effective_paid' => $payment['effective_paid'],
             'due_amount' => $payment['due_amount'],
             'change_amount' => $payment['change_amount'],
-            'payment_lines' => $legacyLines,
+            'payment_lines' => $tenderedLines,
         ];
     }
 

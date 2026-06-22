@@ -498,7 +498,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
           )
         : 0;
     const netAmount = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
-    const { totalPaid, dueAmount } = computeSplitSalePayment(form.data.payments, netAmount);
+    const { totalPaid, dueAmount, changeAmount } = computeSplitSalePayment(form.data.payments, netAmount);
     const dueCustomerError = dueSaleCustomerError(form.data.customer_id, walkInCustomerId, dueAmount);
 
     useEffect(() => {
@@ -839,11 +839,19 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                         <p className="mt-1 text-lg font-bold tabular-nums text-emerald-300">৳{totalPaid.toFixed(2)}</p>
                                     </div>
                                     <div className="text-center">
-                                        <p className="text-xs font-semibold uppercase tracking-wider text-white/60">Due Amount</p>
+                                        <p className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                                            {changeAmount > 0 ? 'Change' : 'Due Amount'}
+                                        </p>
                                         <p
-                                            className={`mt-1 text-lg font-bold tabular-nums ${dueAmount > 0 ? 'text-red-300' : 'text-white/50'}`}
+                                            className={`mt-1 text-lg font-bold tabular-nums ${
+                                                changeAmount > 0
+                                                    ? 'text-amber-300'
+                                                    : dueAmount > 0
+                                                      ? 'text-red-300'
+                                                      : 'text-white/50'
+                                            }`}
                                         >
-                                            ৳{dueAmount.toFixed(2)}
+                                            ৳{(changeAmount > 0 ? changeAmount : dueAmount).toFixed(2)}
                                         </p>
                                     </div>
                                 </div>

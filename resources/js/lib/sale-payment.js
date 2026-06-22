@@ -18,16 +18,21 @@ export function computeSalePayment(netAmount, tenderedAmount) {
 /**
  * @param {Array<{ amount?: number|string }>} payments
  * @param {number|string} netAmount
- * @returns {{ totalPaid: number, dueAmount: number, remaining: number }}
+ * @returns {{ totalPaid: number, effectivePaid: number, dueAmount: number, changeAmount: number, remaining: number }}
  */
 export function computeSplitSalePayment(payments, netAmount) {
     const net = Math.max(0, parseFloat(netAmount) || 0);
     const totalPaid = (payments ?? []).reduce((sum, line) => sum + Math.max(0, parseFloat(line.amount) || 0), 0);
+    const effectivePaid = Math.min(totalPaid, net);
+    const dueAmount = Math.max(0, net - totalPaid);
+    const changeAmount = Math.max(0, totalPaid - net);
 
     return {
         totalPaid,
-        dueAmount: Math.max(0, net - totalPaid),
-        remaining: Math.max(0, net - totalPaid),
+        effectivePaid,
+        dueAmount,
+        changeAmount,
+        remaining: dueAmount,
     };
 }
 

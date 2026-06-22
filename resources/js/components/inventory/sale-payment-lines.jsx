@@ -85,7 +85,7 @@ export function SalePaymentLines({
     compact = false,
     hideSummary = false,
 }) {
-    const { totalPaid, dueAmount, remaining } = computeSplitSalePayment(payments, netAmount);
+    const { totalPaid, dueAmount, changeAmount } = computeSplitSalePayment(payments, netAmount);
 
     function updateLine(index, field, value) {
         onChange(
@@ -156,10 +156,10 @@ export function SalePaymentLines({
                             <span className="font-medium tabular-nums">৳{dueAmount.toFixed(2)}</span>
                         </div>
                     )}
-                    {remaining > 0 && totalPaid > 0 && (
+                    {changeAmount > 0 && (
                         <div className="flex items-center justify-between gap-2 text-amber-700">
-                            <span>Remaining</span>
-                            <span className="font-medium tabular-nums">৳{remaining.toFixed(2)}</span>
+                            <span>Change</span>
+                            <span className="font-medium tabular-nums">৳{changeAmount.toFixed(2)}</span>
                         </div>
                     )}
                 </div>

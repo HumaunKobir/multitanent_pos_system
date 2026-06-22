@@ -264,6 +264,7 @@ class SellController extends Controller
                     $sell->fresh(['customer']),
                     $payment['payment_lines'],
                     $this->costService->costForSell($sell),
+                    $payment['change_amount'],
                 );
 
                 return $sell;
@@ -548,6 +549,7 @@ class SellController extends Controller
                     $sell->fresh(['customer']),
                     $payment['payment_lines'],
                     $this->costService->costForSell($sell),
+                    $payment['change_amount'],
                 );
             });
         } catch (ValidationException $e) {

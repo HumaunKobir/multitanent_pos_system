@@ -332,6 +332,31 @@ function totalRow(label, value) {
         </div>`;
 }
 
+function formatPaymentAccountLabel(line) {
+    const account = line.payment_account ?? line.paymentAccount;
+    const code = account?.code ?? '';
+    const name = account?.name ?? '';
+
+    if (code && name) {
+        return `${code} — ${name}`;
+    }
+
+    return code || name || 'Account';
+}
+
+function paymentBreakdownRows(payments) {
+    return (payments ?? [])
+        .filter((line) => parseFloat(line.amount ?? 0) > 0)
+        .map(
+            (line) => `
+        <div class="pos-total-row pos-small">
+            <div>${escapeHtml(formatPaymentAccountLabel(line))}</div>
+            <div class="pos-total-value">${formatMoneyTk(line.amount)}</div>
+        </div>`,
+        )
+        .join('');
+}
+
 export function hasRichTextContent(html) {
     if (!html) {
         return false;
@@ -386,6 +411,13 @@ export function buildSellPosPrintPayload(sell, options = {}) {
         };
     });
 
+    const payments = (sell.payments ?? []).map((line) => ({
+        id: line.id,
+        payment_account_id: line.payment_account_id,
+        amount: parseFloat(line.amount ?? 0),
+        payment_account: line.payment_account ?? line.paymentAccount ?? null,
+    }));
+
     return {
         options: {
             showHeader: options.showHeader ?? true,
@@ -419,6 +451,7 @@ export function buildSellPosPrintPayload(sell, options = {}) {
                 address: sell.customer?.address ?? '',
             },
             orderproduct: lineItems,
+            payments,
             totals: {
                 gross,
                 vat,
@@ -498,6 +531,9 @@ function renderPosInvoice(data) {
         </div>`
         : '';
 
+    const paymentRows = paymentBreakdownRows(order.payments);
+    const hasPaymentBreakdown = paymentRows.length > 0;
+
     const totalsRows = [
         totals.gross != null ? totalRow('Subtotal', totals.gross) : '',
         parseFloat(totals.lineDiscount ?? 0) > 0 ? totalRow('Line Discount', totals.lineDiscount) : '',
@@ -519,6 +555,14 @@ function renderPosInvoice(data) {
         <div class="pos-totals">
             <div class="pos-divider"></div>
             ${totalsRows}
+            ${
+                hasPaymentBreakdown
+                    ? `
+            <div class="pos-divider"></div>
+            <div class="pos-bold pos-small">Payment Accounts</div>
+            ${paymentRows}`
+                    : ''
+            }
         </div>`
         : '';
 

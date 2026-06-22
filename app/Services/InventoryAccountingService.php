@@ -65,8 +65,13 @@ class InventoryAccountingService
     /**
      * @param  array<int, array{payment_account_id: int, amount: float}>  $paymentLines
      */
-    public function postSale(Sell $sell, array $paymentLines, float $cogs): Transaction
-    {
+    public function postSale(
+        Sell $sell,
+        array $paymentLines,
+        float $cogs,
+        float $changeAmount = 0.0,
+        ?int $changeAccountId = null,
+    ): Transaction {
         $sell->loadMissing('customer:id,name');
 
         $salesBase = round(
@@ -81,6 +86,8 @@ class InventoryAccountingService
         $dueAmount = round(max(0, (float) $sell->net_amount - $paidAmount), 2);
         $invoice = $sell->invoice_number;
         $customerName = $sell->customer?->name ?? 'Customer';
+        $branchId = $sell->branch_id;
+        $changeAmount = round(max(0, $changeAmount), 2);
 
         $lines = [];
 
@@ -95,6 +102,16 @@ class InventoryAccountingService
                 (int) $paymentLine['payment_account_id'],
                 $lineAmount,
                 "Payment received — Sale {$invoice}",
+                $branchId,
+            );
+        }
+
+        if ($changeAmount > 0) {
+            $lines[] = $this->creditPaymentAccount(
+                $changeAccountId ?? SystemAccountService::id(SystemAccountKey::CashInHand, $branchId),
+                $changeAmount,
+                "Change given — Sale {$invoice}",
+                $branchId,
             );
         }
 

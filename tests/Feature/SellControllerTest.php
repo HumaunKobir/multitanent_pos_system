@@ -791,7 +791,9 @@ test('sale can be paid across multiple accounts with balanced accounting', funct
 
     $sell = Sell::query()->where('id', '>', $sellIdBefore)->first();
     expect($sell)->not->toBeNull();
-    expect((float) $sell->paid_amount)->toBe(100.0);
+
+    $netAmount = round((float) $sell->net_amount, 2);
+    expect((float) $sell->paid_amount)->toBe($netAmount);
     expect(SellPayment::query()->where('sell_id', $sell->id)->count())->toBe(2);
 
     $transaction = Transaction::query()
@@ -800,9 +802,16 @@ test('sale can be paid across multiple accounts with balanced accounting', funct
         ->first();
 
     $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
+    $changeAmount = round(100 - $netAmount, 2);
+    $cashLedgers = $ledgers->where('account_id', $cash->id);
 
-    expect(round($ledgers->where('account_id', $cash->id)->sum('debit'), 2))->toBe(60.0);
+    expect(round($cashLedgers->sum('debit'), 2))->toBe(60.0);
     expect(round($ledgers->where('account_id', $sslCommerz->id)->sum('debit'), 2))->toBe(40.0);
+
+    if ($changeAmount > 0) {
+        expect(round($cashLedgers->sum('credit'), 2))->toBe($changeAmount);
+    }
+
     expect(round($ledgers->sum('debit'), 2))->toBe(round($ledgers->sum('credit'), 2));
 });
 
@@ -843,7 +852,127 @@ test('overpayment stores effective paid amount for accounting', function () {
         ->first();
 
     $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
-    expect(round($ledgers->where('account_id', $cash->id)->sum('debit'), 2))->toBe($netAmount);
+    $changeAmount = 1000 - $netAmount;
+    $cashLedgers = $ledgers->where('account_id', $cash->id);
+
+    expect(round($cashLedgers->sum('debit'), 2))->toBe(1000.0);
+    expect(round($cashLedgers->sum('credit'), 2))->toBe($changeAmount);
+    expect(round($cashLedgers->sum('debit') - $cashLedgers->sum('credit'), 2))->toBe($netAmount);
+});
+
+test('overpayment via payment accounts stores effective paid amount and change', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+    $sellIdBefore = (int) (Sell::query()->max('id') ?? 0);
+
+    $response = $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '1000',
+            'payments' => [
+                ['payment_account_id' => $cash->id, 'amount' => 1000],
+            ],
+            'comment' => null,
+            'items' => [[
+                'product_id' => $product->id,
+                'variation_id' => null,
+                'unit_price' => '500',
+                'quantity' => '1',
+            ]],
+        ])
+        ->assertRedirect()
+        ->assertSessionDoesntHaveErrors();
+
+    $sell = Sell::query()->where('id', '>', $sellIdBefore)->first();
+    expect($sell)->not->toBeNull();
+
+    $netAmount = round((float) $sell->net_amount, 2);
+
+    expect((float) $sell->paid_amount)->toBe($netAmount);
+    $response->assertSessionHas('pos_change', 1000 - $netAmount);
+
+    $payments = SellPayment::query()->where('sell_id', $sell->id)->get();
+    expect($payments)->toHaveCount(1);
+    expect((float) $payments->first()->amount)->toBe(1000.0);
+
+    $transaction = Transaction::query()
+        ->where('source_type', Sell::class)
+        ->where('source_id', $sell->id)
+        ->first();
+
+    $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
+    $changeAmount = 1000 - $netAmount;
+    $cashLedgers = $ledgers->where('account_id', $cash->id);
+
+    expect(round($cashLedgers->sum('debit'), 2))->toBe(1000.0);
+    expect(round($cashLedgers->sum('credit'), 2))->toBe($changeAmount);
+    expect(round($cashLedgers->sum('debit') - $cashLedgers->sum('credit'), 2))->toBe($netAmount);
+});
+
+test('overpayment across multiple accounts records tendered receipts and change credit on cash', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    $sslCommerz = SystemAccountService::resolve(SystemAccountKey::SslCommerz, $user->branch_id);
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+    $sellIdBefore = (int) (Sell::query()->max('id') ?? 0);
+
+    $response = $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '1000',
+            'payments' => [
+                ['payment_account_id' => $cash->id, 'amount' => 600],
+                ['payment_account_id' => $sslCommerz->id, 'amount' => 400],
+            ],
+            'comment' => null,
+            'items' => [[
+                'product_id' => $product->id,
+                'variation_id' => null,
+                'unit_price' => '500',
+                'quantity' => '1',
+            ]],
+        ])
+        ->assertRedirect()
+        ->assertSessionDoesntHaveErrors();
+
+    $sell = Sell::query()->where('id', '>', $sellIdBefore)->first();
+    expect($sell)->not->toBeNull();
+
+    $netAmount = round((float) $sell->net_amount, 2);
+
+    expect((float) $sell->paid_amount)->toBe($netAmount);
+    $response->assertSessionHas('pos_change', 1000 - $netAmount);
+
+    $payments = SellPayment::query()->where('sell_id', $sell->id)->orderBy('id')->get();
+    expect($payments)->toHaveCount(2);
+    expect(round((float) $payments[0]->amount, 2))->toBe(600.0);
+    expect(round((float) $payments[1]->amount, 2))->toBe(400.0);
+
+    $transaction = Transaction::query()
+        ->where('source_type', Sell::class)
+        ->where('source_id', $sell->id)
+        ->first();
+
+    $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
+    $changeAmount = 1000 - $netAmount;
+    $cashLedgers = $ledgers->where('account_id', $cash->id);
+
+    expect(round($cashLedgers->sum('debit'), 2))->toBe(600.0);
+    expect(round($cashLedgers->sum('credit'), 2))->toBe($changeAmount);
+    expect(round($cashLedgers->sum('debit') - $cashLedgers->sum('credit'), 2))->toBe(round(600 - $changeAmount, 2));
+    expect(round($ledgers->where('account_id', $sslCommerz->id)->sum('debit'), 2))->toBe(400.0);
+    expect(round($ledgers->where('account_id', $sslCommerz->id)->sum('credit'), 2))->toBe(0.0);
 });
 
 test('store requires at least one item', function () {
@@ -934,6 +1063,41 @@ test('authenticated user can view a sale', function () {
         ->get("/inventory/sell/{$sell->id}")
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page->component('admin/inventory/sell/show')->has('sell'));
+});
+
+test('sell show includes payment accounts for pos print', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    $sslCommerz = SystemAccountService::resolve(SystemAccountKey::SslCommerz, $user->branch_id);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => null,
+        'paid_amount' => 100,
+    ]);
+
+    SellPayment::query()->create([
+        'sell_id' => $sell->id,
+        'payment_account_id' => $cash->id,
+        'amount' => 60,
+    ]);
+    SellPayment::query()->create([
+        'sell_id' => $sell->id,
+        'payment_account_id' => $sslCommerz->id,
+        'amount' => 40,
+    ]);
+
+    $this->actingAs($user)
+        ->get("/inventory/sell/{$sell->id}")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/sell/show')
+            ->has('sell.payments', 2)
+            ->where('sell.payments.0.payment_account_id', $cash->id)
+            ->where('sell.payments.0.payment_account.code', $cash->code)
+            ->where('sell.payments.0.payment_account.name', $cash->name)
+            ->where('sell.payments.1.payment_account_id', $sslCommerz->id)
+            ->where('sell.payments.1.payment_account.code', $sslCommerz->code)
+            ->where('sell.payments.1.payment_account.name', $sslCommerz->name));
 });
 
 test('branch user can open actions for their own branch sale', function () {

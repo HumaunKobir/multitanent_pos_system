@@ -875,7 +875,7 @@ export default function SellCreate({
         : 0;
     const netAmount = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
 
-    const { totalPaid, dueAmount } = computeSplitSalePayment(form.data.payments, netAmount);
+    const { totalPaid, dueAmount, changeAmount } = computeSplitSalePayment(form.data.payments, netAmount);
     const dueCustomerError = dueSaleCustomerError(form.data.customer_id, defaultCustomer?.id ?? null, dueAmount);
     const hasOverStock = items.some((item) => parseFloat(item.quantity || 0) > parseFloat(item.available_stock ?? 0));
     const itemCount = items.reduce((sum, item) => sum + parseFloat(item.quantity || 0), 0);
@@ -1127,15 +1127,19 @@ export default function SellCreate({
                                 </div>
                                 <div className="px-1.5 text-center lg:px-2">
                                     <p className="text-[10px] font-semibold uppercase tracking-wider text-white/60 lg:text-xs">
-                                        Due Amount
+                                        {changeAmount > 0 ? 'Change' : 'Due Amount'}
                                     </p>
                                     <p
                                         className={cn(
                                             'mt-1 text-base font-bold tabular-nums lg:text-lg 2xl:text-xl',
-                                            dueAmount > 0 ? 'text-red-300' : 'text-white/50',
+                                            changeAmount > 0
+                                                ? 'text-amber-300'
+                                                : dueAmount > 0
+                                                  ? 'text-red-300'
+                                                  : 'text-white/50',
                                         )}
                                     >
-                                        ৳{dueAmount.toFixed(2)}
+                                        ৳{(changeAmount > 0 ? changeAmount : dueAmount).toFixed(2)}
                                     </p>
                                 </div>
                             </div>

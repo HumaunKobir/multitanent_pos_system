@@ -116,7 +116,13 @@ class ProductSearchController extends Controller
                     ])
                     ->values(),
             ];
-        }));
+        })->sortByDesc(function (array $p) {
+            if ($p['stock'] > 0) {
+                return 1;
+            }
+
+            return collect($p['variations'])->contains(fn ($v) => $v['stock'] > 0) ? 1 : 0;
+        })->values());
     }
 
     public function forDistribution(Request $request): JsonResponse

@@ -509,7 +509,11 @@ function PosProductPicker({ categories = [], onAdd }) {
                             product.has_variations
                                 ? (product.variations ?? []).map((variation) => ({ product, variation }))
                                 : [{ product, variation: null }],
-                        ).map(({ product, variation }) => {
+                        ).sort((a, b) => {
+                            const stockA = a.variation ? parseFloat(a.variation.stock ?? 0) : parseFloat(a.product.stock ?? 0);
+                            const stockB = b.variation ? parseFloat(b.variation.stock ?? 0) : parseFloat(b.product.stock ?? 0);
+                            return (stockB > 0 ? 1 : 0) - (stockA > 0 ? 1 : 0);
+                        }).map(({ product, variation }) => {
                             const isVariant = variation !== null;
                             const itemKey = isVariant ? `v-${variation.id}` : `p-${product.id}`;
                             const stock = isVariant ? parseFloat(variation.stock ?? 0) : parseFloat(product.stock ?? 0);

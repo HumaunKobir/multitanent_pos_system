@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\Enums\StockDistributionStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\StockDistribution;
@@ -32,7 +33,7 @@ class StockDistributionController extends Controller
         $user = Auth::user();
 
         $distributions = $this->distributionQueryForUser($user)
-            ->with('toBranch:id,name')
+            ->with(['toBranch:id,name', 'receivedBy:id,name'])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('serial', 'like', "%{$s}%")
                     ->orWhere('comment', 'like', "%{$s}%")
@@ -50,6 +51,32 @@ class StockDistributionController extends Controller
         ]);
     }
 
+    public function receivedIndex(Request $request): Response
+    {
+        $this->authorize('inventory.stock-distribution.receive');
+        $this->authorizeBranchReceiverOnly();
+
+        $user = Auth::user();
+
+        $distributions = StockDistribution::query()
+            ->where('to_branch_id', $user?->branch_id)
+            ->with(['fromBranch:id,name', 'receivedBy:id,name'])
+            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
+                $q->where('serial', 'like', "%{$s}%")
+                    ->orWhere('comment', 'like', "%{$s}%");
+            }))
+            ->latest()
+            ->paginate(20)
+            ->withQueryString();
+
+        return Inertia::render('admin/inventory/stock-distribution/index', [
+            'distributions' => $distributions,
+            'filters' => $request->only('search'),
+            'canManage' => false,
+            'isReceiverView' => true,
+        ]);
+    }
+
     public function create(): Response
     {
         $this->authorizeMainBranchManager();
@@ -57,11 +84,7 @@ class StockDistributionController extends Controller
 
         return Inertia::render('admin/inventory/stock-distribution/create', [
             'today' => now()->format('Y-m-d'),
-            'branches' => Branch::query()
-                ->operating()
-                ->active()
-                ->orderBy('name')
-                ->get(['id', 'name']),
+            'branches' => $this->operatingBranches(),
         ]);
     }
 
@@ -75,11 +98,7 @@ class StockDistributionController extends Controller
 
         try {
             DB::transaction(function () use ($data, $branchId) {
-                $distribution = $this->persistDistribution($data, $branchId);
-                $this->accounting->postStockDistribution(
-                    $distribution,
-                    $this->costService->costForStockDistribution($distribution),
-                );
+                $this->distribution->createPendingDistribution($data, $branchId);
             });
         } catch (\Throwable $e) {
             return back()
@@ -92,46 +111,75 @@ class StockDistributionController extends Controller
         }
 
         return redirect()->route('inventory.stock-distribution.index')
-            ->with('success', 'Stock distributed successfully.');
+            ->with('success', 'Stock distribution created and pending branch receipt.');
     }
 
     public function show(StockDistribution $stockDistribution): Response
     {
-        $this->authorize('inventory.stock-distribution.view');
-        $this->authorizeAdminPanelOnly();
+        $user = Auth::user();
+
+        if ($user?->usesBranchPanel()) {
+            $this->authorize('inventory.stock-distribution.receive');
+        } else {
+            $this->authorize('inventory.stock-distribution.view');
+        }
+
         $this->authorizeDistributionAccess($stockDistribution);
 
-        $stockDistribution->load(['products.product', 'products.variation', 'toBranch:id,name', 'fromBranch:id,name']);
+        $stockDistribution->load([
+            'products.product',
+            'products.variation',
+            'toBranch:id,name',
+            'fromBranch:id,name',
+            'receivedBy:id,name',
+            'purchase:id,serial',
+        ]);
+
+        $user = Auth::user();
 
         return Inertia::render('admin/inventory/stock-distribution/show', [
-            'distribution' => [
-                'id' => $stockDistribution->id,
-                'invoice_number' => $stockDistribution->invoice_number,
-                'date' => optional($stockDistribution->date)->format('Y-m-d'),
-                'comment' => $stockDistribution->comment,
-                'from_branch' => $stockDistribution->fromBranch,
-                'to_branch' => $stockDistribution->toBranch,
-                'products' => $stockDistribution->products->map(function ($line) {
-                    $qty = (float) $line->quantity;
-                    $mainStockBefore = $line->main_stock_before !== null
-                        ? (float) $line->main_stock_before
-                        : $this->distribution->mainWarehouseStock(
-                            (int) $line->product_id,
-                            $line->variation_id ? (int) $line->variation_id : null,
-                        ) + $qty;
-
-                    return [
-                        'id' => $line->id,
-                        'quantity' => $qty,
-                        'main_stock_before' => $mainStockBefore,
-                        'main_stock_after' => $mainStockBefore - $qty,
-                        'product' => $line->product,
-                        'variation' => $line->variation,
-                    ];
-                })->values(),
-            ],
-            'canManage' => $this->canManageDistributions(Auth::user()),
+            'distribution' => $this->formatDistribution($stockDistribution),
+            'canManage' => $this->canManageDistributions($user),
+            'canReceive' => $this->canReceiveDistribution($user, $stockDistribution),
         ]);
+    }
+
+    public function receive(StockDistribution $stockDistribution): RedirectResponse
+    {
+        $this->authorize('inventory.stock-distribution.receive');
+        $this->authorizeBranchReceiverOnly();
+        $this->authorizeDistributionAccess($stockDistribution);
+
+        abort_unless($stockDistribution->isPending(), 422, 'This distribution has already been received.');
+        abort_unless(
+            (int) $stockDistribution->to_branch_id === (int) Auth::user()?->branch_id,
+            403,
+        );
+
+        try {
+            DB::transaction(function () use ($stockDistribution) {
+                $this->distribution->receiveDistribution($stockDistribution);
+                $stockDistribution->update([
+                    'status' => StockDistributionStatus::Received,
+                    'received_at' => now(),
+                    'received_by_user_id' => Auth::id(),
+                ]);
+
+                $stockDistribution->load('products');
+                $this->accounting->postStockDistribution(
+                    $stockDistribution,
+                    $this->costService->costForStockDistribution($stockDistribution),
+                );
+            });
+        } catch (\Throwable $e) {
+            return back()->with('error', $e instanceof \RuntimeException
+                ? $e->getMessage()
+                : 'Unable to receive stock.');
+        }
+
+        return redirect()
+            ->route('inventory.stock-distribution.received')
+            ->with('success', 'Stock received successfully.');
     }
 
     public function edit(StockDistribution $stockDistribution): Response
@@ -139,16 +187,13 @@ class StockDistributionController extends Controller
         $this->authorizeMainBranchManager();
         $this->authorize('inventory.stock-distribution.update');
         $this->authorizeDistributionAccess($stockDistribution, write: true);
+        abort_unless($stockDistribution->isPending(), 403, 'Received distributions cannot be edited.');
 
         $stockDistribution->load(['products.product', 'products.variation']);
 
         return Inertia::render('admin/inventory/stock-distribution/edit', [
             'today' => now()->format('Y-m-d'),
-            'branches' => Branch::query()
-                ->operating()
-                ->active()
-                ->orderBy('name')
-                ->get(['id', 'name']),
+            'branches' => $this->operatingBranches(),
             'distribution' => [
                 'id' => $stockDistribution->id,
                 'invoice_number' => $stockDistribution->invoice_number,
@@ -181,13 +226,13 @@ class StockDistributionController extends Controller
         $this->authorizeMainBranchManager();
         $this->authorize('inventory.stock-distribution.update');
         $this->authorizeDistributionAccess($stockDistribution, write: true);
+        abort_unless($stockDistribution->isPending(), 403, 'Received distributions cannot be updated.');
 
         $data = $this->validatedDistributionData($request);
         $branchId = Auth::user()?->branch_id;
 
         try {
             DB::transaction(function () use ($stockDistribution, $data, $branchId) {
-                $this->accounting->reverseFor($stockDistribution);
                 $stockDistribution->load(['products']);
                 $this->distribution->rollbackDistribution($stockDistribution);
                 $stockDistribution->products()->delete();
@@ -198,15 +243,9 @@ class StockDistributionController extends Controller
                     'comment' => $data['comment'] ?? null,
                 ]);
 
-                foreach ($this->buildProductLines($data, $branchId) as $line) {
+                foreach ($this->distribution->buildPendingProductLines($data, $branchId) as $line) {
                     $stockDistribution->products()->create($line);
                 }
-
-                $stockDistribution->load('products');
-                $this->accounting->postStockDistribution(
-                    $stockDistribution,
-                    $this->costService->costForStockDistribution($stockDistribution),
-                );
             });
         } catch (\Throwable $e) {
             return back()
@@ -227,12 +266,12 @@ class StockDistributionController extends Controller
         $this->authorizeMainBranchManager();
         $this->authorize('inventory.stock-distribution.delete');
         $this->authorizeDistributionAccess($stockDistribution, write: true);
+        abort_unless($stockDistribution->isPending(), 403, 'Received distributions cannot be deleted.');
 
         $stockDistribution->load(['products']);
 
         try {
             DB::transaction(function () use ($stockDistribution) {
-                $this->accounting->reverseFor($stockDistribution);
                 $this->distribution->rollbackDistribution($stockDistribution);
                 $stockDistribution->products()->delete();
                 $stockDistribution->delete();
@@ -245,6 +284,47 @@ class StockDistributionController extends Controller
 
         return redirect()->route('inventory.stock-distribution.index')
             ->with('success', 'Distribution deleted successfully.');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function formatDistribution(StockDistribution $stockDistribution): array
+    {
+        return [
+            'id' => $stockDistribution->id,
+            'invoice_number' => $stockDistribution->invoice_number,
+            'date' => optional($stockDistribution->date)->format('Y-m-d'),
+            'comment' => $stockDistribution->comment,
+            'status' => $stockDistribution->status?->value,
+            'status_label' => $stockDistribution->status?->label(),
+            'received_at' => optional($stockDistribution->received_at)?->toIso8601String(),
+            'received_by' => $stockDistribution->receivedBy,
+            'purchase' => $stockDistribution->purchase ? [
+                'id' => $stockDistribution->purchase->id,
+                'invoice_number' => $stockDistribution->purchase->invoice_number,
+            ] : null,
+            'from_branch' => $stockDistribution->fromBranch,
+            'to_branch' => $stockDistribution->toBranch,
+            'products' => $stockDistribution->products->map(function ($line) {
+                $qty = (float) $line->quantity;
+                $mainStockBefore = $line->main_stock_before !== null
+                    ? (float) $line->main_stock_before
+                    : $this->distribution->mainWarehouseStock(
+                        (int) $line->product_id,
+                        $line->variation_id ? (int) $line->variation_id : null,
+                    ) + $qty;
+
+                return [
+                    'id' => $line->id,
+                    'quantity' => $qty,
+                    'main_stock_before' => $mainStockBefore,
+                    'main_stock_after' => $mainStockBefore - $qty,
+                    'product' => $line->product,
+                    'variation' => $line->variation,
+                ];
+            })->values(),
+        ];
     }
 
     /**
@@ -266,72 +346,16 @@ class StockDistributionController extends Controller
     }
 
     /**
-     * @param  array<string, mixed>  $data
+     * @return list<array{id: int, name: string}>
      */
-    private function persistDistribution(array $data, ?int $branchId): StockDistribution
+    private function operatingBranches(): array
     {
-        $distribution = StockDistribution::create([
-            'branch_id' => $branchId,
-            'from_branch_id' => Branch::resolveMainBranchId(),
-            'to_branch_id' => (int) $data['to_branch_id'],
-            'date' => $data['date'],
-            'comment' => $data['comment'] ?? null,
-            'serial' => 'INVT'.str_pad((string) (StockDistribution::max('id') + 1), 8, '0', STR_PAD_LEFT),
-        ]);
-
-        foreach ($this->buildProductLines($data, $branchId) as $line) {
-            $distribution->products()->create($line);
-        }
-
-        return $distribution->load('products');
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     * @return list<array<string, mixed>>
-     */
-    private function buildProductLines(array $data, ?int $branchId): array
-    {
-        $lines = [];
-
-        foreach ($data['items'] as $item) {
-            $qty = (float) $item['quantity'];
-
-            if ($qty <= 0) {
-                continue;
-            }
-
-            $productId = (int) $item['product_id'];
-            $variationId = $item['variation_id'] ? (int) $item['variation_id'] : null;
-            $mainStockBefore = $this->distribution->mainWarehouseStock($productId, $variationId);
-
-            if ($mainStockBefore < $qty) {
-                throw new \RuntimeException('Quantity exceeds available main branch stock.');
-            }
-
-            $batchMaps = $this->distribution->distributeLine(
-                (int) $data['to_branch_id'],
-                $productId,
-                $variationId,
-                $qty,
-            );
-
-            $lines[] = [
-                'branch_id' => $branchId,
-                'product_id' => $productId,
-                'variation_id' => $variationId,
-                'quantity' => $qty,
-                'main_stock_before' => $mainStockBefore,
-                'source_batches' => $batchMaps['source_batches'],
-                'destination_batches' => $batchMaps['destination_batches'],
-            ];
-        }
-
-        if ($lines === []) {
-            throw new \RuntimeException('At least one line with quantity greater than zero is required.');
-        }
-
-        return $lines;
+        return Branch::query()
+            ->operating()
+            ->active()
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->all();
     }
 
     private function distributionQueryForUser($user)
@@ -348,6 +372,15 @@ class StockDistributionController extends Controller
         return $user !== null && $user->usesAdminPanel();
     }
 
+    private function canReceiveDistribution($user, StockDistribution $distribution): bool
+    {
+        return $user !== null
+            && $user->usesBranchPanel()
+            && $user->can('inventory.stock-distribution.receive')
+            && $distribution->isPending()
+            && (int) $distribution->to_branch_id === (int) $user->branch_id;
+    }
+
     private function authorizeMainBranchManager(): void
     {
         abort_unless($this->canManageDistributions(Auth::user()), 403);
@@ -358,8 +391,27 @@ class StockDistributionController extends Controller
         abort_unless(Auth::user()?->usesAdminPanel(), 404);
     }
 
+    private function authorizeBranchReceiverOnly(): void
+    {
+        abort_unless(Auth::user()?->usesBranchPanel(), 404);
+    }
+
     private function authorizeDistributionAccess(StockDistribution $distribution, bool $write = false): void
     {
-        abort_unless(Auth::user()?->usesAdminPanel(), 404);
+        $user = Auth::user();
+
+        if ($user?->usesAdminPanel()) {
+            return;
+        }
+
+        if ($user?->usesBranchPanel()
+            && (int) $distribution->to_branch_id === (int) $user->branch_id
+            && $user->can('inventory.stock-distribution.receive')) {
+            abort_if($write, 403);
+
+            return;
+        }
+
+        abort(404);
     }
 }

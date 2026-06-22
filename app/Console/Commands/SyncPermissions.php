@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 
 class SyncPermissions extends Command
 {
@@ -42,6 +43,8 @@ class SyncPermissions extends Command
 
         $this->newLine();
         $this->info("Sync done. {$created} created, {$existing} already existed.");
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         // ── Cleanup orphaned permissions ──────────────────────────────────────
         if ($this->option('cleanup')) {

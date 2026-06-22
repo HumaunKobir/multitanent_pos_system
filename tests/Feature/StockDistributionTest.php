@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\ProductLogType;
+use App\Enums\StockDistributionStatus;
 use App\Enums\SystemAccountKey;
 use App\Models\Batch;
 use App\Models\Branch;
@@ -8,6 +9,7 @@ use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\ProductInOutLog;
 use App\Models\StockDistribution;
+use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\EcommerceBranchService;
@@ -45,6 +47,15 @@ function superAdminUser(array $permissions = []): User
         Permission::findOrCreate($permission, 'web');
         $user->givePermissionTo($permission);
     }
+
+    return $user;
+}
+
+function branchReceiverUser(int $branchId): User
+{
+    Permission::findOrCreate('inventory.stock-distribution.receive', 'web');
+    $user = User::factory()->create(['branch_id' => $branchId]);
+    $user->givePermissionTo('inventory.stock-distribution.receive');
 
     return $user;
 }
@@ -103,6 +114,9 @@ test('super admin can distribute stock to operating branch', function () {
         'purchase_price' => 100,
     ]);
 
+    $distributionOutBefore = ProductInOutLog::query()->where('type', ProductLogType::Distribution_Out->value)->count();
+    $distributionInBefore = ProductInOutLog::query()->where('type', ProductLogType::Distribution_In->value)->count();
+
     $response = $this->actingAs($user)
         ->post('/inventory/stock-distribution', [
             'to_branch_id' => $targetBranch->id,
@@ -124,12 +138,36 @@ test('super admin can distribute stock to operating branch', function () {
 
     expect($distribution->from_branch_id)->toBe(Branch::resolveMainBranchId());
     expect($distribution->to_branch_id)->toBe($targetBranch->id);
+    expect($distribution->status)->toBe(StockDistributionStatus::Pending);
     expect($distribution->products)->toHaveCount(1);
     expect((float) $distribution->products->first()->quantity)->toBe(8.0);
     expect((float) $distribution->products->first()->main_stock_before)->toBe(25.0);
 
     $mainBatch->refresh();
     expect((float) $mainBatch->available)->toBe(17.0);
+
+    expect(Batch::query()
+        ->where('product_id', $product->id)
+        ->where('branch_id', $targetBranch->id)
+        ->exists())->toBeFalse();
+
+    expect(ProductInOutLog::query()->where('type', ProductLogType::Distribution_Out->value)->count())
+        ->toBeGreaterThan($distributionOutBefore);
+    expect(ProductInOutLog::query()->where('type', ProductLogType::Distribution_In->value)->count())
+        ->toBe($distributionInBefore);
+
+    expect(Transaction::query()
+        ->where('source_type', StockDistribution::class)
+        ->where('source_id', $distribution->id)
+        ->exists())->toBeFalse();
+
+    $this->actingAs(branchReceiverUser($targetBranch->id))
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
+
+    $distribution->refresh();
+    expect($distribution->status)->toBe(StockDistributionStatus::Received);
+    expect($distribution->received_by_user_id)->not->toBeNull();
 
     $destinationBatch = Batch::query()
         ->where('product_id', $product->id)
@@ -139,8 +177,8 @@ test('super admin can distribute stock to operating branch', function () {
     expect($destinationBatch)->not->toBeNull();
     expect((float) $destinationBatch->available)->toBe(8.0);
 
-    expect(ProductInOutLog::query()->where('type', ProductLogType::Distribution_Out->value)->count())->toBeGreaterThan(0);
-    expect(ProductInOutLog::query()->where('type', ProductLogType::Distribution_In->value)->count())->toBeGreaterThan(0);
+    expect(ProductInOutLog::query()->where('type', ProductLogType::Distribution_In->value)->count())
+        ->toBeGreaterThan($distributionInBefore);
 
     expect(Transaction::query()
         ->where('source_type', StockDistribution::class)
@@ -181,6 +219,10 @@ test('stock distribution posts intercompany inventory journal entries', function
 
     $distribution = StockDistribution::query()->latest('id')->first();
     expect($distribution)->not->toBeNull();
+
+    $this->actingAs(branchReceiverUser($targetBranch->id))
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
 
     $transaction = Transaction::query()
         ->where('source_type', StockDistribution::class)
@@ -302,12 +344,12 @@ test('main branch user can update and delete a distribution', function () {
     $distribution->refresh();
     expect($distribution->to_branch_id)->toBe($otherBranch->id);
     expect((float) $distribution->products->first()->quantity)->toBe(3.0);
+    expect($distribution->status)->toBe(StockDistributionStatus::Pending);
 
-    $destBatch = Batch::query()
+    expect(Batch::query()
         ->where('product_id', $product->id)
         ->where('branch_id', $otherBranch->id)
-        ->first();
-    expect((float) $destBatch->available)->toBe(3.0);
+        ->exists())->toBeFalse();
 
     $this->actingAs($user)
         ->delete("/inventory/stock-distribution/{$distribution->id}")
@@ -351,6 +393,12 @@ test('main branch user can distribute legacy null branch warehouse stock', funct
 
     $mainBatch->refresh();
     expect((float) $mainBatch->available)->toBe(8.0);
+
+    $distribution = StockDistribution::query()->latest('id')->first();
+
+    $this->actingAs(branchReceiverUser($targetBranch->id))
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
 
     $destinationBatch = Batch::query()
         ->where('product_id', $product->id)
@@ -401,6 +449,12 @@ test('branch user can sell stock after distribution', function () {
             ],
         ])
         ->assertRedirect();
+
+    $distribution = StockDistribution::query()->latest('id')->first();
+
+    $this->actingAs(branchReceiverUser($targetBranch->id))
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
 
     $sellResponse = $this->actingAs($branchUser)
         ->getJson('/api/products/for-sell?search='.urlencode($branchProduct->name));
@@ -468,10 +522,14 @@ test('distribute stock menu is visible only for super admin', function () {
         'branch_id' => $operatingBranch->id,
         'email' => 'branch-nav-'.uniqid().'@example.com',
     ]);
-    Permission::findOrCreate('inventory.stock-distribution.view', 'web');
+    Permission::findOrCreate('inventory.stock-distribution.receive', 'web');
     Permission::findOrCreate('inventory.purchase.view', 'web');
     Permission::findOrCreate('inventory.sell.view', 'web');
-    $branchUser->givePermissionTo(['inventory.stock-distribution.view', 'inventory.purchase.view', 'inventory.sell.view']);
+    $branchUser->givePermissionTo([
+        'inventory.stock-distribution.receive',
+        'inventory.purchase.view',
+        'inventory.sell.view',
+    ]);
 
     $adminPurchases = collect(app(AdminNavigation::class)->build($admin))
         ->firstWhere('title', 'Purchases');
@@ -484,7 +542,7 @@ test('distribute stock menu is visible only for super admin', function () {
 
     expect($adminChildren)->toContain('Distribute Stock');
     expect($branchChildren)->not->toContain('Distribute Stock');
-    expect($branchChildren)->not->toContain('Received Stock');
+    expect($branchChildren)->toContain('Received Stock');
 });
 
 test('distribution maps stock to destination branch product copy', function () {
@@ -520,6 +578,12 @@ test('distribution maps stock to destination branch product copy', function () {
         ])
         ->assertRedirect();
 
+    $distribution = StockDistribution::query()->latest('id')->first();
+
+    $this->actingAs(branchReceiverUser($targetBranch->id))
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
+
     $destinationBatch = Batch::query()
         ->where('product_id', $branchProduct->id)
         ->where('branch_id', $targetBranch->id)
@@ -554,9 +618,6 @@ test('stock distribution create includes ecommerce branch as destination', funct
 
     EcommerceBranchService::resetResolvedId();
 
-    expect($ecommerceBranch->id)->not->toBe($mainBranch->id);
-    expect(Branch::resolveMainBranchId())->toBe($mainBranch->id);
-
     $user = superAdminUser(['inventory.stock-distribution.create']);
 
     $this->actingAs($user)
@@ -565,6 +626,21 @@ test('stock distribution create includes ecommerce branch as destination', funct
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/inventory/stock-distribution/create')
             ->where('branches', fn ($branches) => collect($branches)->pluck('id')->contains($ecommerceBranch->id)));
+});
+
+test('branch user can view received stock index', function () {
+    $this->artisan('permissions:sync');
+    $this->withoutVite();
+
+    $targetBranch = Branch::factory()->create();
+    $user = branchReceiverUser($targetBranch->id);
+
+    $this->actingAs($user)
+        ->get('/inventory/stock-distribution/received')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/stock-distribution/index')
+            ->where('isReceiverView', true));
 });
 
 test('super admin can distribute stock to ecommerce branch', function () {
@@ -616,6 +692,12 @@ test('super admin can distribute stock to ecommerce branch', function () {
     $response->assertRedirect(route('inventory.stock-distribution.index'))
         ->assertSessionHasNoErrors();
 
+    $distribution = StockDistribution::query()->latest('id')->first();
+
+    $this->actingAs(branchReceiverUser($ecommerceBranch->id))
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
+
     $destinationBatch = Batch::query()
         ->where('product_id', $ecommerceProduct->id)
         ->where('branch_id', $ecommerceBranch->id)
@@ -623,4 +705,54 @@ test('super admin can distribute stock to ecommerce branch', function () {
 
     expect($destinationBatch)->not->toBeNull();
     expect((float) $destinationBatch->available)->toBe(6.0);
+});
+
+test('purchase can create pending stock distribution for branch', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = Branch::resolveMainBranchId();
+    $user = mainBranchUser(['inventory.purchase.create', 'inventory.stock-distribution.create']);
+    $targetBranch = Branch::factory()->create();
+    $supplier = Supplier::factory()->create(['branch_id' => $mainBranchId]);
+    $product = Product::factory()->create(['branch_id' => $mainBranchId]);
+
+    $cash = seedAccountingAccounts(branchId: $mainBranchId);
+
+    $this->actingAs($user)
+        ->post('/inventory/purchase', [
+            'supplier_id' => $supplier->id,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '500',
+            'payment_account_id' => $cash->id,
+            'comment' => 'Purchase with distribution',
+            'distribute_to_branch_id' => $targetBranch->id,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '100',
+                    'quantity' => '5',
+                    'free_quantity' => '0',
+                    'distribute_quantity' => '3',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase.index'));
+
+    $distribution = StockDistribution::query()->latest('id')->first();
+
+    expect($distribution)->not->toBeNull();
+    expect($distribution->status)->toBe(StockDistributionStatus::Pending);
+    expect($distribution->to_branch_id)->toBe($targetBranch->id);
+    expect($distribution->purchase_id)->not->toBeNull();
+    expect((float) $distribution->products->first()->quantity)->toBe(3.0);
+
+    $mainBatch = Batch::query()
+        ->where('product_id', $product->id)
+        ->where('branch_id', $mainBranchId)
+        ->first();
+
+    expect((float) $mainBatch->available)->toBe(2.0);
 });

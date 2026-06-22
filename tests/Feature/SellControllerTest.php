@@ -13,6 +13,7 @@ use App\Models\Product;
 use App\Models\Sell;
 use App\Models\SellPayment;
 use App\Models\SellProduct;
+use App\Models\StockDistribution;
 use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\User;
@@ -445,6 +446,14 @@ test('purchase stores stock in main warehouse until manually distributed', funct
             ],
         ])
         ->assertRedirect();
+
+    $distribution = StockDistribution::query()->latest('id')->first();
+    Permission::findOrCreate('inventory.stock-distribution.receive', 'web');
+    $branchUser->givePermissionTo('inventory.stock-distribution.receive');
+
+    $this->actingAs($branchUser)
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
 
     $sellResponse = $this->actingAs($branchUser)
         ->getJson('/api/products/for-sell?search='.urlencode($product->name));

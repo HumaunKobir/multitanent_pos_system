@@ -3,6 +3,7 @@
 namespace App\Support;
 
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\PermissionRegistrar;
 
 class PermissionCatalog
 {
@@ -32,5 +33,7 @@ class PermissionCatalog
                 ['name' => $name, 'guard_name' => 'web'],
             );
         }
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
 }

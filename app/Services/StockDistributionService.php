@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\StockDistributionStatus;
 use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Product;
@@ -12,6 +13,77 @@ use App\Models\StockDistributionProduct;
 class StockDistributionService
 {
     public function __construct(private InventoryStockService $stock) {}
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    public function createPendingDistribution(array $data, ?int $branchId, ?int $purchaseId = null): StockDistribution
+    {
+        $distribution = StockDistribution::create([
+            'branch_id' => $branchId,
+            'from_branch_id' => Branch::resolveMainBranchId(),
+            'to_branch_id' => (int) $data['to_branch_id'],
+            'date' => $data['date'],
+            'comment' => $data['comment'] ?? null,
+            'purchase_id' => $purchaseId,
+            'status' => StockDistributionStatus::Pending,
+            'serial' => 'INVT'.str_pad((string) (StockDistribution::max('id') + 1), 8, '0', STR_PAD_LEFT),
+        ]);
+
+        foreach ($this->buildPendingProductLines($data, $branchId) as $line) {
+            $distribution->products()->create($line);
+        }
+
+        return $distribution->load('products');
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return list<array<string, mixed>>
+     */
+    public function buildPendingProductLines(array $data, ?int $branchId): array
+    {
+        $lines = [];
+
+        foreach ($data['items'] as $item) {
+            $qty = (float) $item['quantity'];
+
+            if ($qty <= 0) {
+                continue;
+            }
+
+            $productId = (int) $item['product_id'];
+            $variationId = $item['variation_id'] ? (int) $item['variation_id'] : null;
+            $mainStockBefore = $this->mainWarehouseStock($productId, $variationId);
+
+            if ($mainStockBefore < $qty) {
+                throw new \RuntimeException('Quantity exceeds available main branch stock.');
+            }
+
+            $batchMaps = $this->dispatchLine(
+                (int) $data['to_branch_id'],
+                $productId,
+                $variationId,
+                $qty,
+            );
+
+            $lines[] = [
+                'branch_id' => $branchId,
+                'product_id' => $productId,
+                'variation_id' => $variationId,
+                'quantity' => $qty,
+                'main_stock_before' => $mainStockBefore,
+                'source_batches' => $batchMaps['source_batches'],
+                'destination_batches' => $batchMaps['destination_batches'],
+            ];
+        }
+
+        if ($lines === []) {
+            throw new \RuntimeException('At least one line with quantity greater than zero is required.');
+        }
+
+        return $lines;
+    }
 
     public function mainWarehouseStock(int $productId, ?int $variationId): float
     {
@@ -32,19 +104,19 @@ class StockDistributionService
     }
 
     /**
+     * Reserve stock at main branch for a pending distribution.
+     *
      * @return array{source_batches: array<int|string, float>, destination_batches: array<int|string, float>}
      */
-    public function distributeLine(int $toBranchId, int $productId, ?int $variationId, float $qty): array
+    public function dispatchLine(int $toBranchId, int $productId, ?int $variationId, float $qty): array
     {
         $fromBranchId = Branch::resolveMainBranchId();
-        $destinationProduct = $this->resolveDestinationProduct($productId, $toBranchId);
 
         if ($variationId) {
-            return $this->distributeVariation(
+            return $this->dispatchVariation(
                 $fromBranchId,
                 $toBranchId,
                 $productId,
-                $destinationProduct->id,
                 $variationId,
                 $qty,
             );
@@ -57,13 +129,44 @@ class StockDistributionService
             fn (Batch $batch, float $deductQty) => $batch->distributionOutStock($deductQty)
         );
 
-        $sourceBatches = Batch::whereIn('id', array_keys($sourceBatchMap))
+        return [
+            'source_batches' => $sourceBatchMap,
+            'destination_batches' => [],
+        ];
+    }
+
+    /**
+     * Complete a pending distribution line at the destination branch.
+     *
+     * @return array{destination_batches: array<int|string, float>}
+     */
+    public function receiveLine(StockDistributionProduct $line, int $toBranchId): array
+    {
+        $qty = (float) $line->quantity;
+        $productId = (int) $line->product_id;
+        $variationId = $line->variation_id ? (int) $line->variation_id : null;
+        $destinationProduct = $this->resolveDestinationProduct($productId, $toBranchId);
+
+        if ($variationId) {
+            return [
+                'destination_batches' => $this->receiveVariation(
+                    $toBranchId,
+                    $productId,
+                    $destinationProduct->id,
+                    $variationId,
+                    $qty,
+                ),
+            ];
+        }
+
+        $sourceBatches = Batch::query()
+            ->whereIn('id', array_keys($line->source_batches ?? []))
             ->get()
             ->keyBy('id');
 
         $destinationBatchMap = [];
 
-        foreach ($sourceBatchMap as $sourceBatchId => $deductQty) {
+        foreach (($line->source_batches ?? []) as $sourceBatchId => $deductQty) {
             $sourceBatch = $sourceBatches->get((int) $sourceBatchId);
 
             if (! $sourceBatch) {
@@ -92,10 +195,21 @@ class StockDistributionService
             }
         }
 
-        return [
-            'source_batches' => $sourceBatchMap,
-            'destination_batches' => $destinationBatchMap,
-        ];
+        return ['destination_batches' => $destinationBatchMap];
+    }
+
+    public function receiveDistribution(StockDistribution $distribution): void
+    {
+        $distribution->loadMissing('products');
+        $toBranchId = (int) $distribution->to_branch_id;
+
+        foreach ($distribution->products as $line) {
+            $batchMaps = $this->receiveLine($line, $toBranchId);
+
+            $line->update([
+                'destination_batches' => $batchMaps['destination_batches'],
+            ]);
+        }
     }
 
     public function rollbackDistribution(StockDistribution $distribution): void
@@ -103,22 +217,24 @@ class StockDistributionService
         $distribution->loadMissing('products');
 
         foreach ($distribution->products as $line) {
-            $this->rollbackLine($line, (int) $distribution->to_branch_id);
+            $this->rollbackLine($line, (int) $distribution->to_branch_id, $distribution->isReceived());
         }
     }
 
-    public function rollbackLine(StockDistributionProduct $line, int $toBranchId): void
+    public function rollbackLine(StockDistributionProduct $line, int $toBranchId, bool $wasReceived): void
     {
         $qty = (float) $line->quantity;
 
-        if (($line->destination_batches ?? []) !== []) {
+        if ($wasReceived && ($line->destination_batches ?? []) !== []) {
             $this->stock->deductFromBatchMap(
                 $line->destination_batches,
                 fn (Batch $batch, float $deductQty) => $batch->distributionOutStock($deductQty)
             );
+        }
 
+        if (($line->source_batches ?? []) !== []) {
             $this->stock->restoreFromBatchMap(
-                $line->source_batches ?? [],
+                $line->source_batches,
                 fn (Batch $batch, float $batchQty) => $batch->distributionInStock($batchQty)
             );
 
@@ -133,6 +249,7 @@ class StockDistributionService
                 (int) $line->product_id,
                 $destinationProduct->id,
                 $qty,
+                $wasReceived,
             );
         }
     }
@@ -140,11 +257,10 @@ class StockDistributionService
     /**
      * @return array{source_batches: array<int|string, float>, destination_batches: array<int|string, float>}
      */
-    private function distributeVariation(
+    private function dispatchVariation(
         int $fromBranchId,
         int $toBranchId,
         int $sourceProductId,
-        int $destinationProductId,
         int $variationId,
         float $qty,
     ): array {
@@ -165,6 +281,33 @@ class StockDistributionService
 
         $sourceVariation->decrement('stock', $qty);
 
+        return [
+            'source_batches' => [],
+            'destination_batches' => [],
+        ];
+    }
+
+    /**
+     * @return array<int|string, float>
+     */
+    private function receiveVariation(
+        int $toBranchId,
+        int $sourceProductId,
+        int $destinationProductId,
+        int $variationId,
+        float $qty,
+    ): array {
+        $fromBranchId = Branch::resolveMainBranchId();
+        $sourceVariation = ProductVariation::query()
+            ->whereKey($variationId)
+            ->where('product_id', $sourceProductId)
+            ->where('branch_id', $fromBranchId)
+            ->first();
+
+        if (! $sourceVariation) {
+            throw new \RuntimeException('Source variation not found.');
+        }
+
         $destinationVariation = ProductVariation::query()->firstOrCreate(
             [
                 'product_id' => $destinationProductId,
@@ -183,10 +326,7 @@ class StockDistributionService
 
         $destinationVariation->increment('stock', $qty);
 
-        return [
-            'source_batches' => [],
-            'destination_batches' => [],
-        ];
+        return [];
     }
 
     private function rollbackVariation(
@@ -195,6 +335,7 @@ class StockDistributionService
         int $sourceProductId,
         int $destinationProductId,
         float $qty,
+        bool $wasReceived,
     ): void {
         $sourceVariation = ProductVariation::query()->whereKey($sourceVariationId)->first();
 
@@ -202,22 +343,25 @@ class StockDistributionService
             throw new \RuntimeException('Source variation not found.');
         }
 
-        $destinationVariation = ProductVariation::query()
-            ->where('product_id', $destinationProductId)
-            ->where('branch_id', $toBranchId)
-            ->where('sku', $sourceVariation->sku)
-            ->lockForUpdate()
-            ->first();
+        if ($wasReceived) {
+            $destinationVariation = ProductVariation::query()
+                ->where('product_id', $destinationProductId)
+                ->where('branch_id', $toBranchId)
+                ->where('sku', $sourceVariation->sku)
+                ->lockForUpdate()
+                ->first();
 
-        if (! $destinationVariation) {
-            throw new \RuntimeException('Destination variation not found.');
+            if (! $destinationVariation) {
+                throw new \RuntimeException('Destination variation not found.');
+            }
+
+            if ((float) $destinationVariation->stock < $qty) {
+                throw new \RuntimeException('Cannot reverse distribution because branch stock has already been used.');
+            }
+
+            $destinationVariation->decrement('stock', $qty);
         }
 
-        if ((float) $destinationVariation->stock < $qty) {
-            throw new \RuntimeException('Cannot reverse distribution because branch stock has already been used.');
-        }
-
-        $destinationVariation->decrement('stock', $qty);
         ProductVariation::whereKey($sourceVariationId)->increment('stock', $qty);
     }
 

@@ -97,6 +97,7 @@ return [
                 'inventory.stock-distribution.create' => 'Create Stock Distribution',
                 'inventory.stock-distribution.update' => 'Update Stock Distribution',
                 'inventory.stock-distribution.delete' => 'Delete Stock Distribution',
+                'inventory.stock-distribution.receive' => 'Receive Stock Distribution',
             ],
         ],
 

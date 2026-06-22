@@ -2,10 +2,11 @@ import { useAppToast } from '@/contexts/app-toast-context';
 import { formatBdDate } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { ArrowRightLeft, Eye, Plus, Search } from 'lucide-react';
+import { ArrowRightLeft, Check, Eye, Plus, Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { AdminCreateLink, AdminRowActions } from '@/components/admin/row-actions';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -33,7 +34,9 @@ export default function StockDistributionIndex({
     useDebouncedEffect(
         () =>
             router.get(
-                route('inventory.stock-distribution.index'),
+                isReceiverView
+                    ? route('inventory.stock-distribution.received')
+                    : route('inventory.stock-distribution.index'),
                 { search: search || undefined },
                 { preserveState: true, replace: true },
             ),
@@ -76,17 +79,62 @@ export default function StockDistributionIndex({
         },
         { id: 'comment', header: 'Note', render: (row) => row.comment ?? '—' },
         {
+            id: 'status',
+            header: 'Status',
+            render: (row) => {
+                const isReceived = row.status === 2 || row.status_label === 'Received';
+
+                return (
+                    <div className="space-y-0.5">
+                        <Badge variant={isReceived ? 'default' : 'secondary'}>
+                            {row.status_label ?? (isReceived ? 'Received' : 'Pending')}
+                        </Badge>
+                        {isReceived && row.received_by?.name && (
+                            <p className="text-[10px] text-muted-foreground">by {row.received_by.name}</p>
+                        )}
+                    </div>
+                );
+            },
+        },
+        {
             id: 'actions',
             header: 'Actions',
             align: 'right',
-            render: (row) =>
-                canManage ? (
+            render: (row) => {
+                const isPending = row.status === 1 || row.status_label === 'Pending';
+
+                if (isReceiverView) {
+                    return (
+                        <div className="flex justify-end gap-1">
+                            <Button size="sm" variant="ghost" asChild className="h-7">
+                                <Link href={route('inventory.stock-distribution.show', row.id)}>
+                                    <Eye className="size-3.5" />
+                                    View
+                                </Link>
+                            </Button>
+                            {isPending && can('inventory.stock-distribution.receive') && (
+                                <Button
+                                    size="sm"
+                                    className="h-7 bg-emerald-600 text-white hover:bg-emerald-600"
+                                    onClick={() =>
+                                        router.post(route('inventory.stock-distribution.receive', row.id), {}, { preserveScroll: true })
+                                    }
+                                >
+                                    <Check className="size-3.5" />
+                                    Receive
+                                </Button>
+                            )}
+                        </div>
+                    );
+                }
+
+                return canManage ? (
                     <AdminRowActions
                         prefix="inventory.stock-distribution"
                         id={row.id}
                         showRoute="inventory.stock-distribution.show"
-                        editRoute="inventory.stock-distribution.edit"
-                        onDelete={() => setDeleting(row)}
+                        editRoute={isPending ? 'inventory.stock-distribution.edit' : undefined}
+                        onDelete={isPending ? () => setDeleting(row) : undefined}
                     />
                 ) : (
                     <Button size="sm" variant="ghost" asChild className="h-7">
@@ -95,7 +143,8 @@ export default function StockDistributionIndex({
                             View
                         </Link>
                     </Button>
-                ),
+                );
+            },
         },
     ];
 
@@ -114,7 +163,7 @@ export default function StockDistributionIndex({
                             </h1>
                             <p className="text-xs text-white/60">
                                 {isReceiverView
-                                    ? 'Stock received from main branch.'
+                                    ? 'Pending and received stock from main branch.'
                                     : 'Transfer stock from main branch to operating branches.'}
                             </p>
                         </div>

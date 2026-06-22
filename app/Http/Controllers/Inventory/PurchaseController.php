@@ -8,12 +8,14 @@ use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
 use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
+use App\Models\Branch;
 use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Models\Purchase;
 use App\Models\PurchaseReturn;
 use App\Models\Supplier;
 use App\Services\InventoryAccountingService;
+use App\Services\StockDistributionService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -27,7 +29,10 @@ class PurchaseController extends Controller
     use ProvidesPaymentAccounts;
     use UsesInventoryAccounting;
 
-    public function __construct(private InventoryAccountingService $accounting) {}
+    public function __construct(
+        private InventoryAccountingService $accounting,
+        private StockDistributionService $distribution,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -58,6 +63,10 @@ class PurchaseController extends Controller
             'suppliers' => Supplier::query()->ownBranch()->orderBy('name', 'asc')->get(['id', 'name', 'company_name', 'phone']),
             'today' => now()->format('Y-m-d'),
             'paymentAccounts' => $this->paymentAccounts(),
+            'canDistribute' => $this->canDistributeFromPurchase(),
+            'branches' => $this->canDistributeFromPurchase()
+                ? Branch::query()->operating()->active()->orderBy('name')->get(['id', 'name'])
+                : [],
         ]);
     }
 
@@ -81,7 +90,24 @@ class PurchaseController extends Controller
             'items.*.free_quantity' => ['required', 'integer', 'min:0'],
             'items.*.expiry_date' => ['nullable', 'date'],
             'items.*.serial' => ['nullable', 'string'],
+            'distribute_to_branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+            'items.*.distribute_quantity' => ['nullable', 'integer', 'min:0'],
         ]);
+
+        if ($this->canDistributeFromPurchase() && ! empty($data['distribute_to_branch_id'])) {
+            foreach ($data['items'] as $index => $item) {
+                $distributeQty = (int) ($item['distribute_quantity'] ?? 0);
+                $maxQty = (int) $item['quantity'] + (int) $item['free_quantity'];
+
+                if ($distributeQty > $maxQty) {
+                    return back()
+                        ->withErrors([
+                            "items.{$index}.distribute_quantity" => 'Distribute quantity cannot exceed purchased quantity.',
+                        ])
+                        ->withInput();
+                }
+            }
+        }
 
         $branchId = Auth::user()?->branch_id;
         $paymentAccountId = $this->resolvePaymentAccountId($request, (float) $data['paid_amount']);
@@ -173,6 +199,8 @@ class PurchaseController extends Controller
             Supplier::whereKey($data['supplier_id'])->increment('balance', $dueChange);
 
             $this->accounting->postPurchase($purchase->fresh(['supplier']), $paymentAccountId);
+
+            $this->maybeCreatePendingDistribution($data, $branchId, $purchase);
         });
 
         return redirect()->route('inventory.purchase.index')
@@ -564,5 +592,57 @@ class PurchaseController extends Controller
         $batch->refresh();
 
         return $batch;
+    }
+
+    private function canDistributeFromPurchase(): bool
+    {
+        $user = Auth::user();
+
+        return $user !== null
+            && $user->usesAdminPanel()
+            && $user->can('inventory.stock-distribution.create');
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function maybeCreatePendingDistribution(array $data, ?int $branchId, Purchase $purchase): void
+    {
+        if (! $this->canDistributeFromPurchase()) {
+            return;
+        }
+
+        $toBranchId = $data['distribute_to_branch_id'] ?? null;
+
+        if (! $toBranchId) {
+            return;
+        }
+
+        $items = collect($data['items'])
+            ->map(fn (array $item): array => [
+                'product_id' => $item['product_id'],
+                'variation_id' => $item['variation_id'] ?? null,
+                'quantity' => (int) ($item['distribute_quantity'] ?? 0),
+            ])
+            ->filter(fn (array $item): bool => $item['quantity'] > 0)
+            ->values()
+            ->all();
+
+        if ($items === []) {
+            return;
+        }
+
+        $comment = 'From purchase '.$purchase->serial;
+
+        if (! empty($data['comment'])) {
+            $comment .= ' — '.$data['comment'];
+        }
+
+        $this->distribution->createPendingDistribution([
+            'to_branch_id' => $toBranchId,
+            'date' => $data['date'],
+            'comment' => $comment,
+            'items' => $items,
+        ], $branchId, $purchase->id);
     }
 }

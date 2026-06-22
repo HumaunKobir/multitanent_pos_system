@@ -9,15 +9,16 @@ import {
 } from '@/components/inventory/invoice-show-layout';
 import { route } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { ArrowLeft, ArrowRightLeft, Building2, Edit, Trash2, Warehouse } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, Building2, Check, Edit, Trash2, Warehouse } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Can } from '@/components/can';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useCan } from '@/hooks/use-can';
 
-export default function StockDistributionShow({ distribution, canManage = false }) {
+export default function StockDistributionShow({ distribution, canManage = false, canReceive = false }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const { can } = useCan();
@@ -30,6 +31,11 @@ export default function StockDistributionShow({ distribution, canManage = false 
 
     const invoiceNumber = distribution.invoice_number ?? `INVT${String(distribution.id).padStart(8, '0')}`;
     const actionClass = headerActionClassName();
+    const isPending = distribution.status === 1 || distribution.status_label === 'Pending';
+
+    function handleReceive() {
+        router.post(route('inventory.stock-distribution.receive', distribution.id));
+    }
 
     function handleDelete() {
         router.delete(route('inventory.stock-distribution.destroy', distribution.id), {
@@ -43,7 +49,20 @@ export default function StockDistributionShow({ distribution, canManage = false 
 
             <div className="px-2 py-1">
                 <InvoiceShowHeader icon={ArrowRightLeft} title="Stock Distribution" invoiceNumber={invoiceNumber}>
-                    {canManage && (
+                    <Badge variant={isPending ? 'secondary' : 'default'} className="mr-2">
+                        {distribution.status_label ?? (isPending ? 'Pending' : 'Received')}
+                    </Badge>
+                    {canReceive && (
+                        <Button
+                            size="sm"
+                            onClick={handleReceive}
+                            className="border border-emerald-400/50 bg-emerald-600/90 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-emerald-600 hover:shadow-md"
+                        >
+                            <Check className="size-3.5" />
+                            Receive Stock
+                        </Button>
+                    )}
+                    {canManage && isPending && (
                         <Can permission="inventory.stock-distribution.update">
                             <Button size="sm" asChild className={actionClass}>
                                 <Link href={route('inventory.stock-distribution.edit', distribution.id)}>
@@ -53,7 +72,7 @@ export default function StockDistributionShow({ distribution, canManage = false 
                             </Button>
                         </Can>
                     )}
-                    {canManage && (
+                    {canManage && isPending && (
                         <Can permission="inventory.stock-distribution.delete">
                             <Button
                                 size="sm"
@@ -67,7 +86,7 @@ export default function StockDistributionShow({ distribution, canManage = false 
                         </Can>
                     )}
                     <Button size="sm" asChild className={actionClass}>
-                        <Link href={route('inventory.stock-distribution.index')}>
+                        <Link href={canReceive ? route('inventory.stock-distribution.received') : route('inventory.stock-distribution.index')}>
                             <ArrowLeft className="size-3.5" />
                             Back
                         </Link>
@@ -83,19 +102,38 @@ export default function StockDistributionShow({ distribution, canManage = false 
                     items={distribution.products ?? []}
                     comment={distribution.comment}
                     branchSection={
-                        <div className="mb-6 grid gap-4 sm:grid-cols-2">
-                            <PartyInfoCard
-                                icon={Warehouse}
-                                label="From Branch"
-                                name={distribution.from_branch?.name ?? 'Main Branch'}
-                                emptyText="Main Branch"
-                            />
-                            <PartyInfoCard
-                                icon={Building2}
-                                label="To Branch"
-                                name={distribution.to_branch?.name}
-                                emptyText="—"
-                            />
+                        <div className="mb-6 space-y-4">
+                            <div className="grid gap-4 sm:grid-cols-2">
+                                <PartyInfoCard
+                                    icon={Warehouse}
+                                    label="From Branch"
+                                    name={distribution.from_branch?.name ?? 'Main Branch'}
+                                    emptyText="Main Branch"
+                                />
+                                <PartyInfoCard
+                                    icon={Building2}
+                                    label="To Branch"
+                                    name={distribution.to_branch?.name}
+                                    emptyText="—"
+                                />
+                            </div>
+                            {!isPending && distribution.received_by && (
+                                <p className="text-xs text-muted-foreground">
+                                    Received by {distribution.received_by.name}
+                                    {distribution.received_at ? ` on ${new Date(distribution.received_at).toLocaleString()}` : ''}
+                                </p>
+                            )}
+                            {distribution.purchase && (
+                                <p className="text-xs text-muted-foreground">
+                                    Linked purchase:{' '}
+                                    <Link
+                                        href={route('inventory.purchase.show', distribution.purchase.id)}
+                                        className="font-medium text-primary hover:underline"
+                                    >
+                                        {distribution.purchase.invoice_number}
+                                    </Link>
+                                </p>
+                            )}
                         </div>
                     }
                 />

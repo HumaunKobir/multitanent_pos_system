@@ -1,15 +1,17 @@
 import { formatQty } from '@/components/inventory/inventory-form';
 import { route } from '@/lib/route';
 import { Head, Link, useForm } from '@inertiajs/react';
-import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Search, Trash2, User } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Search, Trash2, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { RequiredMark } from '@/components/form-field';
+import { useAppToast } from '@/contexts/app-toast-context';
 import { Button } from '@/components/ui/button';
 import { dateInputRightIconClassName } from '@/components/ui/date-kit';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { SmartSelect } from '@/components/smart-select';
 
 function Card({ title, icon: Icon, children }) {
     return (
@@ -347,6 +349,7 @@ function ProductSearchBox({ onAdd }) {
             sell_price: sellPrice,
             quantity: 1,
             free_quantity: 0,
+            distribute_quantity: 0,
             expiry_date: '',
             serial: '',
         });
@@ -420,7 +423,14 @@ function ProductSearchBox({ onAdd }) {
     );
 }
 
-export default function PurchaseCreate({ suppliers: initialSuppliers, today, paymentAccounts = [] }) {
+export default function PurchaseCreate({
+    suppliers: initialSuppliers,
+    today,
+    paymentAccounts = [],
+    canDistribute = false,
+    branches = [],
+}) {
+    const toast = useAppToast();
     const form = useForm({
         supplier_id: '',
         date: today,
@@ -429,11 +439,13 @@ export default function PurchaseCreate({ suppliers: initialSuppliers, today, pay
         paid_amount: '0',
         payment_account_id: '',
         comment: '',
+        distribute_to_branch_id: '',
         items: [],
     });
 
     const [items, setItems] = useState([]);
     const [suppliers, setSuppliers] = useState(initialSuppliers);
+    const branchOptions = branches.map((branch) => ({ value: String(branch.id), label: branch.name }));
 
     const grossAmount = items.reduce((sum, it) => sum + parseFloat(it.quantity || 0) * parseFloat(it.unit_price || 0), 0);
     const vatAmount = grossAmount * (parseFloat(form.data.vat || 0) / 100);
@@ -467,6 +479,26 @@ export default function PurchaseCreate({ suppliers: initialSuppliers, today, pay
 
     function handleSubmit(e) {
         e.preventDefault();
+
+        if (canDistribute && form.data.distribute_to_branch_id) {
+            const hasDistribution = items.some((item) => parseInt(item.distribute_quantity || 0, 10) > 0);
+            if (!hasDistribution) {
+                toast.error('Add distribute quantity for at least one product.');
+                return;
+            }
+
+            const hasInvalidDistribution = items.some((item) => {
+                const distributeQty = parseInt(item.distribute_quantity || 0, 10);
+                const maxQty = parseInt(item.quantity || 0, 10) + parseInt(item.free_quantity || 0, 10);
+                return distributeQty > maxQty;
+            });
+
+            if (hasInvalidDistribution) {
+                toast.error('Distribute quantity cannot exceed purchased quantity.');
+                return;
+            }
+        }
+
         form.setData('items', items);
         form.transform((data) => ({ ...data, items }));
         form.post(route('inventory.purchase.store'));
@@ -543,6 +575,9 @@ export default function PurchaseCreate({ suppliers: initialSuppliers, today, pay
                                             <th className="whitespace-nowrap px-2 py-2 text-right font-semibold">Sell Price</th>
                                             <th className="whitespace-nowrap px-2 py-2 text-right font-semibold">Qty</th>
                                             <th className="whitespace-nowrap px-2 py-2 text-right font-semibold">Free Qty</th>
+                                            {canDistribute && form.data.distribute_to_branch_id && (
+                                                <th className="whitespace-nowrap px-2 py-2 text-right font-semibold">Distribute</th>
+                                            )}
                                             <th className="whitespace-nowrap px-2 py-2 text-left font-semibold">Expiry Date</th>
                                             <th className="whitespace-nowrap px-3 py-2 text-right font-semibold">Sub Total</th>
                                             <th className="px-2 py-2"></th>
@@ -600,6 +635,19 @@ export default function PurchaseCreate({ suppliers: initialSuppliers, today, pay
                                                             className={`${inputCls} w-full text-right`}
                                                         />
                                                     </td>
+                                                    {canDistribute && form.data.distribute_to_branch_id && (
+                                                        <td className="px-2 py-1.5">
+                                                            <Input
+                                                                type="number"
+                                                                min="0"
+                                                                step="1"
+                                                                max={parseInt(item.quantity || 0, 10) + parseInt(item.free_quantity || 0, 10)}
+                                                                value={item.distribute_quantity ?? 0}
+                                                                onChange={(e) => updateItem(i, 'distribute_quantity', formatQty(e.target.value))}
+                                                                className={`${inputCls} w-full text-right`}
+                                                            />
+                                                        </td>
+                                                    )}
                                                     <td className="px-2 py-1.5">
                                                         <Input
                                                             type="date"
@@ -630,6 +678,25 @@ export default function PurchaseCreate({ suppliers: initialSuppliers, today, pay
                             </div>
                         )}
                     </Card>
+
+                    {canDistribute && (
+                        <Card title="Distribute to Branch" icon={ArrowRightLeft}>
+                            <Field label="Destination Branch" error={form.errors.distribute_to_branch_id}>
+                                <SmartSelect
+                                    options={[{ value: '', label: 'Keep all stock at main branch' }, ...branchOptions]}
+                                    value={form.data.distribute_to_branch_id ? String(form.data.distribute_to_branch_id) : null}
+                                    onValueChange={(value) => form.setData('distribute_to_branch_id', value ?? '')}
+                                    placeholder="Select branch to distribute"
+                                    triggerClassName="h-8 rounded-md text-xs"
+                                />
+                            </Field>
+                            {form.data.distribute_to_branch_id && (
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                    Enter distribute quantity per product in the table above. Stock will stay pending until the branch receives it.
+                                </p>
+                            )}
+                        </Card>
+                    )}
 
                     {/* Comment & Summary */}
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

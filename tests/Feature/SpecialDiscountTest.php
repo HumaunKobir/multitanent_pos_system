@@ -3,6 +3,7 @@
 use App\Enums\DiscountType;
 use App\Enums\SaleType;
 use App\Models\Batch;
+use App\Models\Branch;
 use App\Models\Product;
 use App\Models\Sell;
 use App\Models\SpecialDiscount;
@@ -188,6 +189,55 @@ test('sale applies flat invoice discount', function () {
     expect((float) $sell->discount)->toBe(50.0);
     expect((float) $sell->special_discount_amount)->toBe(0.0);
     expect((float) $sell->net_amount)->toBe(450.0);
+});
+
+test('special discount can be deleted when only orphan sales from other branches reference it', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = specialDiscountUser(['setting.special-discount.delete']);
+    $user->update(['branch_id' => $branch->id]);
+    $specialDiscount = SpecialDiscount::factory()->create([
+        'branch_id' => $branch->id,
+    ]);
+
+    Sell::factory()->create([
+        'branch_id' => null,
+        'special_discount_id' => $specialDiscount->id,
+        'special_discount_amount' => 20,
+    ]);
+
+    $this->actingAs($user)
+        ->delete("/setting/special-discount/{$specialDiscount->id}")
+        ->assertRedirect(route('setting.special-discount.index'));
+
+    expect(SpecialDiscount::query()->whereKey($specialDiscount->id)->exists())->toBeFalse();
+});
+
+test('special discount cannot be deleted while same-branch sales still reference it', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = specialDiscountUser(['setting.special-discount.delete']);
+    $user->update(['branch_id' => $branch->id]);
+    $specialDiscount = SpecialDiscount::factory()->create([
+        'branch_id' => $branch->id,
+    ]);
+
+    Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'special_discount_id' => $specialDiscount->id,
+        'special_discount_amount' => 20,
+    ]);
+
+    $this->actingAs($user)
+        ->from('/setting/special-discount')
+        ->delete("/setting/special-discount/{$specialDiscount->id}")
+        ->assertRedirect('/setting/special-discount')
+        ->assertSessionHas('error');
+
+    expect(SpecialDiscount::query()->whereKey($specialDiscount->id)->exists())->toBeTrue();
 });
 
 test('sale applies percent invoice discount', function () {

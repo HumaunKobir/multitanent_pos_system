@@ -36,7 +36,36 @@ class SpecialDiscount extends Model
 
     public function sells(): HasMany
     {
-        return $this->hasMany(Sell::class);
+        $relation = $this->hasMany(Sell::class);
+
+        if ($this->branch_id !== null) {
+            $relation->where('branch_id', $this->branch_id);
+        }
+
+        return $relation;
+    }
+
+    public function productExchanges(): HasMany
+    {
+        $relation = $this->hasMany(ProductExchange::class);
+
+        if ($this->branch_id !== null) {
+            $relation->where('branch_id', $this->branch_id);
+        }
+
+        return $relation;
+    }
+
+    public function hasRecordedUsage(): bool
+    {
+        return $this->sells()->exists()
+            || $this->productExchanges()->exists();
+    }
+
+    public function recordedUsageCount(): int
+    {
+        return $this->sells()->count()
+            + $this->productExchanges()->count();
     }
 
     public function scopeActive(Builder $query): Builder

@@ -37,7 +37,8 @@ export default function SellShow({ sell }) {
     const vat = parseFloat(sell.vat ?? 0);
     const discount = parseFloat(sell.discount ?? 0);
     const specialDiscount = parseFloat(sell.special_discount_amount ?? 0);
-    const net = gross + vat - discount - specialDiscount - lineDiscount;
+    const roundOff = parseFloat(sell.round_off_amount ?? 0);
+    const net = gross + vat - discount - specialDiscount - roundOff - lineDiscount;
     const paid = parseFloat(sell.paid_amount ?? 0);
     const due = Math.max(0, net - paid);
     const paymentLines = sell.payments ?? [];
@@ -131,6 +132,7 @@ export default function SellShow({ sell }) {
                         specialDiscountName: sell.special_discount?.name,
                         specialDiscountType: sell.special_discount?.discount_type,
                         specialDiscountValue: sell.special_discount?.discount_value,
+                        roundOff,
                         lineDiscount,
                         net,
                         paid,

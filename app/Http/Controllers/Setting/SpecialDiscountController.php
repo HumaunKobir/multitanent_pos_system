@@ -75,8 +75,13 @@ class SpecialDiscountController extends Controller
         $this->authorize('setting.special-discount.delete');
         $this->authorizeBranch($specialDiscount);
 
-        if ($specialDiscount->sells()->exists()) {
-            return back()->with('error', 'Cannot delete special discount that has been used in sales.');
+        if ($specialDiscount->hasRecordedUsage()) {
+            $usageCount = $specialDiscount->recordedUsageCount();
+
+            return back()->with(
+                'error',
+                "Cannot delete special discount that has been used in {$usageCount} sale(s) or exchange(s).",
+            );
         }
 
         $specialDiscount->delete();

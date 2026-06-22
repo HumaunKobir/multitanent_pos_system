@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Inventory;
 
 use App\Enums\DiscountType;
 use App\Enums\SaleType;
+use App\Enums\SystemAccountKey;
 use App\Http\Controllers\Concerns\AuthorizesBranchUserRecords;
 use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
 use App\Http\Controllers\Concerns\UsesInventoryAccounting;
@@ -21,6 +22,7 @@ use App\Services\CustomerDueAlertService;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
 use App\Services\SpecialDiscountService;
+use App\Services\SystemAccountService;
 use App\Support\StorageUrl;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\RedirectResponse;
@@ -114,6 +116,7 @@ class SellController extends Controller
             'pausedSales' => $this->pausedSalesList($branchId),
             'resumedSell' => $resumedSell,
             'posTerms' => $this->currentBranchPosTerms(),
+            'cashInHandAccountId' => SystemAccountService::id(SystemAccountKey::CashInHand, $branchId),
         ]);
     }
 
@@ -197,17 +200,13 @@ class SellController extends Controller
             deductStock: false,
         );
 
-        $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId);
-        $netAmount = round(
-            $grossAmount + $vatAmount - $discountFields['discount'] - $discountFields['special_discount_amount'] - $lineDiscountTotal,
-            2,
-        );
-        $payment = $this->resolveSalePayments($data, $netAmount);
+        $saleTotals = $this->resolveSaleTotals($data, $grossAmount, $lineDiscountTotal, $vatAmount, $branchId);
+        $payment = $this->resolveSalePayments($data, $saleTotals['net_amount']);
         $this->assertCustomerForDueSale($data['customer_id'] ? (int) $data['customer_id'] : null, $payment['due_amount']);
         $this->assertDueAlertFields($data, $branchId, $payment['due_amount']);
 
         try {
-            $sell = DB::transaction(function () use ($data, $branchId, $pausedSellId, $payment) {
+            $sell = DB::transaction(function () use ($data, $branchId, $pausedSellId, $payment, $saleTotals) {
                 ['grossAmount' => $grossAmount, 'lineDiscountTotal' => $lineDiscountTotal, 'vatAmount' => $vatAmount, 'sellProductsData' => $sellProductsData] = $this->processSellItems(
                     $data['items'],
                     $branchId,
@@ -233,6 +232,7 @@ class SellController extends Controller
                     'discount_value' => $discountFields['discount_value'],
                     'special_discount_id' => $discountFields['special_discount_id'],
                     'special_discount_amount' => $discountFields['special_discount_amount'],
+                    'round_off_amount' => $saleTotals['round_off_amount'],
                     'vat' => $vatAmount,
                     'paid_amount' => $payment['effective_paid'],
                     'type' => SaleType::Sale,
@@ -344,6 +344,8 @@ class SellController extends Controller
 
         $items = $sell->products->map(function ($sp) use ($branchId) {
             $product = $sp->product;
+            $lineQty = (float) $sp->quantity;
+
             if ($sp->variation_id) {
                 $availableStock = (float) ProductVariation::query()
                     ->whereKey($sp->variation_id)
@@ -366,8 +368,8 @@ class SellController extends Controller
                 'sell_price' => $sp->variation_id
                     ? (float) ($sp->variation?->price ?? $sp->unit_price)
                     : (float) ($sp->product?->sale_price ?? $sp->unit_price),
-                'quantity' => (float) $sp->quantity,
-                'available_stock' => $availableStock,
+                'quantity' => $lineQty,
+                'available_stock' => $availableStock + $lineQty,
             ];
         })->values();
 
@@ -393,6 +395,7 @@ class SellController extends Controller
                 'discount_value' => (float) ($sell->discount_value ?? $sell->discount),
                 'special_discount_id' => $sell->special_discount_id,
                 'special_discount_amount' => (float) $sell->special_discount_amount,
+                'round_off_amount' => (float) $sell->round_off_amount,
                 'special_discount' => $sell->specialDiscount ? [
                     'id' => $sell->specialDiscount->id,
                     'name' => $sell->specialDiscount->name,
@@ -415,6 +418,7 @@ class SellController extends Controller
                 'value' => $type->value,
                 'label' => $type->label(),
             ])->values(),
+            'cashInHandAccountId' => SystemAccountService::id(SystemAccountKey::CashInHand, $branchId),
         ]);
     }
 
@@ -438,6 +442,7 @@ class SellController extends Controller
             'discount_type' => ['required', Rule::enum(DiscountType::class)],
             'discount_value' => ['required', 'numeric', 'min:0'],
             'special_discount_id' => ['nullable', 'integer', 'exists:special_discounts,id'],
+            'round_off_amount' => ['nullable', 'numeric', 'min:0'],
             'vat' => ['required', 'numeric', 'min:0'],
             'paid_amount' => ['required', 'numeric', 'min:0'],
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
@@ -463,17 +468,13 @@ class SellController extends Controller
             deductStock: false,
         );
 
-        $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId);
-        $netAmount = round(
-            $grossAmount + $vatAmount - $discountFields['discount'] - $discountFields['special_discount_amount'] - $lineDiscountTotal,
-            2,
-        );
-        $payment = $this->resolveSalePayments($data, $netAmount);
+        $saleTotals = $this->resolveSaleTotals($data, $grossAmount, $lineDiscountTotal, $vatAmount, $branchId);
+        $payment = $this->resolveSalePayments($data, $saleTotals['net_amount']);
         $this->assertCustomerForDueSale($data['customer_id'] ? (int) $data['customer_id'] : null, $payment['due_amount']);
         $this->assertDueAlertFields($data, $branchId, $payment['due_amount']);
 
         try {
-            DB::transaction(function () use ($sell, $data, $branchId, $payment) {
+            DB::transaction(function () use ($sell, $data, $branchId, $payment, $saleTotals) {
                 $this->accounting->reverseFor($sell);
                 $sell->load(['products']);
 
@@ -520,6 +521,7 @@ class SellController extends Controller
                     'discount_value' => $discountFields['discount_value'],
                     'special_discount_id' => $discountFields['special_discount_id'],
                     'special_discount_amount' => $discountFields['special_discount_amount'],
+                    'round_off_amount' => $saleTotals['round_off_amount'],
                     'vat' => $vatAmount,
                     'paid_amount' => $payment['effective_paid'],
                     'comment' => $data['comment'] ?? null,
@@ -670,6 +672,124 @@ class SellController extends Controller
         ];
     }
 
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{
+     *     discount: float,
+     *     discount_type: DiscountType,
+     *     discount_value: float,
+     *     special_discount_id: int|null,
+     *     special_discount_amount: float,
+     *     round_off_amount: float,
+     *     net_amount: float
+     * }
+     */
+    private function resolveSaleTotals(
+        array $data,
+        float $grossAmount,
+        float $lineDiscountTotal,
+        float $vatAmount,
+        ?int $branchId,
+    ): array {
+        $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId);
+        $netBeforeRoundOff = round(
+            $grossAmount + $vatAmount - $discountFields['discount'] - $discountFields['special_discount_amount'] - $lineDiscountTotal,
+            2,
+        );
+        $paymentLines = $this->paymentLinesForRoundOff($data);
+        $roundOffAmount = $this->resolveRoundOffAmount($data, $netBeforeRoundOff, $paymentLines, $branchId);
+
+        return [
+            ...$discountFields,
+            'round_off_amount' => $roundOffAmount,
+            'net_amount' => round($netBeforeRoundOff - $roundOffAmount, 2),
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array<int, array{payment_account_id: int, amount: float}>
+     */
+    private function paymentLinesForRoundOff(array $data): array
+    {
+        $paymentLines = $this->normalizeSalePaymentLines($data);
+
+        if ($paymentLines !== []) {
+            return $paymentLines;
+        }
+
+        $tenderedAmount = round(max(0, (float) ($data['paid_amount'] ?? 0)), 2);
+        $paymentAccountId = (int) ($data['payment_account_id'] ?? 0);
+
+        if ($tenderedAmount <= 0 || $paymentAccountId <= 0) {
+            return [];
+        }
+
+        return [
+            [
+                'payment_account_id' => $paymentAccountId,
+                'amount' => $tenderedAmount,
+            ],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @param  array<int, array{payment_account_id: int, amount: float}>  $paymentLines
+     */
+    private function resolveRoundOffAmount(
+        array $data,
+        float $netBeforeRoundOff,
+        array $paymentLines,
+        ?int $branchId,
+    ): float {
+        $roundOffAmount = round(max(0, (float) ($data['round_off_amount'] ?? 0)), 2);
+
+        if ($roundOffAmount <= 0) {
+            return 0.0;
+        }
+
+        if (! $this->isCashOnlyPayment($paymentLines, $branchId)) {
+            throw ValidationException::withMessages([
+                'round_off_amount' => 'Round off is only available for cash payments.',
+            ]);
+        }
+
+        $netBeforeRoundOff = round(max(0, $netBeforeRoundOff), 2);
+
+        if ($roundOffAmount > $netBeforeRoundOff) {
+            throw ValidationException::withMessages([
+                'round_off_amount' => 'Round off cannot exceed the net payable.',
+            ]);
+        }
+
+        return $roundOffAmount;
+    }
+
+    /**
+     * @param  array<int, array{payment_account_id: int, amount: float}>  $paymentLines
+     */
+    private function isCashOnlyPayment(array $paymentLines, ?int $branchId): bool
+    {
+        $cashInHandId = SystemAccountService::id(SystemAccountKey::CashInHand, $branchId);
+        $activeLines = array_values(array_filter(
+            $paymentLines,
+            fn (array $line): bool => round((float) ($line['amount'] ?? 0), 2) > 0,
+        ));
+
+        if ($activeLines === []) {
+            return false;
+        }
+
+        foreach ($activeLines as $line) {
+            if ((int) $line['payment_account_id'] !== $cashInHandId) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /** @param  array<string, mixed>  $data */
     private function normalizedSpecialDiscountId(array $data): ?int
     {
@@ -692,6 +812,7 @@ class SellController extends Controller
             'discount_type' => ['required', Rule::enum(DiscountType::class)],
             'discount_value' => ['required', 'numeric', 'min:0'],
             'special_discount_id' => ['nullable', 'integer', 'exists:special_discounts,id'],
+            'round_off_amount' => ['nullable', 'numeric', 'min:0'],
             'vat' => ['required', 'numeric', 'min:0'],
             'paid_amount' => [$requirePayment ? 'required' : 'nullable', 'numeric', 'min:0'],
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],

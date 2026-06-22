@@ -78,6 +78,7 @@ class InventoryAccountingService
             (float) $sell->gross_amount
             - (float) $sell->discount
             - (float) $sell->special_discount_amount
+            - (float) $sell->round_off_amount
             - $sell->lineDiscountTotal(),
             2,
         );

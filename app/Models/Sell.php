@@ -27,6 +27,7 @@ class Sell extends Model
         'discount_value',
         'special_discount_id',
         'special_discount_amount',
+        'round_off_amount',
         'vat',
         'paid_amount',
         'type',
@@ -42,6 +43,7 @@ class Sell extends Model
             'discount_type' => DiscountType::class,
             'discount_value' => 'decimal:2',
             'special_discount_amount' => 'decimal:2',
+            'round_off_amount' => 'decimal:2',
             'vat' => 'decimal:2',
             'paid_amount' => 'decimal:2',
             'type' => SaleType::class,
@@ -51,7 +53,8 @@ class Sell extends Model
     public function hasAnyDiscount(): bool
     {
         return $this->hasManualDiscount()
-            || (float) $this->special_discount_amount > 0;
+            || (float) $this->special_discount_amount > 0
+            || (float) $this->round_off_amount > 0;
     }
 
     public function hasManualDiscount(): bool
@@ -75,6 +78,7 @@ class Sell extends Model
             + (float) $this->vat
             - (float) $this->discount
             - (float) $this->special_discount_amount
+            - (float) $this->round_off_amount
             - $this->lineDiscountTotal();
     }
 

@@ -11,6 +11,8 @@ import {
     buildInitialSalePayments,
     computeSplitSalePayment,
     dueSaleCustomerError,
+    hasActiveNonCashPayment,
+    isCashOnlyPayment,
     serializeSalePayments,
     splitPaymentValidationError,
 } from '@/lib/sale-payment';
@@ -26,6 +28,7 @@ import { dateInputRightIconClassName } from '@/components/ui/date-kit';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
 
 function lineGross(item) {
@@ -460,7 +463,7 @@ function ProductSearchBox({ onAdd }) {
     );
 }
 
-export default function SellEdit({ sell, walkInCustomerId = null, paymentAccounts = [], specialDiscounts = [], discountTypes = [] }) {
+export default function SellEdit({ sell, walkInCustomerId = null, paymentAccounts = [], specialDiscounts = [], discountTypes = [], cashInHandAccountId = null }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const form = useForm({
@@ -472,6 +475,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
         vat: String(sell.vat_percent ?? '0'),
         paid_amount: String(sell.paid_amount ?? '0'),
         payments: buildInitialSalePayments(sell.payments, paymentAccounts),
+        round_off_amount: String(sell.round_off_amount ?? '0'),
         comment: sell.comment ?? '',
         due_given_date: '',
         due_alert_action: '',
@@ -497,7 +501,13 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
               taxableAmount,
           )
         : 0;
-    const netAmount = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
+    const netBeforeRoundOff = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
+    const cashOnlyPayment = isCashOnlyPayment(form.data.payments, cashInHandAccountId);
+    const hasSaleItems = items.length > 0;
+    const roundOffAmount = hasSaleItems
+        ? Math.min(Math.max(0, parseFloat(form.data.round_off_amount || 0)), Math.max(0, netBeforeRoundOff))
+        : 0;
+    const netAmount = netBeforeRoundOff - roundOffAmount;
     const { totalPaid, dueAmount, changeAmount } = computeSplitSalePayment(form.data.payments, netAmount);
     const dueCustomerError = dueSaleCustomerError(form.data.customer_id, walkInCustomerId, dueAmount);
 
@@ -506,6 +516,22 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
         setMatchedSpecialDiscount(match);
         form.setData('special_discount_id', match ? String(match.id) : '');
     }, [taxableAmount, specialDiscounts]);
+
+    useEffect(() => {
+        if (!hasSaleItems && parseFloat(form.data.round_off_amount || 0) > 0) {
+            form.setData('round_off_amount', '0');
+        }
+    }, [hasSaleItems]);
+
+    useEffect(() => {
+        if (
+            hasActiveNonCashPayment(form.data.payments, cashInHandAccountId) &&
+            parseFloat(form.data.round_off_amount || 0) > 0
+        ) {
+            form.setData('round_off_amount', '0');
+        }
+    }, [form.data.payments, cashInHandAccountId]);
+
     const hasOverStock = items.some((item) => parseFloat(item.quantity || 0) > parseFloat(item.available_stock ?? 0));
 
     function addItem(item) {
@@ -577,6 +603,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
             ...data,
             items: lineItems,
             paid_amount: String(totalPaid),
+            round_off_amount: cashOnlyPayment ? String(roundOffAmount) : '0',
             payments: serializedPayments.length > 0 ? serializedPayments : undefined,
         }));
         form.put(route('inventory.sell.update', sell.id), {
@@ -855,6 +882,33 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                         </p>
                                     </div>
                                 </div>
+
+                                <div>
+                                    <Label className="mb-0.5 block text-[9px] text-muted-foreground">
+                                        Round Off (Cash)
+                                    </Label>
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={form.data.round_off_amount}
+                                        disabled={!hasSaleItems}
+                                        onChange={(e) => form.setData('round_off_amount', e.target.value)}
+                                        className={cn(inputCls, 'text-right')}
+                                    />
+                                    {form.errors.round_off_amount && (
+                                        <p className="mt-0.5 text-[10px] text-destructive">{form.errors.round_off_amount}</p>
+                                    )}
+                                </div>
+
+                                {roundOffAmount > 0 && (
+                                    <div className="flex items-center justify-between gap-2 px-1 text-sm">
+                                        <span className="text-muted-foreground">Round Off Amount</span>
+                                        <span className="font-medium tabular-nums text-green-700">
+                                            -৳{roundOffAmount.toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
 
                                 <SalePaymentLines
                                     payments={form.data.payments}

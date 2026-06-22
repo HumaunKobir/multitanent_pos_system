@@ -116,3 +116,37 @@ export function buildInitialSalePayments(initialPayments, paymentAccounts) {
 
     return [{ payment_account_id: '', amount: '0' }];
 }
+
+/**
+ * @param {Array<{ payment_account_id?: number|string, amount?: number|string }>} payments
+ * @param {number|string|null|undefined} cashInHandAccountId
+ */
+export function hasActiveNonCashPayment(payments, cashInHandAccountId) {
+    if (!cashInHandAccountId) {
+        return false;
+    }
+
+    return (payments ?? []).some((line) => {
+        const amount = parseFloat(line.amount || 0);
+
+        return amount > 0 && String(line.payment_account_id) !== String(cashInHandAccountId);
+    });
+}
+
+/**
+ * @param {Array<{ payment_account_id?: number|string, amount?: number|string }>} payments
+ * @param {number|string|null|undefined} cashInHandAccountId
+ */
+export function isCashOnlyPayment(payments, cashInHandAccountId) {
+    if (!cashInHandAccountId) {
+        return false;
+    }
+
+    const activeLines = (payments ?? []).filter((line) => parseFloat(line.amount || 0) > 0);
+
+    if (activeLines.length === 0) {
+        return false;
+    }
+
+    return activeLines.every((line) => String(line.payment_account_id) === String(cashInHandAccountId));
+}

@@ -975,6 +975,73 @@ test('overpayment across multiple accounts records tendered receipts and change 
     expect(round($ledgers->where('account_id', $sslCommerz->id)->sum('credit'), 2))->toBe(0.0);
 });
 
+test('cash sale can apply manual round off discount', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+    $sellIdBefore = (int) (Sell::query()->max('id') ?? 0);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'round_off_amount' => '25',
+            'vat' => '0',
+            'paid_amount' => '475',
+            'payments' => [
+                ['payment_account_id' => $cash->id, 'amount' => 475],
+            ],
+            'comment' => null,
+            'items' => [[
+                'product_id' => $product->id,
+                'variation_id' => null,
+                'unit_price' => '500',
+                'quantity' => '1',
+            ]],
+        ])
+        ->assertRedirect()
+        ->assertSessionDoesntHaveErrors();
+
+    $sell = Sell::query()->where('id', '>', $sellIdBefore)->first();
+    expect($sell)->not->toBeNull();
+    expect((float) $sell->round_off_amount)->toBe(25.0);
+    expect((float) $sell->net_amount)->toBe(475.0);
+});
+
+test('round off is rejected when payment is not cash only', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    $sslCommerz = SystemAccountService::resolve(SystemAccountKey::SslCommerz, $user->branch_id);
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'round_off_amount' => '25',
+            'vat' => '0',
+            'paid_amount' => '475',
+            'payments' => [
+                ['payment_account_id' => $cash->id, 'amount' => 300],
+                ['payment_account_id' => $sslCommerz->id, 'amount' => 175],
+            ],
+            'comment' => null,
+            'items' => [[
+                'product_id' => $product->id,
+                'variation_id' => null,
+                'unit_price' => '500',
+                'quantity' => '1',
+            ]],
+        ])
+        ->assertSessionHasErrors('round_off_amount');
+});
+
 test('store requires at least one item', function () {
     $user = sellUser();
 
@@ -1210,6 +1277,56 @@ test('authenticated user can update a sale and stock is adjusted', function () {
 
     $sell->refresh();
     expect((float) $sell->gross_amount)->toBe(300.0);
+});
+
+test('sell edit exposes reserved stock for existing line items so zero warehouse stock does not block update', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product, 'batch' => $batch] = sellProduct(1, $user->branch_id);
+
+    $this->actingAs($user)->post('/inventory/sell', [
+        'customer_id' => null,
+        'date' => now()->format('Y-m-d'),
+        'discount_type' => 'flat',
+        'discount_value' => '0',
+        'special_discount_id' => null,
+        'vat' => '0',
+        'paid_amount' => '100',
+        'payment_account_id' => $cash->id,
+        'items' => [['product_id' => $product->id, 'variation_id' => null, 'unit_price' => '100', 'quantity' => '1']],
+    ])->assertSessionDoesntHaveErrors()->assertRedirect();
+
+    $batch->refresh();
+    expect((float) $batch->available)->toBe(0.0);
+
+    $sell = Sell::query()->latest('id')->first();
+    expect($sell)->not->toBeNull();
+
+    $this->actingAs($user)
+        ->get("/inventory/sell/{$sell->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/sell/edit')
+            ->where('sell.items.0.available_stock', 1)
+            ->where('sell.items.0.quantity', 1));
+
+    $this->actingAs($user)
+        ->put("/inventory/sell/{$sell->id}", [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '100',
+            'payment_account_id' => $cash->id,
+            'items' => [['product_id' => $product->id, 'variation_id' => null, 'unit_price' => '100', 'quantity' => '1']],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect('/inventory/sell');
+
+    $batch->refresh();
+    expect((float) $batch->available)->toBe(0.0);
 });
 
 // ── Destroy ───────────────────────────────────────────────────────────────────

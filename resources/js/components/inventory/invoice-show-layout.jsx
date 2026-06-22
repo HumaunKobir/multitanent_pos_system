@@ -100,6 +100,7 @@ function TotalsSummary({
     specialDiscountName,
     specialDiscountType,
     specialDiscountValue,
+    roundOff = 0,
     lineDiscount = 0,
     net,
     paid,
@@ -122,6 +123,7 @@ function TotalsSummary({
                 accent: 'text-green-600',
             }]
             : []),
+        ...(roundOff > 0 ? [{ label: 'Round Off', value: `-৳${roundOff.toFixed(2)}`, accent: 'text-green-600' }] : []),
         ...(vat > 0 ? [{ label: 'VAT', value: `৳${vat.toFixed(2)}`, muted: true }] : []),
         { label: 'Net Amount', value: `৳${net.toFixed(2)}`, bold: true, divider: true },
         { label: 'Paid', value: `৳${paid.toFixed(2)}`, accent: 'text-green-700 dark:text-green-400' },
@@ -218,7 +220,22 @@ export function InvoiceDocument({
 
                 <LineItemsTable items={items} />
 
-                <TotalsSummary gross={gross} vat={vat} discount={discount} lineDiscount={lineDiscount} net={net} paid={paid} due={due} />
+                <TotalsSummary
+                    gross={gross}
+                    vat={vat}
+                    discount={discount}
+                    discountType={totals.discountType}
+                    discountValue={totals.discountValue}
+                    specialDiscount={parseFloat(totals.specialDiscount ?? 0)}
+                    specialDiscountName={totals.specialDiscountName}
+                    specialDiscountType={totals.specialDiscountType}
+                    specialDiscountValue={totals.specialDiscountValue}
+                    roundOff={parseFloat(totals.roundOff ?? 0)}
+                    lineDiscount={lineDiscount}
+                    net={net}
+                    paid={paid}
+                    due={due}
+                />
 
                 <div className="mt-4 flex items-center gap-2 print:hidden">
                     <Badge

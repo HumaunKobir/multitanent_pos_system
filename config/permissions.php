@@ -25,6 +25,16 @@
 return [
     'modules' => [
 
+        // ── Dashboard ─────────────────────────────────────────────────────────
+
+        'dashboard' => [
+            'label' => 'Dashboard',
+            'group' => 'Dashboard',
+            'permissions' => [
+                'dashboard.view' => 'View Dashboard',
+            ],
+        ],
+
         // ── Inventory ─────────────────────────────────────────────────────────
 
         'product' => [

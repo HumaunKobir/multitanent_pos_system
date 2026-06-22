@@ -8,7 +8,7 @@ import { SellReportPanel } from '@/components/dashboard/sell-report-panel';
 import { StatTile } from '@/components/dashboard/stat-tile';
 import { MoneyCell } from '@/pages/admin/reports/_shared/report-shell';
 import { route } from '@/lib/route';
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import {
     BarChart2,
     CircleDollarSign,
@@ -27,7 +27,61 @@ function formatExpenseSub(kpi) {
     return `${kpi?.count ?? 0} voucher(s)`;
 }
 
-export default function BranchDashboard({ today, branchName, sections }) {
+function WelcomePage({ branchName, branchLogoUrl }) {
+    const { auth, logo, siteName } = usePage().props;
+    const userName = auth?.user?.name ?? 'User';
+    const now = new Date();
+    const hour = now.getHours();
+    const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
+    const displayLogo = branchLogoUrl || logo;
+
+    return (
+        <div className="flex min-h-[72vh] flex-col items-center justify-center px-4">
+            <div className="w-full max-w-md">
+                {/* Logo / Brand */}
+                <div className="mb-8 flex flex-col items-center gap-3">
+                    {displayLogo ? (
+                        <img
+                            src={displayLogo}
+                            alt={branchName || siteName}
+                            className="h-16 max-w-48 object-contain drop-shadow-sm"
+                            onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'flex'; }}
+                        />
+                    ) : null}
+                    <div
+                        className="flex size-16 items-center justify-center bg-blue-950 shadow-lg"
+                        style={{ display: displayLogo ? 'none' : 'flex' }}
+                    >
+                        <span className="text-3xl font-bold text-white">{(branchName ?? siteName ?? 'B')[0]}</span>
+                    </div>
+                    <span className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{branchName || siteName}</span>
+                </div>
+
+                {/* Card */}
+                <div className="overflow-hidden border border-border bg-card shadow-lg">
+                    {/* Top accent */}
+                    <div className="h-1.5 w-full bg-linear-to-r from-blue-950 via-blue-700 to-blue-500" />
+
+                    <div className="px-8 py-8 text-center">
+                        <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{greeting}</p>
+                        <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground">Welcome, {userName}</h1>
+
+                        <div className="my-6 h-px w-full bg-border" />
+
+                        <div className="flex flex-col items-center gap-1">
+                            <span className="text-sm text-muted-foreground">You are logged in to</span>
+                            <span className="text-base font-bold text-foreground">{branchName || 'Branch'}</span>
+                        </div>
+                    </div>
+
+
+                </div>
+            </div>
+        </div>
+    );
+}
+
+export default function BranchDashboard({ today, branchName, branchLogoUrl, sections, limitedAccess }) {
     const hasSections = sections && Object.keys(sections).length > 0;
     const sales = sections?.sales;
 
@@ -40,7 +94,9 @@ export default function BranchDashboard({ today, branchName, sections }) {
                 subtitle="Your branch overview"
                 today={today}
             >
-                {!hasSections ? (
+                {limitedAccess ? (
+                    <WelcomePage branchName={branchName} branchLogoUrl={branchLogoUrl} />
+                ) : !hasSections ? (
                     <div className="border border-border bg-card p-8 text-center shadow-none">
                         <p className="text-sm font-medium">Welcome to your branch panel</p>
                         <p className="mt-2 text-sm text-muted-foreground">

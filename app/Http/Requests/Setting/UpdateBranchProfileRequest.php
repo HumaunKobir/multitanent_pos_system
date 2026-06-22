@@ -10,7 +10,7 @@ class UpdateBranchProfileRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return $this->user()?->branch_id !== null;
+        return $this->user()?->can('setting.branch-profile.update') ?? false;
     }
 
     /**

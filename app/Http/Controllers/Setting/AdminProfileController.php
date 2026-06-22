@@ -13,7 +13,7 @@ class AdminProfileController extends Controller
 {
     public function edit(): Response
     {
-        abort_unless(Auth::user()?->isSuperAdmin(), 403);
+        abort_unless(Auth::user()?->bypassesPermissionChecks(), 403);
 
         $user = Auth::user();
 
@@ -29,7 +29,7 @@ class AdminProfileController extends Controller
     public function update(UpdateAdminProfileRequest $request): RedirectResponse
     {
         $user = Auth::user();
-        abort_unless($user?->isSuperAdmin(), 403);
+        abort_unless($user?->bypassesPermissionChecks(), 403);
 
         $validated = $request->validated();
 

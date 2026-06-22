@@ -4,6 +4,7 @@ import { useCallback, useMemo } from 'react';
 /**
  * Check Spatie permissions shared from HandleInertiaRequests (auth.permissions).
  * Super admins receive ['*'] and pass every check.
+ * Primary admin (user id 1 on main branch) also receives ['*'].
  */
 export function useCan() {
     const permissions = usePage().props.auth?.permissions ?? [];

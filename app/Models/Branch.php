@@ -62,11 +62,19 @@ class Branch extends Model
 
     public static function isMainBranch(?int $branchId): bool
     {
+        if ($branchId === null) {
+            return false;
+        }
+
         return $branchId === self::resolveMainBranchId();
     }
 
     public static function resolveMainBranchId(): int
     {
+        if (static::query()->whereKey(self::MAIN_BRANCH_ID)->exists()) {
+            return self::MAIN_BRANCH_ID;
+        }
+
         $byName = static::query()
             ->where('name', self::MAIN_BRANCH_NAME)
             ->value('id');

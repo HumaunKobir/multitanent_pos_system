@@ -12,7 +12,7 @@ class LoginResponse implements LoginResponseContract
     {
         $user = $request->user();
 
-        $redirect = $user?->isBranchUser()
+        $redirect = $user?->usesBranchPanel()
             ? route('branch-panel.dashboard')
             : route('dashboard');
 

@@ -13,6 +13,8 @@ class ContactListController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('contact-list.view');
+
         $contacts = Contact::query()
             ->ownBranch()
             ->when($request->search, function ($query, $search) {
@@ -35,6 +37,7 @@ class ContactListController extends Controller
 
     public function destroy(Contact $contact): RedirectResponse
     {
+        $this->authorize('contact-list.delete');
         $this->authorizeContact($contact);
 
         $contact->delete();

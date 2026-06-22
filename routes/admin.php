@@ -51,7 +51,7 @@ use App\Support\PageContent;
 use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'verified'])->get('/admin', function () {
-    if (auth()->user()?->isBranchUser()) {
+    if (auth()->user()?->usesBranchPanel()) {
         return redirect()->route('branch-panel.dashboard');
     }
 

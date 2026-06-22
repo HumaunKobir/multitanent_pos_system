@@ -4,12 +4,19 @@ use App\Models\Branch;
 use App\Models\User;
 use Illuminate\Support\Facades\Hash;
 use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\Models\Permission;
 
-function branchProfileUser(): User
+function branchProfileUser(array $permissions = ['setting.branch-profile.view', 'setting.branch-profile.update']): User
 {
     $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
 
-    return User::factory()->create(['branch_id' => $branch->id]);
+    foreach ($permissions as $permission) {
+        Permission::findOrCreate($permission, 'web');
+        $user->givePermissionTo($permission);
+    }
+
+    return $user;
 }
 
 test('guests are redirected from branch profile', function () {
@@ -24,7 +31,19 @@ test('super admin without branch cannot access branch profile', function () {
         ->assertForbidden();
 });
 
-test('branch user can view branch profile without explicit permission', function () {
+test('branch user without permission cannot access branch profile', function () {
+    $this->artisan('permissions:sync');
+
+    $user = User::factory()->create(['branch_id' => Branch::factory()->create()->id]);
+
+    $this->actingAs($user)
+        ->get('/setting/branch-profile')
+        ->assertForbidden();
+});
+
+test('branch user can view branch profile with permission', function () {
+    $this->artisan('permissions:sync');
+
     $user = branchProfileUser();
 
     $this->actingAs($user)
@@ -37,7 +56,9 @@ test('branch user can view branch profile without explicit permission', function
             ->where('account.email', $user->email));
 });
 
-test('branch user can update branch profile and account without explicit permission', function () {
+test('branch user can update branch profile with permission', function () {
+    $this->artisan('permissions:sync');
+
     $user = branchProfileUser();
     $branch = Branch::query()->findOrFail($user->branch_id);
     $newEmail = fake()->unique()->safeEmail();
@@ -65,6 +86,8 @@ test('branch user can update branch profile and account without explicit permiss
 });
 
 test('branch user only updates their own branch profile', function () {
+    $this->artisan('permissions:sync');
+
     $user = branchProfileUser();
     $otherBranch = Branch::factory()->create(['name' => 'Other Branch']);
 

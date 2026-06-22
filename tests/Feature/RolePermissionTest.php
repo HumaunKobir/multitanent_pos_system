@@ -14,6 +14,16 @@ function superAdmin(): User
     return User::factory()->create(['branch_id' => null]);
 }
 
+function primaryAdmin(): User
+{
+    $admin = User::query()->find(User::SUPER_ADMIN_ID)
+        ?? User::factory()->create(['id' => User::SUPER_ADMIN_ID]);
+
+    $admin->update(['branch_id' => Branch::MAIN_BRANCH_ID]);
+
+    return $admin->fresh();
+}
+
 function branchStaffUser(): User
 {
     $branch = Branch::factory()->create();
@@ -67,10 +77,10 @@ test('permissions:sync without --cleanup keeps orphaned permissions', function (
 
 // ── Gate bypass for SuperAdmin ────────────────────────────────────────────────
 
-test('superadmin bypasses all permission checks', function () {
+test('primary admin bypasses all permission checks', function () {
     $this->artisan('permissions:sync');
 
-    $admin = superAdmin();
+    $admin = primaryAdmin();
     expect($admin->can('product.view'))->toBeTrue();
     expect($admin->can('product.create'))->toBeTrue();
     expect($admin->can('role.delete'))->toBeTrue();
@@ -103,23 +113,23 @@ test('branch user with role only gets assigned permissions', function () {
 // ── Role CRUD ─────────────────────────────────────────────────────────────────
 
 test('superadmin can view roles index', function () {
-    $this->actingAs(superAdmin())->get('/role')->assertOk();
+    $this->actingAs(primaryAdmin())->get('/role')->assertOk();
 });
 
 test('superadmin can view the create role page', function () {
-    $this->actingAs(superAdmin())->get('/role/create')->assertOk();
+    $this->actingAs(primaryAdmin())->get('/role/create')->assertOk();
 });
 
 test('superadmin can view the edit role page', function () {
     $role = Role::create(['name' => testRoleName('Existing Role'), 'guard_name' => 'web']);
-    $this->actingAs(superAdmin())->get("/role/{$role->id}/edit")->assertOk();
+    $this->actingAs(primaryAdmin())->get("/role/{$role->id}/edit")->assertOk();
 });
 
 test('superadmin can create a role and is redirected to role index', function () {
     $this->artisan('permissions:sync');
     $name = testRoleName('Sales Staff');
 
-    $this->actingAs(superAdmin())
+    $this->actingAs(primaryAdmin())
         ->post('/role', ['name' => $name])
         ->assertRedirect('/role');
 
@@ -129,7 +139,7 @@ test('superadmin can create a role and is redirected to role index', function ()
 test('superadmin can create a role with permissions from the role form', function () {
     $name = testRoleName('Sales Staff');
 
-    $this->actingAs(superAdmin())
+    $this->actingAs(primaryAdmin())
         ->post('/role', [
             'name' => $name,
             'permissions' => ['inventory.sell.view', 'inventory.sell.create', 'product.view'],
@@ -148,7 +158,7 @@ test('superadmin can update a role with permissions from the role form', functio
     $role = Role::create(['name' => testRoleName('Old Name'), 'guard_name' => 'web']);
     $role->givePermissionTo('inventory.sell.view');
 
-    $this->actingAs(superAdmin())
+    $this->actingAs(primaryAdmin())
         ->patch("/role/{$role->id}", [
             'name' => $role->name,
             'permissions' => ['product.view', 'product.create'],
@@ -165,7 +175,7 @@ test('role save creates missing configured permissions before syncing', function
 
     $name = testRoleName('Report Viewer');
 
-    $this->actingAs(superAdmin())
+    $this->actingAs(primaryAdmin())
         ->post('/role', [
             'name' => $name,
             'permissions' => ['report.balance-sheet.view'],
@@ -180,7 +190,7 @@ test('superadmin can update a role name', function () {
     $role = Role::create(['name' => testRoleName('Old Name'), 'guard_name' => 'web']);
     $newName = testRoleName('New Name');
 
-    $this->actingAs(superAdmin())
+    $this->actingAs(primaryAdmin())
         ->patch("/role/{$role->id}", ['name' => $newName])
         ->assertRedirect('/role');
 
@@ -191,7 +201,7 @@ test('superadmin can delete a role with no users', function () {
     $name = testRoleName('Temp Role');
     $role = Role::create(['name' => $name, 'guard_name' => 'web']);
 
-    $this->actingAs(superAdmin())
+    $this->actingAs(primaryAdmin())
         ->delete("/role/{$role->id}")
         ->assertRedirect('/role');
 
@@ -203,7 +213,7 @@ test('cannot delete role assigned to users', function () {
     $role = Role::create(['name' => $name, 'guard_name' => 'web']);
     branchStaffUser()->assignRole($role);
 
-    $this->actingAs(superAdmin())
+    $this->actingAs(primaryAdmin())
         ->delete("/role/{$role->id}")
         ->assertRedirect('/role')
         ->assertSessionHas('error');
@@ -217,7 +227,7 @@ test('superadmin can view the permissions page for a role', function () {
     $this->artisan('permissions:sync');
     $role = Role::create(['name' => testRoleName('Viewer'), 'guard_name' => 'web']);
 
-    $this->actingAs(superAdmin())
+    $this->actingAs(primaryAdmin())
         ->get("/role/{$role->id}/permissions")
         ->assertOk();
 });
@@ -226,7 +236,7 @@ test('superadmin can assign permissions to a role', function () {
     $this->artisan('permissions:sync');
     $role = Role::create(['name' => testRoleName('Sales Staff'), 'guard_name' => 'web']);
 
-    $this->actingAs(superAdmin())
+    $this->actingAs(primaryAdmin())
         ->put("/role/{$role->id}/permissions", [
             'permissions' => ['inventory.sell.view', 'inventory.sell.create'],
         ])
@@ -242,7 +252,7 @@ test('superadmin can replace permissions on a role', function () {
     $role = Role::create(['name' => testRoleName('Buyer'), 'guard_name' => 'web']);
     $role->givePermissionTo('inventory.sell.view');
 
-    $this->actingAs(superAdmin())
+    $this->actingAs(primaryAdmin())
         ->put("/role/{$role->id}/permissions", [
             'permissions' => ['product.view', 'product.create'],
         ]);
@@ -256,7 +266,7 @@ test('superadmin can clear all permissions from a role', function () {
     $role = Role::create(['name' => testRoleName('Empty'), 'guard_name' => 'web']);
     $role->givePermissionTo('product.view');
 
-    $this->actingAs(superAdmin())
+    $this->actingAs(primaryAdmin())
         ->put("/role/{$role->id}/permissions", ['permissions' => []]);
 
     expect($role->fresh()->permissions)->toBeEmpty();
@@ -267,7 +277,7 @@ test('superadmin can clear all permissions from a role', function () {
 test('superadmin sees full navigation', function () {
     $this->artisan('permissions:sync');
 
-    $titles = collect(app(AdminNavigation::class)->build(superAdmin()))->pluck('title')->toArray();
+    $titles = collect(app(AdminNavigation::class)->build(primaryAdmin()))->pluck('title')->toArray();
     expect($titles)->toContain('Branch');
     expect($titles)->toContain('User');
     expect($titles)->toContain('Roles');
@@ -286,7 +296,7 @@ test('branch user with no role sees no permission-gated menu items', function ()
     expect($titles)->not->toContain('User');
     expect($titles)->not->toContain('Roles');
     expect($titles)->not->toContain('Contact Messages');
-    expect($titles)->toContain('Dashboard');
+    expect($titles)->not->toContain('Dashboard');
 });
 
 test('ecommerce branch user sees contact messages in navigation', function () {
@@ -300,6 +310,7 @@ test('ecommerce branch user sees contact messages in navigation', function () {
     );
 
     $user = User::factory()->create(['branch_id' => $branch->id]);
+    $user->givePermissionTo('contact-list.view');
     $titles = collect(app(AdminNavigation::class)->build($user))->pluck('title')->toArray();
 
     expect($titles)->toContain('Website Manage');
@@ -311,7 +322,7 @@ test('branch user sees only nav items their role permits', function () {
 
     $user = branchStaffUser();
     $role = Role::create(['name' => testRoleName('Buyer'), 'guard_name' => 'web']);
-    $role->givePermissionTo(['inventory.purchase.view', 'inventory.purchase.create']);
+    $role->givePermissionTo(['dashboard.view', 'inventory.purchase.view', 'inventory.purchase.create']);
     $user->assignRole($role);
 
     $titles = collect(app(AdminNavigation::class)->build($user))->pluck('title')->toArray();
@@ -339,10 +350,76 @@ test('authenticated user receives permissions in shared inertia props', function
 });
 
 test('superadmin receives wildcard permissions in shared inertia props', function () {
-    $this->actingAs(superAdmin())
+    $primaryAdmin = User::query()->find(User::SUPER_ADMIN_ID)
+        ?? User::factory()->create(['id' => User::SUPER_ADMIN_ID]);
+
+    $primaryAdmin->update(['branch_id' => Branch::MAIN_BRANCH_ID]);
+
+    $this->actingAs($primaryAdmin->fresh())
         ->get('/role')
         ->assertOk()
         ->assertInertia(fn ($page) => $page->where('auth.permissions', ['*']));
+});
+
+test('main branch admin panel user sees only permitted navigation items', function () {
+    $this->artisan('permissions:sync');
+
+    $user = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    $role = Role::create(['name' => testRoleName('Catalog Viewer'), 'guard_name' => 'web']);
+    $role->givePermissionTo('setting.category.view');
+    $user->assignRole($role);
+
+    $titles = collect(app(AdminNavigation::class)->build($user))->pluck('title')->toArray();
+
+    expect($titles)->toContain('Settings');
+    expect($titles)->not->toContain('Dashboard');
+    expect($titles)->not->toContain('Branch');
+    expect($titles)->not->toContain('User');
+    expect($titles)->not->toContain('Roles');
+    expect($titles)->not->toContain('Admin Profile');
+    expect($titles)->not->toContain('Sales');
+});
+
+test('main branch admin panel user is denied pages without permission', function () {
+    $this->artisan('permissions:sync');
+
+    $user = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    $role = Role::create(['name' => testRoleName('Purchase Viewer'), 'guard_name' => 'web']);
+    $role->givePermissionTo('inventory.purchase.view');
+    $user->assignRole($role);
+
+    $this->actingAs($user)
+        ->get('/party/supplier')
+        ->assertForbidden();
+
+    $this->actingAs($user)
+        ->get('/inventory/purchase')
+        ->assertOk();
+
+    $this->actingAs($user)
+        ->get('/dashboard')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('limitedAccess', true));
+});
+
+test('primary admin bypasses permission checks while other main branch users do not', function () {
+    $this->artisan('permissions:sync');
+
+    $primaryAdmin = User::query()->find(User::SUPER_ADMIN_ID)
+        ?? User::factory()->create(['id' => User::SUPER_ADMIN_ID]);
+    $primaryAdmin->update(['branch_id' => Branch::MAIN_BRANCH_ID]);
+
+    expect($primaryAdmin->fresh()->bypassesPermissionChecks())->toBeTrue();
+    expect($primaryAdmin->fresh()->can('role.view'))->toBeTrue();
+
+    $mainBranchStaff = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+
+    expect($mainBranchStaff->bypassesPermissionChecks())->toBeFalse();
+    expect($mainBranchStaff->can('role.view'))->toBeFalse();
+
+    $this->actingAs($mainBranchStaff)
+        ->get('/role')
+        ->assertForbidden();
 });
 
 // ── Controller authorization ──────────────────────────────────────────────────

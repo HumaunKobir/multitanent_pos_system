@@ -56,7 +56,7 @@ class HandleInertiaRequests extends Middleware
                 'user' => $user instanceof User ? $user : null,
                 'customer' => $customer,
                 'permissions' => $user instanceof User
-                    ? ($user->isSuperAdmin()
+                    ? ($user->bypassesPermissionChecks()
                         ? ['*']
                         : $user->getAllPermissions()->pluck('name')->values()->all())
                     : [],
@@ -64,7 +64,7 @@ class HandleInertiaRequests extends Middleware
             'adminNavigation' => $user instanceof User
                 ? app(AdminNavigation::class)->build($user)
                 : [],
-            'panelType' => $user instanceof User && $user->isBranchUser() ? 'branch' : 'admin',
+            'panelType' => $user instanceof User && $user->usesBranchPanel() ? 'branch' : 'admin',
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'cart' => $cart,
             'cartCount' => count($cart),

@@ -16,6 +16,8 @@ class BranchProfileController extends Controller
 {
     public function edit(): Response
     {
+        $this->authorize('setting.branch-profile.view');
+
         $branch = $this->currentBranchOrFail();
         $user = Auth::user();
 
@@ -35,6 +37,8 @@ class BranchProfileController extends Controller
 
     public function update(UpdateBranchProfileRequest $request): RedirectResponse
     {
+        $this->authorize('setting.branch-profile.update');
+
         $branch = $this->currentBranchOrFail();
         $user = Auth::user();
         $validated = $request->validated();

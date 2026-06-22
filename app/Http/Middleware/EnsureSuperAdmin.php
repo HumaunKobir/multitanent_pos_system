@@ -12,7 +12,7 @@ class EnsureSuperAdmin
     {
         $user = $request->user();
 
-        if ($user === null || $user->isSuperAdmin()) {
+        if ($user === null || $user->usesAdminPanel()) {
             return $next($request);
         }
 

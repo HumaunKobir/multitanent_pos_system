@@ -13,6 +13,7 @@ return [
     | - single: true for top-level links without children
     | - icon: icon key used by admin-sidebar.jsx
     | - admin_only: visible only in the admin panel (superadmin)
+    | - primary_admin_only: visible only for user id 1 on the main branch
     | - branch_only: visible only in the branch panel
     | - permission: required permission to see this item (null = always visible)
     |
@@ -24,7 +25,7 @@ return [
             'icon' => 'layout-dashboard',
             'href' => '/dashboard',
             'single' => true,
-            'permission' => null,
+            'permission' => 'dashboard.view',
         ],
         [
             'title' => 'Sales',
@@ -96,8 +97,8 @@ return [
             'children' => [
                 ['title' => 'Online Orders', 'href' => '/online-order', 'permission' => 'online-order.view'],
                 ['title' => 'Online Customers', 'href' => '/online-customer', 'permission' => 'online-customer.view'],
-                ['title' => 'Contact Messages', 'href' => '/contact-list', 'permission' => null],
-                ['title' => 'Subscribers', 'href' => '/subscriber-list', 'permission' => null],
+                ['title' => 'Contact Messages', 'href' => '/contact-list', 'permission' => 'contact-list.view'],
+                ['title' => 'Subscribers', 'href' => '/subscriber-list', 'permission' => 'subscriber-list.view'],
                 ['title' => 'Slider', 'href' => '/setting/slider', 'permission' => 'setting.slider.view'],
                 ['title' => 'Product Section', 'href' => '/setting/productsection', 'permission' => 'setting.productsection.view'],
                 ['title' => 'Website Setting', 'href' => '/setting/website', 'permission' => 'setting.website.view'],
@@ -158,6 +159,7 @@ return [
             'href' => '/setting/admin-profile',
             'single' => true,
             'admin_only' => true,
+            'primary_admin_only' => true,
             'permission' => null,
         ],
         [
@@ -166,7 +168,7 @@ return [
             'href' => '/setting/branch-profile',
             'single' => true,
             'branch_only' => true,
-            'permission' => null,
+            'permission' => 'setting.branch-profile.view',
         ],
     ],
 

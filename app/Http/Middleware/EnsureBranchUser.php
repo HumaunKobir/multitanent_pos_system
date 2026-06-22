@@ -12,7 +12,7 @@ class EnsureBranchUser
     {
         $user = $request->user();
 
-        if ($user !== null && $user->isBranchUser()) {
+        if ($user !== null && $user->usesBranchPanel()) {
             return $next($request);
         }
 

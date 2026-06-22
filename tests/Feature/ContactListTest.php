@@ -5,6 +5,7 @@ use App\Models\Contact;
 use App\Models\User;
 use App\Services\EcommerceBranchService;
 use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\Models\Permission;
 
 function contactListSuperAdmin(): User
 {
@@ -28,11 +29,17 @@ function contactListEcommerceBranch(): Branch
     );
 }
 
-function contactListEcommerceUser(): User
+function contactListEcommerceUser(array $permissions = ['contact-list.view', 'contact-list.delete']): User
 {
     $branch = contactListEcommerceBranch();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
 
-    return User::factory()->create(['branch_id' => $branch->id]);
+    foreach ($permissions as $permission) {
+        Permission::findOrCreate($permission, 'web');
+        $user->givePermissionTo($permission);
+    }
+
+    return $user;
 }
 
 test('ecommerce branch resolves by name when present', function () {
@@ -58,6 +65,8 @@ test('non ecommerce branch users are redirected from contact list', function () 
 });
 
 test('ecommerce branch user can view contact messages for their branch', function () {
+    $this->artisan('permissions:sync');
+
     $branch = contactListEcommerceBranch();
     $otherBranch = Branch::factory()->create();
     $prefix = 'cl-ec-'.uniqid();

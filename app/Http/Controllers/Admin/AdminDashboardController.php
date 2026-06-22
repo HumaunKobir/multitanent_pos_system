@@ -15,6 +15,15 @@ class AdminDashboardController extends Controller
 
     public function __invoke(Request $request): Response
     {
+        $user = $request->user();
+
+        if (! $user?->can('dashboard.view')) {
+            return Inertia::render('admin/dashboard', [
+                'today' => now()->toDateString(),
+                'limitedAccess' => true,
+            ]);
+        }
+
         $period = DashboardSalesPeriod::tryFromInput($request->input('period'));
         $overview = $this->dashboard->adminOverview();
 

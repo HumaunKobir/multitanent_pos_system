@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Services\EcommerceBranchService;
 use Illuminate\Support\Facades\Mail;
 use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\Models\Permission;
 
 function subscriberListSuperAdmin(): User
 {
@@ -31,11 +32,17 @@ function subscriberListEcommerceBranch(): Branch
     );
 }
 
-function subscriberListEcommerceUser(): User
+function subscriberListEcommerceUser(array $permissions = ['subscriber-list.view', 'subscriber-list.delete', 'subscriber-list.send-mail']): User
 {
     $branch = subscriberListEcommerceBranch();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
 
-    return User::factory()->create(['branch_id' => $branch->id]);
+    foreach ($permissions as $permission) {
+        Permission::findOrCreate($permission, 'web');
+        $user->givePermissionTo($permission);
+    }
+
+    return $user;
 }
 
 test('guests are redirected from subscriber list', function () {
@@ -49,6 +56,8 @@ test('non ecommerce branch users are redirected from subscriber list', function 
 });
 
 test('ecommerce branch user can view subscribers', function () {
+    $this->artisan('permissions:sync');
+
     $prefix = 'sub-ec-'.uniqid();
 
     $visible = Subscriber::factory()->create([

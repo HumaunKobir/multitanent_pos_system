@@ -63,7 +63,7 @@ test('operating branch user cannot access stock distribution', function () {
         ->assertNotFound();
 });
 
-test('main branch user cannot access stock distribution', function () {
+test('main branch user can access stock distribution', function () {
     $this->artisan('permissions:sync');
     $this->withoutVite();
 
@@ -71,7 +71,10 @@ test('main branch user cannot access stock distribution', function () {
 
     $this->actingAs($user)
         ->get('/inventory/stock-distribution')
-        ->assertNotFound();
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/stock-distribution/index')
+            ->has('distributions'));
 });
 
 test('super admin can view stock distribution index', function () {

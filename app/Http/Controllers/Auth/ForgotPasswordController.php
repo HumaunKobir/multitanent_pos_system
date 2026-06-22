@@ -31,7 +31,7 @@ class ForgotPasswordController extends Controller
 
         if ($user !== null) {
             if ($user->isProtectedFromPasswordReset()) {
-                $message = $user->isSuperAdmin()
+                $message = $user->usesAdminPanel()
                     ? 'Password reset is not available for this account. Please update your password from Admin Profile in the admin panel.'
                     : 'Password reset is not available for this account. Please update your password from Branch Profile in the admin panel.';
 

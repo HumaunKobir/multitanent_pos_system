@@ -28,6 +28,7 @@ import {
 import { useEffect, useState } from 'react';
 
 import { useCurrentUrl } from '@/hooks/use-current-url';
+import { useCan } from '@/hooks/use-can';
 import { usePanelSidebar } from '@/contexts/panel-sidebar-context';
 import { cn } from '@/lib/utils';
 import { route } from '@/lib/route';
@@ -150,6 +151,32 @@ export function MobileSidebarTrigger() {
             </Button>
         </div>
     );
+}
+
+function canSeeNavItem(can, item) {
+    if (!item?.permission) {
+        return true;
+    }
+
+    return can(item.permission);
+}
+
+function filterNavigationByPermission(sections, can) {
+    return sections
+        .map((section) => {
+            if (section.single) {
+                return canSeeNavItem(can, section) ? section : null;
+            }
+
+            const children = (section.children ?? []).filter((child) => canSeeNavItem(can, child));
+
+            if (children.length === 0) {
+                return null;
+            }
+
+            return { ...section, children };
+        })
+        .filter(Boolean);
 }
 
 function SidebarContent({ adminNavigation, panelType, currentUrl, isCurrentUrl, expanded, toggle, collapsed }) {
@@ -361,12 +388,15 @@ function SidebarContent({ adminNavigation, panelType, currentUrl, isCurrentUrl, 
 
 export function PanelSidebar() {
     const { adminNavigation = [], panelType = 'admin' } = usePage().props;
+    const { can } = useCan();
     const { currentUrl, isCurrentUrl } = useCurrentUrl();
     const { collapsed, mobileOpen, closeMobile, isMobile } = usePanelSidebar();
+    const visibleNavigation =
+        panelType === 'admin' ? filterNavigationByPermission(adminNavigation, can) : adminNavigation;
 
     const [expanded, setExpanded] = useState(() => {
         return new Set(
-            adminNavigation
+            visibleNavigation
                 .filter((s) => !s.single && s.children?.some((c) => c.href && isCurrentUrl(c.href)))
                 .map((s) => s.title),
         );
@@ -376,7 +406,7 @@ export function PanelSidebar() {
         setExpanded((prev) => {
             const next = new Set(prev);
             let changed = false;
-            for (const s of adminNavigation) {
+            for (const s of visibleNavigation) {
                 if (s.single) continue;
                 const hasActive = s.children?.some((c) => c.href && isCurrentUrl(c.href));
                 if (hasActive && !next.has(s.title)) {
@@ -386,7 +416,7 @@ export function PanelSidebar() {
             }
             return changed ? next : prev;
         });
-    }, [currentUrl, adminNavigation]);
+    }, [currentUrl, visibleNavigation]);
 
     const toggle = (title) =>
         setExpanded((prev) => {
@@ -402,7 +432,7 @@ export function PanelSidebar() {
                     <SheetTitle className="sr-only">Navigation</SheetTitle>
                     <aside className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
                         <SidebarContent
-                            adminNavigation={adminNavigation}
+                            adminNavigation={visibleNavigation}
                             panelType={panelType}
                             currentUrl={currentUrl}
                             isCurrentUrl={isCurrentUrl}
@@ -425,7 +455,7 @@ export function PanelSidebar() {
             data-collapsed={collapsed || undefined}
         >
             <SidebarContent
-                adminNavigation={adminNavigation}
+                adminNavigation={visibleNavigation}
                 panelType={panelType}
                 currentUrl={currentUrl}
                 isCurrentUrl={isCurrentUrl}

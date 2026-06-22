@@ -370,6 +370,34 @@ return [
             ],
         ],
 
+        'contact-list' => [
+            'label' => 'Contact Messages',
+            'group' => 'Ecommerce',
+            'permissions' => [
+                'contact-list.view' => 'View Contact Messages',
+                'contact-list.delete' => 'Delete Contact Messages',
+            ],
+        ],
+
+        'subscriber-list' => [
+            'label' => 'Subscribers',
+            'group' => 'Ecommerce',
+            'permissions' => [
+                'subscriber-list.view' => 'View Subscribers',
+                'subscriber-list.delete' => 'Delete Subscribers',
+                'subscriber-list.send-mail' => 'Send Subscriber Emails',
+            ],
+        ],
+
+        'setting.branch-profile' => [
+            'label' => 'Branch Profile',
+            'group' => 'Settings',
+            'permissions' => [
+                'setting.branch-profile.view' => 'View Branch Profile',
+                'setting.branch-profile.update' => 'Update Branch Profile',
+            ],
+        ],
+
         'product.visible-on-store' => [
             'label' => 'Product Store Visibility',
             'group' => 'Ecommerce',

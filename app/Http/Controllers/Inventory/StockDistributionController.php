@@ -27,7 +27,7 @@ class StockDistributionController extends Controller
     public function index(Request $request): Response
     {
         $this->authorize('inventory.stock-distribution.view');
-        $this->authorizeSuperAdminOnly();
+        $this->authorizeAdminPanelOnly();
 
         $user = Auth::user();
 
@@ -98,7 +98,7 @@ class StockDistributionController extends Controller
     public function show(StockDistribution $stockDistribution): Response
     {
         $this->authorize('inventory.stock-distribution.view');
-        $this->authorizeSuperAdminOnly();
+        $this->authorizeAdminPanelOnly();
         $this->authorizeDistributionAccess($stockDistribution);
 
         $stockDistribution->load(['products.product', 'products.variation', 'toBranch:id,name', 'fromBranch:id,name']);
@@ -336,7 +336,7 @@ class StockDistributionController extends Controller
 
     private function distributionQueryForUser($user)
     {
-        if ($user?->isSuperAdmin()) {
+        if ($user?->usesAdminPanel()) {
             return StockDistribution::query();
         }
 
@@ -345,7 +345,7 @@ class StockDistributionController extends Controller
 
     private function canManageDistributions($user): bool
     {
-        return $user !== null && $user->isSuperAdmin();
+        return $user !== null && $user->usesAdminPanel();
     }
 
     private function authorizeMainBranchManager(): void
@@ -353,13 +353,13 @@ class StockDistributionController extends Controller
         abort_unless($this->canManageDistributions(Auth::user()), 403);
     }
 
-    private function authorizeSuperAdminOnly(): void
+    private function authorizeAdminPanelOnly(): void
     {
-        abort_unless(Auth::user()?->isSuperAdmin(), 404);
+        abort_unless(Auth::user()?->usesAdminPanel(), 404);
     }
 
     private function authorizeDistributionAccess(StockDistribution $distribution, bool $write = false): void
     {
-        abort_unless(Auth::user()?->isSuperAdmin(), 404);
+        abort_unless(Auth::user()?->usesAdminPanel(), 404);
     }
 }

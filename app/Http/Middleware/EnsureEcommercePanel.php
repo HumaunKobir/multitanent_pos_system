@@ -15,11 +15,11 @@ class EnsureEcommercePanel
     {
         $user = $request->user();
 
-        if ($user?->isBranchUser() && $this->ecommerceBranch->isEcommerceBranch($user->branch_id)) {
+        if ($user?->usesBranchPanel() && $this->ecommerceBranch->isEcommerceBranch($user->branch_id)) {
             return $next($request);
         }
 
-        return $user?->isBranchUser()
+        return $user?->usesBranchPanel()
             ? redirect()->route('branch-panel.dashboard')
             : redirect()->route('dashboard');
     }

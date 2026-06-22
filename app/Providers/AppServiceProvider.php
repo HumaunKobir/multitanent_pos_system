@@ -32,7 +32,7 @@ class AppServiceProvider extends ServiceProvider
         $this->ensurePublicUploadDirectories();
 
         Gate::before(function (User $user, string $ability): ?bool {
-            if ($user->isSuperAdmin()) {
+            if ($user->bypassesPermissionChecks()) {
                 return true;
             }
 

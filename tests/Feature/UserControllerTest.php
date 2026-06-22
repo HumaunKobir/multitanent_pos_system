@@ -4,6 +4,7 @@ use App\Enums\SystemAccountKey;
 use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Models\User;
+use App\Support\AdminNavigation;
 use Spatie\Permission\Models\Permission;
 
 function userManagementActor(array $permissions = []): User
@@ -307,6 +308,66 @@ test('main branch is available in user form and can receive managed users', func
         ])
         ->assertRedirect(route('user.index'))
         ->assertSessionHas('success');
+});
+
+test('main branch user logs into admin panel with role permissions', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = ensureMainBranch();
+
+    $user = User::factory()->create(['branch_id' => $mainBranchId]);
+    Permission::findOrCreate('product.view', 'web');
+    $user->givePermissionTo('product.view');
+
+    expect($user->usesAdminPanel())->toBeTrue();
+    expect($user->usesBranchPanel())->toBeFalse();
+
+    $dashboard = collect(app(AdminNavigation::class)->build($user))->firstWhere('title', 'Dashboard');
+    expect($dashboard['href'])->toBe(route('dashboard'));
+
+    $this->actingAs($user)
+        ->get('/dashboard')
+        ->assertOk();
+
+    $this->actingAs($user)
+        ->get('/branch-panel')
+        ->assertRedirect(route('dashboard'));
+
+    $this->actingAs($user)
+        ->get('/product')
+        ->assertOk();
+});
+
+test('branch id 1 users use admin panel even when another branch is named main branch', function () {
+    $this->artisan('permissions:sync');
+
+    $headOffice = Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Coolness Point'])->toArray(),
+    );
+
+    Branch::query()->firstOrCreate(
+        ['name' => Branch::MAIN_BRANCH_NAME],
+        Branch::factory()->make(['name' => Branch::MAIN_BRANCH_NAME])->toArray(),
+    );
+
+    expect(Branch::resolveMainBranchId())->toBe(Branch::MAIN_BRANCH_ID);
+    expect(Branch::isMainBranch($headOffice->id))->toBeTrue();
+
+    $user = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    Permission::findOrCreate('product.view', 'web');
+    $user->givePermissionTo('product.view');
+
+    expect($user->usesAdminPanel())->toBeTrue();
+    expect($user->usesBranchPanel())->toBeFalse();
+
+    $this->actingAs($user)
+        ->get('/dashboard')
+        ->assertOk();
+
+    $this->actingAs($user)
+        ->get('/branch-panel')
+        ->assertRedirect(route('dashboard'));
 });
 
 test('user index exposes all assignable active branches', function () {

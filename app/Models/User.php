@@ -44,6 +44,12 @@ class User extends Authenticatable
         return $this->branch_id === null;
     }
 
+    public function bypassesPermissionChecks(): bool
+    {
+        return $this->id === self::SUPER_ADMIN_ID
+            && Branch::isMainBranch($this->branch_id);
+    }
+
     public function isProtectedFromPasswordReset(): bool
     {
         return $this->id === self::SUPER_ADMIN_ID
@@ -53,6 +59,16 @@ class User extends Authenticatable
     public function isBranchUser(): bool
     {
         return $this->branch_id !== null;
+    }
+
+    public function usesAdminPanel(): bool
+    {
+        return $this->isSuperAdmin() || Branch::isMainBranch($this->branch_id);
+    }
+
+    public function usesBranchPanel(): bool
+    {
+        return $this->isBranchUser() && ! Branch::isMainBranch($this->branch_id);
     }
 
     public function isSystemEcommerceAdmin(): bool

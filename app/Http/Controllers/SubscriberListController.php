@@ -17,6 +17,8 @@ class SubscriberListController extends Controller
 {
     public function index(Request $request, SubscriberMailService $subscriberMailService): Response
     {
+        $this->authorize('subscriber-list.view');
+
         $subscribers = Subscriber::query()
             ->when($request->search, function ($query, $search) {
                 $query->where('email', 'like', "%{$search}%");
@@ -35,6 +37,8 @@ class SubscriberListController extends Controller
 
     public function destroy(Subscriber $subscriber): RedirectResponse
     {
+        $this->authorize('subscriber-list.delete');
+
         $subscriber->delete();
 
         return redirect()->route('subscriber-list.index')
@@ -46,6 +50,8 @@ class SubscriberListController extends Controller
         Subscriber $subscriber,
         SubscriberMailService $subscriberMailService,
     ): RedirectResponse {
+        $this->authorize('subscriber-list.send-mail');
+
         if (! $subscriber->status) {
             return redirect()->route('subscriber-list.index')
                 ->with('error', 'Cannot send mail to an inactive subscriber.');
@@ -75,6 +81,8 @@ class SubscriberListController extends Controller
         SendBulkSubscriberMailRequest $request,
         SubscriberMailService $subscriberMailService,
     ): RedirectResponse {
+        $this->authorize('subscriber-list.send-mail');
+
         $validated = $request->validated();
         $allActive = filter_var($validated['all_active'] ?? false, FILTER_VALIDATE_BOOLEAN);
 

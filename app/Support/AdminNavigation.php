@@ -22,19 +22,19 @@ class AdminNavigation
         $sections = [];
 
         foreach (config('admin-navigation.sections', []) as $section) {
-            if (! $user->isBranchUser() && ($section['ecommerce_only'] ?? false)) {
+            if (! $user->usesBranchPanel() && ($section['ecommerce_only'] ?? false)) {
                 continue;
             }
 
-            if ($user->isBranchUser() && ($section['admin_only'] ?? false) && ! ($section['ecommerce_only'] ?? false)) {
+            if ($user->usesBranchPanel() && ($section['admin_only'] ?? false) && ! ($section['ecommerce_only'] ?? false)) {
                 continue;
             }
 
-            if ($user->isBranchUser() && ($section['ecommerce_only'] ?? false) && ! EcommerceBranchService::isEcommerceBranchStatic($user->branch_id)) {
+            if ($user->usesBranchPanel() && ($section['ecommerce_only'] ?? false) && ! EcommerceBranchService::isEcommerceBranchStatic($user->branch_id)) {
                 continue;
             }
 
-            if (! $user->isBranchUser() && ($section['branch_only'] ?? false)) {
+            if ($user->usesAdminPanel() && ($section['branch_only'] ?? false)) {
                 continue;
             }
 
@@ -76,6 +76,7 @@ class AdminNavigation
                     fn (array $child): array => [
                         'title' => $child['title'],
                         'href' => $child['href'] ?? null,
+                        'permission' => $child['permission'] ?? null,
                     ],
                     $children,
                 ),
@@ -86,11 +87,20 @@ class AdminNavigation
             return null;
         }
 
+        if (! $this->userCanSeeBranchScope($user, $section)) {
+            return null;
+        }
+
+        if (! $this->userCanSeeEcommerceScope($user, $section)) {
+            return null;
+        }
+
         return [
             'title' => $section['title'],
             'icon' => $section['icon'],
             'href' => $this->resolveHref($section, $user),
             'single' => (bool) ($section['single'] ?? false),
+            'permission' => $section['permission'] ?? null,
         ];
     }
 
@@ -112,7 +122,7 @@ class AdminNavigation
             return true;
         }
 
-        return $user->isBranchUser()
+        return $user->usesBranchPanel()
             && EcommerceBranchService::isEcommerceBranchStatic($user->branch_id);
     }
 
@@ -121,12 +131,16 @@ class AdminNavigation
      */
     protected function userCanSeeBranchScope(User $user, array $item): bool
     {
+        if ($item['primary_admin_only'] ?? false) {
+            return $user->bypassesPermissionChecks();
+        }
+
         if ($item['admin_panel_only'] ?? false) {
-            return $user->isSuperAdmin();
+            return $user->usesAdminPanel();
         }
 
         if ($item['branch_only'] ?? false) {
-            return $user->isBranchUser();
+            return $user->usesBranchPanel();
         }
 
         if ($item['main_branch_only'] ?? false) {
@@ -134,8 +148,7 @@ class AdminNavigation
         }
 
         if ($item['branch_received_only'] ?? false) {
-            return $user->isBranchUser()
-                && ! Branch::isMainBranch($user->branch_id);
+            return $user->usesBranchPanel();
         }
 
         return true;
@@ -144,7 +157,7 @@ class AdminNavigation
     protected function resolveHref(array $section, User $user): ?string
     {
         if ($section['title'] === 'Dashboard') {
-            return $user->isBranchUser()
+            return $user->usesBranchPanel()
                 ? route('branch-panel.dashboard')
                 : route('dashboard');
         }

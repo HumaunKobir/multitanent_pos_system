@@ -9,11 +9,16 @@ use App\Models\Voucher;
 use App\Support\AdminNavigation;
 use Carbon\Carbon;
 use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
 function dashboardSuperAdmin(): User
 {
-    return User::factory()->create(['branch_id' => null]);
+    $user = User::factory()->create(['branch_id' => null]);
+    Permission::findOrCreate('dashboard.view', 'web');
+    $user->givePermissionTo('dashboard.view');
+
+    return $user;
 }
 
 function dashboardBranchUser(?int $branchId = null, array $permissions = []): User

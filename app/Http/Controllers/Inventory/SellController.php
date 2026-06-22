@@ -292,12 +292,16 @@ class SellController extends Controller
 
         $sell->load([
             'customer',
-            'branch:id,name,phone,address,pos_terms_and_conditions',
+            'branch:id,name,phone,address,logo,pos_terms_and_conditions',
             'specialDiscount:id,name,discount_type,discount_value',
             'products.product',
             'products.variation',
             'payments.paymentAccount:id,code,name',
         ]);
+
+        if ($sell->branch) {
+            $sell->branch->logo_url = StorageUrl::public($sell->branch->logo);
+        }
 
         return Inertia::render('admin/inventory/sell/show', [
             'sell' => $sell,

@@ -22,6 +22,7 @@ class UpdateBranchProfileRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'address' => ['nullable', 'string', 'max:1000'],
+            'logo' => ['nullable', 'image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:2048'],
             'email' => ['required', 'email', 'max:191', Rule::unique('users', 'email')->ignore($this->user()?->id)],
             'password' => ['nullable', 'confirmed', Password::min(8)],
         ];

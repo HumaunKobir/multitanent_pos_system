@@ -5,8 +5,10 @@ namespace App\Http\Controllers\Setting;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Setting\UpdateBranchProfileRequest;
 use App\Models\Branch;
+use App\Support\StorageUrl;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -23,6 +25,7 @@ class BranchProfileController extends Controller
                 'name' => $branch->name,
                 'phone' => $branch->phone,
                 'address' => $branch->address,
+                'logo_url' => StorageUrl::public($branch->logo),
             ],
             'account' => [
                 'email' => $user?->email,
@@ -36,11 +39,20 @@ class BranchProfileController extends Controller
         $user = Auth::user();
         $validated = $request->validated();
 
-        $branch->update([
+        $branchPayload = [
             'name' => $validated['name'],
             'phone' => $validated['phone'] ?? null,
             'address' => $validated['address'] ?? null,
-        ]);
+        ];
+
+        if ($request->hasFile('logo')) {
+            if ($branch->logo) {
+                Storage::disk('public')->delete($branch->logo);
+            }
+            $branchPayload['logo'] = $request->file('logo')->store('branches', 'public');
+        }
+
+        $branch->update($branchPayload);
 
         $userPayload = [
             'email' => $validated['email'],

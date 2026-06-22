@@ -20,14 +20,33 @@ function SettingsSection({ title, description, children }) {
     );
 }
 
+function FilePreview({ label, currentUrl, file, onChange, error }) {
+    const previewUrl = file ? URL.createObjectURL(file) : currentUrl;
+
+    return (
+        <div>
+            {previewUrl && (
+                <div className="mb-2">
+                    <img src={previewUrl} alt={label} className="h-16 max-w-40 rounded border object-contain" />
+                    <p className="mt-1 text-xs text-muted-foreground">Current logo. Upload a new file to replace it.</p>
+                </div>
+            )}
+            <Input type="file" accept="image/*" onChange={(e) => onChange(e.target.files?.[0] ?? null)} className="mt-1" />
+            {error && <p className="mt-1 text-xs text-destructive">{error}</p>}
+        </div>
+    );
+}
+
 export default function BranchProfileIndex({ branch, account }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
 
-    const { data, setData, put, processing, errors } = useForm({
+    const { data, setData, post, processing, errors } = useForm({
+        _method: 'put',
         name: branch.name ?? '',
         phone: branch.phone ?? '',
         address: branch.address ?? '',
+        logo: null,
         email: account.email ?? '',
         password: '',
         password_confirmation: '',
@@ -41,11 +60,13 @@ export default function BranchProfileIndex({ branch, account }) {
     const submit = (event) => {
         event.preventDefault();
 
-        put(route('setting.branch-profile.update'), {
+        post(route('setting.branch-profile.update'), {
+            forceFormData: true,
             preserveScroll: true,
             onSuccess: () => {
                 setData('password', '');
                 setData('password_confirmation', '');
+                setData('logo', null);
             },
         });
     };
@@ -88,6 +109,16 @@ export default function BranchProfileIndex({ branch, account }) {
                                 onChange={(event) => setData('address', event.target.value)}
                                 rows={3}
                                 className="mt-1"
+                            />
+                        </FormField>
+
+                        <FormField label="Branch Logo" name="logo" error={errors.logo} description="Used on POS receipts for this branch.">
+                            <FilePreview
+                                label="Branch Logo"
+                                currentUrl={branch.logo_url}
+                                file={data.logo}
+                                onChange={(file) => setData('logo', file)}
+                                error={errors.logo}
                             />
                         </FormField>
                     </SettingsSection>

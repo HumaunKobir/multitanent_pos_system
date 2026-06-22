@@ -50,7 +50,7 @@ export default function SellShow({ sell }) {
                 companyAddress: sell.branch?.address || contact?.address || '',
                 companyPhone: sell.branch?.phone || contact?.phone || '',
                 companyEmail: contact?.email || '',
-                logoUrl: logo,
+                logoUrl: sell.branch?.logo_url || logo,
                 branchName: sell.branch?.name || '',
                 change: flash?.pos_change ?? 0,
                 termsAndConditions: sell.branch?.pos_terms_and_conditions ?? '',

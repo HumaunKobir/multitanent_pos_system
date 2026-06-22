@@ -50,12 +50,7 @@ class Branch extends Model
 
     public function scopeAssignableForUsers(Builder $query): Builder
     {
-        $ecommerceBranchId = EcommerceBranchService::resolveIdStatic();
-
-        return $query->where(function (Builder $query) use ($ecommerceBranchId): void {
-            $query->where('id', '!=', self::resolveMainBranchId())
-                ->orWhere('id', $ecommerceBranchId);
-        });
+        return $query;
     }
 
     public function scopeAvailableForUserAssignment(Builder $query): Builder

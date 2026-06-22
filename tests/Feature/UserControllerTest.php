@@ -143,11 +143,11 @@ test('user index hides system ecommerce admin and exposes assignable branches', 
             ->component('admin/user/index')
             ->where('users.data', fn ($users) => collect($users)->pluck('id')->contains($assignedUser->id)
                 && ! collect($users)->pluck('id')->contains($systemEcommerceAdmin->id)
-                && ($mainBranchUser === null || ! collect($users)->pluck('id')->contains($mainBranchUser->id)))
+                && ($mainBranchUser === null || collect($users)->pluck('id')->contains($mainBranchUser->id)))
             ->where('branches', fn ($branches) => collect($branches)->has($unassignedBranch->id)
                 && collect($branches)->has($assignedBranch->id)
                 && collect($branches)->has($ecommerceBranch->id)
-                && ($mainBranch === null || $mainBranch->name === Branch::ECOMMERCE_BRANCH_NAME || ! collect($branches)->has($mainBranch->id))));
+                && ($mainBranch === null || $mainBranch->name === Branch::ECOMMERCE_BRANCH_NAME || collect($branches)->has($mainBranch->id))));
 });
 
 test('ecommerce branch is available in user form when only the system admin exists', function () {
@@ -276,6 +276,37 @@ test('user index paginates results', function () {
             ->component('admin/user/index')
             ->has('users.data')
             ->where('users.current_page', 2));
+});
+
+test('main branch is available in user form and can receive managed users', function () {
+    $this->artisan('permissions:sync');
+
+    $actor = userManagementActor(['user.view', 'user.create']);
+
+    $mainBranch = Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => Branch::MAIN_BRANCH_NAME])->toArray(),
+    );
+
+    $this->actingAs($actor)
+        ->get('/user')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/user/index')
+            ->where('branches', fn ($branches) => collect($branches)->has($mainBranch->id)));
+
+    $this->actingAs($actor)
+        ->post('/user', [
+            'branch_id' => $mainBranch->id,
+            'name' => 'Main Branch Staff',
+            'email' => fake()->unique()->safeEmail(),
+            'phone' => fake()->unique()->numerify('01#########'),
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'status' => 1,
+        ])
+        ->assertRedirect(route('user.index'))
+        ->assertSessionHas('success');
 });
 
 test('user index exposes all assignable active branches', function () {

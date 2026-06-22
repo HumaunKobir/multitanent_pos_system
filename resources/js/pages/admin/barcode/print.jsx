@@ -83,6 +83,10 @@ function BarcodeBars({ code, barHeight, fontWeight }) {
     );
 }
 
+function getLabelName(row) {
+    return row?.product?.name ?? row?.name ?? 'Product Name';
+}
+
 function LabelPreview({ row, settings }) {
     const pxWidth = settings.width * PRINT_DPI;
     const pxHeight = settings.height * PRINT_DPI;
@@ -134,7 +138,7 @@ function LabelPreview({ row, settings }) {
                             marginBottom: '1px',
                         }}
                     >
-                        {row?.name ?? 'Product Name'}
+                        {getLabelName(row)}
                         {row?.code ? ` - ${row.code}` : ''}
                     </div>
                     <BarcodeBars
@@ -170,10 +174,12 @@ function buildPrintHtml(rows, settings) {
         .flatMap((row) => Array.from({ length: copies }, () => row))
         .map((row) => {
             const price = getEffectivePrice(row) ?? 0;
+            const baseName = row.product?.name ?? row.name ?? '';
+            const labelName = row.code ? `${baseName} - ${row.code}` : baseName;
             return `
       <div class="label">
         <div class="label-inner">
-          <div class="name">${row.name ?? ''}${row.code ? ` - ${row.code}` : ''}</div>
+          <div class="name">${labelName}</div>
           <div class="bars-wrap"><div class="bars">${row.code}</div></div>
           <div class="footer">
             <span>${formatLabelPrice(price)}</span>

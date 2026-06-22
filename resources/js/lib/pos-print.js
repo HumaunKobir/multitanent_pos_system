@@ -246,6 +246,8 @@ function truncateName(name, max = 28) {
     return `${text.slice(0, max - 1)}…`;
 }
 
+const BD_TIMEZONE = 'Asia/Dhaka';
+
 function formatReceiptDate(value) {
     if (!value) {
         return '—';
@@ -261,6 +263,7 @@ function formatReceiptDate(value) {
         day: '2-digit',
         month: 'short',
         year: 'numeric',
+        timeZone: BD_TIMEZONE,
     });
 }
 
@@ -268,10 +271,10 @@ function formatReceiptTime(value) {
     const date = value ? new Date(value) : new Date();
 
     if (Number.isNaN(date.getTime())) {
-        return new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: BD_TIMEZONE });
     }
 
-    return date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: BD_TIMEZONE });
 }
 
 function formatPrintedAt() {
@@ -281,7 +284,8 @@ function formatPrintedAt() {
         day: '2-digit',
         month: 'short',
         year: 'numeric',
-    })} ${now.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+        timeZone: BD_TIMEZONE,
+    })} ${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: BD_TIMEZONE })}`;
 }
 
 function groupItemsByVariant(items) {

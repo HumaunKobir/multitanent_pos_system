@@ -1,10 +1,11 @@
 import { useLayoutEffect, useRef } from 'react';
 
-import { fitBarcodeToContainer } from '@/lib/barcode-label';
+import { fitBarcodeToContainer, formatBarcodeForLibre128 } from '@/lib/barcode-label';
 
 export function BarcodeBars({ code, barHeight, fontWeight = 400, fill = false }) {
     const textRef = useRef(null);
     const wrapRef = useRef(null);
+    const encodedCode = formatBarcodeForLibre128(code);
 
     useLayoutEffect(() => {
         const measure = () => {
@@ -39,7 +40,7 @@ export function BarcodeBars({ code, barHeight, fontWeight = 400, fill = false })
         return () => {
             observer.disconnect();
         };
-    }, [code, barHeight, fill]);
+    }, [code, barHeight, fill, encodedCode]);
 
     return (
         <div
@@ -67,7 +68,7 @@ export function BarcodeBars({ code, barHeight, fontWeight = 400, fill = false })
                     display: 'inline-block',
                 }}
             >
-                {code}
+                {encodedCode}
             </div>
         </div>
     );

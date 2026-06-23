@@ -13,6 +13,70 @@ export const BARCODE_WIDTH_SAFETY_RATIO = 0.86;
 /** Use most of the vertical space between name and price for bar height. */
 export const BARCODE_HEIGHT_USAGE_RATIO = 0.98;
 
+const CODE128_START_B = 204;
+const CODE128_STOP = 206;
+
+function code128SymbolToChar(value) {
+    if (value <= 94) {
+        return String.fromCharCode(value + 32);
+    }
+
+    return String.fromCharCode(value + 146);
+}
+
+/** Code 128 Set B accepts printable ASCII (space through tilde). */
+export function isCode128Encodable(text) {
+    return /^[\x20-\x7E]+$/.test(String(text ?? ''));
+}
+
+/**
+ * Encode plain text for the Libre Barcode 128 font (start + data + checksum + stop).
+ */
+export function encodeCode128B(input) {
+    const text = String(input ?? '');
+
+    if (!text) {
+        return '';
+    }
+
+    if (!isCode128Encodable(text)) {
+        throw new Error(`Barcode code contains unsupported characters: ${text}`);
+    }
+
+    let checksum = 104;
+    let encoded = String.fromCharCode(CODE128_START_B);
+
+    for (let i = 0; i < text.length; i++) {
+        const value = text.charCodeAt(i) - 32;
+        checksum += value * (i + 1);
+        encoded += text[i];
+    }
+
+    checksum %= 103;
+    encoded += code128SymbolToChar(checksum);
+    encoded += String.fromCharCode(CODE128_STOP);
+
+    return encoded;
+}
+
+export function formatBarcodeForLibre128(code) {
+    const text = String(code ?? '').trim();
+
+    if (!text) {
+        return '';
+    }
+
+    return encodeCode128B(text);
+}
+
+export function escapeHtml(text) {
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
 export function getNameBarcodeGap(fontSize) {
     return Math.max(NAME_BARCODE_GAP_PX, Math.ceil(fontSize * 0.5));
 }
@@ -94,7 +158,7 @@ export function fitBarcodeToContainer(barEl, containerEl, maxBarHeight, { fill =
         fill && availableHeight > 8
             ? Math.floor(availableHeight * BARCODE_HEIGHT_USAGE_RATIO)
             : maxBarHeight;
-    const baseHeight = Math.max(
+    let height = Math.max(
         MIN_BARCODE_BAR_HEIGHT_PX,
         Math.min(maxBarHeight, heightFromContainer),
     );
@@ -104,15 +168,20 @@ export function fitBarcodeToContainer(barEl, containerEl, maxBarHeight, { fill =
     barEl.style.width = 'auto';
     barEl.style.maxWidth = 'none';
     barEl.style.display = 'inline-block';
-    barEl.style.fontSize = `${baseHeight}px`;
 
-    const textWidth = barEl.scrollWidth;
+    const minHeight = Math.max(MIN_BARCODE_BAR_HEIGHT_PX, MIN_BARCODE_FONT_PX);
 
-    if (textWidth > targetWidth && targetWidth > 0 && textWidth > 0) {
-        barEl.style.transform = `scaleX(${targetWidth / textWidth})`;
-    }
+    do {
+        barEl.style.fontSize = `${height}px`;
 
-    return barEl.offsetHeight || baseHeight;
+        if (barEl.scrollWidth <= targetWidth || height <= minHeight) {
+            break;
+        }
+
+        height -= 1;
+    } while (height >= minHeight);
+
+    return barEl.offsetHeight || height;
 }
 
 export function buildPrintHtml(rows, settings) {
@@ -127,16 +196,17 @@ export function buildPrintHtml(rows, settings) {
         .map((row) => {
             const price = getEffectivePrice(row) ?? 0;
             const labelName = getLabelTitle(row);
+            const encodedCode = formatBarcodeForLibre128(row.code);
 
             return `
       <div class="label">
         <div class="label-inner">
-          <div class="name">${labelName}</div>
+          <div class="name">${escapeHtml(labelName)}</div>
           <div class="bars-wrap">
-            <div class="bars" data-max-bar-height="${barHeight}">${row.code}</div>
+            <div class="bars" data-max-bar-height="${barHeight}">${escapeHtml(encodedCode)}</div>
           </div>
           <div class="footer">
-            <span>${formatLabelPrice(price)}</span>
+            <span>${escapeHtml(formatLabelPrice(price))}</span>
           </div>
         </div>
       </div>`;
@@ -260,20 +330,23 @@ export function buildPrintHtml(rows, settings) {
       var heightFromContainer = availableHeight > 8
         ? Math.floor(availableHeight * ${BARCODE_HEIGHT_USAGE_RATIO})
         : maxBarHeight;
-      var baseHeight = Math.max(
+      var height = Math.max(
         ${MIN_BARCODE_BAR_HEIGHT_PX},
         Math.min(maxBarHeight, heightFromContainer)
       );
+      var minHeight = Math.max(${MIN_BARCODE_BAR_HEIGHT_PX}, ${MIN_BARCODE_FONT_PX});
       el.style.transform = 'none';
       el.style.transformOrigin = 'center center';
       el.style.width = 'auto';
       el.style.maxWidth = 'none';
       el.style.display = 'inline-block';
-      el.style.fontSize = baseHeight + 'px';
-      var tw = el.scrollWidth;
-      if (tw > targetWidth && targetWidth > 0 && tw > 0) {
-        el.style.transform = 'scaleX(' + (targetWidth / tw) + ')';
-      }
+      do {
+        el.style.fontSize = height + 'px';
+        if (el.scrollWidth <= targetWidth || height <= minHeight) {
+          break;
+        }
+        height -= 1;
+      } while (height >= minHeight);
     }
 
     function printWhenReady() {

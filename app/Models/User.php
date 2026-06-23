@@ -46,8 +46,7 @@ class User extends Authenticatable
 
     public function bypassesPermissionChecks(): bool
     {
-        return $this->id === self::SUPER_ADMIN_ID
-            && Branch::isMainBranch($this->branch_id);
+        return $this->id === self::SUPER_ADMIN_ID;
     }
 
     public function isProtectedFromPasswordReset(): bool

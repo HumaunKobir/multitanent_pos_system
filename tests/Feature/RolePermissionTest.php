@@ -422,6 +422,22 @@ test('primary admin bypasses permission checks while other main branch users do 
         ->assertForbidden();
 });
 
+test('seeded super admin with null branch bypasses permission checks', function () {
+    $this->artisan('permissions:sync');
+
+    $primaryAdmin = User::query()->find(User::SUPER_ADMIN_ID)
+        ?? User::factory()->create(['id' => User::SUPER_ADMIN_ID, 'branch_id' => null]);
+    $primaryAdmin->update(['branch_id' => null]);
+
+    expect($primaryAdmin->fresh()->bypassesPermissionChecks())->toBeTrue();
+    expect($primaryAdmin->fresh()->can('role.view'))->toBeTrue();
+
+    $this->actingAs($primaryAdmin->fresh())
+        ->get('/role')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('auth.permissions', ['*']));
+});
+
 // ── Controller authorization ──────────────────────────────────────────────────
 
 test('branch user without permission is denied supplier index', function () {

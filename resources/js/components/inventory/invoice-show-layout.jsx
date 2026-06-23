@@ -105,6 +105,7 @@ function TotalsSummary({
     net,
     paid,
     due,
+    change = 0,
 }) {
     const rows = [
         { label: 'Gross Amount', value: `৳${gross.toFixed(2)}`, muted: true },
@@ -127,7 +128,12 @@ function TotalsSummary({
         ...(vat > 0 ? [{ label: 'VAT', value: `৳${vat.toFixed(2)}`, muted: true }] : []),
         { label: 'Net Amount', value: `৳${net.toFixed(2)}`, bold: true, divider: true },
         { label: 'Paid', value: `৳${paid.toFixed(2)}`, accent: 'text-green-700 dark:text-green-400' },
-        { label: 'Due', value: `৳${due.toFixed(2)}`, accent: 'font-semibold text-destructive' },
+        ...(change > 0
+            ? [{ label: 'Change', value: `৳${change.toFixed(2)}`, accent: 'font-semibold text-amber-700' }]
+            : []),
+        ...(due > 0
+            ? [{ label: 'Due', value: `৳${due.toFixed(2)}`, accent: 'font-semibold text-destructive' }]
+            : [{ label: 'Due', value: `৳${due.toFixed(2)}`, accent: 'font-semibold text-green-700 dark:text-green-400' }]),
     ];
 
     return (
@@ -196,6 +202,7 @@ export function InvoiceDocument({
     const net = parseFloat(totals.net ?? gross + vat - discount - lineDiscount);
     const paid = parseFloat(totals.paid ?? 0);
     const due = parseFloat(totals.due ?? Math.max(0, net - paid));
+    const change = parseFloat(totals.change ?? 0);
 
     return (
         <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm ring-1 ring-blue-950/10 print:border-0 print:bg-transparent print:shadow-none dark:ring-blue-400/14">
@@ -237,6 +244,7 @@ export function InvoiceDocument({
                     net={net}
                     paid={paid}
                     due={due}
+                    change={change}
                 />
 
                 <div className="mt-4 flex items-center gap-2 print:hidden">

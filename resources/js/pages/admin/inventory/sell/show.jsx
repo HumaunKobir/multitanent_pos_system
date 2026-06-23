@@ -7,6 +7,7 @@ import {
 } from '@/components/inventory/invoice-show-layout';
 import { route } from '@/lib/route';
 import { buildSellPosPrintPayload, posPrint } from '@/lib/pos-print';
+import { computeSplitSalePayment } from '@/lib/sale-payment';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, Edit, Receipt, ShoppingCart, Trash2, User } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -40,8 +41,10 @@ export default function SellShow({ sell }) {
     const roundOff = parseFloat(sell.round_off_amount ?? 0);
     const net = gross + vat - discount - specialDiscount - roundOff - lineDiscount;
     const paid = parseFloat(sell.paid_amount ?? 0);
-    const due = Math.max(0, net - paid);
     const paymentLines = sell.payments ?? [];
+    const { dueAmount, changeAmount } = computeSplitSalePayment(paymentLines, net);
+    const due = dueAmount;
+    const change = changeAmount;
     const actionClass = headerActionClassName();
 
     const handlePosPrint = useCallback(() => {
@@ -53,11 +56,11 @@ export default function SellShow({ sell }) {
                 companyEmail: contact?.email || '',
                 logoUrl: sell.branch?.logo_url || logo,
                 branchName: sell.branch?.name || '',
-                change: flash?.pos_change ?? 0,
+                change: flash?.pos_change ?? change,
                 termsAndConditions: sell.branch?.pos_terms_and_conditions ?? '',
             }),
         );
-    }, [sell, logo, siteName, contact, flash?.pos_change]);
+    }, [sell, logo, siteName, contact, flash?.pos_change, change]);
 
     useEffect(() => {
         const params = new URLSearchParams(window.location.search);
@@ -138,6 +141,7 @@ export default function SellShow({ sell }) {
                         net,
                         paid,
                         due,
+                        change,
                     }}
                     comment={sell.comment}
                     partySection={
@@ -164,6 +168,12 @@ export default function SellShow({ sell }) {
                                     <span className="font-medium tabular-nums">৳{parseFloat(line.amount ?? 0).toFixed(2)}</span>
                                 </div>
                             ))}
+                            {change > 0 && (
+                                <div className="flex items-center justify-between gap-3 border-t border-border/60 pt-2 font-semibold text-amber-700">
+                                    <span>Change Returned</span>
+                                    <span className="tabular-nums">৳{change.toFixed(2)}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}

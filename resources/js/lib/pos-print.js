@@ -283,17 +283,28 @@ function groupItemsByVariant(items) {
     return Array.from(groups.values());
 }
 
-function buildItemName(item) {
-    const baseName = truncateName(item.product?.name ?? item.name ?? '—');
-    const variantLabel = item.variant?.name ?? item.variant_label ?? item.variation?.variation_data?.label ?? '';
-    const variantSku = item.variant?.sku ?? item.variant_sku ?? item.product?.code ?? item.code ?? '';
+function getVariantDisplayText(item) {
+    const variantId = item.variant_id ?? item.variation_id ?? null;
 
-    if (variantLabel || variantSku) {
-        const variantText = variantSku || variantLabel;
-        return `${baseName} (Variant: ${variantText})`;
+    if (variantId == null || variantId === '') {
+        return '';
     }
 
-    return baseName;
+    const variantLabel = (item.variant?.name ?? item.variant_label ?? item.variation?.variation_data?.label ?? '').trim();
+    const variantSku = (item.variant?.sku ?? item.variant_sku ?? item.variation?.sku_code ?? '').trim();
+
+    return variantLabel || variantSku;
+}
+
+function buildItemName(item) {
+    const baseName = truncateName(item.product?.name ?? item.name ?? '—');
+    const variantText = getVariantDisplayText(item);
+
+    if (!variantText) {
+        return baseName;
+    }
+
+    return `${baseName} (Variant: ${variantText})`;
 }
 
 function totalRow(label, value) {
@@ -348,20 +359,34 @@ export function buildSellPosPrintPayload(sell, options = {}) {
     const roundOff = parseFloat(sell.round_off_amount ?? 0);
     const lineDiscount = (sell.products ?? []).reduce((sum, item) => sum + parseFloat(item.discount ?? 0), 0);
     const net = gross + vat - invoiceDiscount - specialDiscount - roundOff - lineDiscount;
+    const payments = (sell.payments ?? []).map((line) => ({
+        id: line.id,
+        payment_account_id: line.payment_account_id,
+        amount: parseFloat(line.amount ?? 0),
+        payment_account: line.payment_account ?? line.paymentAccount ?? null,
+    }));
+    const totalTendered = payments.reduce((sum, line) => sum + line.amount, 0);
     const paid = parseFloat(sell.paid_amount ?? 0);
-    const due = Math.max(0, net - paid);
-    const change = parseFloat(options.change ?? 0);
+    const due = Math.max(0, net - totalTendered);
+    const change =
+        options.change != null && options.change !== ''
+            ? parseFloat(options.change)
+            : Math.max(0, totalTendered - net);
 
     const lineItems = (sell.products ?? []).map((item) => {
         const qty = parseFloat(item.quantity ?? 0);
         const unitPrice = parseFloat(item.unit_price ?? item.sell_price ?? item.price ?? 0);
         const lineItemDiscount = parseFloat(item.discount ?? 0);
-        const variantLabel = item.variation?.variation_data?.label ?? item.variation?.sku_code ?? '';
+        const variationId = item.variation_id ?? null;
+        const variantLabel = variationId
+            ? (item.variation?.variation_data?.label ?? '').trim()
+            : '';
+        const variantSku = variationId ? (item.variation?.sku_code ?? '').trim() : '';
 
         return {
             id: item.id,
             product_id: item.product_id,
-            variant_id: item.variation_id ?? null,
+            variant_id: variationId,
             quantity: qty,
             unit_price: unitPrice,
             sell_price: unitPrice,
@@ -370,26 +395,18 @@ export function buildSellPosPrintPayload(sell, options = {}) {
             line_discount: lineItemDiscount,
             product: {
                 name: item.product?.name ?? '—',
-                code: item.product?.code ?? '',
             },
-            variant: variantLabel
-                ? {
-                      name: variantLabel,
-                      sku: item.variation?.sku_code ?? variantLabel,
-                  }
-                : null,
-            code: item.product?.code ?? '',
+            variant:
+                variationId && (variantLabel || variantSku)
+                    ? {
+                          name: variantLabel || variantSku,
+                          sku: variantSku || variantLabel,
+                      }
+                    : null,
             name: item.product?.name ?? '—',
-            variant_label: variantLabel,
+            variant_label: variantLabel || variantSku,
         };
     });
-
-    const payments = (sell.payments ?? []).map((line) => ({
-        id: line.id,
-        payment_account_id: line.payment_account_id,
-        amount: parseFloat(line.amount ?? 0),
-        payment_account: line.payment_account ?? line.paymentAccount ?? null,
-    }));
 
     return {
         options: {
@@ -487,9 +504,6 @@ function renderPosInvoice(data) {
             ${groupedItems
                 .map((item) => {
                     const metaParts = [];
-                    if (item.product?.code || item.code) {
-                        metaParts.push(`Code: ${item.product?.code ?? item.code}`);
-                    }
                     if (parseFloat(item.line_discount ?? 0) > 0) {
                         metaParts.push(`Disc: ${formatMoneyTk(item.line_discount)}`);
                     }

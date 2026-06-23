@@ -16,6 +16,26 @@ export const BARCODE_HEIGHT_USAGE_RATIO = 0.98;
 const CODE128_START_B = 204;
 const CODE128_STOP = 206;
 
+// #region agent log
+function debugLog(location, message, data, hypothesisId) {
+    fetch('http://127.0.0.1:7682/ingest/b2b77a02-47d0-43f6-ab11-689e8f32c576', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Debug-Session-Id': '601285',
+        },
+        body: JSON.stringify({
+            sessionId: '601285',
+            location,
+            message,
+            data,
+            timestamp: Date.now(),
+            hypothesisId,
+        }),
+    }).catch(() => {});
+}
+// #endregion
+
 function code128SymbolToChar(value) {
     if (value <= 94) {
         return String.fromCharCode(value + 32);
@@ -55,6 +75,17 @@ export function encodeCode128B(input) {
     checksum %= 103;
     encoded += code128SymbolToChar(checksum);
     encoded += String.fromCharCode(CODE128_STOP);
+
+    // #region agent log
+    debugLog('barcode-label.js:encodeCode128B', 'encoded barcode', {
+        inputLen: text.length,
+        outputLen: encoded.length,
+        startChar: encoded.charCodeAt(0),
+        stopChar: encoded.charCodeAt(encoded.length - 1),
+        checksumValue: checksum,
+        checksumChar: encoded.charCodeAt(encoded.length - 2),
+    }, 'A');
+    // #endregion
 
     return encoded;
 }
@@ -181,6 +212,28 @@ export function fitBarcodeToContainer(barEl, containerEl, maxBarHeight, { fill =
         height -= 1;
     } while (height >= minHeight);
 
+    const fontFamily = getComputedStyle(barEl).fontFamily;
+    const fontLoaded = document.fonts?.check
+        ? document.fonts.check(`16px ${fontFamily}`)
+        : null;
+
+    // #region agent log
+    debugLog('barcode-label.js:fitBarcodeToContainer', 'fit result', {
+        fill,
+        maxBarHeight,
+        containerW: containerEl.clientWidth,
+        containerH: containerEl.clientHeight,
+        targetWidth,
+        finalFontSize: height,
+        scrollWidth: barEl.scrollWidth,
+        offsetHeight: barEl.offsetHeight,
+        widthOverflow: barEl.scrollWidth > targetWidth,
+        fontFamily,
+        fontLoaded,
+        transform: barEl.style.transform || 'none',
+    }, 'B,C,D');
+    // #endregion
+
     return barEl.offsetHeight || height;
 }
 
@@ -197,13 +250,25 @@ export function buildPrintHtml(rows, settings) {
             const price = getEffectivePrice(row) ?? 0;
             const labelName = getLabelTitle(row);
             const encodedCode = formatBarcodeForLibre128(row.code);
+            const escapedCode = escapeHtml(encodedCode);
+
+            // #region agent log
+            debugLog('barcode-label.js:buildPrintHtml', 'print label barcode', {
+                rawCodeLen: String(row.code ?? '').length,
+                encodedLen: encodedCode.length,
+                escapedLen: escapedCode.length,
+                htmlCorrupted: encodedCode !== escapedCode,
+                settings: { width, height, fontSize, copies },
+                barHeight,
+            }, 'E');
+            // #endregion
 
             return `
       <div class="label">
         <div class="label-inner">
           <div class="name">${escapeHtml(labelName)}</div>
           <div class="bars-wrap">
-            <div class="bars" data-max-bar-height="${barHeight}">${escapeHtml(encodedCode)}</div>
+            <div class="bars" data-max-bar-height="${barHeight}">${escapedCode}</div>
           </div>
           <div class="footer">
             <span>${escapeHtml(formatLabelPrice(price))}</span>
@@ -347,6 +412,7 @@ export function buildPrintHtml(rows, settings) {
         }
         height -= 1;
       } while (height >= minHeight);
+      fetch('http://127.0.0.1:7682/ingest/b2b77a02-47d0-43f6-ab11-689e8f32c576',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'601285'},body:JSON.stringify({sessionId:'601285',location:'print-window:fitBarcode',message:'print fit result',data:{containerW:wrap.clientWidth,containerH:wrap.clientHeight,targetWidth:targetWidth,finalFontSize:height,scrollWidth:el.scrollWidth,offsetHeight:el.offsetHeight,widthOverflow:el.scrollWidth>targetWidth,textLen:el.textContent.length,startChar:el.textContent.charCodeAt(0),stopChar:el.textContent.charCodeAt(el.textContent.length-1)},timestamp:Date.now(),hypothesisId:'B,C,E'})}).catch(function(){});
     }
 
     function printWhenReady() {

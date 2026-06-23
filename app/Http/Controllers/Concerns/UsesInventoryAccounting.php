@@ -167,6 +167,40 @@ trait UsesInventoryAccounting
         }
     }
 
+    protected function paymentAccountBalanceWarning(int $paymentAccountId, float $amount, float $restorableAmount = 0): ?string
+    {
+        if ($amount <= 0) {
+            return null;
+        }
+
+        $account = ChartOfAccount::query()
+            ->whereKey($paymentAccountId)
+            ->first(['id', 'name', 'current_balance']);
+
+        if ($account === null) {
+            return 'Selected payment account was not found.';
+        }
+
+        $requiredAmount = round($amount, 2);
+        $availableBalance = round((float) $account->current_balance + max(0, $restorableAmount), 2);
+
+        if ($availableBalance < $requiredAmount) {
+            return sprintf(
+                'Insufficient balance in %s. Available: ৳%s, required: ৳%s.',
+                $account->name,
+                number_format($availableBalance, 2),
+                number_format($requiredAmount, 2),
+            );
+        }
+
+        return null;
+    }
+
+    protected function isInsufficientBalanceException(\Throwable $exception): bool
+    {
+        return str_contains($exception->getMessage(), 'Insufficient balance');
+    }
+
     /**
      * @param  array<int, array{payment_account_id: int, amount: float}>  $paymentLines
      */

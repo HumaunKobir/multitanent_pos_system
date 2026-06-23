@@ -1,3 +1,5 @@
+import { formatBdDate, formatBdDateTime, formatBdTime } from '@/lib/format-bd-date';
+
 const POS_PRINT_STYLES = `
 @media print {
     @page {
@@ -246,46 +248,16 @@ function truncateName(name, max = 28) {
     return `${text.slice(0, max - 1)}…`;
 }
 
-const BD_TIMEZONE = 'Asia/Dhaka';
-
-function formatReceiptDate(value) {
-    if (!value) {
-        return '—';
-    }
-
-    const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-        return String(value);
-    }
-
-    return date.toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        timeZone: BD_TIMEZONE,
-    });
+function formatPosReceiptDate(value) {
+    return formatBdDate(value).replace(', ', ' ');
 }
 
-function formatReceiptTime(value) {
-    const date = value ? new Date(value) : new Date();
-
-    if (Number.isNaN(date.getTime())) {
-        return new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: BD_TIMEZONE });
-    }
-
-    return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: BD_TIMEZONE });
+function formatPosReceiptTime(value) {
+    return formatBdTime(value);
 }
 
 function formatPrintedAt() {
-    const now = new Date();
-
-    return `${now.toLocaleDateString('en-GB', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        timeZone: BD_TIMEZONE,
-    })} ${now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true, timeZone: BD_TIMEZONE })}`;
+    return formatBdDateTime(new Date());
 }
 
 function groupItemsByVariant(items) {
@@ -441,6 +413,7 @@ export function buildSellPosPrintPayload(sell, options = {}) {
             id: sell.id,
             invoice_no: sell.invoice_number ?? `INVS${String(sell.id).padStart(8, '0')}`,
             date: sell.date ?? '',
+            created_at: sell.created_at ?? null,
             comment: sell.comment ?? '',
             total_price: net,
             paid,
@@ -486,7 +459,7 @@ function renderPosInvoice(data) {
             ${options.companyPhone ? `<div class="pos-info">Tel: ${escapeHtml(options.companyPhone)}</div>` : ''}
             <div class="pos-divider"></div>
             <div class="pos-bold">INVOICE</div>
-            <div class="pos-small">Date: ${escapeHtml(formatReceiptDate(order.date))} | Time: ${escapeHtml(formatReceiptTime(order.date))}</div>
+            <div class="pos-small">Date: ${escapeHtml(formatPosReceiptDate(order.date))} | Time: ${escapeHtml(formatPosReceiptTime(order.created_at))}</div>
             <div class="pos-small">Invoice No: ${escapeHtml(order.invoice_no)}</div>
         </div>`
         : '';

@@ -1,7 +1,8 @@
 import { formatQty } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
+import { useFlashToast } from '@/hooks/use-flash-toast';
 import { route } from '@/lib/route';
-import { Head, Link, useForm, usePage } from '@inertiajs/react';
+import { Head, Link, useForm } from '@inertiajs/react';
 import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Save, Search, Trash2, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
@@ -357,8 +358,8 @@ function ProductSearchBox({ onAdd }) {
 }
 
 export default function PurchaseEdit({ purchase, suppliers: initialSuppliers, paymentAccounts = [] }) {
-    const { flash } = usePage().props;
     const toast = useAppToast();
+    useFlashToast();
     const form = useForm({
         supplier_id: purchase.supplier_id ? String(purchase.supplier_id) : '',
         date: purchase.date ?? '',
@@ -372,11 +373,6 @@ export default function PurchaseEdit({ purchase, suppliers: initialSuppliers, pa
 
     const [items, setItems] = useState(purchase.items ?? []);
     const [suppliers, setSuppliers] = useState(initialSuppliers);
-
-    useEffect(() => {
-        if (flash?.success) toast.success(flash.success);
-        if (flash?.error) toast.error(flash.error);
-    }, [flash?.success, flash?.error]);
 
     const grossAmount = items.reduce((sum, it) => sum + parseFloat(it.quantity || 0) * parseFloat(it.unit_price || 0), 0);
     const vatAmount = grossAmount * (parseFloat(form.data.vat || 0) / 100);

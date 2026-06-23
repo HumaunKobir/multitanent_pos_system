@@ -33,17 +33,19 @@ export function AppToastProvider({ children }) {
         [dismiss],
     );
 
+    const success = useCallback((message, options) => push({ type: 'success', message, ...options }), [push]);
+    const info = useCallback((message, options) => push({ type: 'info', message, ...options }), [push]);
+    const warning = useCallback((message, options) => push({ type: 'warning', message, ...options }), [push]);
+    const error = useCallback((message, options) => push({ type: 'error', message, ...options }), [push]);
+
+    const methods = useMemo(
+        () => ({ push, dismiss, success, info, warning, error }),
+        [push, dismiss, success, info, warning, error],
+    );
+
     const value = useMemo(
-        () => ({
-            push,
-            dismiss,
-            toasts,
-            success: (message, options) => push({ type: 'success', message, ...options }),
-            info: (message, options) => push({ type: 'info', message, ...options }),
-            warning: (message, options) => push({ type: 'warning', message, ...options }),
-            error: (message, options) => push({ type: 'error', message, ...options }),
-        }),
-        [push, dismiss, toasts],
+        () => ({ ...methods, toasts }),
+        [methods, toasts],
     );
 
     return <ToastContext.Provider value={value}>{children}</ToastContext.Provider>;

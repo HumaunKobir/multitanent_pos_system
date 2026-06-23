@@ -121,6 +121,7 @@ export default function SellShow({ sell }) {
                     invoiceNumber={invoiceNumber}
                     date={sell.date}
                     branchName={sell.branch?.name}
+                    logoUrl={sell.branch?.logo_url || logo}
                     items={sell.products ?? []}
                     totals={{
                         gross,

@@ -187,5 +187,6 @@ test('sell show loads branch pos terms for printing', function () {
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/inventory/sell/show')
-            ->where('sell.branch.pos_terms_and_conditions', $content));
+            ->where('sell.branch.pos_terms_and_conditions', $content)
+            ->has('sell.created_at'));
 });

@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import { RequiredMark } from '@/components/form-field';
 import { useAppToast } from '@/contexts/app-toast-context';
+import { useFlashToast } from '@/hooks/use-flash-toast';
 import { Button } from '@/components/ui/button';
 import { dateInputRightIconClassName } from '@/components/ui/date-kit';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -431,6 +432,7 @@ export default function PurchaseCreate({
     branches = [],
 }) {
     const toast = useAppToast();
+    useFlashToast();
     const form = useForm({
         supplier_id: '',
         date: today,

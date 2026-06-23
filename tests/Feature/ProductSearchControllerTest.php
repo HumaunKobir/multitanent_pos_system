@@ -4,6 +4,7 @@ use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\ProductVariation;
 use App\Models\User;
 use App\Services\EcommerceBranchService;
 use Spatie\Permission\Models\Permission;
@@ -106,7 +107,7 @@ test('purchase search only includes variations for the resolved branch', functio
         'name' => 'Variant Purchase Product '.fake()->unique()->numerify('###'),
     ]);
 
-    $mainVariation = \App\Models\ProductVariation::query()->create([
+    $mainVariation = ProductVariation::query()->create([
         'product_id' => $product->id,
         'branch_id' => $mainBranchId,
         'sku' => 'MAIN-'.fake()->unique()->numerify('####'),
@@ -116,7 +117,7 @@ test('purchase search only includes variations for the resolved branch', functio
         'variation_data' => ['label' => 'Main Red'],
     ]);
 
-    \App\Models\ProductVariation::query()->create([
+    ProductVariation::query()->create([
         'product_id' => $product->id,
         'branch_id' => $operatingBranch->id,
         'sku' => 'OTHER-'.fake()->unique()->numerify('####'),
@@ -281,7 +282,7 @@ test('sell search only includes stock and variations for the resolved branch', f
     Batch::factory()->for($product)->withStock(8)->create(['branch_id' => $mainBranchId]);
     Batch::factory()->for($product)->withStock(20)->create(['branch_id' => $operatingBranch->id]);
 
-    $mainVariation = \App\Models\ProductVariation::query()->create([
+    $mainVariation = ProductVariation::query()->create([
         'product_id' => $product->id,
         'branch_id' => $mainBranchId,
         'sku' => 'SELL-MAIN-'.fake()->unique()->numerify('####'),
@@ -291,7 +292,7 @@ test('sell search only includes stock and variations for the resolved branch', f
         'variation_data' => ['label' => 'Main Sell Red'],
     ]);
 
-    \App\Models\ProductVariation::query()->create([
+    ProductVariation::query()->create([
         'product_id' => $product->id,
         'branch_id' => $operatingBranch->id,
         'sku' => 'SELL-OTHER-'.fake()->unique()->numerify('####'),
@@ -469,6 +470,56 @@ test('distribution browse returns all in-stock main branch products', function (
     }
 
     expect($ids)->not->toContain($outOfStockProduct->id);
+});
+
+test('main branch user with branch_id can access distribution product search', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = ensureMainBranch();
+
+    $admin = User::factory()->create(['branch_id' => $mainBranchId]);
+    Permission::findOrCreate('inventory.stock-distribution.create', 'web');
+    $admin->givePermissionTo('inventory.stock-distribution.create');
+
+    $product = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Main Branch Admin Product '.fake()->unique()->numerify('###'),
+    ]);
+    Batch::factory()->for($product)->withStock(12)->create(['branch_id' => $mainBranchId]);
+
+    $response = $this->actingAs($admin)
+        ->getJson('/api/products/for-distribution?search='.urlencode($product->name));
+
+    $response->assertOk();
+
+    $match = collect($response->json())->firstWhere('id', $product->id);
+
+    expect($match)->not->toBeNull();
+    expect((float) $match['stock'])->toBe(12.0);
+});
+
+test('distribution search excludes operating branch products even when they have stock', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = ensureMainBranch();
+    $operatingBranch = Branch::factory()->create();
+
+    $admin = User::factory()->create(['branch_id' => $mainBranchId]);
+    Permission::findOrCreate('inventory.stock-distribution.create', 'web');
+    $admin->givePermissionTo('inventory.stock-distribution.create');
+
+    $branchProduct = Product::factory()->create([
+        'branch_id' => $operatingBranch->id,
+        'name' => 'Operating Branch Only Product '.fake()->unique()->numerify('###'),
+    ]);
+    Batch::factory()->for($branchProduct)->withStock(30)->create(['branch_id' => $operatingBranch->id]);
+
+    $response = $this->actingAs($admin)
+        ->getJson('/api/products/for-distribution?search='.urlencode($branchProduct->name));
+
+    $response->assertOk();
+
+    expect(collect($response->json())->pluck('id'))->not->toContain($branchProduct->id);
 });
 
 test('operating branch user cannot access distribution product search', function () {

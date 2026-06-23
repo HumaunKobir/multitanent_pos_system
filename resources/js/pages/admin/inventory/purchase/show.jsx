@@ -16,7 +16,7 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { useCan } from '@/hooks/use-can';
 
 export default function PurchaseShow({ purchase }) {
-    const { flash } = usePage().props;
+    const { flash, logo } = usePage().props;
     const toast = useAppToast();
     const { can } = useCan();
     const [deleting, setDeleting] = useState(false);
@@ -79,6 +79,7 @@ export default function PurchaseShow({ purchase }) {
                     invoiceNumber={invoiceNumber}
                     date={purchase.date}
                     branchName={purchase.branch?.name}
+                    logoUrl={purchase.branch?.logo_url || logo}
                     items={purchase.purchase_products ?? []}
                     totals={{ gross, vat, discount, net, paid, due }}
                     comment={purchase.comment}

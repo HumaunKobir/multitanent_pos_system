@@ -16,6 +16,7 @@ use App\Models\PurchaseReturn;
 use App\Models\Supplier;
 use App\Services\InventoryAccountingService;
 use App\Services\StockDistributionService;
+use App\Support\StorageUrl;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -110,98 +111,119 @@ class PurchaseController extends Controller
         }
 
         $branchId = Auth::user()?->branch_id;
-        $paymentAccountId = $this->resolvePaymentAccountId($request, (float) $data['paid_amount']);
+        $paidAmount = (float) $data['paid_amount'];
+        $paymentAccountId = $this->resolvePaymentAccountId($request, $paidAmount);
 
-        DB::transaction(function () use ($data, $branchId, $paymentAccountId) {
-            $grossAmount = 0;
-            $purchaseProductsData = [];
-            $productsById = Product::query()
-                ->whereIn('id', collect($data['items'])->pluck('product_id'))
-                ->get(['id', 'branch_id'])
-                ->keyBy('id');
+        if ($paymentAccountId !== null) {
+            $balanceWarning = $this->paymentAccountBalanceWarning($paymentAccountId, $paidAmount);
 
-            foreach ($data['items'] as $item) {
-                $qty = (float) $item['quantity'];
-                $freeQty = (float) $item['free_quantity'];
-                $unitPrice = (float) $item['unit_price'];
-                $expiryDate = $item['expiry_date'] ?? null;
-                $serial = $item['serial'] ?? null;
-                $productId = $item['product_id'];
-                $variationId = $item['variation_id'] ?? null;
-                $stockBranchId = $productsById[$productId]->resolveStockBranchId($branchId);
+            if ($balanceWarning !== null) {
+                return back()
+                    ->with('warning', $balanceWarning)
+                    ->withInput();
+            }
+        }
 
-                $batchMap = [];
+        try {
+            DB::transaction(function () use ($data, $branchId, $paymentAccountId) {
+                $grossAmount = 0;
+                $purchaseProductsData = [];
+                $productsById = Product::query()
+                    ->whereIn('id', collect($data['items'])->pluck('product_id'))
+                    ->get(['id', 'branch_id'])
+                    ->keyBy('id');
 
-                // Batch for free quantity (price = 0)
-                if ($freeQty > 0) {
-                    $freeBatch = $this->createOrUpdateBatch(
-                        $stockBranchId, $productId, 0, $expiryDate, $serial, $freeQty
+                foreach ($data['items'] as $item) {
+                    $qty = (float) $item['quantity'];
+                    $freeQty = (float) $item['free_quantity'];
+                    $unitPrice = (float) $item['unit_price'];
+                    $expiryDate = $item['expiry_date'] ?? null;
+                    $serial = $item['serial'] ?? null;
+                    $productId = $item['product_id'];
+                    $variationId = $item['variation_id'] ?? null;
+                    $stockBranchId = $productsById[$productId]->resolveStockBranchId($branchId);
+
+                    $batchMap = [];
+
+                    // Batch for free quantity (price = 0)
+                    if ($freeQty > 0) {
+                        $freeBatch = $this->createOrUpdateBatch(
+                            $stockBranchId, $productId, 0, $expiryDate, $serial, $freeQty
+                        );
+                        $freeBatch->inStock((int) $freeQty);
+                        $batchMap[$freeBatch->id] = $freeQty;
+                    }
+
+                    // Batch for paid quantity
+                    $paidBatch = $this->createOrUpdateBatch(
+                        $stockBranchId, $productId, $unitPrice, $expiryDate, $serial, $qty
                     );
-                    $freeBatch->inStock((int) $freeQty);
-                    $batchMap[$freeBatch->id] = $freeQty;
+                    $paidBatch->inStock((int) $qty);
+
+                    if (isset($batchMap[$paidBatch->id])) {
+                        $batchMap[$paidBatch->id] += $qty;
+                    } else {
+                        $batchMap[$paidBatch->id] = $qty;
+                    }
+
+                    // Update variation stock
+                    if ($variationId) {
+                        $this->adjustPurchaseVariationStock((int) $variationId, $qty + $freeQty);
+                    }
+
+                    $grossAmount += $qty * $unitPrice;
+
+                    $purchaseProductsData[] = [
+                        'branch_id' => $branchId,
+                        'product_id' => $productId,
+                        'variation_id' => $variationId,
+                        'quantity' => $qty,
+                        'unit_price' => $unitPrice,
+                        'serial' => $serial,
+                        'batches' => $batchMap,
+                    ];
                 }
 
-                // Batch for paid quantity
-                $paidBatch = $this->createOrUpdateBatch(
-                    $stockBranchId, $productId, $unitPrice, $expiryDate, $serial, $qty
-                );
-                $paidBatch->inStock((int) $qty);
+                $vatAmount = $grossAmount * ((float) $data['vat'] / 100);
+                $netAmount = $grossAmount + $vatAmount - (float) $data['discount'];
+                $dueAmount = max(0, $netAmount - (float) $data['paid_amount']);
 
-                if (isset($batchMap[$paidBatch->id])) {
-                    $batchMap[$paidBatch->id] += $qty;
-                } else {
-                    $batchMap[$paidBatch->id] = $qty;
-                }
-
-                // Update variation stock
-                if ($variationId) {
-                    $this->adjustPurchaseVariationStock((int) $variationId, $qty + $freeQty);
-                }
-
-                $grossAmount += $qty * $unitPrice;
-
-                $purchaseProductsData[] = [
+                $purchase = Purchase::create([
                     'branch_id' => $branchId,
-                    'product_id' => $productId,
-                    'variation_id' => $variationId,
-                    'quantity' => $qty,
-                    'unit_price' => $unitPrice,
-                    'serial' => $serial,
-                    'batches' => $batchMap,
-                ];
+                    'user_id' => $this->currentUserId(),
+                    'supplier_id' => $data['supplier_id'],
+                    'date' => $data['date'],
+                    'gross_amount' => $grossAmount,
+                    'discount' => $data['discount'],
+                    'vat' => $vatAmount,
+                    'paid_amount' => $data['paid_amount'],
+                    'due_amount' => $dueAmount,
+                    'purchase_type' => PurchaseType::Purchase,
+                    'comment' => $data['comment'] ?? null,
+                    'serial' => 'INVP'.str_pad(Purchase::max('id') + 1, 8, '0', STR_PAD_LEFT),
+                ]);
+
+                foreach ($purchaseProductsData as $lineItem) {
+                    $purchase->purchaseProducts()->create($lineItem);
+                }
+
+                // Update supplier due balance
+                $dueChange = $netAmount - (float) $data['paid_amount'];
+                Supplier::whereKey($data['supplier_id'])->increment('balance', $dueChange);
+
+                $this->accounting->postPurchase($purchase->fresh(['supplier']), $paymentAccountId);
+
+                $this->maybeCreatePendingDistribution($data, $branchId, $purchase);
+            });
+        } catch (\Throwable $e) {
+            if ($this->isInsufficientBalanceException($e)) {
+                return back()
+                    ->with('warning', 'Insufficient balance in the selected payment account.')
+                    ->withInput();
             }
 
-            $vatAmount = $grossAmount * ((float) $data['vat'] / 100);
-            $netAmount = $grossAmount + $vatAmount - (float) $data['discount'];
-            $dueAmount = max(0, $netAmount - (float) $data['paid_amount']);
-
-            $purchase = Purchase::create([
-                'branch_id' => $branchId,
-                'user_id' => $this->currentUserId(),
-                'supplier_id' => $data['supplier_id'],
-                'date' => $data['date'],
-                'gross_amount' => $grossAmount,
-                'discount' => $data['discount'],
-                'vat' => $vatAmount,
-                'paid_amount' => $data['paid_amount'],
-                'due_amount' => $dueAmount,
-                'purchase_type' => PurchaseType::Purchase,
-                'comment' => $data['comment'] ?? null,
-                'serial' => 'INVP'.str_pad(Purchase::max('id') + 1, 8, '0', STR_PAD_LEFT),
-            ]);
-
-            foreach ($purchaseProductsData as $lineItem) {
-                $purchase->purchaseProducts()->create($lineItem);
-            }
-
-            // Update supplier due balance
-            $dueChange = $netAmount - (float) $data['paid_amount'];
-            Supplier::whereKey($data['supplier_id'])->increment('balance', $dueChange);
-
-            $this->accounting->postPurchase($purchase->fresh(['supplier']), $paymentAccountId);
-
-            $this->maybeCreatePendingDistribution($data, $branchId, $purchase);
-        });
+            throw $e;
+        }
 
         return redirect()->route('inventory.purchase.index')
             ->with('success', 'Purchase created successfully.');
@@ -214,10 +236,14 @@ class PurchaseController extends Controller
 
         $purchase->load([
             'supplier',
-            'branch:id,name',
+            'branch:id,name,logo',
             'purchaseProducts.product',
             'purchaseProducts.variation',
         ]);
+
+        if ($purchase->branch) {
+            $purchase->branch->logo_url = StorageUrl::public($purchase->branch->logo);
+        }
 
         return Inertia::render('admin/inventory/purchase/show', [
             'purchase' => $purchase,
@@ -341,7 +367,24 @@ class PurchaseController extends Controller
             'items.*.serial' => ['nullable', 'string'],
         ]);
 
-        $paymentAccountId = $this->resolvePaymentAccountId($request, (float) $data['paid_amount']);
+        $paidAmount = (float) $data['paid_amount'];
+        $paymentAccountId = $this->resolvePaymentAccountId($request, $paidAmount);
+
+        if ($paymentAccountId !== null) {
+            $balanceWarning = $this->paymentAccountBalanceWarning(
+                $paymentAccountId,
+                $paidAmount,
+                (float) $purchase->paid_amount,
+            );
+
+            if ($balanceWarning !== null) {
+                return back()
+                    ->with('warning', $balanceWarning)
+                    ->withInput();
+            }
+        }
+
+        $branchId = Auth::user()?->branch_id;
 
         try {
             DB::transaction(function () use ($purchase, $data, $branchId, $paymentAccountId) {
@@ -480,6 +523,12 @@ class PurchaseController extends Controller
                 $this->accounting->postPurchase($purchase->fresh(['supplier']), $paymentAccountId);
             });
         } catch (\Throwable $e) {
+            if ($this->isInsufficientBalanceException($e)) {
+                return back()
+                    ->with('warning', 'Insufficient balance in the selected payment account.')
+                    ->withInput();
+            }
+
             return back()
                 ->withErrors([
                     'items' => $e instanceof \RuntimeException

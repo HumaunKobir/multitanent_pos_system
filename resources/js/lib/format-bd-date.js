@@ -1,6 +1,8 @@
 /**
  * Formats a date as "03 Jun, 2026" in Asia/Dhaka (matches purchase/sell lists).
  */
+export const BD_TIMEZONE = 'Asia/Dhaka';
+
 export function formatBdDate(date) {
     if (!date) {
         return '—';
@@ -42,4 +44,52 @@ export function formatBdDate(date) {
     const year = dateParts.find((p) => p.type === 'year')?.value;
 
     return day && month && year ? `${day} ${month}, ${year}` : dtf.format(utcMidnight);
+}
+
+/**
+ * Formats a datetime as "03:45 PM" in Asia/Dhaka.
+ */
+export function formatBdTime(value) {
+    if (!value) {
+        return '—';
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return '—';
+    }
+
+    return date.toLocaleTimeString('en-US', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: BD_TIMEZONE,
+    });
+}
+
+/**
+ * Formats a datetime as "23 Jun 2026 03:45 PM" in Asia/Dhaka.
+ */
+export function formatBdDateTime(value) {
+    if (!value) {
+        return '—';
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return String(value);
+    }
+
+    const datePart = date
+        .toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric',
+            timeZone: BD_TIMEZONE,
+        })
+        .replace(',', '');
+
+    return `${datePart} ${formatBdTime(date)}`;
 }

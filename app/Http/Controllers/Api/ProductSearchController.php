@@ -130,14 +130,14 @@ class ProductSearchController extends Controller
         $this->authorize('inventory.stock-distribution.create');
 
         abort_unless(
-            Auth::user()?->isSuperAdmin(),
+            Auth::user()?->usesAdminPanel(),
             403
         );
 
         $mainBranchId = Branch::resolveMainBranchId();
         $hasSearch = filled($request->search);
 
-        $products = Product::forPurchase()
+        $products = Product::query()
             ->active()
             ->atBranch($mainBranchId)
             ->where(function ($query) use ($mainBranchId) {

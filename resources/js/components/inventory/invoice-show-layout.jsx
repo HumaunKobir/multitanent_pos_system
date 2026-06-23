@@ -180,12 +180,14 @@ export function InvoiceDocument({
     invoiceNumber,
     date,
     branchName,
+    logoUrl,
     partySection,
     items = [],
     totals,
     comment,
 }) {
     const { logo } = usePage().props;
+    const displayLogo = logoUrl ?? logo;
     const displayBranch = branchName || 'Coolness Point';
     const gross = parseFloat(totals.gross ?? 0);
     const vat = parseFloat(totals.vat ?? 0);
@@ -199,9 +201,9 @@ export function InvoiceDocument({
         <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm ring-1 ring-blue-950/10 print:border-0 print:bg-transparent print:shadow-none dark:ring-blue-400/14">
             <div className="flex flex-col gap-4 border-b border-blue-900/80 bg-blue-950 px-5 py-4 text-white sm:flex-row sm:items-center sm:justify-between">
                 <div className="flex items-center gap-4">
-                    {logo ? (
+                    {displayLogo ? (
                         <div className="flex size-14 shrink-0 items-center justify-center rounded-lg bg-white/10 p-2">
-                            <img src={logo} alt={displayBranch} className="max-h-full max-w-full object-contain" />
+                            <img src={displayLogo} alt={displayBranch} className="max-h-full max-w-full object-contain" />
                         </div>
                     ) : null}
                     <div>

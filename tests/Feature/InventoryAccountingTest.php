@@ -300,3 +300,46 @@ test('inventory purchase journal remains balanced', function () {
     $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
     expect(round($ledgers->sum('debit'), 2))->toBe(round($ledgers->sum('credit'), 2));
 });
+
+test('purchase create with insufficient payment account balance returns warning and does not create purchase', function () {
+    $this->artisan('permissions:sync');
+
+    $user = accountingUser(['inventory.purchase.create']);
+    $cash = seedAccountingAccounts(0, $user->branch_id);
+    $cash->update(['current_balance' => 0]);
+
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+    ]);
+
+    $product = Product::factory()->create(['branch_id' => $user->branch_id]);
+
+    $purchaseCountBefore = Purchase::query()->count();
+
+    $this->actingAs($user)
+        ->from(route('inventory.purchase.create'))
+        ->post('/inventory/purchase', [
+            'supplier_id' => $supplier->id,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '500',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '1000',
+                    'quantity' => '1',
+                    'free_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase.create'))
+        ->assertSessionHas('warning')
+        ->assertSessionMissing('success');
+
+    expect(Purchase::query()->count())->toBe($purchaseCountBefore);
+});

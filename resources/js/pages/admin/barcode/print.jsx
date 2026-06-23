@@ -119,8 +119,8 @@ function LabelPreview({ row, settings }) {
 
 export default function BarcodePrint({ barcodes }) {
     const [settings, setSettings] = useState({
-        width: 1.5,
-        height: 1,
+        width: 2,
+        height: 1.25,
         fontSize: 8,
         fontWeight: 'normal',
         copies: 1,

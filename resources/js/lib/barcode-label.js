@@ -1,6 +1,10 @@
 export const PRINT_DPI = 96;
 export const NAME_BARCODE_GAP_PX = 6;
 export const BARCODE_PRICE_GAP_PX = 1;
+/** Minimum bar height for reliable scanner reads (~7mm at 96 DPI). */
+export const MIN_BARCODE_BAR_HEIGHT_PX = 28;
+/** Floor when scaling barcode width to fit the label. */
+export const MIN_BARCODE_FONT_PX = 18;
 
 export function getNameBarcodeGap(fontSize) {
     return Math.max(NAME_BARCODE_GAP_PX, Math.ceil(fontSize * 0.5));
@@ -53,9 +57,17 @@ export function calculateBarcodeBarHeight(settings) {
     const barcodePriceGapPx = getBarcodePriceGap();
     const footerLinePx = fontSize + barcodePriceGapPx;
     const maxBarHeight = labelHeightPx - paddingY - nameLinePx - nameBarcodeGapPx - footerLinePx;
-    const preferred = Math.max(fontSize * 3, 20);
 
-    return Math.max(12, Math.min(preferred, maxBarHeight));
+    if (maxBarHeight <= MIN_BARCODE_BAR_HEIGHT_PX) {
+        return Math.max(12, maxBarHeight);
+    }
+
+    const targetBarHeight = Math.floor(maxBarHeight * 0.7);
+
+    return Math.max(
+        MIN_BARCODE_BAR_HEIGHT_PX,
+        Math.min(targetBarHeight, maxBarHeight),
+    );
 }
 
 /**
@@ -77,7 +89,7 @@ export function fitBarcodeToContainer(barEl, containerEl, baseHeight) {
 
     if (textWidth > containerWidth && containerWidth > 0) {
         const scale = containerWidth / textWidth;
-        const fitted = Math.max(10, Math.floor(baseHeight * scale));
+        const fitted = Math.max(MIN_BARCODE_FONT_PX, Math.floor(baseHeight * scale));
 
         barEl.style.fontSize = `${fitted}px`;
     }
@@ -204,7 +216,7 @@ export function buildPrintHtml(rows, settings) {
       var tw = el.scrollWidth;
       if (tw > w && w > 0) {
         var scale = w / tw;
-        el.style.fontSize = Math.max(10, Math.floor(baseHeight * scale)) + 'px';
+        el.style.fontSize = Math.max(${MIN_BARCODE_FONT_PX}, Math.floor(baseHeight * scale)) + 'px';
       }
       wrap.style.height = Math.max(el.offsetHeight, 12) + 'px';
     }

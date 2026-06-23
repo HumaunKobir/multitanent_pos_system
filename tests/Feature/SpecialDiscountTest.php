@@ -25,6 +25,11 @@ function specialDiscountUser(array $permissions = []): User
     return $user;
 }
 
+function specialDiscountSellUser(): User
+{
+    return specialDiscountUser(['inventory.sell.create']);
+}
+
 test('guests are redirected from special discount index', function () {
     $this->get('/setting/special-discount')->assertRedirect(route('login'));
 });
@@ -67,8 +72,10 @@ test('authorized user can create a special discount', function () {
     expect($discount->discount_type)->toBe(DiscountType::Percent);
 });
 
-test('sale automatically applies matching flat special discount', function () {
-    $user = User::factory()->create();
+test('sale applies selected flat special discount', function () {
+    $this->artisan('permissions:sync');
+
+    $user = specialDiscountSellUser();
     $cash = seedAccountingAccounts(user: $user);
     $product = Product::factory()->create(['branch_id' => $user->branch_id]);
     $batch = Batch::factory()->for($product)->withStock(20)->create(['branch_id' => $user->branch_id]);
@@ -108,6 +115,53 @@ test('sale automatically applies matching flat special discount', function () {
     expect($sell->special_discount_id)->toBe($specialDiscount->id);
     expect((float) $sell->special_discount_amount)->toBe(150.0);
     expect((float) $sell->net_amount)->toBe(2350.0);
+
+    $batch->refresh();
+    expect((float) $batch->available)->toBe(15.0);
+});
+
+test('sale does not apply special discount when none selected', function () {
+    $this->artisan('permissions:sync');
+
+    $user = specialDiscountSellUser();
+    $cash = seedAccountingAccounts(user: $user);
+    $product = Product::factory()->create(['branch_id' => $user->branch_id]);
+    $batch = Batch::factory()->for($product)->withStock(20)->create(['branch_id' => $user->branch_id]);
+
+    SpecialDiscount::factory()->create([
+        'branch_id' => $user->branch_id,
+        'name' => 'Unselected Offer '.uniqid(),
+        'min_amount' => 1000,
+        'discount_value' => 150,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '2500',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '500',
+                    'quantity' => '5',
+                ],
+            ],
+        ])
+        ->assertRedirect();
+
+    $sell = Sell::query()->latest('id')->first();
+
+    expect($sell->special_discount_id)->toBeNull();
+    expect((float) $sell->special_discount_amount)->toBe(0.0);
+    expect((float) $sell->net_amount)->toBe(2500.0);
 
     $batch->refresh();
     expect((float) $batch->available)->toBe(15.0);
@@ -155,7 +209,9 @@ test('postSale journal balances when invoice discount is applied', function () {
 });
 
 test('sale applies flat invoice discount', function () {
-    $user = User::factory()->create();
+    $this->artisan('permissions:sync');
+
+    $user = specialDiscountSellUser();
     $cash = seedAccountingAccounts(user: $user);
     $product = Product::factory()->create(['branch_id' => $user->branch_id]);
     Batch::factory()->for($product)->withStock(20)->create(['branch_id' => $user->branch_id]);
@@ -241,7 +297,9 @@ test('special discount cannot be deleted while same-branch sales still reference
 });
 
 test('sale applies percent invoice discount', function () {
-    $user = User::factory()->create();
+    $this->artisan('permissions:sync');
+
+    $user = specialDiscountSellUser();
     $cash = seedAccountingAccounts(user: $user);
     $product = Product::factory()->create(['branch_id' => $user->branch_id]);
     Batch::factory()->for($product)->withStock(20)->create(['branch_id' => $user->branch_id]);

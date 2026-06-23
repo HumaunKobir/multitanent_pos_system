@@ -412,7 +412,12 @@ export default function PurchaseEdit({ purchase, suppliers: initialSuppliers, pa
         }
 
         form.setData('items', lineItems);
-        form.transform((data) => ({ ...data, items: lineItems }));
+        form.transform((data) => ({
+            ...data,
+            items: lineItems,
+            paid_amount: data.paid_amount === '' || data.paid_amount == null ? '0' : data.paid_amount,
+            payment_account_id: parseFloat(data.paid_amount || 0) > 0 ? data.payment_account_id : '',
+        }));
         form.put(route('inventory.purchase.update', purchase.id), {
             preserveScroll: true,
             onError: (errors) => {
@@ -628,6 +633,7 @@ export default function PurchaseEdit({ purchase, suppliers: initialSuppliers, pa
                                         type="number"
                                         min="0"
                                         step="0.01"
+                                        placeholder="0"
                                         value={form.data.paid_amount}
                                         onChange={(e) => form.setData('paid_amount', e.target.value)}
                                         className={`${inputCls} w-28 text-right`}

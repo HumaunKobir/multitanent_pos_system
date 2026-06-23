@@ -11,29 +11,66 @@ export function computeDiscountAmount(type, value, base) {
     return Math.min(amount, parsedBase);
 }
 
-export function findBestSpecialDiscount(specialDiscounts, taxableAmount) {
+export function isSpecialDiscountEligible(discount, taxableAmount) {
     const amount = parseFloat(taxableAmount || 0);
 
-    if (!Number.isFinite(amount) || amount <= 0 || !specialDiscounts?.length) {
+    if (!discount || !Number.isFinite(amount) || amount <= 0) {
+        return false;
+    }
+
+    const min = parseFloat(discount.min_amount ?? 0);
+    const max =
+        discount.max_amount !== null && discount.max_amount !== undefined
+            ? parseFloat(discount.max_amount)
+            : null;
+
+    if (amount < min) {
+        return false;
+    }
+
+    return max === null || amount <= max;
+}
+
+export function filterEligibleSpecialDiscounts(specialDiscounts, taxableAmount) {
+    if (!specialDiscounts?.length) {
+        return [];
+    }
+
+    return specialDiscounts.filter((discount) => isSpecialDiscountEligible(discount, taxableAmount));
+}
+
+export function findSpecialDiscountById(specialDiscounts, id) {
+    if (!id) {
         return null;
     }
 
-    const matches = specialDiscounts
-        .filter((discount) => {
-            const min = parseFloat(discount.min_amount ?? 0);
-            const max = discount.max_amount !== null && discount.max_amount !== undefined
-                ? parseFloat(discount.max_amount)
-                : null;
+    return specialDiscounts?.find((discount) => String(discount.id) === String(id)) ?? null;
+}
 
-            if (amount < min) {
-                return false;
-            }
-
-            return max === null || amount <= max;
-        })
-        .sort((a, b) => parseFloat(b.min_amount ?? 0) - parseFloat(a.min_amount ?? 0));
+export function findBestSpecialDiscount(specialDiscounts, taxableAmount) {
+    const matches = filterEligibleSpecialDiscounts(specialDiscounts, taxableAmount).sort(
+        (a, b) => parseFloat(b.min_amount ?? 0) - parseFloat(a.min_amount ?? 0),
+    );
 
     return matches[0] ?? null;
+}
+
+export function computeSellNetAmount({
+    grossAmount = 0,
+    vat = 0,
+    discount = 0,
+    specialDiscountAmount = 0,
+    roundOffAmount = 0,
+    lineDiscountTotal = 0,
+} = {}) {
+    return (
+        parseFloat(grossAmount ?? 0) +
+        parseFloat(vat ?? 0) -
+        parseFloat(discount ?? 0) -
+        parseFloat(specialDiscountAmount ?? 0) -
+        parseFloat(roundOffAmount ?? 0) -
+        parseFloat(lineDiscountTotal ?? 0)
+    );
 }
 
 export function formatDiscountLabel(type, value) {

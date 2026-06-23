@@ -502,7 +502,12 @@ export default function PurchaseCreate({
         }
 
         form.setData('items', items);
-        form.transform((data) => ({ ...data, items }));
+        form.transform((data) => ({
+            ...data,
+            items,
+            paid_amount: data.paid_amount === '' || data.paid_amount == null ? '0' : data.paid_amount,
+            payment_account_id: parseFloat(data.paid_amount || 0) > 0 ? data.payment_account_id : '',
+        }));
         form.post(route('inventory.purchase.store'));
     }
 
@@ -756,6 +761,7 @@ export default function PurchaseCreate({
                                         type="number"
                                         min="0"
                                         step="0.01"
+                                        placeholder="0"
                                         value={form.data.paid_amount}
                                         onChange={(e) => form.setData('paid_amount', e.target.value)}
                                         className={`${inputCls} w-28 text-right`}

@@ -50,6 +50,25 @@ test('authenticated user can view sell index', function () {
         ->assertInertia(fn (Assert $page) => $page->component('admin/inventory/sell/index')->has('sells'));
 });
 
+test('sell net amount includes special discount and round off', function () {
+    $user = sellUser();
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'gross_amount' => 1000,
+        'discount' => 0,
+        'special_discount_amount' => 100,
+        'round_off_amount' => 50,
+        'vat' => 0,
+        'paid_amount' => 850,
+        'type' => SaleType::Sale,
+    ]);
+
+    expect((float) $sell->net_amount)->toBe(850.0);
+    expect(max(0, (float) $sell->net_amount - (float) $sell->paid_amount))->toEqual(0.0);
+});
+
 // ── Create ────────────────────────────────────────────────────────────────────
 
 test('authenticated user can view sell create form', function () {
@@ -985,8 +1004,13 @@ test('overpayment across multiple accounts records tendered receipts and change 
 });
 
 test('cash sale can apply manual round off discount', function () {
+    $this->artisan('permissions:sync');
+
     $user = sellUser();
-    $cash = seedAccountingAccounts();
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    $user->givePermissionTo('inventory.sell.create');
+
+    $cash = seedAccountingAccounts(user: $user);
     ['product' => $product] = sellProduct(10, $user->branch_id);
     $sellIdBefore = (int) (Sell::query()->max('id') ?? 0);
 
@@ -1020,11 +1044,51 @@ test('cash sale can apply manual round off discount', function () {
     expect((float) $sell->net_amount)->toBe(475.0);
 });
 
-test('round off is rejected when payment is not cash only', function () {
+test('round off is rejected when payment has no cash line', function () {
+    $this->artisan('permissions:sync');
+
     $user = sellUser();
-    $cash = seedAccountingAccounts();
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    $user->givePermissionTo('inventory.sell.create');
+
     $sslCommerz = SystemAccountService::resolve(SystemAccountKey::SslCommerz, $user->branch_id);
     ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'round_off_amount' => '25',
+            'vat' => '0',
+            'paid_amount' => '475',
+            'payments' => [
+                ['payment_account_id' => $sslCommerz->id, 'amount' => 475],
+            ],
+            'comment' => null,
+            'items' => [[
+                'product_id' => $product->id,
+                'variation_id' => null,
+                'unit_price' => '500',
+                'quantity' => '1',
+            ]],
+        ])
+        ->assertSessionHasErrors('round_off_amount');
+});
+
+test('split cash and non-cash sale can apply round off', function () {
+    $this->artisan('permissions:sync');
+
+    $user = sellUser();
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    $user->givePermissionTo('inventory.sell.create');
+
+    $cash = seedAccountingAccounts(user: $user);
+    $sslCommerz = SystemAccountService::resolve(SystemAccountKey::SslCommerz, $user->branch_id);
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+    $sellIdBefore = (int) (Sell::query()->max('id') ?? 0);
 
     $this->actingAs($user)
         ->post('/inventory/sell', [
@@ -1048,7 +1112,13 @@ test('round off is rejected when payment is not cash only', function () {
                 'quantity' => '1',
             ]],
         ])
-        ->assertSessionHasErrors('round_off_amount');
+        ->assertRedirect()
+        ->assertSessionDoesntHaveErrors();
+
+    $sell = Sell::query()->where('id', '>', $sellIdBefore)->first();
+    expect($sell)->not->toBeNull();
+    expect((float) $sell->round_off_amount)->toBe(25.0);
+    expect((float) $sell->net_amount)->toBe(475.0);
 });
 
 test('store requires at least one item', function () {

@@ -343,3 +343,48 @@ test('purchase create with insufficient payment account balance returns warning 
 
     expect(Purchase::query()->count())->toBe($purchaseCountBefore);
 });
+
+test('purchase can be created fully on due with empty paid amount', function () {
+    $this->artisan('permissions:sync');
+
+    $user = accountingUser(['inventory.purchase.create']);
+    seedAccountingAccounts(branchId: $user->branch_id);
+
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+    ]);
+
+    $product = Product::factory()->create(['branch_id' => $user->branch_id]);
+
+    $this->actingAs($user)
+        ->from(route('inventory.purchase.create'))
+        ->post('/inventory/purchase', [
+            'supplier_id' => $supplier->id,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '',
+            'comment' => null,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '200',
+                    'quantity' => '1',
+                    'free_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase.index'))
+        ->assertSessionHas('success');
+
+    $purchase = Purchase::query()->latest('id')->first();
+
+    expect($purchase)->not->toBeNull();
+    expect((float) $purchase->paid_amount)->toBe(0.0);
+    expect((float) $purchase->due_amount)->toBe(200.0);
+
+    $supplier->refresh();
+    expect((float) $supplier->balance)->toBe(200.0);
+});

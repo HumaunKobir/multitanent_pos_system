@@ -1,8 +1,10 @@
 import { clampQuantityInput } from '@/components/inventory/inventory-form';
 import {
     computeDiscountAmount,
-    findBestSpecialDiscount,
+    filterEligibleSpecialDiscounts,
+    findSpecialDiscountById,
     formatDiscountLabel,
+    isSpecialDiscountEligible,
 } from '@/lib/pos-discount';
 import { SalePaymentLines } from '@/components/inventory/sale-payment-lines';
 import { SellDueAlertFields } from '@/components/inventory/sell-due-alert-fields';
@@ -10,8 +12,6 @@ import {
     buildInitialSalePayments,
     computeSplitSalePayment,
     dueSaleCustomerError,
-    hasActiveNonCashPayment,
-    isCashOnlyPayment,
     serializeSalePayments,
     splitPaymentValidationError,
 } from '@/lib/sale-payment';
@@ -39,7 +39,7 @@ import {
     Trash2,
     User,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { RequiredMark } from '@/components/form-field';
 import { Badge } from '@/components/ui/badge';
@@ -861,25 +861,22 @@ export default function SellCreate({
     const grossAmount = items.reduce((sum, it) => sum + lineGross(it), 0);
     const lineDiscountTotal = items.reduce((sum, it) => sum + parseFloat(it.discount || 0), 0);
     const taxableAmount = Math.max(0, grossAmount - lineDiscountTotal);
-    const matchedSpecialDiscount = useMemo(
-        () => findBestSpecialDiscount(specialDiscounts, taxableAmount),
-        [specialDiscounts, taxableAmount],
-    );
+    const eligibleSpecialDiscounts = filterEligibleSpecialDiscounts(specialDiscounts, taxableAmount);
+    const selectedSpecialDiscount = findSpecialDiscountById(specialDiscounts, form.data.special_discount_id);
     const vatAmount = taxableAmount * (parseFloat(form.data.vat || 0) / 100);
     const invoiceDiscountAmount = computeDiscountAmount(
         form.data.discount_type,
         form.data.discount_value,
         taxableAmount,
     );
-    const specialDiscountAmount = matchedSpecialDiscount
+    const specialDiscountAmount = selectedSpecialDiscount
         ? computeDiscountAmount(
-              matchedSpecialDiscount.discount_type,
-              matchedSpecialDiscount.discount_value,
+              selectedSpecialDiscount.discount_type,
+              selectedSpecialDiscount.discount_value,
               taxableAmount,
           )
         : 0;
     const netBeforeRoundOff = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
-    const cashOnlyPayment = isCashOnlyPayment(form.data.payments, cashInHandAccountId);
     const hasSaleItems = items.length > 0;
     const roundOffAmount = hasSaleItems
         ? Math.min(Math.max(0, parseFloat(form.data.round_off_amount || 0)), Math.max(0, netBeforeRoundOff))
@@ -892,19 +889,19 @@ export default function SellCreate({
     const itemCount = items.reduce((sum, item) => sum + parseFloat(item.quantity || 0), 0);
 
     useEffect(() => {
+        if (
+            form.data.special_discount_id &&
+            !isSpecialDiscountEligible(selectedSpecialDiscount, taxableAmount)
+        ) {
+            form.setData('special_discount_id', '');
+        }
+    }, [taxableAmount, form.data.special_discount_id, selectedSpecialDiscount]);
+
+    useEffect(() => {
         if (!hasSaleItems && parseFloat(form.data.round_off_amount || 0) > 0) {
             form.setData('round_off_amount', '0');
         }
     }, [hasSaleItems]);
-
-    useEffect(() => {
-        if (
-            hasActiveNonCashPayment(form.data.payments, cashInHandAccountId) &&
-            parseFloat(form.data.round_off_amount || 0) > 0
-        ) {
-            form.setData('round_off_amount', '0');
-        }
-    }, [form.data.payments, cashInHandAccountId]);
 
     function addItem(item) {
         const duplicate = items.find(
@@ -986,8 +983,8 @@ export default function SellCreate({
             items,
             paused_sell_id: pausedSellId ?? '',
             paid_amount: String(totalPaid),
-            special_discount_id: matchedSpecialDiscount ? String(matchedSpecialDiscount.id) : '',
-            round_off_amount: cashOnlyPayment ? String(roundOffAmount) : '0',
+            special_discount_id: form.data.special_discount_id || '',
+            round_off_amount: String(roundOffAmount),
             payments: serializedPayments.length > 0 ? serializedPayments : undefined,
         }));
         form.post(route('inventory.sell.store'));
@@ -1002,7 +999,7 @@ export default function SellCreate({
                 items,
                 paused_sell_id: pausedSellId ?? '',
                 paid_amount: '0',
-                special_discount_id: matchedSpecialDiscount ? String(matchedSpecialDiscount.id) : '',
+                special_discount_id: form.data.special_discount_id || '',
             },
             {
                 onSuccess: () => {
@@ -1186,20 +1183,45 @@ export default function SellCreate({
                                     </div>
                                 )}
 
-                                {matchedSpecialDiscount && specialDiscountAmount > 0 && (
+                                {specialDiscounts.length > 0 && (
+                                    <div>
+                                        <Label className="mb-0.5 block text-[9px] text-muted-foreground lg:text-[10px]">
+                                            Special Discount
+                                        </Label>
+                                        <select
+                                            className="h-7 w-full rounded-none border border-blue-200 bg-white px-1 text-[11px] text-blue-950 outline-none focus:border-blue-600 lg:h-8 lg:px-2 lg:text-xs"
+                                            value={form.data.special_discount_id}
+                                            onChange={(e) => form.setData('special_discount_id', e.target.value)}
+                                        >
+                                            <option value="">None</option>
+                                            {eligibleSpecialDiscounts.map((discount) => (
+                                                <option key={discount.id} value={String(discount.id)}>
+                                                    {discount.name} (
+                                                    {formatDiscountLabel(
+                                                        discount.discount_type,
+                                                        discount.discount_value,
+                                                    )}
+                                                    )
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                )}
+
+                                {selectedSpecialDiscount && specialDiscountAmount > 0 && (
                                     <div className="border border-amber-200 bg-amber-50/80 px-1.5 py-1 lg:px-2 lg:py-1.5">
                                         <div className="flex items-center justify-between gap-1 lg:gap-2">
-                                            <span className="text-amber-900">Special: {matchedSpecialDiscount.name}</span>
+                                            <span className="text-amber-900">Special: {selectedSpecialDiscount.name}</span>
                                             <span className="font-medium tabular-nums text-amber-800">
                                                 -৳{specialDiscountAmount.toFixed(2)}
                                             </span>
                                         </div>
                                         <p className="mt-0.5 text-[10px] text-amber-700/80">
                                             {formatDiscountLabel(
-                                                matchedSpecialDiscount.discount_type,
-                                                matchedSpecialDiscount.discount_value,
+                                                selectedSpecialDiscount.discount_type,
+                                                selectedSpecialDiscount.discount_value,
                                             )}{' '}
-                                            applied automatically
+                                            applied
                                         </p>
                                     </div>
                                 )}

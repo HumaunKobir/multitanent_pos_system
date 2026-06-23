@@ -81,7 +81,7 @@ class PurchaseController extends Controller
             'comment' => ['nullable', 'string'],
             'discount' => ['required', 'numeric', 'min:0'],
             'vat' => ['required', 'numeric', 'min:0'],
-            'paid_amount' => ['required', 'numeric', 'min:0'],
+            'paid_amount' => ['nullable', 'numeric', 'min:0'],
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'exists:products,id'],
@@ -94,6 +94,8 @@ class PurchaseController extends Controller
             'distribute_to_branch_id' => ['nullable', 'integer', 'exists:branches,id'],
             'items.*.distribute_quantity' => ['nullable', 'integer', 'min:0'],
         ]);
+
+        $data['paid_amount'] = max(0, (float) ($data['paid_amount'] ?? 0));
 
         if ($this->canDistributeFromPurchase() && ! empty($data['distribute_to_branch_id'])) {
             foreach ($data['items'] as $index => $item) {
@@ -355,7 +357,7 @@ class PurchaseController extends Controller
             'comment' => ['nullable', 'string'],
             'discount' => ['required', 'numeric', 'min:0'],
             'vat' => ['required', 'numeric', 'min:0'],
-            'paid_amount' => ['required', 'numeric', 'min:0'],
+            'paid_amount' => ['nullable', 'numeric', 'min:0'],
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.product_id' => ['required', 'exists:products,id'],
@@ -366,6 +368,8 @@ class PurchaseController extends Controller
             'items.*.expiry_date' => ['nullable', 'date'],
             'items.*.serial' => ['nullable', 'string'],
         ]);
+
+        $data['paid_amount'] = max(0, (float) ($data['paid_amount'] ?? 0));
 
         $paidAmount = (float) $data['paid_amount'];
         $paymentAccountId = $this->resolvePaymentAccountId($request, $paidAmount);

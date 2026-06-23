@@ -749,9 +749,9 @@ class SellController extends Controller
             return 0.0;
         }
 
-        if (! $this->isCashOnlyPayment($paymentLines, $branchId)) {
+        if (! $this->hasCashPayment($paymentLines, $branchId)) {
             throw ValidationException::withMessages([
-                'round_off_amount' => 'Round off is only available for cash payments.',
+                'round_off_amount' => 'Round off is only available when cash payment is included.',
             ]);
         }
 
@@ -764,6 +764,23 @@ class SellController extends Controller
         }
 
         return $roundOffAmount;
+    }
+
+    /**
+     * @param  array<int, array{payment_account_id: int, amount: float}>  $paymentLines
+     */
+    private function hasCashPayment(array $paymentLines, ?int $branchId): bool
+    {
+        $cashInHandId = SystemAccountService::id(SystemAccountKey::CashInHand, $branchId);
+
+        foreach ($paymentLines as $line) {
+            if (round((float) ($line['amount'] ?? 0), 2) > 0
+                && (int) $line['payment_account_id'] === $cashInHandId) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

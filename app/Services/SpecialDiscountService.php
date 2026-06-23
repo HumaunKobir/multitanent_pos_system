@@ -45,16 +45,14 @@ class SpecialDiscountService
             return null;
         }
 
-        $discount = null;
-
-        if ($specialDiscountId !== null) {
-            $discount = SpecialDiscount::query()
-                ->active()
-                ->when($branchId, fn ($query) => $query->accessibleAtBranch($branchId))
-                ->find($specialDiscountId);
-        } else {
-            $discount = $this->findBestMatch($amount, $branchId);
+        if ($specialDiscountId === null) {
+            return null;
         }
+
+        $discount = SpecialDiscount::query()
+            ->active()
+            ->when($branchId, fn ($query) => $query->accessibleAtBranch($branchId))
+            ->find($specialDiscountId);
 
         if (! $discount || ! $discount->appliesToAmount($amount)) {
             return null;

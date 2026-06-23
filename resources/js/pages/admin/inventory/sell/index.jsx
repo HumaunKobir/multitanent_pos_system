@@ -1,5 +1,6 @@
 import { useAppToast } from '@/contexts/app-toast-context';
 import { formatBdDate } from '@/lib/format-bd-date';
+import { computeSellNetAmount } from '@/lib/pos-discount';
 import { route } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Edit, Eye, Plus, Search, ShoppingCart, Trash2 } from 'lucide-react';
@@ -62,13 +63,19 @@ export default function SellIndex({ sells, filters }) {
         {
             id: 'total',
             header: 'Total Amount',
-            render: (row) => {
-                const gross = parseFloat(row.gross_amount ?? 0);
-                const vat = parseFloat(row.vat ?? 0);
-                const discount = parseFloat(row.discount ?? 0);
-                const lineDiscount = parseFloat(row.line_discount_total ?? 0);
-                return <span className="font-medium">৳{(gross + vat - discount - lineDiscount).toFixed(2)}</span>;
-            },
+            render: (row) => (
+                <span className="font-medium">
+                    ৳
+                    {computeSellNetAmount({
+                        grossAmount: row.gross_amount,
+                        vat: row.vat,
+                        discount: row.discount,
+                        specialDiscountAmount: row.special_discount_amount,
+                        roundOffAmount: row.round_off_amount,
+                        lineDiscountTotal: row.line_discount_total,
+                    }).toFixed(2)}
+                </span>
+            ),
         },
         {
             id: 'paid',
@@ -81,11 +88,14 @@ export default function SellIndex({ sells, filters }) {
             id: 'due',
             header: 'Due',
             render: (row) => {
-                const gross = parseFloat(row.gross_amount ?? 0);
-                const vat = parseFloat(row.vat ?? 0);
-                const discount = parseFloat(row.discount ?? 0);
-                const lineDiscount = parseFloat(row.line_discount_total ?? 0);
-                const net = gross + vat - discount - lineDiscount;
+                const net = computeSellNetAmount({
+                    grossAmount: row.gross_amount,
+                    vat: row.vat,
+                    discount: row.discount,
+                    specialDiscountAmount: row.special_discount_amount,
+                    roundOffAmount: row.round_off_amount,
+                    lineDiscountTotal: row.line_discount_total,
+                });
                 const due = Math.max(0, net - parseFloat(row.paid_amount ?? 0));
                 return (
                     <span className={due > 0 ? 'font-semibold text-destructive' : 'font-semibold text-green-700 dark:text-green-400'}>

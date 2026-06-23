@@ -111,10 +111,26 @@ export function buildInitialSalePayments(initialPayments, paymentAccounts) {
     }
 
     if (paymentAccounts[0]?.id) {
-        return [{ payment_account_id: String(paymentAccounts[0].id), amount: '0' }];
+        return [{ payment_account_id: String(paymentAccounts[0].id), amount: '' }];
     }
 
-    return [{ payment_account_id: '', amount: '0' }];
+    return [{ payment_account_id: '', amount: '' }];
+}
+
+/**
+ * @param {Array<{ payment_account_id?: number|string, amount?: number|string }>} payments
+ * @param {number|string|null|undefined} cashInHandAccountId
+ */
+export function hasCashPayment(payments, cashInHandAccountId) {
+    if (!cashInHandAccountId) {
+        return false;
+    }
+
+    return (payments ?? []).some((line) => {
+        const amount = parseFloat(line.amount || 0);
+
+        return amount > 0 && String(line.payment_account_id) === String(cashInHandAccountId);
+    });
 }
 
 /**

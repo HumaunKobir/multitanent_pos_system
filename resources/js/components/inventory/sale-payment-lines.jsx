@@ -1,7 +1,7 @@
 import { computeSplitSalePayment } from '@/lib/sale-payment';
 import { cn } from '@/lib/utils';
 import { Plus, Trash2 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -9,15 +9,16 @@ import { Label } from '@/components/ui/label';
 
 function PaymentLineRow({ line, index, paymentAccounts, onUpdate, onRemove, selectClassName, inputClassName, errors }) {
     const [localAmount, setLocalAmount] = useState(line.amount ?? '');
-
-    // Sync from parent only when the parent externally changed the amount
-    // (not from our own onUpdate call that already updated local state).
     const lastSentRef = useRef(line.amount ?? '');
-    const parentAmount = line.amount ?? '';
-    if (parentAmount !== lastSentRef.current && parentAmount !== localAmount) {
-        lastSentRef.current = parentAmount;
-        setLocalAmount(parentAmount);
-    }
+
+    useEffect(() => {
+        const parentAmount = line.amount ?? '';
+
+        if (parentAmount !== lastSentRef.current) {
+            lastSentRef.current = parentAmount;
+            setLocalAmount(parentAmount);
+        }
+    }, [line.amount]);
 
     function handleAmountChange(e) {
         const val = e.target.value;
@@ -99,7 +100,7 @@ export function SalePaymentLines({
 
     function removeLine(index) {
         if (payments.length <= 1) {
-            onChange([{ payment_account_id: paymentAccounts[0] ? String(paymentAccounts[0].id) : '', amount: '0' }]);
+            onChange([{ payment_account_id: paymentAccounts[0] ? String(paymentAccounts[0].id) : '', amount: '' }]);
 
             return;
         }
@@ -132,7 +133,7 @@ export function SalePaymentLines({
 
             {payments.map((line, index) => (
                 <PaymentLineRow
-                    key={index}
+                    key={`${line.payment_account_id}-${index}`}
                     line={line}
                     index={index}
                     paymentAccounts={paymentAccounts}

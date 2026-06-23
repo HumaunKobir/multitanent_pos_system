@@ -1,1 +1,0 @@
-import{E as e}from"./app-t-EA5Sm4.js";function t(t){let{permission:n,children:r,fallback:i}=t,a=i===void 0?null:i,{can:o}=e();return o(n)?r:a}export{t};

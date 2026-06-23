@@ -1,12 +1,13 @@
 import { DataTable } from '@/components/ui/data-table';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { Head, router, usePage } from '@inertiajs/react';
-import { Barcode, ListChecks, Printer, Search } from 'lucide-react';
+import { Barcode, ListChecks, Printer, RotateCcw, Search } from 'lucide-react';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AdminPagination } from '@/components/admin/pagination';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { route } from '@/lib/route';
@@ -93,15 +94,19 @@ function BarcodeBars({ code }) {
     );
 }
 
-export default function BarcodeIndex({ barcodes, filters }) {
+export default function BarcodeIndex({ barcodes, filters, branches = {}, mainBranchId = null }) {
     const { flash } = usePage().props;
+    const defaultBranchId = mainBranchId != null ? String(mainBranchId) : 'all';
     const toast = useAppToast();
     const [search, setSearch] = useState(filters.search ?? '');
+    const [branchId, setBranchId] = useState(filters.branch_id ?? defaultBranchId);
     const [serialRange, setSerialRange] = useState('');
     const [selectedIds, setSelectedIds] = useState([]);
     const [selectingRange, setSelectingRange] = useState(false);
 
     const rows = barcodes.data ?? [];
+    const branchOptions = Object.entries(branches || {}).map(([value, label]) => ({ value, label }));
+    const showBranchFilter = branchOptions.length > 0;
 
     useEffect(() => {
         if (flash.success) toast.success(flash.success);
@@ -110,16 +115,30 @@ export default function BarcodeIndex({ barcodes, filters }) {
 
     useEffect(() => {
         setSelectedIds([]);
-    }, [filters.search]);
+    }, [filters.search, filters.branch_id]);
 
     useDebouncedEffect(
         () => {
-            router.get(route('barcode.index'), { search: search || undefined }, { preserveState: true, replace: true });
+            router.get(
+                route('barcode.index'),
+                {
+                    search: search || undefined,
+                    ...(showBranchFilter ? { branch_id: branchId } : {}),
+                },
+                { preserveState: true, replace: true },
+            );
         },
-        [search],
+        [search, branchId, showBranchFilter],
         350,
         { skipFirstRun: true },
     );
+
+    function handleReset() {
+        setSearch('');
+        if (showBranchFilter) {
+            setBranchId(defaultBranchId);
+        }
+    }
 
     const allSelected = rows.length > 0 && rows.every((r) => isIdSelected(selectedIds, r.id));
 
@@ -155,6 +174,7 @@ export default function BarcodeIndex({ barcodes, filters }) {
         const listStart = Number(barcodes.from ?? 1);
         const listEnd = rows.length > 0 ? listStart + rows.length - 1 : listStart;
         const activeSearch = filters.search ?? '';
+        const activeBranchId = filters.branch_id ?? defaultBranchId;
 
         try {
             if (range.from >= listStart && range.to <= listEnd) {
@@ -175,6 +195,7 @@ export default function BarcodeIndex({ barcodes, filters }) {
                     from: range.from,
                     to: range.to,
                     search: activeSearch || undefined,
+                    ...(showBranchFilter ? { branch_id: activeBranchId } : {}),
                 },
             });
 
@@ -298,6 +319,24 @@ export default function BarcodeIndex({ barcodes, filters }) {
                             className="pl-8"
                         />
                     </div>
+                    {showBranchFilter && (
+                        <Select value={branchId} onValueChange={(v) => setBranchId(v)}>
+                            <SelectTrigger className="w-48">
+                                <SelectValue placeholder="Branch" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All branches</SelectItem>
+                                {branchOptions.map((opt) => (
+                                    <SelectItem key={opt.value} value={opt.value}>
+                                        {opt.label}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                    <Button variant="outline" size="icon" onClick={handleReset} title="Reset filters">
+                        <RotateCcw className="size-4" />
+                    </Button>
                     <div className="flex items-center gap-1.5">
                         <div className="relative w-36">
                             <ListChecks className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />

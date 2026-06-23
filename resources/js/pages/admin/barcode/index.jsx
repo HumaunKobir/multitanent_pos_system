@@ -2,13 +2,14 @@ import { DataTable } from '@/components/ui/data-table';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { Head, router, usePage } from '@inertiajs/react';
 import { Barcode, ListChecks, Printer, RotateCcw, Search } from 'lucide-react';
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { AdminPagination } from '@/components/admin/pagination';
+import { BarcodeBars } from '@/components/barcode/barcode-bars';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { route } from '@/lib/route';
 
@@ -56,42 +57,6 @@ function selectIdsForSerialRange(range, rows, barcodes) {
 
 function isIdSelected(selectedIds, id) {
     return selectedIds.includes(Number(id));
-}
-
-function BarcodeBars({ code }) {
-    const textRef = useRef(null);
-    const wrapRef = useRef(null);
-    const [scaleX, setScaleX] = useState(1);
-
-    useLayoutEffect(() => {
-        const measure = () => {
-            if (textRef.current && wrapRef.current) {
-                const wrapW = wrapRef.current.offsetWidth;
-                const textW = textRef.current.scrollWidth;
-                if (textW > 0 && wrapW > 0) setScaleX(wrapW / textW);
-            }
-        };
-        document.fonts?.ready ? document.fonts.ready.then(measure) : measure();
-    }, [code]);
-
-    return (
-        <div ref={wrapRef} style={{ width: '160px', height: '36px', overflow: 'hidden' }}>
-            <div
-                ref={textRef}
-                style={{
-                    fontFamily: "'Libre Barcode 128', monospace",
-                    fontSize: '36px',
-                    lineHeight: 1,
-                    whiteSpace: 'nowrap',
-                    display: 'inline-block',
-                    transformOrigin: '0 0',
-                    transform: `scaleX(${scaleX})`,
-                }}
-            >
-                {code}
-            </div>
-        </div>
-    );
 }
 
 export default function BarcodeIndex({ barcodes, filters, branches = {}, mainBranchId = null }) {
@@ -252,7 +217,11 @@ export default function BarcodeIndex({ barcodes, filters, branches = {}, mainBra
         {
             id: 'barcode',
             header: 'Barcode',
-            render: (row) => <BarcodeBars code={row.code} />,
+            render: (row) => (
+                <div style={{ width: '160px' }}>
+                    <BarcodeBars code={row.code} barHeight={36} />
+                </div>
+            ),
         },
         {
             id: 'product',

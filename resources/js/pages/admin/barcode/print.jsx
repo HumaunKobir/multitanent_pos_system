@@ -1,7 +1,8 @@
 import { Head, Link } from '@inertiajs/react';
 import { ArrowLeft, Printer } from 'lucide-react';
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 
+import { BarcodeBars } from '@/components/barcode/barcode-bars';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -12,91 +13,32 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select';
+import {
+    buildPrintHtml,
+    calculateBarcodeBarHeight,
+    formatLabelPrice,
+    getEffectivePrice,
+    getLabelTitle,
+    getNameBarcodeGap,
+    getBarcodePriceGap,
+    PRINT_DPI,
+} from '@/lib/barcode-label';
 import { route } from '@/lib/route';
 
-const PRINT_DPI = 96;
 const PREVIEW_MAX_W = 500;
 const PREVIEW_MAX_H = 220;
-
-function getEffectivePrice(row) {
-    if (row?.variation?.price != null) {
-        return parseFloat(row.variation.price);
-    }
-
-    if (!row?.product) {
-        return null;
-    }
-
-    const disc = parseFloat(row.product.discount_price ?? 0);
-    const sale = parseFloat(row.product.sale_price ?? 0);
-
-    return disc > 0 ? disc : sale;
-}
-
-function formatLabelPrice(price) {
-    const amount = price != null ? Number(price) : 0;
-
-    return `Price: ${amount.toFixed(2)}`;
-}
-
-function BarcodeBars({ code, barHeight, fontWeight }) {
-    const textRef = useRef(null);
-    const wrapRef = useRef(null);
-    const [scaleX, setScaleX] = useState(1);
-
-    useLayoutEffect(() => {
-        const measure = () => {
-            if (textRef.current && wrapRef.current) {
-                const wrapW = wrapRef.current.offsetWidth;
-                const textW = textRef.current.scrollWidth;
-                if (textW > 0 && wrapW > 0) setScaleX(wrapW / textW);
-            }
-        };
-        document.fonts?.ready ? document.fonts.ready.then(measure) : measure();
-    }, [code, barHeight]);
-
-    return (
-        <div
-            ref={wrapRef}
-            style={{
-                width: '100%',
-                height: `${barHeight}px`,
-                overflow: 'hidden',
-            }}
-        >
-            <div
-                ref={textRef}
-                style={{
-                    fontFamily: "'Libre Barcode 128', monospace",
-                    fontSize: `${barHeight}px`,
-                    fontWeight,
-                    lineHeight: 1,
-                    whiteSpace: 'nowrap',
-                    display: 'inline-block',
-                    transformOrigin: '0 0',
-                    transform: `scaleX(${scaleX})`,
-                }}
-            >
-                {code}
-            </div>
-        </div>
-    );
-}
-
-function getLabelName(row) {
-    return row?.product?.name ?? row?.name ?? 'Product Name';
-}
 
 function LabelPreview({ row, settings }) {
     const pxWidth = settings.width * PRINT_DPI;
     const pxHeight = settings.height * PRINT_DPI;
-    // scale to fit preview box — allow upscaling so small labels fill the area
     const scale = Math.min(PREVIEW_MAX_W / pxWidth, PREVIEW_MAX_H / pxHeight);
     const displayW = Math.round(pxWidth * scale);
     const displayH = Math.round(pxHeight * scale);
 
     const fw = settings.fontWeight === 'bold' ? 700 : 400;
-    const barHeight = Math.max(settings.fontSize * 3, 28);
+    const barHeight = calculateBarcodeBarHeight(settings);
+    const nameBarcodeGap = getNameBarcodeGap(settings.fontSize);
+    const barcodePriceGap = getBarcodePriceGap();
     const price = getEffectivePrice(row);
 
     return (
@@ -115,7 +57,7 @@ function LabelPreview({ row, settings }) {
                     border: '1px solid #d1d5db',
                     background: '#fff',
                     display: 'flex',
-                    alignItems: 'center',
+                    alignItems: 'stretch',
                     justifyContent: 'center',
                     padding: '4px 6px',
                     boxSizing: 'border-box',
@@ -124,7 +66,16 @@ function LabelPreview({ row, settings }) {
                     transformOrigin: '0 0',
                 }}
             >
-                <div style={{ width: '100%' }}>
+                <div
+                    style={{
+                        width: '100%',
+                        minHeight: 0,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        justifyContent: 'center',
+                        gap: 0,
+                    }}
+                >
                     <div
                         style={{
                             fontSize: `${settings.fontSize}px`,
@@ -135,11 +86,11 @@ function LabelPreview({ row, settings }) {
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             lineHeight: 1.2,
-                            marginBottom: '1px',
+                            flexShrink: 0,
+                            marginBottom: `${nameBarcodeGap}px`,
                         }}
                     >
-                        {getLabelName(row)}
-                        {row?.code ? ` - ${row.code}` : ''}
+                        {getLabelTitle(row)}
                     </div>
                     <BarcodeBars
                         code={row?.code ?? '123456789'}
@@ -153,8 +104,9 @@ function LabelPreview({ row, settings }) {
                             fontSize: `${settings.fontSize}px`,
                             fontWeight: fw,
                             fontFamily: 'monospace',
-                            marginTop: '-6px',
                             lineHeight: 1,
+                            flexShrink: 0,
+                            marginTop: `${barcodePriceGap}px`,
                         }}
                     >
                         <span>{formatLabelPrice(price)}</span>
@@ -163,67 +115,6 @@ function LabelPreview({ row, settings }) {
             </div>
         </div>
     );
-}
-
-function buildPrintHtml(rows, settings) {
-    const { width, height, fontSize, fontWeight, copies } = settings;
-    const fw = fontWeight === 'bold' ? 700 : 400;
-    const barHeight = Math.max(fontSize * 3, 28);
-
-    const labels = rows
-        .flatMap((row) => Array.from({ length: copies }, () => row))
-        .map((row) => {
-            const price = getEffectivePrice(row) ?? 0;
-            const baseName = row.product?.name ?? row.name ?? '';
-            const labelName = row.code ? `${baseName} - ${row.code}` : baseName;
-            return `
-      <div class="label">
-        <div class="label-inner">
-          <div class="name">${labelName}</div>
-          <div class="bars-wrap"><div class="bars">${row.code}</div></div>
-          <div class="footer">
-            <span>${formatLabelPrice(price)}</span>
-          </div>
-        </div>
-      </div>`;
-        })
-        .join('');
-
-    return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Barcode Labels</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap" rel="stylesheet">
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: white; }
-    .page { display: flex; flex-wrap: wrap; }
-    .label { width: ${width}in; height: ${height}in; border: 1px solid #ccc; display: flex; align-items: center; justify-content: center; padding: 4px 6px; overflow: hidden; page-break-inside: avoid; }
-    .label-inner { width: 100%; }
-    .name { font-size: ${fontSize}px; font-weight: ${fw}; font-family: sans-serif; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.2; margin-bottom: 1px; }
-    .bars-wrap { overflow: hidden; }
-    .bars { font-family: 'Libre Barcode 128', monospace; font-weight: ${fw}; font-size: ${barHeight}px; line-height: 1; white-space: nowrap; display: inline-block; transform-origin: 0 0; }
-    .footer { display: flex; justify-content: center; font-size: ${fontSize}px; font-weight: ${fw}; font-family: monospace; margin-top: -6px; line-height: 1; }
-    @media print { @page { margin: 0; } body { margin: 0; } }
-  </style>
-</head>
-<body>
-  <div class="page">${labels}</div>
-  <script>
-    document.fonts.ready.then(function() {
-      document.querySelectorAll('.bars').forEach(function(el) {
-        var w = el.parentElement.offsetWidth;
-        var tw = el.scrollWidth;
-        if (tw > 0 && w > 0) el.style.transform = 'scaleX(' + (w / tw) + ')';
-      });
-      window.print();
-      window.close();
-    });
-  <\/script>
-</body>
-</html>`;
 }
 
 export default function BarcodePrint({ barcodes }) {
@@ -242,6 +133,11 @@ export default function BarcodePrint({ barcodes }) {
 
     const handlePrint = () => {
         const win = window.open('', '_blank', 'width=700,height=500');
+
+        if (!win) {
+            return;
+        }
+
         win.document.write(buildPrintHtml(barcodes, settings));
         win.document.close();
     };
@@ -251,7 +147,6 @@ export default function BarcodePrint({ barcodes }) {
             <Head title="Print Barcodes" />
 
             <div className="px-2 py-1">
-                {/* Header */}
                 <div className="mb-3 flex items-center justify-between rounded-lg bg-blue-950 px-5 py-3">
                     <div className="flex items-center gap-3">
                         <Link
@@ -279,7 +174,6 @@ export default function BarcodePrint({ barcodes }) {
                     </Button>
                 </div>
 
-                {/* Print Settings — full width */}
                 <div className="mb-3 rounded-lg border bg-white shadow-sm">
                     <div className="border-b px-4 py-2.5">
                         <h2 className="text-sm font-semibold text-gray-800">
@@ -287,7 +181,6 @@ export default function BarcodePrint({ barcodes }) {
                         </h2>
                     </div>
                     <div className="grid grid-cols-3 divide-x">
-                        {/* Dimensions */}
                         <div className="px-4 py-3">
                             <p className="mb-2 text-[10px] font-semibold tracking-widest text-blue-600 uppercase">
                                 Dimensions
@@ -335,7 +228,6 @@ export default function BarcodePrint({ barcodes }) {
                             </div>
                         </div>
 
-                        {/* Content */}
                         <div className="px-4 py-3">
                             <p className="mb-2 text-[10px] font-semibold tracking-widest text-blue-600 uppercase">
                                 Content
@@ -386,7 +278,6 @@ export default function BarcodePrint({ barcodes }) {
                             </div>
                         </div>
 
-                        {/* Quantity */}
                         <div className="px-4 py-3">
                             <p className="mb-2 text-[10px] font-semibold tracking-widest text-blue-600 uppercase">
                                 Quantity
@@ -414,7 +305,6 @@ export default function BarcodePrint({ barcodes }) {
                     </div>
                 </div>
 
-                {/* Preview — full width, fixed height container */}
                 <div className="mb-3 rounded-lg border bg-white shadow-sm">
                     <div className="border-b px-4 py-2.5">
                         <h2 className="text-sm font-semibold text-gray-800">
@@ -444,7 +334,6 @@ export default function BarcodePrint({ barcodes }) {
                     </div>
                 </div>
 
-                {/* Barcode list */}
                 <div className="rounded-lg border bg-white shadow-sm">
                     <div className="border-b px-4 py-2.5">
                         <h2 className="text-sm font-semibold text-gray-800">

@@ -1,23 +1,29 @@
 import { formatBdDate } from '@/lib/format-bd-date';
-import { Head } from '@inertiajs/react';
+import { route } from '@/lib/route';
+import { Head, Link, router } from '@inertiajs/react';
 import {
     AlertTriangle,
     ArrowLeftRight,
     BookOpen,
+    Building2,
     CalendarDays,
+    ChevronDown,
     CircleDollarSign,
     HandCoins,
     Receipt,
     ReceiptText,
+    User,
     Wallet,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import {
     MoneyCell,
     ReportDateInput,
     ReportFilterField,
+    ReportFilterReset,
     ReportPage,
+    ReportSelect,
     useLiveReportFilters,
 } from '@/pages/admin/reports/_shared/report-shell';
 
@@ -194,14 +200,167 @@ function KpiTile({ label, value, sub, className }) {
     );
 }
 
-export default function DailySummaryReport({ filters = {}, summary = {} }) {
+function TransactionItems({ title, items = [], type, accentClass }) {
+    if (!items.length) {
+        return null;
+    }
+
+    const showRoute = type === 'sale' ? 'inventory.sell.show' : 'inventory.purchase.show';
+
+    return (
+        <div className="min-w-0">
+            <p className={`mb-1.5 text-[10px] font-semibold uppercase tracking-widest ${accentClass}`}>{title}</p>
+            <div className="space-y-1">
+                {items.map((item) => (
+                    <div
+                        key={`${type}-${item.id}`}
+                        className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-black/10 bg-white/70 px-2.5 py-1.5 text-xs dark:border-white/10 dark:bg-slate-950/40"
+                    >
+                        <Link
+                            href={route(showRoute, item.id)}
+                            className="font-mono font-medium text-blue-700 hover:underline dark:text-blue-300"
+                        >
+                            {item.reference}
+                        </Link>
+                        <div className="flex flex-wrap items-center gap-3 font-mono tabular-nums">
+                            <span>
+                                Gross <MoneyCell value={item.gross} />
+                            </span>
+                            <span>
+                                Paid <MoneyCell value={item.paid} />
+                            </span>
+                            {(item.due ?? 0) > 0 ? (
+                                <span className="text-amber-700 dark:text-amber-400">
+                                    Due <MoneyCell value={item.due} />
+                                </span>
+                            ) : null}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
+
+function StaffBreakdownRow({ row }) {
+    const [expanded, setExpanded] = useState(true);
+    const salesItems = row.sales_items ?? [];
+    const purchaseItems = row.purchases_items ?? [];
+    const hasDetails = salesItems.length > 0 || purchaseItems.length > 0;
+    const rowKey = `${row.branch_id}-${row.user_id}`;
+
+    return (
+        <>
+            <tr className="border-b last:border-b-0">
+                <td className="px-4 py-2.5 font-medium">
+                    <div className="flex items-center gap-2">
+                        {hasDetails ? (
+                            <button
+                                type="button"
+                                onClick={() => setExpanded((open) => !open)}
+                                className="flex size-6 shrink-0 items-center justify-center rounded border border-black/10 bg-white/80 text-muted-foreground hover:bg-muted dark:border-white/10 dark:bg-slate-900/60"
+                                aria-expanded={expanded}
+                                aria-label={expanded ? 'Hide transactions' : 'Show transactions'}
+                            >
+                                <ChevronDown className={`size-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+                            </button>
+                        ) : (
+                            <span className="size-6 shrink-0" />
+                        )}
+                        <span>{row.branch_name}</span>
+                    </div>
+                </td>
+                <td className="px-4 py-2.5">{row.user_name}</td>
+                <td className="px-4 py-2.5 font-mono tabular-nums">{row.sales?.count ?? 0}</td>
+                <td className="px-4 py-2.5 font-mono tabular-nums text-emerald-700 dark:text-emerald-400">
+                    <MoneyCell value={row.sales?.gross} />
+                </td>
+                <td className="px-4 py-2.5 font-mono tabular-nums">
+                    <MoneyCell value={row.sales?.paid} />
+                </td>
+                <td className="px-4 py-2.5 font-mono tabular-nums">{row.purchases?.count ?? 0}</td>
+                <td className="px-4 py-2.5 font-mono tabular-nums text-blue-700 dark:text-blue-400">
+                    <MoneyCell value={row.purchases?.gross} />
+                </td>
+                <td className="px-4 py-2.5 font-mono tabular-nums">
+                    <MoneyCell value={row.purchases?.paid} />
+                </td>
+            </tr>
+            {expanded && hasDetails ? (
+                <tr key={`${rowKey}-details`} className="border-b bg-muted/10 last:border-b-0">
+                    <td colSpan={8} className="px-4 py-3">
+                        <div className="grid gap-4 lg:grid-cols-2">
+                            <TransactionItems
+                                title="Sales invoices"
+                                items={salesItems}
+                                type="sale"
+                                accentClass="text-emerald-700 dark:text-emerald-300"
+                            />
+                            <TransactionItems
+                                title="Purchase orders"
+                                items={purchaseItems}
+                                type="purchase"
+                                accentClass="text-blue-700 dark:text-blue-300"
+                            />
+                        </div>
+                    </td>
+                </tr>
+            ) : null}
+        </>
+    );
+}
+
+export default function DailySummaryReport({
+    filters = {},
+    summary = {},
+    branches = [],
+    users = [],
+    isBranchScoped = false,
+}) {
     const [date, setDate] = useState(filters.date ?? '');
+    const [branchId, setBranchId] = useState(filters.branch_id ? String(filters.branch_id) : 'all');
+    const [userId, setUserId] = useState(filters.user_id ? String(filters.user_id) : 'all');
     const s = summary;
 
-    useLiveReportFilters('report.daily-summary', { date }, [date]);
+    useLiveReportFilters(
+        'report.daily-summary',
+        {
+            date,
+            branch_id: isBranchScoped || branchId === 'all' ? '' : branchId,
+            user_id: userId === 'all' ? '' : userId,
+        },
+        [date, branchId, userId, isBranchScoped],
+    );
 
     const salesGross = parseFloat(s.sales?.gross ?? 0);
     const purchaseGross = parseFloat(s.purchases?.gross ?? 0);
+    const staffBreakdown = s.staff_breakdown ?? [];
+    const showBranchFilter = !isBranchScoped;
+    const showUserFilter = !isBranchScoped;
+
+    const userOptions = useMemo(() => {
+        if (branchId === 'all') {
+            return users;
+        }
+
+        return users.filter((user) => user.branch_id === null || String(user.branch_id) === branchId);
+    }, [users, branchId]);
+
+    const hasActiveFilters = Boolean(
+        (branchId !== 'all' && branchId !== '') || (userId !== 'all' && userId !== '') || date,
+    );
+
+    function resetFilters() {
+        setDate(filters.date ?? '');
+        setBranchId('all');
+        setUserId('all');
+        router.get(route('report.daily-summary'), {}, { preserveState: true, replace: true });
+    }
+
+    function handleBranchChange(value) {
+        setBranchId(value);
+        setUserId('all');
+    }
 
     return (
         <>
@@ -209,10 +368,46 @@ export default function DailySummaryReport({ filters = {}, summary = {} }) {
             <ReportPage
                 title="Daily Summary"
                 description="Business totals for a single day."
+                filterGridClassName={
+                    showBranchFilter || showUserFilter ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-2 lg:grid-cols-3'
+                }
+                filterActions={<ReportFilterReset onClick={resetFilters} disabled={!hasActiveFilters} />}
                 filterBar={
-                    <ReportFilterField label="Report date" icon={CalendarDays} className="sm:col-span-2 lg:col-span-1">
-                        <ReportDateInput value={date} onChange={setDate} />
-                    </ReportFilterField>
+                    <>
+                        <ReportFilterField label="Report date" icon={CalendarDays}>
+                            <ReportDateInput value={date} onChange={setDate} />
+                        </ReportFilterField>
+                        {showBranchFilter && (
+                            <ReportFilterField label="Branch" icon={Building2}>
+                                <ReportSelect
+                                    value={branchId}
+                                    onChange={handleBranchChange}
+                                    options={[
+                                        { value: 'all', label: 'All branches' },
+                                        ...branches.map((branch) => ({
+                                            value: String(branch.id),
+                                            label: branch.label,
+                                        })),
+                                    ]}
+                                />
+                            </ReportFilterField>
+                        )}
+                        {showUserFilter && (
+                            <ReportFilterField label="User" icon={User}>
+                                <ReportSelect
+                                    value={userId}
+                                    onChange={setUserId}
+                                    options={[
+                                        { value: 'all', label: 'All users' },
+                                        ...userOptions.map((user) => ({
+                                            value: String(user.id),
+                                            label: user.label,
+                                        })),
+                                    ]}
+                                />
+                            </ReportFilterField>
+                        )}
+                    </>
                 }
             >
                 <div className="mb-4 overflow-hidden rounded-lg border border-blue-950/15 bg-gradient-to-r from-blue-950 to-blue-800 px-5 py-4 text-white shadow-md">
@@ -252,6 +447,40 @@ export default function DailySummaryReport({ filters = {}, summary = {} }) {
                         <SummaryStatCard key={section.key} section={section} summary={s} />
                     ))}
                 </div>
+
+                {staffBreakdown.length > 0 ? (
+                    <div className="mt-6 overflow-hidden rounded-lg border bg-card shadow-sm">
+                        <div className="border-b bg-muted/40 px-4 py-3">
+                            <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-950 dark:text-blue-100">
+                                Branch &amp; User Performance
+                            </h3>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                Sales and purchase totals grouped by branch and user. Expand a row to see each invoice amount.
+                            </p>
+                        </div>
+                        <div className="overflow-x-auto">
+                            <table className="w-full min-w-[960px] text-sm">
+                                <thead>
+                                    <tr className="border-b bg-muted/20 text-left">
+                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Branch</th>
+                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">User</th>
+                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Sales</th>
+                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Sales gross</th>
+                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Sales collected</th>
+                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Purchases</th>
+                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Purchase gross</th>
+                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Purchase paid</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {staffBreakdown.map((row) => (
+                                        <StaffBreakdownRow key={`${row.branch_id}-${row.user_id}`} row={row} />
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                ) : null}
             </ReportPage>
         </>
     );

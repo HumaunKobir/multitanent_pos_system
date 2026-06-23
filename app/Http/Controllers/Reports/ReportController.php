@@ -147,13 +147,26 @@ class ReportController extends Controller
 
         $filters = $request->validate([
             'date' => ['nullable', 'date'],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+            'user_id' => ['nullable', 'integer', 'exists:users,id'],
         ]);
 
         $date = $filters['date'] ?? now()->format('Y-m-d');
+        $userBranchId = Auth::user()?->branch_id;
+        $canFilterByBranch = $this->reports->canFilterByBranch();
+        $filterBranchId = $canFilterByBranch && isset($filters['branch_id']) ? (int) $filters['branch_id'] : null;
+        $filterUserId = isset($filters['user_id']) ? (int) $filters['user_id'] : null;
 
         return Inertia::render('admin/reports/daily-summary', [
-            'filters' => ['date' => $date],
-            'summary' => $this->reports->dailySummary($date),
+            'filters' => [
+                'date' => $date,
+                'branch_id' => $filters['branch_id'] ?? null,
+                'user_id' => $filters['user_id'] ?? null,
+            ],
+            'branches' => $canFilterByBranch ? $this->reports->branchOptions() : [],
+            'users' => $this->reports->userOptions($filterBranchId ?? ($canFilterByBranch ? null : $userBranchId)),
+            'isBranchScoped' => ! $canFilterByBranch,
+            'summary' => $this->reports->dailySummary($date, $filterBranchId, $filterUserId),
         ]);
     }
 

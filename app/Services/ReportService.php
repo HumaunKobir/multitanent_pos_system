@@ -23,6 +23,7 @@ use App\Models\StockDistribution;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
 use App\Models\Transaction;
+use App\Models\User;
 use App\Models\Voucher;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -431,6 +432,23 @@ class ReportService
     }
 
     /**
+     * @return list<array{id: int, label: string, branch_id: int|null}>
+     */
+    public function userOptions(?int $branchId = null): array
+    {
+        return User::query()
+            ->when($branchId !== null, fn (Builder $q) => $q->where('branch_id', $branchId))
+            ->orderBy('name')
+            ->get(['id', 'name', 'branch_id'])
+            ->map(fn (User $user) => [
+                'id' => $user->id,
+                'label' => $user->name,
+                'branch_id' => $user->branch_id,
+            ])
+            ->all();
+    }
+
+    /**
      * @return list<array<string, mixed>>
      */
     public function dateWiseStock(?int $productId, ?string $dateFrom, ?string $dateTo): array
@@ -460,9 +478,10 @@ class ReportService
     /**
      * @return array<string, mixed>
      */
-    public function dailySummary(string $date): array
+    public function dailySummary(string $date, ?int $filterBranchId = null, ?int $filterUserId = null): array
     {
-        $branchId = $this->branchId();
+        $effectiveBranchId = $this->resolveReportBranchFilter($filterBranchId);
+        $effectiveUserId = $this->resolveReportUserFilter($filterUserId);
 
         $salesQuery = Sell::query()->sale()->whereDate('date', $date);
         $purchasesQuery = Purchase::query()->where('purchase_type', PurchaseType::Purchase)->whereDate('date', $date);
@@ -472,14 +491,19 @@ class ReportService
         $damagesQuery = Damage::query()->whereDate('date', $date);
         $vouchersQuery = Voucher::query()->whereDate('date', $date);
 
-        if ($branchId !== null) {
-            $salesQuery->where('branch_id', $branchId);
-            $purchasesQuery->where('branch_id', $branchId);
-            $paymentsQuery->where('branch_id', $branchId);
-            $collectionsQuery->where('branch_id', $branchId);
-            $returnsQuery->where('branch_id', $branchId);
-            $damagesQuery->where('branch_id', $branchId);
-            $vouchersQuery->where('branch_id', $branchId);
+        if ($effectiveBranchId !== null) {
+            $salesQuery->where('branch_id', $effectiveBranchId);
+            $purchasesQuery->where('branch_id', $effectiveBranchId);
+            $paymentsQuery->where('branch_id', $effectiveBranchId);
+            $collectionsQuery->where('branch_id', $effectiveBranchId);
+            $returnsQuery->where('branch_id', $effectiveBranchId);
+            $damagesQuery->where('branch_id', $effectiveBranchId);
+            $vouchersQuery->where('branch_id', $effectiveBranchId);
+        }
+
+        if ($effectiveUserId !== null) {
+            $salesQuery->where('user_id', $effectiveUserId);
+            $purchasesQuery->where('user_id', $effectiveUserId);
         }
 
         $sales = $salesQuery->get(['gross_amount', 'discount', 'vat', 'paid_amount']);
@@ -548,6 +572,142 @@ class ReportService
                     ->whereDate('date', $date)
                     ->count(),
             ],
+            'staff_breakdown' => $this->dailyStaffBreakdown($date, $effectiveBranchId, $effectiveUserId),
+        ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function dailyStaffBreakdown(string $date, ?int $branchId, ?int $userId): array
+    {
+        $salesQuery = Sell::query()
+            ->sale()
+            ->whereDate('date', $date)
+            ->with(['branch:id,name', 'user:id,name', 'products:id,sell_id,discount']);
+
+        $purchasesQuery = Purchase::query()
+            ->where('purchase_type', PurchaseType::Purchase)
+            ->whereDate('date', $date)
+            ->with(['user:id,name']);
+
+        if ($branchId !== null) {
+            $salesQuery->where('branch_id', $branchId);
+            $purchasesQuery->where('branch_id', $branchId);
+        }
+
+        if ($userId !== null) {
+            $salesQuery->where('user_id', $userId);
+            $purchasesQuery->where('user_id', $userId);
+        }
+
+        $salesByStaff = $salesQuery->get()->groupBy(fn (Sell $sell) => "{$sell->branch_id}-{$sell->user_id}");
+        $purchasesByStaff = $purchasesQuery->get()->groupBy(fn (Purchase $purchase) => "{$purchase->branch_id}-{$purchase->user_id}");
+        $staffKeys = $salesByStaff->keys()->merge($purchasesByStaff->keys())->unique();
+
+        $branchIds = $staffKeys
+            ->map(fn (string $key) => (int) explode('-', $key, 2)[0])
+            ->filter()
+            ->unique()
+            ->values();
+
+        $branchNames = Branch::query()
+            ->whereIn('id', $branchIds)
+            ->pluck('name', 'id');
+
+        return $staffKeys
+            ->map(function (string $key) use ($salesByStaff, $purchasesByStaff, $branchNames) {
+                $sales = $salesByStaff->get($key, collect());
+                $purchases = $purchasesByStaff->get($key, collect());
+                $sample = $sales->first() ?? $purchases->first();
+
+                if ($sample === null) {
+                    return null;
+                }
+
+                $salesGross = $sales->sum(fn (Sell $sell) => $sell->net_amount);
+                $salesPaid = $sales->sum(fn (Sell $sell) => (float) $sell->paid_amount);
+                $purchaseGross = $purchases->sum(fn (Purchase $purchase) => $purchase->net_amount);
+                $purchasePaid = $purchases->sum(fn (Purchase $purchase) => (float) $purchase->paid_amount);
+                $user = $sample instanceof Sell ? $sample->user : $purchases->first()?->user;
+
+                return [
+                    'branch_id' => $sample->branch_id,
+                    'branch_name' => $sample instanceof Sell
+                        ? ($sample->branch?->name ?? '—')
+                        : ($branchNames[$sample->branch_id] ?? '—'),
+                    'user_id' => $sample->user_id,
+                    'user_name' => $user?->name ?? '—',
+                    'sales' => [
+                        'count' => $sales->count(),
+                        'gross' => round($salesGross, 2),
+                        'paid' => round($salesPaid, 2),
+                        'due' => round(max(0, $salesGross - $salesPaid), 2),
+                    ],
+                    'purchases' => [
+                        'count' => $purchases->count(),
+                        'gross' => round($purchaseGross, 2),
+                        'paid' => round($purchasePaid, 2),
+                        'due' => round(max(0, $purchaseGross - $purchasePaid), 2),
+                    ],
+                    'sales_items' => $sales
+                        ->sortBy('id')
+                        ->values()
+                        ->map(fn (Sell $sell) => $this->mapSellBreakdownItem($sell))
+                        ->all(),
+                    'purchases_items' => $purchases
+                        ->sortBy('id')
+                        ->values()
+                        ->map(fn (Purchase $purchase) => $this->mapPurchaseBreakdownItem($purchase))
+                        ->all(),
+                ];
+            })
+            ->filter(function (?array $row): bool {
+                if ($row === null) {
+                    return false;
+                }
+
+                return ($row['sales']['count'] ?? 0) > 0 || ($row['purchases']['count'] ?? 0) > 0;
+            })
+            ->sortBy([
+                ['branch_name', 'asc'],
+                ['user_name', 'asc'],
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return array{id: int, reference: string, gross: float, paid: float, due: float}
+     */
+    private function mapSellBreakdownItem(Sell $sell): array
+    {
+        $gross = $sell->net_amount;
+        $paid = (float) $sell->paid_amount;
+
+        return [
+            'id' => $sell->id,
+            'reference' => $sell->invoice_number,
+            'gross' => round($gross, 2),
+            'paid' => round($paid, 2),
+            'due' => round(max(0, $gross - $paid), 2),
+        ];
+    }
+
+    /**
+     * @return array{id: int, reference: string, gross: float, paid: float, due: float}
+     */
+    private function mapPurchaseBreakdownItem(Purchase $purchase): array
+    {
+        $gross = $purchase->net_amount;
+        $paid = (float) $purchase->paid_amount;
+
+        return [
+            'id' => $purchase->id,
+            'reference' => $purchase->invoice_number,
+            'gross' => round($gross, 2),
+            'paid' => round($paid, 2),
+            'due' => round(max(0, $gross - $paid), 2),
         ];
     }
 
@@ -845,6 +1005,33 @@ class ReportService
             ->paymentAccount()
             ->pluck('id')
             ->all();
+    }
+
+    public function canFilterByBranch(): bool
+    {
+        $branchId = $this->branchId();
+
+        return $branchId === null || Branch::isMainBranch($branchId);
+    }
+
+    private function resolveReportBranchFilter(?int $filterBranchId = null): ?int
+    {
+        if ($this->canFilterByBranch()) {
+            return $filterBranchId;
+        }
+
+        return $this->branchId();
+    }
+
+    private function resolveReportUserFilter(?int $filterUserId = null): ?int
+    {
+        if ($this->canFilterByBranch()) {
+            return $filterUserId;
+        }
+
+        $userId = Auth::id();
+
+        return $userId !== null ? (int) $userId : null;
     }
 
     private function branchId(): ?int

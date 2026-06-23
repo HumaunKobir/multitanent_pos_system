@@ -89,6 +89,7 @@ function LabelPreview({ row, settings }) {
                             lineHeight: 1.2,
                             flexShrink: 0,
                             marginBottom: `${nameBarcodeGap}px`,
+                            color: '#111827',
                         }}
                     >
                         {getLabelTitle(row)}
@@ -108,6 +109,7 @@ function LabelPreview({ row, settings }) {
                             lineHeight: 1,
                             flexShrink: 0,
                             marginTop: `${barcodePriceGap}px`,
+                            color: '#111827',
                         }}
                     >
                         <span>{formatLabelPrice(price)}</span>
@@ -175,20 +177,20 @@ export default function BarcodePrint({ barcodes }) {
                     </Button>
                 </div>
 
-                <div className="mb-3 rounded-lg border bg-white shadow-sm">
-                    <div className="border-b px-4 py-2.5">
-                        <h2 className="text-sm font-semibold text-gray-800">
+                <div className="pos-panel mb-3 rounded-lg border border-blue-200 bg-white text-blue-950 shadow-sm">
+                    <div className="border-b border-blue-200 px-4 py-2.5">
+                        <h2 className="text-sm font-semibold text-blue-950">
                             Print Settings
                         </h2>
                     </div>
-                    <div className="grid grid-cols-3 divide-x">
+                    <div className="grid grid-cols-3 divide-x divide-blue-200">
                         <div className="px-4 py-3">
-                            <p className="mb-2 text-[10px] font-semibold tracking-widest text-blue-600 uppercase">
+                            <p className="mb-2 text-[10px] font-semibold tracking-widest text-blue-800 uppercase">
                                 Dimensions
                             </p>
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                    <Label className="mb-1 block text-xs text-gray-500">
+                                    <Label className="mb-1 block text-xs text-slate-600">
                                         Width (in)
                                     </Label>
                                     <Input
@@ -207,7 +209,7 @@ export default function BarcodePrint({ barcodes }) {
                                     />
                                 </div>
                                 <div>
-                                    <Label className="mb-1 block text-xs text-gray-500">
+                                    <Label className="mb-1 block text-xs text-slate-600">
                                         Height (in)
                                     </Label>
                                     <Input
@@ -230,12 +232,12 @@ export default function BarcodePrint({ barcodes }) {
                         </div>
 
                         <div className="px-4 py-3">
-                            <p className="mb-2 text-[10px] font-semibold tracking-widest text-blue-600 uppercase">
+                            <p className="mb-2 text-[10px] font-semibold tracking-widest text-blue-800 uppercase">
                                 Content
                             </p>
                             <div className="grid grid-cols-2 gap-2">
                                 <div>
-                                    <Label className="mb-1 block text-xs text-gray-500">
+                                    <Label className="mb-1 block text-xs text-slate-600">
                                         Font Size (px)
                                     </Label>
                                     <Input
@@ -254,7 +256,7 @@ export default function BarcodePrint({ barcodes }) {
                                     />
                                 </div>
                                 <div>
-                                    <Label className="mb-1 block text-xs text-gray-500">
+                                    <Label className="mb-1 block text-xs text-slate-600">
                                         Font Weight
                                     </Label>
                                     <Select
@@ -280,11 +282,11 @@ export default function BarcodePrint({ barcodes }) {
                         </div>
 
                         <div className="px-4 py-3">
-                            <p className="mb-2 text-[10px] font-semibold tracking-widest text-blue-600 uppercase">
+                            <p className="mb-2 text-[10px] font-semibold tracking-widest text-blue-800 uppercase">
                                 Quantity
                             </p>
                             <div>
-                                <Label className="mb-1 block text-xs text-gray-500">
+                                <Label className="mb-1 block text-xs text-slate-600">
                                     Copies per Label
                                 </Label>
                                 <Input
@@ -306,14 +308,14 @@ export default function BarcodePrint({ barcodes }) {
                     </div>
                 </div>
 
-                <div className="mb-3 rounded-lg border bg-white shadow-sm">
-                    <div className="border-b px-4 py-2.5">
-                        <h2 className="text-sm font-semibold text-gray-800">
+                <div className="pos-panel mb-3 rounded-lg border border-blue-200 bg-white text-blue-950 shadow-sm">
+                    <div className="border-b border-blue-200 px-4 py-2.5">
+                        <h2 className="text-sm font-semibold text-blue-950">
                             Preview
                         </h2>
                     </div>
                     <div
-                        className="flex items-center justify-center bg-gray-100"
+                        className="flex items-center justify-center bg-slate-100"
                         style={{ height: '280px' }}
                     >
                         {previewRow ? (
@@ -322,46 +324,46 @@ export default function BarcodePrint({ barcodes }) {
                                 settings={settings}
                             />
                         ) : (
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs text-slate-500">
                                 No barcode to preview
                             </p>
                         )}
                     </div>
-                    <div className="border-t px-4 py-2 text-center">
-                        <p className="text-xs text-gray-400">
+                    <div className="border-t border-blue-200 px-4 py-2 text-center">
+                        <p className="text-xs text-slate-500">
                             {settings.width}" × {settings.height}" ·{' '}
                             {settings.copies}× per label
                         </p>
                     </div>
                 </div>
 
-                <div className="rounded-lg border bg-white shadow-sm">
-                    <div className="border-b px-4 py-2.5">
-                        <h2 className="text-sm font-semibold text-gray-800">
+                <div className="pos-panel rounded-lg border border-blue-200 bg-white text-blue-950 shadow-sm">
+                    <div className="border-b border-blue-200 px-4 py-2.5">
+                        <h2 className="text-sm font-semibold text-blue-950">
                             Barcodes
-                            <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700">
+                            <span className="ml-2 rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
                                 {barcodes.length}
                             </span>
                         </h2>
                     </div>
-                    <div className="divide-y">
+                    <div className="divide-y divide-blue-200">
                         {barcodes.map((row) => (
                             <div
                                 key={row.id}
                                 className="flex items-center gap-3 px-4 py-2"
                             >
-                                <div style={{ width: '120px', flexShrink: 0 }}>
+                                <div className="rounded bg-white px-1 py-0.5" style={{ width: '120px', flexShrink: 0 }}>
                                     <BarcodeBars
                                         code={row.code}
                                         barHeight={28}
                                     />
                                 </div>
                                 <div className="min-w-0 flex-1">
-                                    <p className="truncate text-sm font-medium text-gray-800">
+                                    <p className="truncate text-sm font-medium text-blue-950">
                                         {row.name}
                                     </p>
                                     {row.variation && (
-                                        <p className="text-xs text-muted-foreground">
+                                        <p className="text-xs text-slate-500">
                                             {
                                                 row.variation.variation_data
                                                     ?.label
@@ -369,7 +371,7 @@ export default function BarcodePrint({ barcodes }) {
                                         </p>
                                     )}
                                 </div>
-                                <span className="font-mono text-xs font-semibold tracking-widest text-gray-500">
+                                <span className="font-mono text-xs font-semibold tracking-widest text-slate-600">
                                     {row.code}
                                 </span>
                             </div>

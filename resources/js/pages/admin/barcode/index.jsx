@@ -218,7 +218,7 @@ export default function BarcodeIndex({ barcodes, filters, branches = {}, mainBra
             id: 'barcode',
             header: 'Barcode',
             render: (row) => (
-                <div style={{ width: '160px' }}>
+                <div className="rounded bg-white px-1 py-0.5" style={{ width: '160px' }}>
                     <BarcodeBars code={row.code} barHeight={36} />
                 </div>
             ),
@@ -247,7 +247,12 @@ export default function BarcodeIndex({ barcodes, filters, branches = {}, mainBra
             header: '',
             align: 'right',
             render: (row) => (
-                <Button size="sm" variant="outline" onClick={() => handlePrintSingle(row)}>
+                <Button
+                    size="sm"
+                    variant="outline"
+                    className="dark:bg-white dark:border-blue-200 dark:text-blue-950 dark:hover:bg-blue-50"
+                    onClick={() => handlePrintSingle(row)}
+                >
                     <Printer className="size-3.5" />
                 </Button>
             ),

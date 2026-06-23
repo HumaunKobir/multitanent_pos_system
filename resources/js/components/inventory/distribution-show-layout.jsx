@@ -13,6 +13,8 @@ function lineStatusBadge(row) {
     return <Badge variant="secondary">Pending</Badge>;
 }
 
+const ADMIN_ONLY_COLUMN_IDS = ['main_stock_before', 'main_stock_after'];
+
 const distributionLineColumns = [
     {
         id: 'num',
@@ -114,13 +116,15 @@ export function DistributionDocument({
     pendingCount = 0,
     selectionColumn,
 }) {
-    const { logo } = usePage().props;
+    const { logo, panelType = 'admin' } = usePage().props;
     const displayBranch = fromBranchName || 'Coolness Point';
     const totalQuantity = items.reduce((sum, row) => sum + parseFloat(row.quantity ?? 0), 0);
+    const isAdminPanel = panelType !== 'branch';
+    const lineColumns = isAdminPanel
+        ? distributionLineColumns
+        : distributionLineColumns.filter((column) => !ADMIN_ONLY_COLUMN_IDS.includes(column.id));
 
-    const columns = selectionColumn
-        ? [selectionColumn, ...distributionLineColumns]
-        : distributionLineColumns;
+    const columns = selectionColumn ? [selectionColumn, ...lineColumns] : lineColumns;
 
     return (
         <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm ring-1 ring-blue-950/10 print:border-0 print:bg-transparent print:shadow-none dark:ring-blue-400/14">

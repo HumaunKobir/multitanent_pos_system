@@ -18,17 +18,18 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useCan } from '@/hooks/use-can';
+import { cn } from '@/lib/utils';
 
-function statusBadgeVariant(status, statusLabel) {
+function statusHeaderBadgeClassName(status, statusLabel) {
     if (status === 2 || statusLabel === 'Received') {
-        return 'default';
+        return 'border-transparent bg-emerald-600 text-white';
     }
 
     if (status === 3 || statusLabel === 'Partially Received') {
-        return 'outline';
+        return 'border-transparent bg-amber-500 text-white';
     }
 
-    return 'secondary';
+    return 'border-white/30 bg-white/10 text-white';
 }
 
 export default function StockDistributionShow({ distribution, canManage = false, canReceive = false }) {
@@ -112,7 +113,7 @@ export default function StockDistributionShow({ distribution, canManage = false,
 
             <div className="px-2 py-1">
                 <InvoiceShowHeader icon={ArrowRightLeft} title="Stock Distribution" invoiceNumber={invoiceNumber}>
-                    <Badge variant={statusBadgeVariant(distribution.status, distribution.status_label)} className="mr-2">
+                    <Badge className={cn('mr-2', statusHeaderBadgeClassName(distribution.status, distribution.status_label))}>
                         {distribution.status_label ?? 'Pending'}
                     </Badge>
                     {canReceive && (

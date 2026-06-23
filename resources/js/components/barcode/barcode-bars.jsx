@@ -15,7 +15,7 @@ export function BarcodeBars({ code, barHeight, fontWeight = 400 }) {
                     barHeight,
                 );
 
-                wrapRef.current.style.height = `${Math.max(fittedHeight, 12)}px`;
+                wrapRef.current.style.height = `${Math.max(fittedHeight + 2, 12)}px`;
             }
         };
 
@@ -31,11 +31,13 @@ export function BarcodeBars({ code, barHeight, fontWeight = 400 }) {
             ref={wrapRef}
             style={{
                 width: '100%',
-                overflow: 'hidden',
+                overflow: 'visible',
                 display: 'flex',
-                alignItems: 'flex-end',
+                alignItems: 'center',
                 justifyContent: 'center',
                 flexShrink: 0,
+                padding: '0 4px',
+                boxSizing: 'border-box',
             }}
         >
             <div
@@ -47,7 +49,6 @@ export function BarcodeBars({ code, barHeight, fontWeight = 400 }) {
                     lineHeight: 1,
                     whiteSpace: 'nowrap',
                     display: 'inline-block',
-                    maxWidth: '100%',
                 }}
             >
                 {code}

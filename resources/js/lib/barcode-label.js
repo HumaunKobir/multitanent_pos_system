@@ -5,6 +5,11 @@ export const BARCODE_PRICE_GAP_PX = 1;
 export const MIN_BARCODE_BAR_HEIGHT_PX = 28;
 /** Floor when scaling barcode width to fit the label. */
 export const MIN_BARCODE_FONT_PX = 18;
+/**
+ * Leave horizontal headroom so barcode quiet zones are not clipped in print
+ * (browser/print engines often render slightly wider than on-screen measurement).
+ */
+export const BARCODE_WIDTH_SAFETY_RATIO = 0.92;
 
 export function getNameBarcodeGap(fontSize) {
     return Math.max(NAME_BARCODE_GAP_PX, Math.ceil(fontSize * 0.5));
@@ -78,20 +83,27 @@ export function fitBarcodeToContainer(barEl, containerEl, baseHeight) {
         return baseHeight;
     }
 
-    const containerWidth = containerEl.clientWidth;
+    const targetWidth = containerEl.clientWidth * BARCODE_WIDTH_SAFETY_RATIO;
 
     barEl.style.transform = 'none';
     barEl.style.width = 'auto';
+    barEl.style.maxWidth = 'none';
     barEl.style.display = 'inline-block';
     barEl.style.fontSize = `${baseHeight}px`;
 
-    const textWidth = barEl.scrollWidth;
+    if (barEl.scrollWidth > targetWidth && targetWidth > 0) {
+        const scale = targetWidth / barEl.scrollWidth;
+        let fontSize = Math.max(
+            MIN_BARCODE_FONT_PX,
+            Math.floor(baseHeight * scale),
+        );
 
-    if (textWidth > containerWidth && containerWidth > 0) {
-        const scale = containerWidth / textWidth;
-        const fitted = Math.max(MIN_BARCODE_FONT_PX, Math.floor(baseHeight * scale));
+        barEl.style.fontSize = `${fontSize}px`;
 
-        barEl.style.fontSize = `${fitted}px`;
+        while (barEl.scrollWidth > targetWidth && fontSize > MIN_BARCODE_FONT_PX) {
+            fontSize -= 1;
+            barEl.style.fontSize = `${fontSize}px`;
+        }
     }
 
     return barEl.offsetHeight || baseHeight;
@@ -171,9 +183,11 @@ export function buildPrintHtml(rows, settings) {
       width: 100%;
       flex: 0 0 auto;
       display: flex;
-      align-items: flex-end;
+      align-items: center;
       justify-content: center;
-      overflow: hidden;
+      overflow: visible;
+      padding: 0 4px;
+      box-sizing: border-box;
     }
     .bars {
       font-family: 'Libre Barcode 128', monospace;
@@ -182,7 +196,6 @@ export function buildPrintHtml(rows, settings) {
       line-height: 1;
       white-space: nowrap;
       display: inline-block;
-      max-width: 100%;
     }
     .footer {
       display: flex;
@@ -208,17 +221,22 @@ export function buildPrintHtml(rows, settings) {
       var el = wrap.querySelector('.bars');
       if (!el) return;
       var baseHeight = parseFloat(el.getAttribute('data-bar-height') || '${barHeight}');
-      var w = wrap.clientWidth;
+      var targetWidth = wrap.clientWidth * ${BARCODE_WIDTH_SAFETY_RATIO};
       el.style.transform = 'none';
       el.style.width = 'auto';
+      el.style.maxWidth = 'none';
       el.style.display = 'inline-block';
       el.style.fontSize = baseHeight + 'px';
-      var tw = el.scrollWidth;
-      if (tw > w && w > 0) {
-        var scale = w / tw;
-        el.style.fontSize = Math.max(${MIN_BARCODE_FONT_PX}, Math.floor(baseHeight * scale)) + 'px';
+      if (el.scrollWidth > targetWidth && targetWidth > 0) {
+        var scale = targetWidth / el.scrollWidth;
+        var fontSize = Math.max(${MIN_BARCODE_FONT_PX}, Math.floor(baseHeight * scale));
+        el.style.fontSize = fontSize + 'px';
+        while (el.scrollWidth > targetWidth && fontSize > ${MIN_BARCODE_FONT_PX}) {
+          fontSize -= 1;
+          el.style.fontSize = fontSize + 'px';
+        }
       }
-      wrap.style.height = Math.max(el.offsetHeight, 12) + 'px';
+      wrap.style.height = Math.max(el.offsetHeight + 2, 12) + 'px';
     }
 
     function printWhenReady() {

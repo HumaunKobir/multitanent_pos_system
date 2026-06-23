@@ -788,6 +788,7 @@ export default function ProductForm({
     tagOptions = [],
     ecommerceBranchId = null,
     defaultCatalogBranchId = null,
+    showBranchField = false,
     sourceBranchId = null,
     selectedCatalog = {},
     selectedColors = [],
@@ -883,16 +884,18 @@ export default function ProductForm({
                 {/* Basic Info */}
                 <Card title="Basic Information" icon={Info}>
                     <div className="grid grid-cols-3 gap-3">
-                        <Field label="Branch" error={form.errors.branch_id}>
-                            <SmartSelect
-                                options={branchSelectOptions}
-                                value={form.data.branch_id ? String(form.data.branch_id) : '__none'}
-                                onValueChange={(v) => form.setData('branch_id', v === '__none' ? '' : v)}
-                                placeholder="Search branch…"
-                                triggerClassName="h-8 text-xs"
-                                optionsClassName="max-h-52"
-                            />
-                        </Field>
+                        {showBranchField && (
+                            <Field label="Branch" error={form.errors.branch_id}>
+                                <SmartSelect
+                                    options={branchSelectOptions}
+                                    value={form.data.branch_id ? String(form.data.branch_id) : '__none'}
+                                    onValueChange={(v) => form.setData('branch_id', v === '__none' ? '' : v)}
+                                    placeholder="Search branch…"
+                                    triggerClassName="h-8 text-xs"
+                                    optionsClassName="max-h-52"
+                                />
+                            </Field>
+                        )}
 
                         <Field label="Category" required error={form.errors.category_id}>
                             <SmartSelect

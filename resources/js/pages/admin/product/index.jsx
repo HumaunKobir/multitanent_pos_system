@@ -24,8 +24,9 @@ import { useCan } from '@/hooks/use-can';
 import { route } from '@/lib/route';
 
 export default function ProductIndex({ products, filters, categories, brands, tags, branches = {}, mainBranchId = null, pendingReceiveProducts = [], showSelectedBranchColumn = false }) {
-    const { flash, auth } = usePage().props;
-    const isAdmin = !auth.user?.branch_id;
+    const { flash, auth, panelType } = usePage().props;
+    const isSuperAdmin = !auth.user?.branch_id;
+    const canManageMainCatalog = panelType === 'admin';
     const defaultBranchId = mainBranchId != null ? String(mainBranchId) : 'all';
     const toast = useAppToast();
     const { can } = useCan();
@@ -50,12 +51,12 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                     category_id: categoryId === '__all' ? undefined : categoryId,
                     brand_id: brandId === '__all' ? undefined : brandId,
                     tag: tag === '__all' ? undefined : tag,
-                    ...(isAdmin ? { branch_id: branchId } : {}),
+                    ...(isSuperAdmin ? { branch_id: branchId } : {}),
                 },
                 { preserveState: true, replace: true },
             );
         },
-        [search, categoryId, brandId, tag, branchId, isAdmin],
+        [search, categoryId, brandId, tag, branchId, isSuperAdmin],
         350,
         { skipFirstRun: true },
     );
@@ -65,7 +66,7 @@ export default function ProductIndex({ products, filters, categories, brands, ta
         setCategoryId('__all');
         setBrandId('__all');
         setTag('__all');
-        if (isAdmin) {
+        if (isSuperAdmin) {
             setBranchId(defaultBranchId);
         }
     }
@@ -223,7 +224,7 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                         </div>
                     </div>
                     <div className="flex items-center gap-2">
-                        {isAdmin && pendingReceiveProducts.length > 0 && (
+                        {canManageMainCatalog && pendingReceiveProducts.length > 0 && (
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
                                     <Button
@@ -295,7 +296,7 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                         placeholder="Search by name, code, brand, category, tag..."
                         className="max-w-xs"
                     />
-                    {isAdmin && (
+                    {isSuperAdmin && (
                         <Select value={branchId} onValueChange={(v) => setBranchId(v)}>
                             <SelectTrigger className="w-48">
                                 <SelectValue placeholder="Branch" />

@@ -71,6 +71,7 @@ export default function ProductEdit({
     tagOptions = [],
     ecommerceBranchId = null,
     defaultCatalogBranchId = null,
+    showBranchField = false,
     selectedColors = [],
     selectedSizes = [],
     variantsLocked = false,
@@ -144,6 +145,7 @@ export default function ProductEdit({
                             tagOptions={tagOptions}
                             ecommerceBranchId={ecommerceBranchId}
                             defaultCatalogBranchId={defaultCatalogBranchId}
+                            showBranchField={showBranchField}
                             sourceBranchId={product.branch_id}
                             selectedCatalog={{
                                 category: product.category

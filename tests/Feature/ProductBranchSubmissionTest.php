@@ -150,6 +150,42 @@ test('pending main branch submission is hidden from main product list until rece
         });
 });
 
+test('pending main branch submission is hidden from main branch user product list until received', function () {
+    Permission::findOrCreate('product.view', 'web');
+    Permission::findOrCreate('product.create', 'web');
+
+    $mainBranch = ensureSubmissionMainBranch();
+    $operatingBranch = Branch::factory()->create();
+    $mainBranchId = Branch::resolveMainBranchId();
+    $branchUser = User::factory()->create(['branch_id' => $operatingBranch->id]);
+    $branchUser->givePermissionTo('product.create');
+    $mainBranchUser = User::factory()->create(['branch_id' => $mainBranch->id]);
+    $mainBranchUser->givePermissionTo(['product.view', 'product.create']);
+
+    $payload = submissionProductPayload($operatingBranch->id);
+    unset($payload['branch_id']);
+
+    $this->actingAs($branchUser)->post(route('product.store'), $payload);
+
+    $mainCopy = Product::query()
+        ->where('name', $payload['name'])
+        ->where('branch_id', $mainBranchId)
+        ->first();
+
+    $this->actingAs($mainBranchUser)
+        ->get(route('product.index'))
+        ->assertOk()
+        ->assertInertia(function ($page) use ($mainCopy) {
+            $page->component('admin/product/index');
+
+            $pending = collect($page->toArray()['props']['pendingReceiveProducts'] ?? []);
+            $listed = collect($page->toArray()['props']['products']['data'] ?? []);
+
+            expect($pending->where('slug', $mainCopy->slug))->toHaveCount(1)
+                ->and($listed->pluck('slug'))->not->toContain($mainCopy->slug);
+        });
+});
+
 test('admin can receive pending branch submission and product appears in main list', function () {
     $admin = branchSubmissionAdmin();
 

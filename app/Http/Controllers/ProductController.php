@@ -40,14 +40,16 @@ class ProductController extends Controller
         $this->authorize('product.view');
 
         $listBranchId = $this->resolveProductListBranchId($request);
-        $isAdmin = Auth::user()?->branch_id === null;
+        $user = Auth::user();
+        $canFilterProductsByBranch = $user?->branch_id === null;
+        $usesAdminPanel = $user?->usesAdminPanel() ?? false;
         $mainBranchId = Branch::resolveMainBranchId();
-        $showSelectedBranchColumn = $isAdmin && ($listBranchId === null || $listBranchId === $mainBranchId);
+        $showSelectedBranchColumn = $canFilterProductsByBranch && ($listBranchId === null || $listBranchId === $mainBranchId);
 
         $products = Product::query()
             ->active()
             ->when($listBranchId !== null, fn ($q) => $q->where('branch_id', $listBranchId))
-            ->when($isAdmin, fn ($q) => $q->visibleInMainCatalog())
+            ->when($usesAdminPanel, fn ($q) => $q->visibleInMainCatalog())
             ->with([
                 'category',
                 'brand',
@@ -79,7 +81,7 @@ class ProductController extends Controller
                 return $product;
             });
 
-        $pendingReceiveProducts = $isAdmin
+        $pendingReceiveProducts = $usesAdminPanel
             ? Product::query()
                 ->active()
                 ->where('branch_id', $mainBranchId)
@@ -107,11 +109,11 @@ class ProductController extends Controller
             'showSelectedBranchColumn' => $showSelectedBranchColumn,
             'filters' => array_merge(
                 $request->only('search', 'category_id', 'brand_id', 'tag'),
-                $isAdmin ? [
+                $canFilterProductsByBranch ? [
                     'branch_id' => $request->input('branch_id', (string) $mainBranchId),
                 ] : [],
             ),
-            'branches' => $isAdmin ? Branch::active()->orderBy('name')->pluck('name', 'id') : [],
+            'branches' => $canFilterProductsByBranch ? Branch::active()->orderBy('name')->pluck('name', 'id') : [],
             'categories' => Category::forCatalogPanel()->active()->pluck('name', 'id'),
             'brands' => Brand::forCatalogPanel()->active()->pluck('name', 'id'),
             'tags' => Tag::selectableForProduct()
@@ -810,15 +812,17 @@ class ProductController extends Controller
     private function formData(): array
     {
         $defaultCatalogBranchId = Branch::resolveAdminCatalogBranchId();
+        $showBranchField = Auth::user()?->usesAdminPanel() ?? false;
 
         return [
             'defaultCatalogBranchId' => $defaultCatalogBranchId,
             'ecommerceBranchId' => EcommerceBranchService::resolveIdStatic(),
+            'showBranchField' => $showBranchField,
             'categories' => Category::forCatalogPanel()->active()->orderBy('name')->pluck('name', 'id'),
             'brands' => Brand::forCatalogPanel()->active()->orderBy('name')->pluck('name', 'id'),
             'units' => Unit::forCatalogPanel()->active()->orderBy('name')->pluck('name', 'id'),
             'warranties' => Warranty::forCatalogPanel()->active()->orderBy('name')->pluck('name', 'id'),
-            'branches' => Branch::active()->orderBy('name')->pluck('name', 'id'),
+            'branches' => $showBranchField ? Branch::active()->orderBy('name')->pluck('name', 'id') : [],
             'colorOptions' => Color::forCatalogPanel()->active()->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Color $color): array => [
                     'value' => $color->name,

@@ -15,9 +15,10 @@ export default function ProductCreate({
     tagOptions = [],
     ecommerceBranchId = null,
     defaultCatalogBranchId = null,
+    showBranchField = false,
 }) {
     const form = useForm({
-        branch_id: defaultCatalogBranchId != null ? String(defaultCatalogBranchId) : '',
+        branch_id: showBranchField && defaultCatalogBranchId != null ? String(defaultCatalogBranchId) : '',
         category_id: '',
         brand_id: '',
         unit_id: '',
@@ -82,6 +83,7 @@ export default function ProductCreate({
                         tagOptions={tagOptions}
                         ecommerceBranchId={ecommerceBranchId}
                         defaultCatalogBranchId={defaultCatalogBranchId}
+                        showBranchField={showBranchField}
                         processing={form.processing}
                         cancelHref={route('product.index')}
                     />

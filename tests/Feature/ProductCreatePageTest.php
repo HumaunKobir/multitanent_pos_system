@@ -83,6 +83,44 @@ test('product create page only includes catalog options for admin panel branch',
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('admin/product/create')
-            ->where("colorOptions", fn ($options) => collect($options)->contains(fn ($option) => $option['id'] === (string) $mainColor->id)
+            ->where('showBranchField', true)
+            ->where('branches', fn ($branches) => collect($branches)->has($mainBranch->id) && collect($branches)->has($operatingBranch->id))
+            ->where('colorOptions', fn ($options) => collect($options)->contains(fn ($option) => $option['id'] === (string) $mainColor->id)
                 && ! collect($options)->contains(fn ($option) => $option['id'] === (string) $otherColor->id)));
+});
+
+test('product create page hides branch field for operating branch users', function () {
+    $this->artisan('permissions:sync');
+    $this->withoutVite();
+
+    productCreateMainBranch();
+    $operatingBranch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $operatingBranch->id]);
+    $user->givePermissionTo('product.create');
+
+    $this->actingAs($user)
+        ->get(route('product.create'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/product/create')
+            ->where('showBranchField', false)
+            ->where('branches', []));
+});
+
+test('product create page shows branch field for main branch users', function () {
+    $this->artisan('permissions:sync');
+    $this->withoutVite();
+
+    $mainBranch = productCreateMainBranch();
+    $operatingBranch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $mainBranch->id]);
+    $user->givePermissionTo('product.create');
+
+    $this->actingAs($user)
+        ->get(route('product.create'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/product/create')
+            ->where('showBranchField', true)
+            ->where('branches', fn ($branches) => collect($branches)->has($mainBranch->id) && collect($branches)->has($operatingBranch->id)));
 });

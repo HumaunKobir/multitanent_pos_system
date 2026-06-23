@@ -16,6 +16,8 @@ class StockDistributionProduct extends Model
         'main_stock_before',
         'source_batches',
         'destination_batches',
+        'received_at',
+        'received_by_user_id',
     ];
 
     protected $casts = [
@@ -23,7 +25,13 @@ class StockDistributionProduct extends Model
         'main_stock_before' => 'decimal:2',
         'source_batches' => 'array',
         'destination_batches' => 'array',
+        'received_at' => 'datetime',
     ];
+
+    public function isReceived(): bool
+    {
+        return $this->received_at !== null;
+    }
 
     public function stockDistribution(): BelongsTo
     {
@@ -38,5 +46,10 @@ class StockDistributionProduct extends Model
     public function variation(): BelongsTo
     {
         return $this->belongsTo(ProductVariation::class, 'variation_id');
+    }
+
+    public function receivedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'received_by_user_id');
     }
 }

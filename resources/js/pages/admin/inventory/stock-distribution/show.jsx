@@ -10,19 +10,38 @@ import {
 import { route } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, ArrowRightLeft, Building2, Check, Edit, Trash2, Warehouse } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { Can } from '@/components/can';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useCan } from '@/hooks/use-can';
+
+function statusBadgeVariant(status, statusLabel) {
+    if (status === 2 || statusLabel === 'Received') {
+        return 'default';
+    }
+
+    if (status === 3 || statusLabel === 'Partially Received') {
+        return 'outline';
+    }
+
+    return 'secondary';
+}
 
 export default function StockDistributionShow({ distribution, canManage = false, canReceive = false }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const { can } = useCan();
     const [deleting, setDeleting] = useState(false);
+    const [selectedLineIds, setSelectedLineIds] = useState([]);
+
+    const pendingLines = useMemo(
+        () => (distribution.products ?? []).filter((line) => !line.is_received),
+        [distribution.products],
+    );
 
     useEffect(() => {
         if (flash.success) toast.success(flash.success);
@@ -31,10 +50,33 @@ export default function StockDistributionShow({ distribution, canManage = false,
 
     const invoiceNumber = distribution.invoice_number ?? `INVT${String(distribution.id).padStart(8, '0')}`;
     const actionClass = headerActionClassName();
-    const isPending = distribution.status === 1 || distribution.status_label === 'Pending';
+    const isFullyPending = distribution.status === 1 || distribution.status_label === 'Pending';
+    const canEditOrDelete = canManage && isFullyPending && (distribution.received_count ?? 0) === 0;
 
-    function handleReceive() {
-        router.post(route('inventory.stock-distribution.receive', distribution.id));
+    function toggleLine(lineId) {
+        setSelectedLineIds((prev) =>
+            prev.includes(lineId) ? prev.filter((id) => id !== lineId) : [...prev, lineId],
+        );
+    }
+
+    function toggleAllPending(checked) {
+        if (checked) {
+            setSelectedLineIds(pendingLines.map((line) => line.id));
+            return;
+        }
+
+        setSelectedLineIds([]);
+    }
+
+    function handleReceive(lineIds = selectedLineIds) {
+        if (lineIds.length === 0) {
+            toast.error('Select at least one pending product to receive.');
+            return;
+        }
+
+        router.post(route('inventory.stock-distribution.receive', distribution.id), {
+            line_ids: lineIds,
+        });
     }
 
     function handleDelete() {
@@ -43,26 +85,59 @@ export default function StockDistributionShow({ distribution, canManage = false,
         });
     }
 
+    const selectionColumn = canReceive
+        ? {
+              id: 'select',
+              header: (
+                  <Checkbox
+                      checked={pendingLines.length > 0 && selectedLineIds.length === pendingLines.length}
+                      onCheckedChange={(checked) => toggleAllPending(Boolean(checked))}
+                      aria-label="Select all pending products"
+                  />
+              ),
+              render: (row) =>
+                  !row.is_received ? (
+                      <Checkbox
+                          checked={selectedLineIds.includes(row.id)}
+                          onCheckedChange={() => toggleLine(row.id)}
+                          aria-label={`Select ${row.product?.name ?? 'product'}`}
+                      />
+                  ) : null,
+          }
+        : null;
+
     return (
         <>
             <Head title={`Distribution — ${invoiceNumber}`} />
 
             <div className="px-2 py-1">
                 <InvoiceShowHeader icon={ArrowRightLeft} title="Stock Distribution" invoiceNumber={invoiceNumber}>
-                    <Badge variant={isPending ? 'secondary' : 'default'} className="mr-2">
-                        {distribution.status_label ?? (isPending ? 'Pending' : 'Received')}
+                    <Badge variant={statusBadgeVariant(distribution.status, distribution.status_label)} className="mr-2">
+                        {distribution.status_label ?? 'Pending'}
                     </Badge>
                     {canReceive && (
-                        <Button
-                            size="sm"
-                            onClick={handleReceive}
-                            className="border border-emerald-400/50 bg-emerald-600/90 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-emerald-600 hover:shadow-md"
-                        >
-                            <Check className="size-3.5" />
-                            Receive Stock
-                        </Button>
+                        <>
+                            <Button
+                                size="sm"
+                                onClick={() => handleReceive()}
+                                disabled={selectedLineIds.length === 0}
+                                className="border border-emerald-400/50 bg-emerald-600/90 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-emerald-600 hover:shadow-md disabled:opacity-50"
+                            >
+                                <Check className="size-3.5" />
+                                Receive Selected
+                            </Button>
+                            <Button
+                                size="sm"
+                                onClick={() => handleReceive(pendingLines.map((line) => line.id))}
+                                disabled={pendingLines.length === 0}
+                                className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-white/20 hover:shadow-md disabled:opacity-50"
+                            >
+                                <Check className="size-3.5" />
+                                Receive All
+                            </Button>
+                        </>
                     )}
-                    {canManage && isPending && (
+                    {canEditOrDelete && (
                         <Can permission="inventory.stock-distribution.update">
                             <Button size="sm" asChild className={actionClass}>
                                 <Link href={route('inventory.stock-distribution.edit', distribution.id)}>
@@ -72,7 +147,7 @@ export default function StockDistributionShow({ distribution, canManage = false,
                             </Button>
                         </Can>
                     )}
-                    {canManage && isPending && (
+                    {canEditOrDelete && (
                         <Can permission="inventory.stock-distribution.delete">
                             <Button
                                 size="sm"
@@ -101,6 +176,9 @@ export default function StockDistributionShow({ distribution, canManage = false,
                     toBranchName={distribution.to_branch?.name}
                     items={distribution.products ?? []}
                     comment={distribution.comment}
+                    receivedCount={distribution.received_count ?? 0}
+                    pendingCount={distribution.pending_count ?? 0}
+                    selectionColumn={selectionColumn}
                     branchSection={
                         <div className="mb-6 space-y-4">
                             <div className="grid gap-4 sm:grid-cols-2">
@@ -117,10 +195,12 @@ export default function StockDistributionShow({ distribution, canManage = false,
                                     emptyText="—"
                                 />
                             </div>
-                            {!isPending && distribution.received_by && (
+                            {(distribution.received_count ?? 0) > 0 && (
                                 <p className="text-xs text-muted-foreground">
-                                    Received by {distribution.received_by.name}
-                                    {distribution.received_at ? ` on ${new Date(distribution.received_at).toLocaleString()}` : ''}
+                                    {distribution.received_count} of {distribution.total_count} products received
+                                    {distribution.status_label === 'Received' && distribution.received_by
+                                        ? ` — last received by ${distribution.received_by.name}`
+                                        : ''}
                                 </p>
                             )}
                             {distribution.purchase && (
@@ -138,7 +218,7 @@ export default function StockDistributionShow({ distribution, canManage = false,
                     }
                 />
 
-                {canManage && can('inventory.stock-distribution.delete') && (
+                {canEditOrDelete && can('inventory.stock-distribution.delete') && (
                     <Dialog open={deleting} onOpenChange={setDeleting}>
                         <DialogContent className="max-w-sm">
                             <DialogHeader>

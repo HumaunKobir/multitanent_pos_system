@@ -83,11 +83,13 @@ export default function StockDistributionIndex({
             header: 'Status',
             render: (row) => {
                 const isReceived = row.status === 2 || row.status_label === 'Received';
+                const isPartial = row.status === 3 || row.status_label === 'Partially Received';
+                const isPending = row.status === 1 || row.status_label === 'Pending';
 
                 return (
                     <div className="space-y-0.5">
-                        <Badge variant={isReceived ? 'default' : 'secondary'}>
-                            {row.status_label ?? (isReceived ? 'Received' : 'Pending')}
+                        <Badge variant={isReceived ? 'default' : isPartial ? 'outline' : 'secondary'}>
+                            {row.status_label ?? (isReceived ? 'Received' : isPartial ? 'Partially Received' : 'Pending')}
                         </Badge>
                         {isReceived && row.received_by?.name && (
                             <p className="text-[10px] text-muted-foreground">by {row.received_by.name}</p>
@@ -102,6 +104,8 @@ export default function StockDistributionIndex({
             align: 'right',
             render: (row) => {
                 const isPending = row.status === 1 || row.status_label === 'Pending';
+                const isPartial = row.status === 3 || row.status_label === 'Partially Received';
+                const canReceiveRow = isReceiverView && (isPending || isPartial);
 
                 if (isReceiverView) {
                     return (
@@ -112,16 +116,16 @@ export default function StockDistributionIndex({
                                     View
                                 </Link>
                             </Button>
-                            {isPending && can('inventory.stock-distribution.receive') && (
+                            {canReceiveRow && can('inventory.stock-distribution.receive') && (
                                 <Button
                                     size="sm"
                                     className="h-7 bg-emerald-600 text-white hover:bg-emerald-600"
-                                    onClick={() =>
-                                        router.post(route('inventory.stock-distribution.receive', row.id), {}, { preserveScroll: true })
-                                    }
+                                    asChild
                                 >
-                                    <Check className="size-3.5" />
-                                    Receive
+                                    <Link href={route('inventory.stock-distribution.show', row.id)}>
+                                        <Check className="size-3.5" />
+                                        Receive
+                                    </Link>
                                 </Button>
                             )}
                         </div>

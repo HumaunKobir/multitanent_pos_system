@@ -8,6 +8,7 @@ use App\Models\ProductVariation;
 use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\StockDistribution;
+use App\Models\StockDistributionProduct;
 
 class InventoryCostService
 {
@@ -133,6 +134,15 @@ class InventoryCostService
         }
 
         return round($total, 2);
+    }
+
+    public function costForStockDistributionLine(StockDistributionProduct $line): float
+    {
+        return $this->costForLine(
+            $line->variation_id ? (int) $line->variation_id : null,
+            (float) $line->quantity,
+            $line->source_batches ?? [],
+        );
     }
 
     public function costForStockDistribution(StockDistribution $distribution): float

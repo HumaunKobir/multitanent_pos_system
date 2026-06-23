@@ -18,6 +18,7 @@ use App\Models\Purchase;
 use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\StockDistribution;
+use App\Models\StockDistributionProduct;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
 use App\Models\Transaction;
@@ -277,6 +278,74 @@ class InventoryAccountingService
             $lines,
             validateBalance: false,
         );
+    }
+
+    public function postStockDistributionLine(
+        StockDistribution $distribution,
+        StockDistributionProduct $line,
+        float $totalCost,
+    ): Transaction {
+        $distribution->loadMissing('toBranch:id,name');
+
+        $fromBranchId = $distribution->from_branch_id;
+        $toBranchId = $distribution->to_branch_id;
+        $totalCost = round($totalCost, 2);
+
+        if ($totalCost <= 0) {
+            throw new \RuntimeException('Stock distribution line cost must be greater than zero.');
+        }
+
+        SystemAccountService::ensureConfigured($fromBranchId);
+        SystemAccountService::ensureConfigured($toBranchId);
+
+        $serial = $distribution->serial ?? $distribution->invoice_number;
+        $branchName = $distribution->toBranch?->name ?? 'Branch';
+        $line->loadMissing('product:id,name');
+
+        $productName = $line->product?->name ?? 'Product';
+
+        $lines = [
+            $this->debitAccount(
+                SystemAccountService::resolve(SystemAccountKey::ProductInventory, $toBranchId),
+                $totalCost,
+                "Branch inventory increased — Distribution {$serial}, {$branchName}, {$productName}",
+            ),
+            $this->creditAccount(
+                SystemAccountService::resolve(SystemAccountKey::ProductInventory, $fromBranchId),
+                $totalCost,
+                "Main inventory reduced — Distribution {$serial}, to {$branchName}, {$productName}",
+            ),
+            $this->debitAccount(
+                SystemAccountService::resolve(SystemAccountKey::IntercompanyReceivable, $fromBranchId),
+                $totalCost,
+                "Intercompany receivable — Distribution {$serial}, {$branchName}, {$productName}",
+            ),
+            $this->creditAccount(
+                SystemAccountService::resolve(SystemAccountKey::IntercompanyPayable, $toBranchId),
+                $totalCost,
+                "Intercompany payable — Distribution {$serial}, to {$branchName}, {$productName}",
+            ),
+        ];
+
+        return $this->postJournal(
+            StockDistributionProduct::class,
+            $line->id,
+            $distribution->date->format('Y-m-d'),
+            "Stock Distribution {$serial} — {$productName}",
+            $lines,
+            validateBalance: false,
+        );
+    }
+
+    public function reverseStockDistributionLines(StockDistribution $distribution): void
+    {
+        $distribution->loadMissing('products');
+
+        foreach ($distribution->products as $line) {
+            $this->reverseFor($line);
+        }
+
+        $this->reverseFor($distribution);
     }
 
     public function postSupplierPayment(SupplierPayment $payment, int $paymentAccountId): Transaction

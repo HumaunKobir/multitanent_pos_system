@@ -2,7 +2,16 @@ import { formatQty } from '@/components/inventory/inventory-form';
 import { formatBdDate } from '@/lib/format-bd-date';
 import { usePage } from '@inertiajs/react';
 
+import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
+
+function lineStatusBadge(row) {
+    if (row.is_received) {
+        return <Badge variant="default">Received</Badge>;
+    }
+
+    return <Badge variant="secondary">Pending</Badge>;
+}
 
 const distributionLineColumns = [
     {
@@ -42,11 +51,25 @@ const distributionLineColumns = [
         align: 'right',
         render: (row) => <span className="font-medium">{formatQty(row.main_stock_after ?? 0)}</span>,
     },
+    {
+        id: 'status',
+        header: 'Status',
+        render: (row) => (
+            <div className="space-y-0.5">
+                {lineStatusBadge(row)}
+                {row.is_received && row.received_by?.name && (
+                    <p className="text-[10px] text-muted-foreground">by {row.received_by.name}</p>
+                )}
+            </div>
+        ),
+    },
 ];
 
-function DistributionSummary({ totalProducts, totalQuantity }) {
+function DistributionSummary({ totalProducts, totalQuantity, receivedCount, pendingCount }) {
     const rows = [
         { label: 'Products', value: totalProducts, muted: true },
+        { label: 'Received', value: receivedCount, muted: true },
+        { label: 'Pending', value: pendingCount, muted: true },
         { label: 'Total Distributed', value: formatQty(totalQuantity), bold: true, divider: true },
     ];
 
@@ -87,10 +110,17 @@ export function DistributionDocument({
     branchSection,
     items = [],
     comment,
+    receivedCount = 0,
+    pendingCount = 0,
+    selectionColumn,
 }) {
     const { logo } = usePage().props;
     const displayBranch = fromBranchName || 'Coolness Point';
     const totalQuantity = items.reduce((sum, row) => sum + parseFloat(row.quantity ?? 0), 0);
+
+    const columns = selectionColumn
+        ? [selectionColumn, ...distributionLineColumns]
+        : distributionLineColumns;
 
     return (
         <div className="overflow-hidden rounded-lg border border-border bg-card shadow-sm ring-1 ring-blue-950/10 print:border-0 print:bg-transparent print:shadow-none dark:ring-blue-400/14">
@@ -120,7 +150,7 @@ export function DistributionDocument({
 
                 <div className="mb-6">
                     <DataTable
-                        columns={distributionLineColumns}
+                        columns={columns}
                         rows={items}
                         rowKey={(row, index) => row.id ?? index}
                         emptyMessage="No products distributed."
@@ -128,7 +158,12 @@ export function DistributionDocument({
                     />
                 </div>
 
-                <DistributionSummary totalProducts={items.length} totalQuantity={totalQuantity} />
+                <DistributionSummary
+                    totalProducts={items.length}
+                    totalQuantity={totalQuantity}
+                    receivedCount={receivedCount}
+                    pendingCount={pendingCount}
+                />
 
                 <div className="mt-4 overflow-hidden rounded-lg border border-border">
                     <div className="border-b border-blue-900/80 bg-blue-950 px-4 py-2.5">

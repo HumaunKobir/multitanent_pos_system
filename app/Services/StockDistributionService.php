@@ -142,6 +142,10 @@ class StockDistributionService
      */
     public function receiveLine(StockDistributionProduct $line, int $toBranchId): array
     {
+        if ($line->isReceived()) {
+            throw new \RuntimeException('This product line has already been received.');
+        }
+
         $qty = (float) $line->quantity;
         $productId = (int) $line->product_id;
         $variationId = $line->variation_id ? (int) $line->variation_id : null;
@@ -198,18 +202,54 @@ class StockDistributionService
         return ['destination_batches' => $destinationBatchMap];
     }
 
-    public function receiveDistribution(StockDistribution $distribution): void
+    /**
+     * @param  list<int>  $lineIds
+     * @return list<StockDistributionProduct>
+     */
+    public function receiveLines(StockDistribution $distribution, array $lineIds, int $userId): array
     {
         $distribution->loadMissing('products');
         $toBranchId = (int) $distribution->to_branch_id;
 
-        foreach ($distribution->products as $line) {
+        $lines = $distribution->products
+            ->filter(fn (StockDistributionProduct $line) => in_array((int) $line->id, $lineIds, true) && ! $line->isReceived())
+            ->values();
+
+        if ($lines->isEmpty()) {
+            throw new \RuntimeException('No pending lines selected for receipt.');
+        }
+
+        $receivedLines = [];
+
+        foreach ($lines as $line) {
             $batchMaps = $this->receiveLine($line, $toBranchId);
 
             $line->update([
                 'destination_batches' => $batchMaps['destination_batches'],
+                'received_at' => now(),
+                'received_by_user_id' => $userId,
             ]);
+
+            $receivedLines[] = $line->fresh();
         }
+
+        $distribution->syncStatusFromLines();
+
+        return $receivedLines;
+    }
+
+    /**
+     * @return list<StockDistributionProduct>
+     */
+    public function receiveAllPendingLines(StockDistribution $distribution, int $userId): array
+    {
+        $lineIds = $distribution->products()
+            ->whereNull('received_at')
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        return $this->receiveLines($distribution, $lineIds, $userId);
     }
 
     public function rollbackDistribution(StockDistribution $distribution): void
@@ -217,7 +257,7 @@ class StockDistributionService
         $distribution->loadMissing('products');
 
         foreach ($distribution->products as $line) {
-            $this->rollbackLine($line, (int) $distribution->to_branch_id, $distribution->isReceived());
+            $this->rollbackLine($line, (int) $distribution->to_branch_id, $line->isReceived());
         }
     }
 

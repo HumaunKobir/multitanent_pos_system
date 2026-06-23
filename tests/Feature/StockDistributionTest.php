@@ -9,6 +9,7 @@ use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\ProductInOutLog;
 use App\Models\StockDistribution;
+use App\Models\StockDistributionProduct;
 use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\User;
@@ -181,8 +182,8 @@ test('super admin can distribute stock to operating branch', function () {
         ->toBeGreaterThan($distributionInBefore);
 
     expect(Transaction::query()
-        ->where('source_type', StockDistribution::class)
-        ->where('source_id', $distribution->id)
+        ->where('source_type', StockDistributionProduct::class)
+        ->whereIn('source_id', $distribution->products->pluck('id'))
         ->exists())->toBeTrue();
 });
 
@@ -224,9 +225,13 @@ test('stock distribution posts intercompany inventory journal entries', function
         ->post("/inventory/stock-distribution/{$distribution->id}/receive")
         ->assertRedirect(route('inventory.stock-distribution.received'));
 
+    $line = $distribution->products()->first();
+    expect($line)->not->toBeNull();
+    expect($line->received_at)->not->toBeNull();
+
     $transaction = Transaction::query()
-        ->where('source_type', StockDistribution::class)
-        ->where('source_id', $distribution->id)
+        ->where('source_type', StockDistributionProduct::class)
+        ->where('source_id', $line->id)
         ->first();
 
     expect($transaction)->not->toBeNull();
@@ -755,4 +760,71 @@ test('purchase can create pending stock distribution for branch', function () {
         ->first();
 
     expect((float) $mainBatch->available)->toBe(2.0);
+});
+
+test('branch can partially receive selected distribution lines', function () {
+    $this->artisan('permissions:sync');
+
+    $user = superAdminUser(['inventory.stock-distribution.create']);
+    $targetBranch = Branch::factory()->create();
+
+    $productA = Product::factory()->create(['branch_id' => Branch::resolveMainBranchId(), 'name' => 'Partial A '.fake()->unique()->numerify('###')]);
+    $productB = Product::factory()->create(['branch_id' => Branch::resolveMainBranchId(), 'name' => 'Partial B '.fake()->unique()->numerify('###')]);
+
+    Batch::factory()->for($productA)->withStock(10)->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'purchase_price' => 50,
+    ]);
+    Batch::factory()->for($productB)->withStock(10)->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'purchase_price' => 60,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/stock-distribution', [
+            'to_branch_id' => $targetBranch->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Partial receive test',
+            'items' => [
+                ['product_id' => $productA->id, 'variation_id' => null, 'quantity' => '4'],
+                ['product_id' => $productB->id, 'variation_id' => null, 'quantity' => '6'],
+            ],
+        ])
+        ->assertRedirect();
+
+    $distribution = StockDistribution::query()->latest('id')->first();
+    $lines = $distribution->products()->orderBy('id')->get();
+    expect($lines)->toHaveCount(2);
+
+    $receiver = branchReceiverUser($targetBranch->id);
+
+    $this->actingAs($receiver)
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive", [
+            'line_ids' => [$lines->first()->id],
+        ])
+        ->assertRedirect(route('inventory.stock-distribution.received'));
+
+    $distribution->refresh();
+    $lines = $distribution->products()->orderBy('id')->get();
+
+    expect($distribution->status)->toBe(StockDistributionStatus::PartiallyReceived);
+    expect($lines->first()->received_at)->not->toBeNull();
+    expect($lines->last()->received_at)->toBeNull();
+
+    expect(Batch::query()
+        ->where('product_id', $productA->id)
+        ->where('branch_id', $targetBranch->id)
+        ->exists())->toBeTrue();
+    expect(Batch::query()
+        ->where('product_id', $productB->id)
+        ->where('branch_id', $targetBranch->id)
+        ->exists())->toBeFalse();
+
+    $this->actingAs($receiver)
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
+
+    $distribution->refresh();
+    expect($distribution->status)->toBe(StockDistributionStatus::Received);
+    expect($distribution->products()->whereNull('received_at')->count())->toBe(0);
 });

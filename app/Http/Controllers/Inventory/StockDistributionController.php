@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Inventory;
 
-use App\Enums\StockDistributionStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\StockDistribution;
@@ -129,6 +128,7 @@ class StockDistributionController extends Controller
         $stockDistribution->load([
             'products.product',
             'products.variation',
+            'products.receivedBy:id,name',
             'toBranch:id,name',
             'fromBranch:id,name',
             'receivedBy:id,name',
@@ -136,40 +136,72 @@ class StockDistributionController extends Controller
         ]);
 
         $user = Auth::user();
+        $formatted = $this->formatDistribution($stockDistribution);
 
         return Inertia::render('admin/inventory/stock-distribution/show', [
-            'distribution' => $this->formatDistribution($stockDistribution),
+            'distribution' => $formatted,
             'canManage' => $this->canManageDistributions($user),
             'canReceive' => $this->canReceiveDistribution($user, $stockDistribution),
         ]);
     }
 
-    public function receive(StockDistribution $stockDistribution): RedirectResponse
+    public function receive(Request $request, StockDistribution $stockDistribution): RedirectResponse
     {
         $this->authorize('inventory.stock-distribution.receive');
         $this->authorizeBranchReceiverOnly();
         $this->authorizeDistributionAccess($stockDistribution);
 
-        abort_unless($stockDistribution->isPending(), 422, 'This distribution has already been received.');
+        abort_unless($stockDistribution->isReceivable(), 422, 'This distribution is already fully received.');
         abort_unless(
             (int) $stockDistribution->to_branch_id === (int) Auth::user()?->branch_id,
             403,
         );
 
-        try {
-            DB::transaction(function () use ($stockDistribution) {
-                $this->distribution->receiveDistribution($stockDistribution);
-                $stockDistribution->update([
-                    'status' => StockDistributionStatus::Received,
-                    'received_at' => now(),
-                    'received_by_user_id' => Auth::id(),
-                ]);
+        $data = $request->validate([
+            'line_ids' => ['nullable', 'array', 'min:1'],
+            'line_ids.*' => ['integer', 'exists:stock_distribution_products,id'],
+        ]);
 
-                $stockDistribution->load('products');
-                $this->accounting->postStockDistribution(
+        $lineIds = collect($data['line_ids'] ?? [])
+            ->map(fn ($id) => (int) $id)
+            ->filter()
+            ->values()
+            ->all();
+
+        if ($lineIds === []) {
+            $lineIds = $stockDistribution->products()
+                ->whereNull('received_at')
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+        }
+
+        $validLineIds = $stockDistribution->products()
+            ->whereIn('id', $lineIds)
+            ->whereNull('received_at')
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        if ($validLineIds === []) {
+            return back()->with('error', 'No pending products selected for receipt.');
+        }
+
+        try {
+            DB::transaction(function () use ($stockDistribution, $validLineIds) {
+                $receivedLines = $this->distribution->receiveLines(
                     $stockDistribution,
-                    $this->costService->costForStockDistribution($stockDistribution),
+                    $validLineIds,
+                    (int) Auth::id(),
                 );
+
+                foreach ($receivedLines as $line) {
+                    $this->accounting->postStockDistributionLine(
+                        $stockDistribution,
+                        $line,
+                        $this->costService->costForStockDistributionLine($line),
+                    );
+                }
             });
         } catch (\Throwable $e) {
             return back()->with('error', $e instanceof \RuntimeException
@@ -177,9 +209,15 @@ class StockDistributionController extends Controller
                 : 'Unable to receive stock.');
         }
 
+        $stockDistribution->refresh();
+
+        $message = $stockDistribution->isReceived()
+            ? 'All stock received successfully.'
+            : 'Selected products received successfully.';
+
         return redirect()
             ->route('inventory.stock-distribution.received')
-            ->with('success', 'Stock received successfully.');
+            ->with('success', $message);
     }
 
     public function edit(StockDistribution $stockDistribution): Response
@@ -187,7 +225,7 @@ class StockDistributionController extends Controller
         $this->authorizeMainBranchManager();
         $this->authorize('inventory.stock-distribution.update');
         $this->authorizeDistributionAccess($stockDistribution, write: true);
-        abort_unless($stockDistribution->isPending(), 403, 'Received distributions cannot be edited.');
+        abort_unless($stockDistribution->isPending() && ! $stockDistribution->hasReceivedLines(), 403, 'Distributions with received products cannot be edited.');
 
         $stockDistribution->load(['products.product', 'products.variation']);
 
@@ -226,7 +264,7 @@ class StockDistributionController extends Controller
         $this->authorizeMainBranchManager();
         $this->authorize('inventory.stock-distribution.update');
         $this->authorizeDistributionAccess($stockDistribution, write: true);
-        abort_unless($stockDistribution->isPending(), 403, 'Received distributions cannot be updated.');
+        abort_unless($stockDistribution->isPending() && ! $stockDistribution->hasReceivedLines(), 403, 'Distributions with received products cannot be updated.');
 
         $data = $this->validatedDistributionData($request);
         $branchId = Auth::user()?->branch_id;
@@ -266,12 +304,13 @@ class StockDistributionController extends Controller
         $this->authorizeMainBranchManager();
         $this->authorize('inventory.stock-distribution.delete');
         $this->authorizeDistributionAccess($stockDistribution, write: true);
-        abort_unless($stockDistribution->isPending(), 403, 'Received distributions cannot be deleted.');
+        abort_unless($stockDistribution->isPending() && ! $stockDistribution->hasReceivedLines(), 403, 'Distributions with received products cannot be deleted.');
 
         $stockDistribution->load(['products']);
 
         try {
             DB::transaction(function () use ($stockDistribution) {
+                $this->accounting->reverseStockDistributionLines($stockDistribution);
                 $this->distribution->rollbackDistribution($stockDistribution);
                 $stockDistribution->products()->delete();
                 $stockDistribution->delete();
@@ -291,6 +330,31 @@ class StockDistributionController extends Controller
      */
     private function formatDistribution(StockDistribution $stockDistribution): array
     {
+        $products = $stockDistribution->products->map(function ($line) {
+            $qty = (float) $line->quantity;
+            $mainStockBefore = $line->main_stock_before !== null
+                ? (float) $line->main_stock_before
+                : $this->distribution->mainWarehouseStock(
+                    (int) $line->product_id,
+                    $line->variation_id ? (int) $line->variation_id : null,
+                ) + $qty;
+
+            return [
+                'id' => $line->id,
+                'quantity' => $qty,
+                'main_stock_before' => $mainStockBefore,
+                'main_stock_after' => $mainStockBefore - $qty,
+                'product' => $line->product,
+                'variation' => $line->variation,
+                'is_received' => $line->isReceived(),
+                'received_at' => optional($line->received_at)?->toIso8601String(),
+                'received_by' => $line->receivedBy,
+            ];
+        })->values();
+
+        $receivedCount = $products->filter(fn (array $line) => $line['is_received'])->count();
+        $pendingCount = $products->count() - $receivedCount;
+
         return [
             'id' => $stockDistribution->id,
             'invoice_number' => $stockDistribution->invoice_number,
@@ -300,30 +364,16 @@ class StockDistributionController extends Controller
             'status_label' => $stockDistribution->status?->label(),
             'received_at' => optional($stockDistribution->received_at)?->toIso8601String(),
             'received_by' => $stockDistribution->receivedBy,
+            'received_count' => $receivedCount,
+            'pending_count' => $pendingCount,
+            'total_count' => $products->count(),
             'purchase' => $stockDistribution->purchase ? [
                 'id' => $stockDistribution->purchase->id,
                 'invoice_number' => $stockDistribution->purchase->invoice_number,
             ] : null,
             'from_branch' => $stockDistribution->fromBranch,
             'to_branch' => $stockDistribution->toBranch,
-            'products' => $stockDistribution->products->map(function ($line) {
-                $qty = (float) $line->quantity;
-                $mainStockBefore = $line->main_stock_before !== null
-                    ? (float) $line->main_stock_before
-                    : $this->distribution->mainWarehouseStock(
-                        (int) $line->product_id,
-                        $line->variation_id ? (int) $line->variation_id : null,
-                    ) + $qty;
-
-                return [
-                    'id' => $line->id,
-                    'quantity' => $qty,
-                    'main_stock_before' => $mainStockBefore,
-                    'main_stock_after' => $mainStockBefore - $qty,
-                    'product' => $line->product,
-                    'variation' => $line->variation,
-                ];
-            })->values(),
+            'products' => $products,
         ];
     }
 
@@ -377,7 +427,8 @@ class StockDistributionController extends Controller
         return $user !== null
             && $user->usesBranchPanel()
             && $user->can('inventory.stock-distribution.receive')
-            && $distribution->isPending()
+            && $distribution->isReceivable()
+            && $distribution->hasPendingLines()
             && (int) $distribution->to_branch_id === (int) $user->branch_id;
     }
 

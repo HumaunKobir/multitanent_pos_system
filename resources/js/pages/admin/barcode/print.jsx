@@ -69,10 +69,11 @@ function LabelPreview({ row, settings }) {
                 <div
                     style={{
                         width: '100%',
+                        height: '100%',
                         minHeight: 0,
                         display: 'flex',
                         flexDirection: 'column',
-                        justifyContent: 'center',
+                        justifyContent: 'stretch',
                         gap: 0,
                     }}
                 >
@@ -96,6 +97,7 @@ function LabelPreview({ row, settings }) {
                         code={row?.code ?? '123456789'}
                         barHeight={barHeight}
                         fontWeight={fw}
+                        fill
                     />
                     <div
                         style={{
@@ -119,8 +121,8 @@ function LabelPreview({ row, settings }) {
 
 export default function BarcodePrint({ barcodes }) {
     const [settings, setSettings] = useState({
-        width: 2,
-        height: 1.25,
+        width: 1.5,
+        height: 1,
         fontSize: 8,
         fontWeight: 'normal',
         copies: 1,

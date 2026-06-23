@@ -35,6 +35,18 @@ if (html.includes('max-width: 100%')) {
     process.exit(5);
 }
 
+if (! html.includes('data-max-bar-height')) {
+    process.exit(6);
+}
+
+if (! html.includes('flex: 1 1 0')) {
+    process.exit(7);
+}
+
+if (html.includes('wrap.style.height')) {
+    process.exit(8);
+}
+
 console.log('ok');
 JS;
 

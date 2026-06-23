@@ -1,21 +1,20 @@
 import { useLayoutEffect, useRef } from 'react';
 
-import { fitBarcodeToContainer, MIN_BARCODE_BAR_HEIGHT_PX } from '@/lib/barcode-label';
+import { fitBarcodeToContainer } from '@/lib/barcode-label';
 
-export function BarcodeBars({ code, barHeight, fontWeight = 400 }) {
+export function BarcodeBars({ code, barHeight, fontWeight = 400, fill = false }) {
     const textRef = useRef(null);
     const wrapRef = useRef(null);
 
     useLayoutEffect(() => {
         const measure = () => {
             if (textRef.current && wrapRef.current) {
-                const fittedHeight = fitBarcodeToContainer(
+                fitBarcodeToContainer(
                     textRef.current,
                     wrapRef.current,
                     barHeight,
+                    { fill },
                 );
-
-                wrapRef.current.style.height = `${Math.max(fittedHeight + 2, MIN_BARCODE_BAR_HEIGHT_PX)}px`;
             }
         };
 
@@ -24,19 +23,36 @@ export function BarcodeBars({ code, barHeight, fontWeight = 400 }) {
         } else {
             measure();
         }
-    }, [code, barHeight]);
+
+        const wrap = wrapRef.current;
+
+        if (!wrap) {
+            return undefined;
+        }
+
+        const observer = new ResizeObserver(() => {
+            measure();
+        });
+
+        observer.observe(wrap);
+
+        return () => {
+            observer.disconnect();
+        };
+    }, [code, barHeight, fill]);
 
     return (
         <div
             ref={wrapRef}
             style={{
                 width: '100%',
-                overflow: 'visible',
+                overflow: 'hidden',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                flexShrink: 0,
-                padding: '0 4px',
+                flex: fill ? '1 1 0' : '0 0 auto',
+                minHeight: fill ? 0 : undefined,
+                padding: '0 6px',
                 boxSizing: 'border-box',
             }}
         >

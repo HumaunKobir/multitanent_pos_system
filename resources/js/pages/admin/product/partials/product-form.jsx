@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useCan } from '@/hooks/use-can';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
-import { Link, usePage } from '@inertiajs/react';
+import { Link } from '@inertiajs/react';
 import { AlignLeft, DollarSign, GitBranch, ImagePlus, Images, Info, Plus, Settings, Trash2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { buildVariationBuilderState, buildVariationDataFromRows } from '@/lib/variation-utils';
@@ -798,9 +798,7 @@ export default function ProductForm({
     processing = false,
     cancelHref = '',
 }) {
-    const { auth } = usePage().props;
     const { can } = useCan();
-    const isAdmin = !auth.user?.branch_id;
 
     const branchSelectOptions = useMemo(
         () => [
@@ -846,13 +844,12 @@ export default function ProductForm({
     const stockFieldsDisabled = allCombosHaveStock;
     const showInitialStockField = !hasVariations || hasVariations;
 
-    const effectiveBranchId = isAdmin
-        ? (form.data.branch_id != null && form.data.branch_id !== '' ? String(form.data.branch_id) : null)
-        : (auth.user?.branch_id != null ? String(auth.user.branch_id) : null);
+    const effectiveBranchId = form.data.branch_id != null && form.data.branch_id !== ''
+        ? String(form.data.branch_id)
+        : null;
 
-    const quickCreateBranchId = isAdmin
-        ? (defaultCatalogBranchId != null ? String(defaultCatalogBranchId) : null)
-        : (auth.user?.branch_id != null ? String(auth.user.branch_id) : null);
+    const quickCreateBranchId = effectiveBranchId
+        ?? (defaultCatalogBranchId != null ? String(defaultCatalogBranchId) : null);
 
     const showVisibleOnStore = can('product.visible-on-store')
         && ecommerceBranchId != null
@@ -886,18 +883,16 @@ export default function ProductForm({
                 {/* Basic Info */}
                 <Card title="Basic Information" icon={Info}>
                     <div className="grid grid-cols-3 gap-3">
-                        {isAdmin && (
-                            <Field label="Branch" error={form.errors.branch_id}>
-                                <SmartSelect
-                                    options={branchSelectOptions}
-                                    value={form.data.branch_id ? String(form.data.branch_id) : '__none'}
-                                    onValueChange={(v) => form.setData('branch_id', v === '__none' ? '' : v)}
-                                    placeholder="Search branch…"
-                                    triggerClassName="h-8 text-xs"
-                                    optionsClassName="max-h-52"
-                                />
-                            </Field>
-                        )}
+                        <Field label="Branch" error={form.errors.branch_id}>
+                            <SmartSelect
+                                options={branchSelectOptions}
+                                value={form.data.branch_id ? String(form.data.branch_id) : '__none'}
+                                onValueChange={(v) => form.setData('branch_id', v === '__none' ? '' : v)}
+                                placeholder="Search branch…"
+                                triggerClassName="h-8 text-xs"
+                                optionsClassName="max-h-52"
+                            />
+                        </Field>
 
                         <Field label="Category" required error={form.errors.category_id}>
                             <SmartSelect

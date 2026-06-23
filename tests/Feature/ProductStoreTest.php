@@ -258,6 +258,42 @@ test('all branches product auto-generated barcode uses slug base across branches
     )->toBeTrue();
 });
 
+test('main branch admin can create all branches product without duplicate slug error', function () {
+    $this->artisan('permissions:sync');
+
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    $operatingBranch = Branch::factory()->create();
+    $mainBranchAdmin = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    $mainBranchAdmin->givePermissionTo('product.create');
+    $productName = 'All Branch Product '.fake()->unique()->numerify('######');
+
+    $payload = validProductPayload([
+        'branch_id' => null,
+        'name' => $productName,
+        'code' => '',
+    ]);
+
+    $this->actingAs($mainBranchAdmin)
+        ->post(route('product.store'), $payload)
+        ->assertRedirect(route('product.index'));
+
+    $products = Product::query()->where('name', $productName)->get();
+    $activeBranchCount = Branch::query()->active()->count();
+
+    expect($products)->toHaveCount($activeBranchCount);
+
+    $mainCopy = $products->firstWhere('branch_id', Branch::resolveMainBranchId());
+    $branchCopy = $products->firstWhere('branch_id', $operatingBranch->id);
+
+    expect($mainCopy)->not->toBeNull()
+        ->and($branchCopy)->not->toBeNull()
+        ->and($branchCopy->slug)->toBe($mainCopy->slug.'-b'.$operatingBranch->id);
+});
+
 test('all branches product applies initial stock only to main branch copy', function () {
     $admin = productStoreAdmin();
     seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);

@@ -21,8 +21,6 @@ class Branch extends Model
 
     public const string ECOMMERCE_BRANCH_NAME = 'Ecommerce Branch';
 
-    public const string OPERATING_BRANCH_NAME = 'Gulshan Branch';
-
     protected $fillable = ['name', 'phone', 'address', 'logo', 'pos_terms_and_conditions', 'status'];
 
     public static function hasPosTerms(?string $content): bool

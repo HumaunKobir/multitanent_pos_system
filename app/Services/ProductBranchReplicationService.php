@@ -147,9 +147,9 @@ class ProductBranchReplicationService
         int $mainInitialStock = 0,
         array $photoPaths = [],
     ): array {
-        $userBranchId = Auth::user()?->branch_id;
+        $user = Auth::user();
 
-        if ($userBranchId !== null) {
+        if ($user?->usesBranchPanel()) {
             return $this->createBranchSubmissionWithPendingMain(
                 $data,
                 $combinations,
@@ -157,7 +157,7 @@ class ProductBranchReplicationService
                 $mainSalePrice,
                 $mainInitialStock,
                 $photoPaths,
-                (int) $userBranchId,
+                (int) $user->branch_id,
             );
         }
 
@@ -353,10 +353,10 @@ class ProductBranchReplicationService
 
     private function resolveStoreBranchId(?int $requestedBranchId): ?int
     {
-        $userBranchId = Auth::user()?->branch_id;
+        $user = Auth::user();
 
-        if ($userBranchId !== null) {
-            return (int) $userBranchId;
+        if ($user?->usesBranchPanel()) {
+            return (int) $user->branch_id;
         }
 
         return $requestedBranchId;

@@ -4,7 +4,7 @@ use Tests\TestCase;
 
 uses(TestCase::class);
 
-test('barcode print html scales with width safety margin and avoids clipping styles', function () {
+test('barcode print html uses label page size and preserves bar height when fitting width', function () {
     $projectRoot = base_path();
 
     $script = <<<'JS'
@@ -19,16 +19,20 @@ const html = buildPrintHtml(
     { width: 2, height: 1.25, fontSize: 8, fontWeight: 'normal', copies: 1 },
 );
 
-if (! html.includes(String(BARCODE_WIDTH_SAFETY_RATIO))) {
+if (! html.includes('@page { size: 2in 1.25in; margin: 0; }')) {
     process.exit(2);
 }
 
-if (html.includes('max-width: 100%')) {
+if (! html.includes('scaleX(')) {
     process.exit(3);
 }
 
-if (! html.includes('overflow: visible')) {
+if (! html.includes('transformOrigin')) {
     process.exit(4);
+}
+
+if (html.includes('max-width: 100%')) {
+    process.exit(5);
 }
 
 console.log('ok');

@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef } from 'react';
 
-import { fitBarcodeToContainer } from '@/lib/barcode-label';
+import { fitBarcodeToContainer, MIN_BARCODE_BAR_HEIGHT_PX } from '@/lib/barcode-label';
 
 export function BarcodeBars({ code, barHeight, fontWeight = 400 }) {
     const textRef = useRef(null);
@@ -15,7 +15,7 @@ export function BarcodeBars({ code, barHeight, fontWeight = 400 }) {
                     barHeight,
                 );
 
-                wrapRef.current.style.height = `${Math.max(fittedHeight + 2, 12)}px`;
+                wrapRef.current.style.height = `${Math.max(fittedHeight + 2, MIN_BARCODE_BAR_HEIGHT_PX)}px`;
             }
         };
 

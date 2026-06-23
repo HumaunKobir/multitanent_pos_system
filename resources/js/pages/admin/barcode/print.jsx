@@ -59,7 +59,7 @@ function LabelPreview({ row, settings }) {
                     display: 'flex',
                     alignItems: 'stretch',
                     justifyContent: 'center',
-                    padding: '4px 6px',
+                    padding: '3px 5px',
                     boxSizing: 'border-box',
                     overflow: 'hidden',
                     transform: `scale(${scale})`,

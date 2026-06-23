@@ -1,15 +1,17 @@
 export const PRINT_DPI = 96;
 export const NAME_BARCODE_GAP_PX = 6;
 export const BARCODE_PRICE_GAP_PX = 1;
-/** Minimum bar height for reliable scanner reads (~7mm at 96 DPI). */
-export const MIN_BARCODE_BAR_HEIGHT_PX = 28;
+/** Minimum bar height for reliable scanner reads (~8.5mm at 96 DPI). */
+export const MIN_BARCODE_BAR_HEIGHT_PX = 32;
 /** Floor when scaling barcode width to fit the label. */
 export const MIN_BARCODE_FONT_PX = 18;
 /**
  * Leave horizontal headroom so barcode quiet zones are not clipped in print
  * (browser/print engines often render slightly wider than on-screen measurement).
  */
-export const BARCODE_WIDTH_SAFETY_RATIO = 0.92;
+export const BARCODE_WIDTH_SAFETY_RATIO = 0.97;
+/** Use most of the vertical space between name and price for bar height. */
+export const BARCODE_HEIGHT_USAGE_RATIO = 0.9;
 
 export function getNameBarcodeGap(fontSize) {
     return Math.max(NAME_BARCODE_GAP_PX, Math.ceil(fontSize * 0.5));
@@ -67,7 +69,7 @@ export function calculateBarcodeBarHeight(settings) {
         return Math.max(12, maxBarHeight);
     }
 
-    const targetBarHeight = Math.floor(maxBarHeight * 0.7);
+    const targetBarHeight = Math.floor(maxBarHeight * BARCODE_HEIGHT_USAGE_RATIO);
 
     return Math.max(
         MIN_BARCODE_BAR_HEIGHT_PX,
@@ -76,7 +78,7 @@ export function calculateBarcodeBarHeight(settings) {
 }
 
 /**
- * Scale Libre Barcode 128 text to container width using font-size (print-safe).
+ * Fit barcode width with scaleX so bar height (font-size) stays scannable.
  */
 export function fitBarcodeToContainer(barEl, containerEl, baseHeight) {
     if (!barEl || !containerEl) {
@@ -86,24 +88,16 @@ export function fitBarcodeToContainer(barEl, containerEl, baseHeight) {
     const targetWidth = containerEl.clientWidth * BARCODE_WIDTH_SAFETY_RATIO;
 
     barEl.style.transform = 'none';
+    barEl.style.transformOrigin = 'center center';
     barEl.style.width = 'auto';
     barEl.style.maxWidth = 'none';
     barEl.style.display = 'inline-block';
     barEl.style.fontSize = `${baseHeight}px`;
 
-    if (barEl.scrollWidth > targetWidth && targetWidth > 0) {
-        const scale = targetWidth / barEl.scrollWidth;
-        let fontSize = Math.max(
-            MIN_BARCODE_FONT_PX,
-            Math.floor(baseHeight * scale),
-        );
+    const textWidth = barEl.scrollWidth;
 
-        barEl.style.fontSize = `${fontSize}px`;
-
-        while (barEl.scrollWidth > targetWidth && fontSize > MIN_BARCODE_FONT_PX) {
-            fontSize -= 1;
-            barEl.style.fontSize = `${fontSize}px`;
-        }
+    if (textWidth > targetWidth && targetWidth > 0 && textWidth > 0) {
+        barEl.style.transform = `scaleX(${targetWidth / textWidth})`;
     }
 
     return barEl.offsetHeight || baseHeight;
@@ -146,8 +140,9 @@ export function buildPrintHtml(rows, settings) {
   <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    @page { size: ${width}in ${height}in; margin: 0; }
     html, body { width: 100%; background: white; }
-    .page { display: flex; flex-wrap: wrap; }
+    .page { display: flex; flex-wrap: wrap; align-content: flex-start; }
     .label {
       width: ${width}in;
       height: ${height}in;
@@ -155,9 +150,10 @@ export function buildPrintHtml(rows, settings) {
       display: flex;
       align-items: stretch;
       justify-content: center;
-      padding: 4px 6px;
+      padding: 3px 5px;
       overflow: hidden;
       page-break-inside: avoid;
+      break-inside: avoid;
     }
     .label-inner {
       width: 100%;
@@ -208,9 +204,30 @@ export function buildPrintHtml(rows, settings) {
       margin-top: ${barcodePriceGap}px;
     }
     @media print {
-      @page { margin: 0; }
-      body { margin: 0; }
-      .label { border: none; }
+      @page { size: ${width}in ${height}in; margin: 0; }
+      html, body {
+        width: ${width}in;
+        margin: 0;
+        padding: 0;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+      .page {
+        display: block;
+        width: ${width}in;
+      }
+      .label {
+        width: ${width}in;
+        height: ${height}in;
+        border: none;
+        page-break-after: always;
+        break-after: page;
+        overflow: hidden;
+      }
+      .label:last-child {
+        page-break-after: auto;
+        break-after: auto;
+      }
     }
   </style>
 </head>
@@ -223,20 +240,16 @@ export function buildPrintHtml(rows, settings) {
       var baseHeight = parseFloat(el.getAttribute('data-bar-height') || '${barHeight}');
       var targetWidth = wrap.clientWidth * ${BARCODE_WIDTH_SAFETY_RATIO};
       el.style.transform = 'none';
+      el.style.transformOrigin = 'center center';
       el.style.width = 'auto';
       el.style.maxWidth = 'none';
       el.style.display = 'inline-block';
       el.style.fontSize = baseHeight + 'px';
-      if (el.scrollWidth > targetWidth && targetWidth > 0) {
-        var scale = targetWidth / el.scrollWidth;
-        var fontSize = Math.max(${MIN_BARCODE_FONT_PX}, Math.floor(baseHeight * scale));
-        el.style.fontSize = fontSize + 'px';
-        while (el.scrollWidth > targetWidth && fontSize > ${MIN_BARCODE_FONT_PX}) {
-          fontSize -= 1;
-          el.style.fontSize = fontSize + 'px';
-        }
+      var tw = el.scrollWidth;
+      if (tw > targetWidth && targetWidth > 0 && tw > 0) {
+        el.style.transform = 'scaleX(' + (targetWidth / tw) + ')';
       }
-      wrap.style.height = Math.max(el.offsetHeight + 2, 12) + 'px';
+      wrap.style.height = Math.max(el.offsetHeight + 2, ${MIN_BARCODE_BAR_HEIGHT_PX}) + 'px';
     }
 
     function printWhenReady() {

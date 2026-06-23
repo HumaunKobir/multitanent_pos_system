@@ -21,6 +21,7 @@ use App\Models\SpecialDiscount;
 use App\Services\CustomerDueAlertService;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
+use App\Services\PromotionService;
 use App\Services\SpecialDiscountService;
 use App\Services\SystemAccountService;
 use App\Support\StorageUrl;
@@ -44,6 +45,7 @@ class SellController extends Controller
         private InventoryAccountingService $accounting,
         private InventoryCostService $costService,
         private SpecialDiscountService $specialDiscountService,
+        private PromotionService $promotionService,
         private CustomerDueAlertService $dueAlertService,
     ) {}
 
@@ -86,7 +88,8 @@ class SellController extends Controller
                 ->with([
                     'customer:id,name,phone',
                     'specialDiscount:id,name,discount_type,discount_value',
-                    'products.product:id,name,code,sale_price,discount_price',
+                    'products.product:id,name,code,sale_price,discount_price,category_id,brand_id',
+                    'products.promotion:id,name',
                     'products.variation:id,variation_data,price,stock',
                 ])
                 ->findOrFail((int) $request->query('paused'));
@@ -100,6 +103,7 @@ class SellController extends Controller
             'defaultCustomer' => $defaultCustomer,
             'paymentAccounts' => $this->paymentAccounts(),
             'specialDiscounts' => $this->activeSpecialDiscounts($branchId),
+            'promotions' => $this->promotionService->activeForBranch($branchId),
             'discountTypes' => collect(DiscountType::cases())->map(fn (DiscountType $type) => [
                 'value' => $type->value,
                 'label' => $type->label(),
@@ -130,14 +134,21 @@ class SellController extends Controller
 
         try {
             DB::transaction(function () use ($data, $branchId, $pausedSellId) {
-                ['grossAmount' => $grossAmount, 'lineDiscountTotal' => $lineDiscountTotal, 'vatAmount' => $vatAmount, 'sellProductsData' => $sellProductsData] = $this->processSellItems(
+                [
+                    'grossAmount' => $grossAmount,
+                    'lineDiscountTotal' => $lineDiscountTotal,
+                    'vatAmount' => $vatAmount,
+                    'sellProductsData' => $sellProductsData,
+                    'promotionDiscountTotal' => $promotionDiscountTotal,
+                    'promotionStacking' => $promotionStacking,
+                ] = $this->processSellItems(
                     $data['items'],
                     $branchId,
                     (float) $data['vat'],
                     deductStock: false,
                 );
 
-                $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId);
+                $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId, $promotionStacking);
 
                 if ($pausedSellId !== null) {
                     $sell = $this->forCurrentBranchUser(Sell::query())->paused()->findOrFail($pausedSellId);
@@ -159,6 +170,7 @@ class SellController extends Controller
                     'discount_value' => $discountFields['discount_value'],
                     'special_discount_id' => $discountFields['special_discount_id'],
                     'special_discount_amount' => $discountFields['special_discount_amount'],
+                    'promotion_discount_total' => $promotionDiscountTotal,
                     'vat' => $vatAmount,
                     'paid_amount' => 0,
                     'comment' => $data['comment'] ?? null,
@@ -193,27 +205,39 @@ class SellController extends Controller
         $branchId = Auth::user()?->branch_id;
         $pausedSellId = $request->integer('paused_sell_id') ?: null;
 
-        ['grossAmount' => $grossAmount, 'lineDiscountTotal' => $lineDiscountTotal, 'vatAmount' => $vatAmount] = $this->processSellItems(
+        [
+            'grossAmount' => $grossAmount,
+            'lineDiscountTotal' => $lineDiscountTotal,
+            'vatAmount' => $vatAmount,
+            'promotionStacking' => $promotionStacking,
+        ] = $this->processSellItems(
             $data['items'],
             $branchId,
             (float) $data['vat'],
             deductStock: false,
         );
 
-        $saleTotals = $this->resolveSaleTotals($data, $grossAmount, $lineDiscountTotal, $vatAmount, $branchId);
+        $saleTotals = $this->resolveSaleTotals($data, $grossAmount, $lineDiscountTotal, $vatAmount, $branchId, $promotionStacking);
         $payment = $this->resolveSalePayments($data, $saleTotals['net_amount']);
         $this->assertCustomerForDueSale($data['customer_id'] ? (int) $data['customer_id'] : null, $payment['due_amount']);
         $this->assertDueAlertFields($data, $branchId, $payment['due_amount']);
 
         try {
             $sell = DB::transaction(function () use ($data, $branchId, $pausedSellId, $payment, $saleTotals) {
-                ['grossAmount' => $grossAmount, 'lineDiscountTotal' => $lineDiscountTotal, 'vatAmount' => $vatAmount, 'sellProductsData' => $sellProductsData] = $this->processSellItems(
+                [
+                    'grossAmount' => $grossAmount,
+                    'lineDiscountTotal' => $lineDiscountTotal,
+                    'vatAmount' => $vatAmount,
+                    'sellProductsData' => $sellProductsData,
+                    'promotionDiscountTotal' => $promotionDiscountTotal,
+                    'promotionStacking' => $promotionStacking,
+                ] = $this->processSellItems(
                     $data['items'],
                     $branchId,
                     (float) $data['vat'],
                 );
 
-                $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId);
+                $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId, $promotionStacking);
 
                 if ($pausedSellId !== null) {
                     $sell = $this->forCurrentBranchUser(Sell::query())->paused()->findOrFail($pausedSellId);
@@ -232,6 +256,7 @@ class SellController extends Controller
                     'discount_value' => $discountFields['discount_value'],
                     'special_discount_id' => $discountFields['special_discount_id'],
                     'special_discount_amount' => $discountFields['special_discount_amount'],
+                    'promotion_discount_total' => $promotionDiscountTotal,
                     'round_off_amount' => $saleTotals['round_off_amount'],
                     'vat' => $vatAmount,
                     'paid_amount' => $payment['effective_paid'],
@@ -296,6 +321,7 @@ class SellController extends Controller
             'branch:id,name,phone,address,logo,pos_terms_and_conditions',
             'specialDiscount:id,name,discount_type,discount_value',
             'products.product',
+            'products.promotion:id,name',
             'products.variation',
             'payments.paymentAccount:id,code,name',
         ]);
@@ -414,6 +440,7 @@ class SellController extends Controller
             ],
             'paymentAccounts' => $this->paymentAccounts(),
             'specialDiscounts' => $this->activeSpecialDiscounts($branchId),
+            'promotions' => $this->promotionService->activeForBranch($branchId),
             'discountTypes' => collect(DiscountType::cases())->map(fn (DiscountType $type) => [
                 'value' => $type->value,
                 'label' => $type->label(),
@@ -457,18 +484,24 @@ class SellController extends Controller
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.free_quantity' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $branchId = Auth::user()?->branch_id;
 
-        ['grossAmount' => $grossAmount, 'lineDiscountTotal' => $lineDiscountTotal, 'vatAmount' => $vatAmount] = $this->processSellItems(
+        [
+            'grossAmount' => $grossAmount,
+            'lineDiscountTotal' => $lineDiscountTotal,
+            'vatAmount' => $vatAmount,
+            'promotionStacking' => $promotionStacking,
+        ] = $this->processSellItems(
             $data['items'],
             $branchId,
             (float) $data['vat'],
             deductStock: false,
         );
 
-        $saleTotals = $this->resolveSaleTotals($data, $grossAmount, $lineDiscountTotal, $vatAmount, $branchId);
+        $saleTotals = $this->resolveSaleTotals($data, $grossAmount, $lineDiscountTotal, $vatAmount, $branchId, $promotionStacking);
         $payment = $this->resolveSalePayments($data, $saleTotals['net_amount']);
         $this->assertCustomerForDueSale($data['customer_id'] ? (int) $data['customer_id'] : null, $payment['due_amount']);
         $this->assertDueAlertFields($data, $branchId, $payment['due_amount']);
@@ -504,13 +537,20 @@ class SellController extends Controller
 
                 $sell->products()->delete();
 
-                ['grossAmount' => $grossAmount, 'lineDiscountTotal' => $lineDiscountTotal, 'vatAmount' => $vatAmount, 'sellProductsData' => $sellProductsData] = $this->processSellItems(
+                [
+                    'grossAmount' => $grossAmount,
+                    'lineDiscountTotal' => $lineDiscountTotal,
+                    'vatAmount' => $vatAmount,
+                    'sellProductsData' => $sellProductsData,
+                    'promotionDiscountTotal' => $promotionDiscountTotal,
+                    'promotionStacking' => $promotionStacking,
+                ] = $this->processSellItems(
                     $data['items'],
                     $branchId,
                     (float) $data['vat'],
                 );
 
-                $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId);
+                $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId, $promotionStacking);
 
                 $sell->update([
                     'customer_id' => $data['customer_id'] ?? null,
@@ -521,6 +561,7 @@ class SellController extends Controller
                     'discount_value' => $discountFields['discount_value'],
                     'special_discount_id' => $discountFields['special_discount_id'],
                     'special_discount_amount' => $discountFields['special_discount_amount'],
+                    'promotion_discount_total' => $promotionDiscountTotal,
                     'round_off_amount' => $saleTotals['round_off_amount'],
                     'vat' => $vatAmount,
                     'paid_amount' => $payment['effective_paid'],
@@ -642,9 +683,10 @@ class SellController extends Controller
 
     /**
      * @param  array<string, mixed>  $data
+     * @param  array<string, bool>|null  $promotionStacking
      * @return array{discount: float, discount_type: DiscountType, discount_value: float, special_discount_id: ?int, special_discount_amount: float}
      */
-    private function resolveSaleDiscounts(array $data, float $grossAmount, float $lineDiscountTotal, ?int $branchId): array
+    private function resolveSaleDiscounts(array $data, float $grossAmount, float $lineDiscountTotal, ?int $branchId, ?array $promotionStacking = null): array
     {
         $taxableBase = max(0, $grossAmount - $lineDiscountTotal);
         $discountType = $data['discount_type'] instanceof DiscountType
@@ -652,16 +694,32 @@ class SellController extends Controller
             : DiscountType::from($data['discount_type']);
         $discountValue = (float) $data['discount_value'];
 
+        if ($promotionStacking !== null) {
+            if (! $promotionStacking['invoice_discount'] && $discountValue > 0) {
+                throw ValidationException::withMessages([
+                    'discount_value' => 'Invoice discount cannot be applied with the active promotion stacking rules.',
+                ]);
+            }
+
+            if (! $promotionStacking['special_discount'] && $this->normalizedSpecialDiscountId($data) !== null) {
+                throw ValidationException::withMessages([
+                    'special_discount_id' => 'Special discount cannot be applied with the active promotion stacking rules.',
+                ]);
+            }
+        }
+
         if ($discountType === DiscountType::Percent && $discountValue > 100) {
             throw new \RuntimeException('Invoice discount percent cannot exceed 100.');
         }
 
         $invoiceDiscount = $this->specialDiscountService->computeAmount($discountType, $discountValue, $taxableBase);
-        $specialResolved = $this->specialDiscountService->resolveForSale(
-            $this->normalizedSpecialDiscountId($data),
-            $taxableBase,
-            $branchId,
-        );
+        $specialResolved = $promotionStacking === null || $promotionStacking['special_discount']
+            ? $this->specialDiscountService->resolveForSale(
+                $this->normalizedSpecialDiscountId($data),
+                $taxableBase,
+                $branchId,
+            )
+            : null;
 
         return [
             'discount' => $invoiceDiscount,
@@ -690,8 +748,9 @@ class SellController extends Controller
         float $lineDiscountTotal,
         float $vatAmount,
         ?int $branchId,
+        ?array $promotionStacking = null,
     ): array {
-        $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId);
+        $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId, $promotionStacking);
         $netBeforeRoundOff = round(
             $grossAmount + $vatAmount - $discountFields['discount'] - $discountFields['special_discount_amount'] - $lineDiscountTotal,
             2,
@@ -845,6 +904,7 @@ class SellController extends Controller
             'items.*.unit_price' => ['required', 'numeric', 'min:0'],
             'items.*.discount' => ['nullable', 'numeric', 'min:0'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.free_quantity' => ['nullable', 'numeric', 'min:0'],
         ]);
     }
 
@@ -889,11 +949,19 @@ class SellController extends Controller
                 'product_id' => $sp->product_id,
                 'product_name' => $sp->product?->name,
                 'product_code' => $sp->product?->code,
+                'category_id' => $sp->product?->category_id,
+                'brand_id' => $sp->product?->brand_id,
                 'variation_id' => $sp->variation_id,
                 'variation_label' => $sp->variation?->variation_data['label'] ?? null,
                 'unit_price' => (float) $sp->unit_price,
+                'original_unit_price' => (float) ($sp->original_unit_price ?? $sp->unit_price),
                 'discount' => (string) (float) $sp->discount,
+                'promotion_id' => $sp->promotion_id,
+                'promotion_discount' => (float) $sp->promotion_discount,
+                'promotion_label' => $sp->promotion?->name,
+                'promotion_meta' => $sp->promotion_meta,
                 'quantity' => (float) $sp->quantity,
+                'free_quantity' => (float) ($sp->free_quantity ?? 0),
                 'available_stock' => $availableStock,
             ];
         })->values();
@@ -917,32 +985,52 @@ class SellController extends Controller
         ];
     }
 
-    /** @return array{grossAmount: float, lineDiscountTotal: float, vatAmount: float, sellProductsData: array<int, array<string, mixed>>} */
+    /** @return array{
+     *     grossAmount: float,
+     *     lineDiscountTotal: float,
+     *     vatAmount: float,
+     *     promotionDiscountTotal: float,
+     *     promotionStacking: array<string, bool>,
+     *     sellProductsData: array<int, array<string, mixed>>
+     * } */
     private function processSellItems(array $items, ?int $branchId, float $vatPercent, bool $deductStock = true): array
     {
+        $promotionResult = $this->promotionService->validateAndResolve($items, $branchId);
+        $items = $promotionResult['items'];
+        $promotionDiscountTotal = (float) $promotionResult['promotion_discount_total'];
+        $promotionStacking = $promotionResult['stacking'];
+
         $grossAmount = 0.0;
         $lineDiscountTotal = 0.0;
         $sellProductsData = [];
 
         foreach ($items as $item) {
-            $qty = (float) $item['quantity'];
+            $paidQty = (float) $item['quantity'];
+            $freeQty = (float) ($item['free_quantity'] ?? 0);
+            $totalPhysical = $paidQty + $freeQty;
             $unitPrice = (float) $item['unit_price'];
-            $lineGross = $qty * $unitPrice;
+            $lineGross = $paidQty * $unitPrice;
             $lineDiscount = min(max(0, (float) ($item['discount'] ?? 0)), $lineGross);
             $productId = (int) $item['product_id'];
             $variationId = $item['variation_id'] ? (int) $item['variation_id'] : null;
+
+            if (! empty($item['promotion_id']) && ! $promotionStacking['manual_line_discount'] && $lineDiscount > 0) {
+                throw ValidationException::withMessages([
+                    'items' => 'Manual line discount cannot be applied to promotion items.',
+                ]);
+            }
 
             $batchMap = [];
 
             if ($deductStock) {
                 if ($variationId) {
                     $variation = ProductVariation::whereKey($variationId)->lockForUpdate()->firstOrFail();
-                    if ((float) $variation->stock < $qty) {
+                    if ((float) $variation->stock < $totalPhysical) {
                         throw new \RuntimeException('Insufficient stock for variation.');
                     }
-                    $variation->decrement('stock', $qty);
+                    $variation->decrement('stock', $totalPhysical);
                 } else {
-                    $batchMap = $this->deductBatchStock($branchId, $productId, $qty);
+                    $batchMap = $this->deductBatchStock($branchId, $productId, $totalPhysical);
                 }
             }
 
@@ -953,9 +1041,14 @@ class SellController extends Controller
                 'branch_id' => $branchId,
                 'product_id' => $productId,
                 'variation_id' => $variationId,
-                'quantity' => $qty,
+                'quantity' => $paidQty,
+                'free_quantity' => $freeQty,
                 'unit_price' => $unitPrice,
+                'original_unit_price' => (float) ($item['original_unit_price'] ?? $unitPrice),
                 'discount' => $lineDiscount,
+                'promotion_id' => $item['promotion_id'] ?? null,
+                'promotion_discount' => (float) ($item['promotion_discount'] ?? 0),
+                'promotion_meta' => $item['promotion_meta'] ?? null,
                 'batches' => $batchMap,
             ];
         }
@@ -967,6 +1060,8 @@ class SellController extends Controller
             'grossAmount' => $grossAmount,
             'lineDiscountTotal' => $lineDiscountTotal,
             'vatAmount' => $vatAmount,
+            'promotionDiscountTotal' => $promotionDiscountTotal,
+            'promotionStacking' => $promotionStacking,
             'sellProductsData' => $sellProductsData,
         ];
     }

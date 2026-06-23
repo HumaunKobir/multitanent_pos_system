@@ -39,7 +39,8 @@ import {
     Trash2,
     User,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { applyPromotionsToCart, canApplyManualLineDiscount } from '@/lib/pos-promotion';
 
 import { RequiredMark } from '@/components/form-field';
 import { Badge } from '@/components/ui/badge';
@@ -450,10 +451,17 @@ function PosProductPicker({ categories = [], onAdd }) {
             product_id: product.id,
             product_name: product.name,
             product_code: product.code,
+            category_id: product.category_id ?? null,
+            brand_id: product.brand_id ?? null,
             category_name: product.category_name ?? null,
             variation_id: variation?.id ?? null,
             variation_label: variation?.label ?? null,
             unit_price: unitPrice,
+            original_unit_price: unitPrice,
+            base_unit_price: variation
+                ? parseFloat(variation.sale_price ?? 0)
+                : parseFloat(product.original_sale_price ?? product.sale_price ?? 0),
+            catalog_price: unitPrice,
             discount: '0',
             quantity: 1,
             available_stock: stock,
@@ -588,12 +596,15 @@ function CartEmptyState() {
     );
 }
 
-function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
-    const qty = parseFloat(item.quantity || 0);
+function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove, stacking }) {
+    const paidQty = parseFloat(item.quantity || 0);
+    const freeQty = parseFloat(item.free_quantity || 0);
+    const totalQty = paidQty + freeQty;
     const stock = parseFloat(item.available_stock ?? 0);
-    const remaining = Math.max(0, stock - qty);
-    const overStock = qty > stock;
+    const remaining = Math.max(0, stock - totalQty);
+    const overStock = totalQty > stock;
     const subTotal = lineGross(item) - parseFloat(item.discount || 0);
+    const manualLineDiscountAllowed = canApplyManualLineDiscount(item, stacking);
 
     return (
         <div className="border-b border-blue-100 bg-white p-1.5 lg:p-2 last:border-b-0">
@@ -608,6 +619,16 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                         )}
                         {item.product_code && (
                             <span className="text-[10px] text-muted-foreground">{item.product_code}</span>
+                        )}
+                        {item.promotion_label && (
+                            <Badge className="border-amber-200 bg-amber-50 px-1 py-0 text-[9px] font-normal text-amber-800">
+                                {item.promotion_label}
+                            </Badge>
+                        )}
+                        {freeQty > 0 && (
+                            <Badge className="border-emerald-200 bg-emerald-50 px-1 py-0 text-[9px] font-normal text-emerald-800">
+                                FREE × {freeQty}
+                            </Badge>
                         )}
                         <span className={cn('text-[10px] tabular-nums', overStock ? 'text-destructive' : 'text-muted-foreground')}>
                             Stk {remaining}
@@ -625,7 +646,7 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                 </Button>
             </div>
 
-            <div className="mt-1.5 grid grid-cols-2 gap-x-1.5 gap-y-1 sm:grid-cols-4 sm:gap-1 sm:gap-y-0 lg:mt-2 lg:gap-1.5">
+            <div className="mt-1.5 grid grid-cols-2 gap-x-1.5 gap-y-1 sm:grid-cols-5 sm:gap-1 sm:gap-y-0 lg:mt-2 lg:gap-1.5">
                 <div>
                     <p className="mb-0.5 text-[9px] uppercase text-muted-foreground">Price</p>
                     <Input
@@ -634,7 +655,8 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                         step="0.01"
                         value={item.unit_price ?? ''}
                         onChange={(e) => onUpdate(index, 'unit_price', e.target.value)}
-                        className={cn(inputCls, 'h-5 px-0.5 text-right text-[11px] sm:h-6 sm:px-1 lg:h-7')}
+                        disabled={!!item.promotion_id}
+                        className={cn(inputCls, 'h-5 px-0.5 text-right text-[11px] sm:h-6 sm:px-1 lg:h-7', item.promotion_id && 'bg-muted')}
                     />
                 </div>
                 <div>
@@ -646,7 +668,7 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                             size="icon"
                             className="size-5 shrink-0 sm:size-6 lg:size-7 dark:bg-white dark:border-blue-200 dark:text-blue-950 dark:hover:bg-blue-50"
                             onClick={() => onAdjust(index, -1)}
-                            disabled={qty <= 1}
+                            disabled={paidQty <= 1}
                         >
                             <Minus className="size-2.5 lg:size-3" />
                         </Button>
@@ -654,7 +676,7 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                             type="number"
                             min="1"
                             step="1"
-                            value={item.quantity ?? ''}
+                            value={paidQty || ''}
                             onChange={(e) =>
                                 onUpdate(index, 'quantity', clampQuantityInput(e.target.value, item.available_stock))
                             }
@@ -666,11 +688,23 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                             size="icon"
                             className="size-5 shrink-0 sm:size-6 lg:size-7 dark:bg-white dark:border-blue-200 dark:text-blue-950 dark:hover:bg-blue-50"
                             onClick={() => onAdjust(index, 1)}
-                            disabled={qty >= stock}
+                            disabled={totalQty >= stock}
                         >
                             <Plus className="size-2.5 lg:size-3" />
                         </Button>
                     </div>
+                </div>
+                <div>
+                    <p className="mb-0.5 text-[9px] uppercase text-emerald-700">Free</p>
+                    <Input
+                        type="number"
+                        min="0"
+                        step="1"
+                        value={freeQty > 0 ? freeQty : ''}
+                        readOnly
+                        placeholder="0"
+                        className={cn(inputCls, 'h-5 bg-emerald-50 px-0.5 text-center text-[11px] text-emerald-800 sm:h-6 lg:h-7', freeQty > 0 && 'border-emerald-200')}
+                    />
                 </div>
                 <div>
                     <p className="mb-0.5 text-[9px] uppercase text-muted-foreground">Disc</p>
@@ -683,7 +717,8 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
                         onBlur={(e) => {
                             if (e.target.value === '') onUpdate(index, 'discount', '0');
                         }}
-                        className={cn(inputCls, 'h-5 px-0.5 text-right text-[11px] text-green-700 sm:h-6 sm:px-1 lg:h-7')}
+                        disabled={!manualLineDiscountAllowed}
+                        className={cn(inputCls, 'h-5 px-0.5 text-right text-[11px] text-green-700 sm:h-6 sm:px-1 lg:h-7', !manualLineDiscountAllowed && 'bg-muted')}
                     />
                 </div>
                 <div className="text-right">
@@ -697,6 +732,10 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove }) {
 
 function lineGross(item) {
     return parseFloat(item.quantity || 0) * parseFloat(item.unit_price || 0);
+}
+
+function linePhysicalQty(item) {
+    return parseFloat(item.quantity || 0) + parseFloat(item.free_quantity || 0);
 }
 
 function PausedSalesPanel({ pausedSales = [], currentPausedId, onResume }) {
@@ -834,6 +873,7 @@ export default function SellCreate({
     paymentAccounts = [],
     categories = [],
     specialDiscounts = [],
+    promotions = [],
     discountTypes = [],
     pausedSales = [],
     resumedSell = null,
@@ -849,20 +889,20 @@ export default function SellCreate({
     const [pausedSellId, setPausedSellId] = useState(resumedSell?.id ?? null);
     const [items, setItems] = useState(resumedSell?.items ?? []);
 
-    useEffect(() => {
-        if (flash.success) {
-            toast.success(flash.success);
-        }
-        if (flash.error) {
-            toast.error(flash.error);
-        }
-    }, [flash.success, flash.error]);
+    const { items: promotedItems, promotion_discount_total: promotionDiscountTotal, stacking: promotionStacking } = useMemo(
+        () => applyPromotionsToCart(items, promotions),
+        [items, promotions],
+    );
 
-    const grossAmount = items.reduce((sum, it) => sum + lineGross(it), 0);
-    const lineDiscountTotal = items.reduce((sum, it) => sum + parseFloat(it.discount || 0), 0);
+    const grossAmount = promotedItems.reduce((sum, it) => sum + lineGross(it), 0);
+    const lineDiscountTotal = promotedItems.reduce((sum, it) => sum + parseFloat(it.discount || 0), 0);
     const taxableAmount = Math.max(0, grossAmount - lineDiscountTotal);
-    const eligibleSpecialDiscounts = filterEligibleSpecialDiscounts(specialDiscounts, taxableAmount);
-    const selectedSpecialDiscount = findSpecialDiscountById(specialDiscounts, form.data.special_discount_id);
+    const eligibleSpecialDiscounts = promotionStacking.special_discount
+        ? filterEligibleSpecialDiscounts(specialDiscounts, taxableAmount)
+        : [];
+    const selectedSpecialDiscount = promotionStacking.special_discount
+        ? findSpecialDiscountById(specialDiscounts, form.data.special_discount_id)
+        : null;
     const vatAmount = taxableAmount * (parseFloat(form.data.vat || 0) / 100);
     const invoiceDiscountAmount = computeDiscountAmount(
         form.data.discount_type,
@@ -877,7 +917,7 @@ export default function SellCreate({
           )
         : 0;
     const netBeforeRoundOff = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
-    const hasSaleItems = items.length > 0;
+    const hasSaleItems = promotedItems.length > 0;
     const roundOffAmount = hasSaleItems
         ? Math.min(Math.max(0, parseFloat(form.data.round_off_amount || 0)), Math.max(0, netBeforeRoundOff))
         : 0;
@@ -885,8 +925,29 @@ export default function SellCreate({
 
     const { totalPaid, dueAmount, changeAmount } = computeSplitSalePayment(form.data.payments, netAmount);
     const dueCustomerError = dueSaleCustomerError(form.data.customer_id, defaultCustomer?.id ?? null, dueAmount);
-    const hasOverStock = items.some((item) => parseFloat(item.quantity || 0) > parseFloat(item.available_stock ?? 0));
-    const itemCount = items.reduce((sum, item) => sum + parseFloat(item.quantity || 0), 0);
+    const hasOverStock = promotedItems.some((item) => linePhysicalQty(item) > parseFloat(item.available_stock ?? 0));
+    const itemCount = promotedItems.reduce((sum, item) => sum + linePhysicalQty(item), 0);
+
+    useEffect(() => {
+        if (flash.success) {
+            toast.success(flash.success);
+        }
+        if (flash.error) {
+            toast.error(flash.error);
+        }
+    }, [flash.success, flash.error]);
+
+    useEffect(() => {
+        if (!promotionStacking.invoice_discount && parseFloat(form.data.discount_value || 0) > 0) {
+            form.setData('discount_value', '0');
+        }
+    }, [promotionStacking.invoice_discount]);
+
+    useEffect(() => {
+        if (!promotionStacking.special_discount && form.data.special_discount_id) {
+            form.setData('special_discount_id', '');
+        }
+    }, [promotionStacking.special_discount]);
 
     useEffect(() => {
         if (
@@ -926,7 +987,7 @@ export default function SellCreate({
         if (maxStock <= 0) {
             return;
         }
-        setItems((prev) => [...prev, { ...item, quantity: 1, discount: item.discount ?? '0' }]);
+        setItems((prev) => [...prev, { ...item, quantity: 1, free_quantity: 0, discount: item.discount ?? '0' }]);
     }
 
     function updateItem(index, field, value) {
@@ -937,6 +998,10 @@ export default function SellCreate({
                 }
 
                 const next = { ...it, [field]: value };
+
+                if (field === 'quantity') {
+                    next.free_quantity = 0;
+                }
 
                 if (field === 'quantity' || field === 'unit_price' || field === 'discount') {
                     next.discount = clampLineDiscount(next.discount, next);
@@ -980,7 +1045,7 @@ export default function SellCreate({
 
         form.transform((data) => ({
             ...data,
-            items,
+            items: promotedItems,
             paused_sell_id: pausedSellId ?? '',
             paid_amount: String(totalPaid),
             special_discount_id: form.data.special_discount_id || '',
@@ -996,7 +1061,7 @@ export default function SellCreate({
             route('inventory.sell.pause'),
             {
                 ...form.data,
-                items,
+                items: promotedItems,
                 paused_sell_id: pausedSellId ?? '',
                 paid_amount: '0',
                 special_discount_id: form.data.special_discount_id || '',
@@ -1109,15 +1174,16 @@ export default function SellCreate({
                             }
                         />
                         <div className="min-h-0 flex-1 overflow-y-auto">
-                            {items.length === 0 ? (
+                            {promotedItems.length === 0 ? (
                                 <CartEmptyState />
                             ) : (
-                                items.map((item, i) => (
+                                promotedItems.map((item, i) => (
                                     <CartLineItem
                                         key={i}
                                         item={item}
                                         index={i}
                                         inputCls={inputCls}
+                                        stacking={promotionStacking}
                                         onUpdate={updateItem}
                                         onAdjust={adjustQuantity}
                                         onRemove={removeItem}
@@ -1176,6 +1242,13 @@ export default function SellCreate({
                                     <span className="text-sm font-semibold tabular-nums lg:text-base">৳{grossAmount.toFixed(2)}</span>
                                 </div>
 
+                                {promotionDiscountTotal > 0 && (
+                                    <div className="flex items-center justify-between gap-1 border border-amber-100 bg-amber-50/50 px-1.5 py-1 lg:gap-2 lg:px-2 lg:py-1.5">
+                                        <span className="text-amber-800">Promotion</span>
+                                        <span className="font-medium tabular-nums text-amber-700">-৳{promotionDiscountTotal.toFixed(2)}</span>
+                                    </div>
+                                )}
+
                                 {lineDiscountTotal > 0 && (
                                     <div className="flex items-center justify-between gap-1 border border-green-100 bg-green-50/50 px-1.5 py-1 lg:gap-2 lg:px-2 lg:py-1.5">
                                         <span className="text-green-800">Line Disc.</span>
@@ -1183,7 +1256,7 @@ export default function SellCreate({
                                     </div>
                                 )}
 
-                                {specialDiscounts.length > 0 && (
+                                {specialDiscounts.length > 0 && promotionStacking.special_discount && (
                                     <div>
                                         <Label className="mb-0.5 block text-[9px] text-muted-foreground lg:text-[10px]">
                                             Special Discount
@@ -1230,9 +1303,10 @@ export default function SellCreate({
                                     <div>
                                         <Label className="mb-0.5 block text-[9px] text-muted-foreground lg:text-[10px]">Inv. Disc. Type</Label>
                                         <select
-                                            className="h-7 w-full rounded-none border border-blue-200 bg-white px-1 text-[11px] text-blue-950 outline-none focus:border-blue-600 lg:h-8 lg:px-2 lg:text-xs"
+                                            className="h-7 w-full rounded-none border border-blue-200 bg-white px-1 text-[11px] text-blue-950 outline-none focus:border-blue-600 lg:h-8 lg:px-2 lg:text-xs disabled:bg-muted"
                                             value={form.data.discount_type}
                                             onChange={(e) => form.setData('discount_type', e.target.value)}
+                                            disabled={!promotionStacking.invoice_discount}
                                         >
                                             {discountTypes.map((type) => (
                                                 <option key={type.value} value={type.value}>
@@ -1249,7 +1323,8 @@ export default function SellCreate({
                                             step="0.01"
                                             value={form.data.discount_value}
                                             onChange={(e) => form.setData('discount_value', e.target.value)}
-                                            className={cn(inputCls, 'text-right')}
+                                            disabled={!promotionStacking.invoice_discount}
+                                            className={cn(inputCls, 'text-right', !promotionStacking.invoice_discount && 'bg-muted')}
                                         />
                                     </div>
                                     <div>

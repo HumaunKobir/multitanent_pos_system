@@ -345,6 +345,17 @@ return [
             ],
         ],
 
+        'setting.promotion' => [
+            'label' => 'Promotions',
+            'group' => 'Sales',
+            'permissions' => [
+                'setting.promotion.view' => 'View Promotions',
+                'setting.promotion.create' => 'Create Promotion',
+                'setting.promotion.update' => 'Update Promotion',
+                'setting.promotion.delete' => 'Delete Promotion',
+            ],
+        ],
+
         'setting.pos-terms' => [
             'label' => 'POS Terms & Conditions',
             'group' => 'Settings',

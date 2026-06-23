@@ -9,13 +9,18 @@ class SellProduct extends Model
 {
     protected $fillable = [
         'branch_id', 'sell_id', 'product_id', 'variation_id',
-        'quantity', 'unit_price', 'discount', 'batches',
+        'quantity', 'free_quantity', 'unit_price', 'original_unit_price', 'discount',
+        'promotion_id', 'promotion_discount', 'promotion_meta', 'batches',
     ];
 
     protected $casts = [
         'quantity' => 'decimal:2',
+        'free_quantity' => 'decimal:2',
         'unit_price' => 'decimal:2',
+        'original_unit_price' => 'decimal:2',
         'discount' => 'decimal:2',
+        'promotion_discount' => 'decimal:2',
+        'promotion_meta' => 'array',
         'batches' => 'array',
     ];
 
@@ -32,5 +37,10 @@ class SellProduct extends Model
     public function variation(): BelongsTo
     {
         return $this->belongsTo(ProductVariation::class, 'variation_id');
+    }
+
+    public function promotion(): BelongsTo
+    {
+        return $this->belongsTo(Promotion::class);
     }
 }

@@ -264,7 +264,7 @@ function groupItemsByVariant(items) {
     const groups = new Map();
 
     for (const item of items) {
-        const key = item.variant_id ?? item.variation_id ?? `product-${item.product_id ?? item.id}`;
+        const key = `${item.is_free_row ? 'free' : 'paid'}-${item.variant_id ?? item.variation_id ?? `product-${item.product_id ?? item.id}`}`;
         const existing = groups.get(key);
 
         if (existing) {
@@ -299,12 +299,9 @@ function getVariantDisplayText(item) {
 function buildItemName(item) {
     const baseName = truncateName(item.product?.name ?? item.name ?? '—');
     const variantText = getVariantDisplayText(item);
+    const name = !variantText ? baseName : `${baseName} (Variant: ${variantText})`;
 
-    if (!variantText) {
-        return baseName;
-    }
-
-    return `${baseName} (Variant: ${variantText})`;
+    return item.is_free_row ? `${name} (FREE)` : name;
 }
 
 function totalRow(label, value) {
@@ -356,6 +353,7 @@ export function buildSellPosPrintPayload(sell, options = {}) {
     const vat = parseFloat(sell.vat ?? 0);
     const invoiceDiscount = parseFloat(sell.discount ?? 0);
     const specialDiscount = parseFloat(sell.special_discount_amount ?? 0);
+    const promotionDiscount = parseFloat(sell.promotion_discount_total ?? 0);
     const roundOff = parseFloat(sell.round_off_amount ?? 0);
     const lineDiscount = (sell.products ?? []).reduce((sum, item) => sum + parseFloat(item.discount ?? 0), 0);
     const net = gross + vat - invoiceDiscount - specialDiscount - roundOff - lineDiscount;
@@ -373,8 +371,9 @@ export function buildSellPosPrintPayload(sell, options = {}) {
             ? parseFloat(options.change)
             : Math.max(0, totalTendered - net);
 
-    const lineItems = (sell.products ?? []).map((item) => {
-        const qty = parseFloat(item.quantity ?? 0);
+    const lineItems = (sell.products ?? []).flatMap((item) => {
+        const paidQty = parseFloat(item.quantity ?? 0);
+        const freeQty = parseFloat(item.free_quantity ?? 0);
         const unitPrice = parseFloat(item.unit_price ?? item.sell_price ?? item.price ?? 0);
         const lineItemDiscount = parseFloat(item.discount ?? 0);
         const variationId = item.variation_id ?? null;
@@ -383,16 +382,14 @@ export function buildSellPosPrintPayload(sell, options = {}) {
             : '';
         const variantSku = variationId ? (item.variation?.sku_code ?? '').trim() : '';
 
-        return {
+        const baseRow = {
             id: item.id,
             product_id: item.product_id,
             variant_id: variationId,
-            quantity: qty,
             unit_price: unitPrice,
             sell_price: unitPrice,
-            price: unitPrice * qty - lineItemDiscount,
-            amount: unitPrice * qty - lineItemDiscount,
             line_discount: lineItemDiscount,
+            promotion_label: item.promotion?.name ?? null,
             product: {
                 name: item.product?.name ?? '—',
             },
@@ -406,6 +403,34 @@ export function buildSellPosPrintPayload(sell, options = {}) {
             name: item.product?.name ?? '—',
             variant_label: variantLabel || variantSku,
         };
+
+        const rows = [];
+
+        if (paidQty > 0) {
+            rows.push({
+                ...baseRow,
+                quantity: paidQty,
+                price: unitPrice * paidQty - lineItemDiscount,
+                amount: unitPrice * paidQty - lineItemDiscount,
+                is_free_row: false,
+            });
+        }
+
+        if (freeQty > 0) {
+            rows.push({
+                ...baseRow,
+                id: `${item.id}-free`,
+                quantity: freeQty,
+                unit_price: 0,
+                sell_price: 0,
+                price: 0,
+                amount: 0,
+                line_discount: 0,
+                is_free_row: true,
+            });
+        }
+
+        return rows;
     });
 
     return {
@@ -451,7 +476,7 @@ export function buildSellPosPrintPayload(sell, options = {}) {
                 specialDiscountName: sell.special_discount?.name ?? null,
                 roundOff,
                 lineDiscount,
-                discount: invoiceDiscount + specialDiscount + lineDiscount,
+                discount: invoiceDiscount + specialDiscount + promotionDiscount + lineDiscount,
                 net,
                 paid,
                 due,
@@ -471,7 +496,7 @@ function renderPosInvoice(data) {
         <div class="pos-header">
             ${options.companyLogo ? `<div class="pos-logo-wrap"><img class="pos-logo" src="${escapeHtml(options.companyLogo)}" alt="" onerror="this.parentElement.style.display='none'" /></div>` : ''}
             <div class="pos-title">${escapeHtml(options.companyName)}</div>
-            ${options.branchName ? `<div class="pos-subtitle">${escapeHtml(options.branchName)}</div>` : ''}
+            ${options.branchName && options.branchName.trim().toLowerCase() !== String(options.companyName ?? '').trim().toLowerCase() ? `<div class="pos-subtitle">${escapeHtml(options.branchName)}</div>` : ''}
             ${options.companyAddress ? `<div class="pos-subtitle">${escapeHtml(options.companyAddress)}</div>` : ''}
             ${options.companyPhone ? `<div class="pos-info">Tel: ${escapeHtml(options.companyPhone)}</div>` : ''}
             <div class="pos-divider"></div>

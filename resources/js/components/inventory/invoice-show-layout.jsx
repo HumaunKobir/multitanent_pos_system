@@ -22,6 +22,9 @@ const lineItemColumns = [
                 {row.variation?.variation_data?.label && (
                     <p className="text-xs text-muted-foreground">{row.variation.variation_data.label}</p>
                 )}
+                {row.promotion?.name && (
+                    <p className="text-xs text-amber-700">Promo: {row.promotion.name}</p>
+                )}
             </div>
         ),
     },
@@ -35,7 +38,21 @@ const lineItemColumns = [
         id: 'quantity',
         header: 'Qty',
         align: 'right',
-        render: (row) => parseFloat(row.quantity ?? 0),
+        render: (row) => {
+            const paidQty = parseFloat(row.quantity ?? 0);
+            const freeQty = parseFloat(row.free_quantity ?? 0);
+
+            if (freeQty > 0) {
+                return (
+                    <div className="text-right">
+                        <div>{paidQty}</div>
+                        <div className="text-xs font-medium text-emerald-700">+ {freeQty} free</div>
+                    </div>
+                );
+            }
+
+            return paidQty;
+        },
     },
     {
         id: 'discount',
@@ -100,6 +117,7 @@ function TotalsSummary({
     specialDiscountName,
     specialDiscountType,
     specialDiscountValue,
+    promotionDiscount = 0,
     roundOff = 0,
     lineDiscount = 0,
     net,
@@ -110,6 +128,7 @@ function TotalsSummary({
     const rows = [
         { label: 'Gross Amount', value: `৳${gross.toFixed(2)}`, muted: true },
         ...(lineDiscount > 0 ? [{ label: 'Line Discounts', value: `-৳${lineDiscount.toFixed(2)}`, accent: 'text-green-600' }] : []),
+        ...(promotionDiscount > 0 ? [{ label: 'Promotion Discount', value: `-৳${promotionDiscount.toFixed(2)}`, accent: 'text-amber-700' }] : []),
         ...(specialDiscount > 0
             ? [{
                 label: specialDiscountName ? `Special Discount (${specialDiscountName})` : 'Special Discount',
@@ -239,6 +258,7 @@ export function InvoiceDocument({
                     specialDiscountName={totals.specialDiscountName}
                     specialDiscountType={totals.specialDiscountType}
                     specialDiscountValue={totals.specialDiscountValue}
+                    promotionDiscount={parseFloat(totals.promotionDiscount ?? 0)}
                     roundOff={parseFloat(totals.roundOff ?? 0)}
                     lineDiscount={lineDiscount}
                     net={net}

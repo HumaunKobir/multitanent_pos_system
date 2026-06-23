@@ -37,6 +37,7 @@ use App\Http\Controllers\Setting\FaqController;
 use App\Http\Controllers\Setting\PageContentController;
 use App\Http\Controllers\Setting\PosTermsController;
 use App\Http\Controllers\Setting\ProductSectionController;
+use App\Http\Controllers\Setting\PromotionController;
 use App\Http\Controllers\Setting\SizeController;
 use App\Http\Controllers\Setting\SliderController;
 use App\Http\Controllers\Setting\SpecialDiscountController;
@@ -199,6 +200,9 @@ Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->gr
     Route::resource('special-discount', SpecialDiscountController::class)
         ->except(['create', 'edit', 'show'])
         ->parameters(['special-discount' => 'specialDiscount']);
+    Route::resource('promotion', PromotionController::class)
+        ->except(['create', 'edit', 'show'])
+        ->parameters(['promotion' => 'promotion']);
     Route::get('admin-profile', [AdminProfileController::class, 'edit'])->name('admin-profile.edit');
     Route::put('admin-profile', [AdminProfileController::class, 'update'])->name('admin-profile.update');
     Route::get('branch-profile', [BranchProfileController::class, 'edit'])->name('branch-profile.edit');

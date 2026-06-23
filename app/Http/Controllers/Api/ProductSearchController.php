@@ -94,16 +94,22 @@ class ProductSearchController extends Controller
             }))
             ->when($request->category_id, fn ($q, $id) => $q->where('category_id', $id))
             ->limit($limit)
-            ->get(['id', 'name', 'code', 'category_id', 'branch_id', 'sale_price', 'discount_price', 'image']);
+            ->get(['id', 'name', 'code', 'category_id', 'brand_id', 'branch_id', 'sale_price', 'discount_price', 'image']);
 
         return response()->json($products->map(function (Product $product) {
+            $basePrice = (float) $product->sale_price;
+            $effectivePrice = $product->discount_price > 0 ? (float) $product->discount_price : $basePrice;
+
             return [
                 'id' => $product->id,
                 'name' => $product->name,
                 'code' => $product->code,
                 'category_id' => $product->category_id,
+                'brand_id' => $product->brand_id,
                 'category_name' => $product->category?->name,
-                'sale_price' => $product->discount_price > 0 ? (float) $product->discount_price : (float) $product->sale_price,
+                'sale_price' => $effectivePrice,
+                'original_sale_price' => $basePrice,
+                'catalog_price' => $effectivePrice,
                 'image' => StorageUrl::public($product->image),
                 'has_variations' => $product->variations->isNotEmpty(),
                 'stock' => (float) $product->batches->sum('available'),

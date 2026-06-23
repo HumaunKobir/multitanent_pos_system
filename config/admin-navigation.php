@@ -37,6 +37,7 @@ return [
                 ['title' => 'Product Exchange', 'href' => '/inventory/product-exchange', 'permission' => 'inventory.product-exchange.view'],
                 ['title' => 'Received Stock', 'href' => '/inventory/stock-distribution/received', 'permission' => 'inventory.stock-distribution.receive', 'branch_received_only' => true],
                 ['title' => 'Special Discount', 'href' => '/setting/special-discount', 'permission' => 'setting.special-discount.view'],
+                ['title' => 'Promotions', 'href' => '/setting/promotion', 'permission' => 'setting.promotion.view'],
             ],
         ],
         [

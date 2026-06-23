@@ -1,3 +1,5 @@
+import JsBarcode from 'jsbarcode';
+
 export const PRINT_DPI = 96;
 export const NAME_BARCODE_GAP_PX = 6;
 export const BARCODE_PRICE_GAP_PX = 1;
@@ -12,26 +14,36 @@ export const MIN_BARCODE_FONT_PX = 18;
 export const BARCODE_WIDTH_SAFETY_RATIO = 0.86;
 /** Use most of the vertical space between name and price for bar height. */
 export const BARCODE_HEIGHT_USAGE_RATIO = 0.98;
+export const JSBARCODE_CDN =
+    'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
 
 const CODE128_START_B = 204;
 const CODE128_STOP = 206;
 
 // #region agent log
 function debugLog(location, message, data, hypothesisId) {
+    const payload = {
+        sessionId: '601285',
+        location,
+        message,
+        data,
+        timestamp: Date.now(),
+        hypothesisId,
+    };
+
     fetch('http://127.0.0.1:7682/ingest/b2b77a02-47d0-43f6-ab11-689e8f32c576', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
             'X-Debug-Session-Id': '601285',
         },
-        body: JSON.stringify({
-            sessionId: '601285',
-            location,
-            message,
-            data,
-            timestamp: Date.now(),
-            hypothesisId,
-        }),
+        body: JSON.stringify(payload),
+    }).catch(() => {});
+
+    fetch('/debug/client-log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
     }).catch(() => {});
 }
 // #endregion
@@ -175,11 +187,24 @@ export function calculateBarcodeBarHeight(settings) {
     );
 }
 
+export function escapeHtmlAttr(text) {
+    return String(text)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/</g, '&lt;');
+}
+
 /**
- * Fit barcode width with scaleX so bar height (font-size) stays scannable.
+ * Render a scannable Code 128 SVG and shrink module width to fit the label.
  */
-export function fitBarcodeToContainer(barEl, containerEl, maxBarHeight, { fill = false } = {}) {
-    if (!barEl || !containerEl) {
+export function renderBarcodeSvg(svgEl, containerEl, code, maxBarHeight, { fill = false } = {}) {
+    if (!svgEl || !containerEl) {
+        return maxBarHeight;
+    }
+
+    const text = String(code ?? '').trim();
+
+    if (!text) {
         return maxBarHeight;
     }
 
@@ -189,52 +214,66 @@ export function fitBarcodeToContainer(barEl, containerEl, maxBarHeight, { fill =
         fill && availableHeight > 8
             ? Math.floor(availableHeight * BARCODE_HEIGHT_USAGE_RATIO)
             : maxBarHeight;
-    let height = Math.max(
+    let barHeight = Math.max(
         MIN_BARCODE_BAR_HEIGHT_PX,
         Math.min(maxBarHeight, heightFromContainer),
     );
 
-    barEl.style.transform = 'none';
-    barEl.style.transformOrigin = 'center center';
-    barEl.style.width = 'auto';
-    barEl.style.maxWidth = 'none';
-    barEl.style.display = 'inline-block';
+    let moduleWidth = 2;
+    const minModuleWidth = 0.3;
+    const quietMargin = 2;
 
-    const minHeight = Math.max(MIN_BARCODE_BAR_HEIGHT_PX, MIN_BARCODE_FONT_PX);
+    const draw = () => {
+        JsBarcode(svgEl, text, {
+            format: 'CODE128',
+            width: moduleWidth,
+            height: barHeight,
+            displayValue: false,
+            margin: quietMargin,
+            background: '#ffffff',
+            lineColor: '#000000',
+        });
+    };
 
-    do {
-        barEl.style.fontSize = `${height}px`;
+    draw();
 
-        if (barEl.scrollWidth <= targetWidth || height <= minHeight) {
-            break;
-        }
+    let svgWidth = svgEl.getBoundingClientRect().width;
 
-        height -= 1;
-    } while (height >= minHeight);
+    while (svgWidth > targetWidth && moduleWidth > minModuleWidth) {
+        moduleWidth = Math.round((moduleWidth - 0.1) * 10) / 10;
+        draw();
+        svgWidth = svgEl.getBoundingClientRect().width;
+    }
 
-    const fontFamily = getComputedStyle(barEl).fontFamily;
-    const fontLoaded = document.fonts?.check
-        ? document.fonts.check(`16px ${fontFamily}`)
-        : null;
+    const widthOverflow = svgWidth > targetWidth;
 
     // #region agent log
-    debugLog('barcode-label.js:fitBarcodeToContainer', 'fit result', {
+    debugLog('barcode-label.js:renderBarcodeSvg', 'svg fit result', {
         fill,
         maxBarHeight,
         containerW: containerEl.clientWidth,
         containerH: containerEl.clientHeight,
         targetWidth,
-        finalFontSize: height,
-        scrollWidth: barEl.scrollWidth,
-        offsetHeight: barEl.offsetHeight,
-        widthOverflow: barEl.scrollWidth > targetWidth,
-        fontFamily,
-        fontLoaded,
-        transform: barEl.style.transform || 'none',
-    }, 'B,C,D');
+        finalBarHeight: barHeight,
+        moduleWidth,
+        svgWidth,
+        widthOverflow,
+        codeLen: text.length,
+    }, 'C');
     // #endregion
 
-    return barEl.offsetHeight || height;
+    return barHeight;
+}
+
+/** @deprecated Use renderBarcodeSvg */
+export function fitBarcodeToContainer(svgEl, containerEl, maxBarHeight, options = {}) {
+    return renderBarcodeSvg(
+        svgEl,
+        containerEl,
+        options.code ?? '',
+        maxBarHeight,
+        options,
+    );
 }
 
 export function buildPrintHtml(rows, settings) {
@@ -249,18 +288,14 @@ export function buildPrintHtml(rows, settings) {
         .map((row) => {
             const price = getEffectivePrice(row) ?? 0;
             const labelName = getLabelTitle(row);
-            const encodedCode = formatBarcodeForLibre128(row.code);
-            const escapedCode = escapeHtml(encodedCode);
 
             // #region agent log
             debugLog('barcode-label.js:buildPrintHtml', 'print label barcode', {
                 rawCodeLen: String(row.code ?? '').length,
-                encodedLen: encodedCode.length,
-                escapedLen: escapedCode.length,
-                htmlCorrupted: encodedCode !== escapedCode,
                 settings: { width, height, fontSize, copies },
                 barHeight,
-            }, 'E');
+                renderer: 'jsbarcode-svg',
+            }, 'C');
             // #endregion
 
             return `
@@ -268,7 +303,7 @@ export function buildPrintHtml(rows, settings) {
         <div class="label-inner">
           <div class="name">${escapeHtml(labelName)}</div>
           <div class="bars-wrap">
-            <div class="bars" data-max-bar-height="${barHeight}">${escapedCode}</div>
+            <svg class="bars" data-code="${escapeHtmlAttr(row.code)}" data-max-bar-height="${barHeight}"></svg>
           </div>
           <div class="footer">
             <span>${escapeHtml(formatLabelPrice(price))}</span>
@@ -283,8 +318,7 @@ export function buildPrintHtml(rows, settings) {
 <head>
   <meta charset="utf-8">
   <title>Barcode Labels</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Libre+Barcode+128&display=swap" rel="stylesheet">
+  <script src="${JSBARCODE_CDN}" data-jsbarcode></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     @page { size: ${width}in ${height}in; margin: 0; }
@@ -335,12 +369,9 @@ export function buildPrintHtml(rows, settings) {
       box-sizing: border-box;
     }
     .bars {
-      font-family: 'Libre Barcode 128', monospace;
-      font-weight: ${fw};
-      font-size: ${barHeight}px;
-      line-height: 1;
-      white-space: nowrap;
-      display: inline-block;
+      display: block;
+      max-width: 100%;
+      height: auto;
     }
     .footer {
       display: flex;
@@ -387,32 +418,40 @@ export function buildPrintHtml(rows, settings) {
   <div class="page">${labels}</div>
   <script>
     function fitBarcode(wrap) {
-      var el = wrap.querySelector('.bars');
-      if (!el) return;
-      var maxBarHeight = parseFloat(el.getAttribute('data-max-bar-height') || '${barHeight}');
+      var svg = wrap.querySelector('.bars');
+      if (!svg || !window.JsBarcode) return;
+      var code = svg.getAttribute('data-code') || '';
+      var maxBarHeight = parseFloat(svg.getAttribute('data-max-bar-height') || '${barHeight}');
       var targetWidth = wrap.clientWidth * ${BARCODE_WIDTH_SAFETY_RATIO};
       var availableHeight = wrap.clientHeight;
       var heightFromContainer = availableHeight > 8
         ? Math.floor(availableHeight * ${BARCODE_HEIGHT_USAGE_RATIO})
         : maxBarHeight;
-      var height = Math.max(
+      var barHeight = Math.max(
         ${MIN_BARCODE_BAR_HEIGHT_PX},
         Math.min(maxBarHeight, heightFromContainer)
       );
-      var minHeight = Math.max(${MIN_BARCODE_BAR_HEIGHT_PX}, ${MIN_BARCODE_FONT_PX});
-      el.style.transform = 'none';
-      el.style.transformOrigin = 'center center';
-      el.style.width = 'auto';
-      el.style.maxWidth = 'none';
-      el.style.display = 'inline-block';
-      do {
-        el.style.fontSize = height + 'px';
-        if (el.scrollWidth <= targetWidth || height <= minHeight) {
-          break;
-        }
-        height -= 1;
-      } while (height >= minHeight);
-      fetch('http://127.0.0.1:7682/ingest/b2b77a02-47d0-43f6-ab11-689e8f32c576',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'601285'},body:JSON.stringify({sessionId:'601285',location:'print-window:fitBarcode',message:'print fit result',data:{containerW:wrap.clientWidth,containerH:wrap.clientHeight,targetWidth:targetWidth,finalFontSize:height,scrollWidth:el.scrollWidth,offsetHeight:el.offsetHeight,widthOverflow:el.scrollWidth>targetWidth,textLen:el.textContent.length,startChar:el.textContent.charCodeAt(0),stopChar:el.textContent.charCodeAt(el.textContent.length-1)},timestamp:Date.now(),hypothesisId:'B,C,E'})}).catch(function(){});
+      var moduleWidth = 2;
+      var minModuleWidth = 0.3;
+      var draw = function() {
+        window.JsBarcode(svg, code, {
+          format: 'CODE128',
+          width: moduleWidth,
+          height: barHeight,
+          displayValue: false,
+          margin: 2,
+          background: '#ffffff',
+          lineColor: '#000000',
+        });
+      };
+      draw();
+      var svgWidth = svg.getBoundingClientRect().width;
+      while (svgWidth > targetWidth && moduleWidth > minModuleWidth) {
+        moduleWidth = Math.round((moduleWidth - 0.1) * 10) / 10;
+        draw();
+        svgWidth = svg.getBoundingClientRect().width;
+      }
+      fetch('/debug/client-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'601285',location:'print-window:fitBarcode',message:'print svg fit result',data:{containerW:wrap.clientWidth,containerH:wrap.clientHeight,targetWidth:targetWidth,finalBarHeight:barHeight,moduleWidth:moduleWidth,svgWidth:svgWidth,widthOverflow:svgWidth>targetWidth,codeLen:code.length,renderer:'jsbarcode-svg'},timestamp:Date.now(),hypothesisId:'C',runId:'post-fix'})}).catch(function(){});
     }
 
     function printWhenReady() {
@@ -427,7 +466,15 @@ export function buildPrintHtml(rows, settings) {
       });
     }
 
-    document.fonts.ready.then(printWhenReady).catch(printWhenReady);
+    var jsBarcodeScript = document.querySelector('script[data-jsbarcode]');
+    if (window.JsBarcode) {
+      printWhenReady();
+    } else if (jsBarcodeScript) {
+      jsBarcodeScript.addEventListener('load', printWhenReady);
+      jsBarcodeScript.addEventListener('error', printWhenReady);
+    } else {
+      printWhenReady();
+    }
   <\/script>
 </body>
 </html>`;

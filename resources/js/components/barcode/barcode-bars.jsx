@@ -1,54 +1,48 @@
 import { useLayoutEffect, useRef } from 'react';
 
-import { fitBarcodeToContainer, formatBarcodeForLibre128 } from '@/lib/barcode-label';
+import { renderBarcodeSvg } from '@/lib/barcode-label';
 
-export function BarcodeBars({ code, barHeight, fontWeight = 400, fill = false }) {
-    const textRef = useRef(null);
+export function BarcodeBars({ code, barHeight, fill = false }) {
+    const svgRef = useRef(null);
     const wrapRef = useRef(null);
-    const encodedCode = formatBarcodeForLibre128(code);
 
     useLayoutEffect(() => {
         const measure = () => {
-            if (textRef.current && wrapRef.current) {
+            if (svgRef.current && wrapRef.current) {
                 // #region agent log
-                fetch('http://127.0.0.1:7682/ingest/b2b77a02-47d0-43f6-ab11-689e8f32c576', {
+                fetch('/debug/client-log', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Debug-Session-Id': '601285',
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         sessionId: '601285',
                         location: 'barcode-bars.jsx:measure',
                         message: 'preview measure start',
                         data: {
                             rawCodeLen: String(code ?? '').length,
-                            encodedLen: encodedCode.length,
                             barHeight,
                             fill,
                             wrapW: wrapRef.current.clientWidth,
                             wrapH: wrapRef.current.clientHeight,
+                            renderer: 'jsbarcode-svg',
                         },
                         timestamp: Date.now(),
-                        hypothesisId: 'D,F',
+                        hypothesisId: 'D',
+                        runId: 'post-fix',
                     }),
                 }).catch(() => {});
                 // #endregion
 
-                fitBarcodeToContainer(
-                    textRef.current,
+                renderBarcodeSvg(
+                    svgRef.current,
                     wrapRef.current,
+                    code,
                     barHeight,
                     { fill },
                 );
             }
         };
 
-        if (document.fonts?.ready) {
-            document.fonts.ready.then(measure);
-        } else {
-            measure();
-        }
+        measure();
 
         const wrap = wrapRef.current;
 
@@ -65,7 +59,7 @@ export function BarcodeBars({ code, barHeight, fontWeight = 400, fill = false })
         return () => {
             observer.disconnect();
         };
-    }, [code, barHeight, fill, encodedCode]);
+    }, [code, barHeight, fill]);
 
     return (
         <div
@@ -82,19 +76,7 @@ export function BarcodeBars({ code, barHeight, fontWeight = 400, fill = false })
                 boxSizing: 'border-box',
             }}
         >
-            <div
-                ref={textRef}
-                style={{
-                    fontFamily: "'Libre Barcode 128', monospace",
-                    fontSize: `${barHeight}px`,
-                    fontWeight,
-                    lineHeight: 1,
-                    whiteSpace: 'nowrap',
-                    display: 'inline-block',
-                }}
-            >
-                {encodedCode}
-            </div>
+            <svg ref={svgRef} style={{ display: 'block', maxWidth: '100%', height: 'auto' }} />
         </div>
     );
 }

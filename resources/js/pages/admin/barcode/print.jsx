@@ -96,7 +96,6 @@ function LabelPreview({ row, settings }) {
                     <BarcodeBars
                         code={row?.code ?? '123456789'}
                         barHeight={barHeight}
-                        fontWeight={fw}
                         fill
                     />
                     <div
@@ -355,7 +354,6 @@ export default function BarcodePrint({ barcodes }) {
                                     <BarcodeBars
                                         code={row.code}
                                         barHeight={28}
-                                        fontWeight={400}
                                     />
                                 </div>
                                 <div className="min-w-0 flex-1">

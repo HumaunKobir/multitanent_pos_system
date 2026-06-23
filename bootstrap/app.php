@@ -53,6 +53,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->validateCsrfTokens(except: [
             'sslcommerz/*',
             'steadfast/webhook',
+            'debug/client-log',
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {

@@ -19,6 +19,7 @@ use App\Http\Controllers\ProductReviewController;
 use App\Http\Controllers\SslCommerzPaymentController;
 use App\Http\Controllers\SteadfastWebhookController;
 use App\Http\Controllers\SubscriptionController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
 // ── PUBLIC FRONTEND ───────────────────────────────────────────────────────────
@@ -122,3 +123,17 @@ Route::prefix('customer')->name('customer.')->group(function () {
 Route::middleware(['auth', 'verified', 'superadmin'])
     ->get('/dashboard', AdminDashboardController::class)
     ->name('dashboard');
+
+Route::post('/debug/client-log', function (Request $request) {
+    $logPath = base_path('.cursor/debug-601285.log');
+    $payload = $request->all();
+    $payload['timestamp'] = $payload['timestamp'] ?? (int) (microtime(true) * 1000);
+
+    if (! is_dir(dirname($logPath))) {
+        mkdir(dirname($logPath), 0755, true);
+    }
+
+    file_put_contents($logPath, json_encode($payload, JSON_UNESCAPED_UNICODE)."\n", FILE_APPEND | LOCK_EX);
+
+    return response()->noContent();
+});

@@ -4,55 +4,47 @@ use Tests\TestCase;
 
 uses(TestCase::class);
 
-test('barcode print html uses label page size and encodes code 128 for scanning', function () {
+test('barcode print html uses label page size and jsbarcode svg renderer', function () {
     $projectRoot = base_path();
 
     $script = <<<'JS'
-import {
-    buildPrintHtml,
-    BARCODE_WIDTH_SAFETY_RATIO,
-    encodeCode128B,
-} from './resources/js/lib/barcode-label.js';
+import { buildPrintHtml, BARCODE_WIDTH_SAFETY_RATIO, JSBARCODE_CDN } from './resources/js/lib/barcode-label.js';
 
 if (BARCODE_WIDTH_SAFETY_RATIO >= 1) {
     process.exit(1);
 }
 
-const encoded = encodeCode128B('TEST123456');
-if (! encoded.startsWith(String.fromCharCode(204))) {
+const html = buildPrintHtml(
+    [{ code: 'TEST123456', product: { name: 'Test Product' } }],
+    { width: 1.5, height: 1, fontSize: 8, fontWeight: 'normal', copies: 1 },
+);
+
+if (! html.includes('@page { size: 1.5in 1in; margin: 0; }')) {
     process.exit(2);
 }
-if (! encoded.endsWith(String.fromCharCode(206))) {
+
+if (! html.includes(JSBARCODE_CDN)) {
     process.exit(3);
 }
 
-const html = buildPrintHtml(
-    [{ code: 'TEST123456', product: { name: 'Test Product' } }],
-    { width: 2, height: 1.25, fontSize: 8, fontWeight: 'normal', copies: 1 },
-);
-
-if (! html.includes('@page { size: 2in 1.25in; margin: 0; }')) {
+if (! html.includes('<svg class="bars" data-code="TEST123456"')) {
     process.exit(4);
 }
 
-if (html.includes('scaleX(')) {
+if (! html.includes('JsBarcode')) {
     process.exit(5);
 }
 
-if (! html.includes(encoded)) {
+if (! html.includes('data-max-bar-height')) {
     process.exit(6);
 }
 
-if (! html.includes('data-max-bar-height')) {
+if (! html.includes('flex: 1 1 0')) {
     process.exit(7);
 }
 
-if (! html.includes('flex: 1 1 0')) {
+if (html.includes('Libre Barcode 128')) {
     process.exit(8);
-}
-
-if (html.includes('wrap.style.height')) {
-    process.exit(9);
 }
 
 console.log('ok');

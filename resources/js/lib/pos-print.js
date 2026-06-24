@@ -384,6 +384,9 @@ function groupItemsByVariant(items) {
         if (existing) {
             existing.quantity += parseFloat(item.quantity ?? 0);
             existing.amount += parseFloat(item.amount ?? 0);
+            existing.line_discount = parseFloat(existing.line_discount ?? 0) + parseFloat(item.line_discount ?? 0);
+            existing.promotion_discount =
+                parseFloat(existing.promotion_discount ?? 0) + parseFloat(item.promotion_discount ?? 0);
             continue;
         }
 
@@ -391,6 +394,8 @@ function groupItemsByVariant(items) {
             ...item,
             quantity: parseFloat(item.quantity ?? 0),
             amount: parseFloat(item.amount ?? 0),
+            line_discount: parseFloat(item.line_discount ?? 0),
+            promotion_discount: parseFloat(item.promotion_discount ?? 0),
         });
     }
 
@@ -492,6 +497,7 @@ export function buildSellPosPrintPayload(sell, options = {}) {
         const freeQty = parseFloat(item.free_quantity ?? 0);
         const unitPrice = parseFloat(item.unit_price ?? item.sell_price ?? item.price ?? 0);
         const lineItemDiscount = parseFloat(item.discount ?? 0);
+        const promotionDiscount = parseFloat(item.promotion_discount ?? 0);
         const variationId = item.variation_id ?? null;
         const variantLabel = variationId
             ? (item.variation?.variation_data?.label ?? '').trim()
@@ -505,7 +511,8 @@ export function buildSellPosPrintPayload(sell, options = {}) {
             unit_price: unitPrice,
             sell_price: unitPrice,
             line_discount: lineItemDiscount,
-            promotion_label: item.promotion?.name ?? null,
+            promotion_discount: promotionDiscount,
+            promotion_label: item.promotion?.name ?? item.promotion_label ?? null,
             product: {
                 name: item.product?.name ?? '—',
             },
@@ -595,6 +602,7 @@ export function buildSellPosPrintPayload(sell, options = {}) {
                 coinsEarned: parseFloat(sell.coins_earned ?? 0),
                 roundOff,
                 lineDiscount,
+                promotionDiscount,
                 discount: invoiceDiscount + specialDiscount + promotionDiscount + lineDiscount,
                 net,
                 paid,
@@ -648,6 +656,12 @@ function renderPosInvoice(data) {
             ${groupedItems
                 .map((item) => {
                     const metaParts = [];
+                    if (item.promotion_label) {
+                        metaParts.push(`Promo: ${item.promotion_label}`);
+                    }
+                    if (parseFloat(item.promotion_discount ?? 0) > 0) {
+                        metaParts.push(`Promo Disc: ${formatMoneyTk(item.promotion_discount)}`);
+                    }
                     if (parseFloat(item.line_discount ?? 0) > 0) {
                         metaParts.push(`Disc: ${formatMoneyTk(item.line_discount)}`);
                     }
@@ -670,6 +684,7 @@ function renderPosInvoice(data) {
     const totalsRows = [
         totals.gross != null ? totalRow('Subtotal', totals.gross) : '',
         parseFloat(totals.lineDiscount ?? 0) > 0 ? totalRow('Line Discount', totals.lineDiscount) : '',
+        parseFloat(totals.promotionDiscount ?? 0) > 0 ? totalRow('Promotion Discount', totals.promotionDiscount) : '',
         parseFloat(totals.invoiceDiscount ?? 0) > 0 ? totalRow('Invoice Discount', totals.invoiceDiscount) : '',
         parseFloat(totals.specialDiscount ?? 0) > 0
             ? totalRow(totals.specialDiscountName ? `Special (${totals.specialDiscountName})` : 'Special Discount', totals.specialDiscount)

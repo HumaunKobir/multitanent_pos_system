@@ -651,7 +651,7 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove, sta
                 </Button>
             </div>
 
-            <div className="mt-1.5 grid grid-cols-2 gap-x-1.5 gap-y-1 sm:grid-cols-5 sm:gap-1 sm:gap-y-0 lg:mt-2 lg:gap-1.5">
+            <div className="mt-1.5 grid grid-cols-2 gap-x-1.5 gap-y-1 sm:grid-cols-[minmax(0,1fr)_minmax(5.5rem,1.4fr)_minmax(0,0.75fr)_minmax(0,0.75fr)_auto] sm:gap-1 sm:gap-y-0 lg:mt-2 lg:gap-1.5">
                 <div>
                     <p className="mb-0.5 text-[9px] uppercase text-muted-foreground">Price</p>
                     <Input
@@ -664,7 +664,7 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove, sta
                         className={cn(inputCls, 'h-5 px-0.5 text-right text-[11px] sm:h-6 sm:px-1 lg:h-7', item.promotion_id && 'bg-muted')}
                     />
                 </div>
-                <div>
+                <div className="min-w-0">
                     <p className="mb-0.5 text-[9px] uppercase text-muted-foreground">Qty</p>
                     <div className="flex items-center gap-0.5">
                         <Button
@@ -685,7 +685,7 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove, sta
                             onChange={(e) =>
                                 onUpdate(index, 'quantity', clampQuantityInput(e.target.value, item.available_stock))
                             }
-                            className={cn(inputCls, 'h-5 w-full min-w-0 px-0.5 text-center text-[11px] sm:h-6 lg:h-7', overStock && 'border-destructive')}
+                            className={cn(inputCls, 'h-5 min-w-8 flex-1 px-0.5 text-center text-[11px] sm:h-6 lg:h-7', overStock && 'border-destructive')}
                         />
                         <Button
                             type="button"

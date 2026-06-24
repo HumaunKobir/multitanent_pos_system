@@ -5,6 +5,7 @@ namespace App\Http\Requests;
 use App\Enums\PromotionScope;
 use App\Enums\PromotionType;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Carbon;
 use Illuminate\Validation\Rule;
 
 class StorePromotionRequest extends FormRequest
@@ -66,7 +67,14 @@ class StorePromotionRequest extends FormRequest
             'min_qty' => ['nullable', 'numeric', 'min:0.01'],
             'max_discount_amount' => ['nullable', 'numeric', 'min:0'],
             'starts_at' => ['nullable', 'date'],
-            'ends_at' => ['nullable', 'date', 'after_or_equal:starts_at'],
+            'ends_at' => [
+                'nullable',
+                'date',
+                Rule::when(
+                    filled($this->input('starts_at')),
+                    ['after_or_equal:starts_at'],
+                ),
+            ],
             'status' => ['required', 'boolean'],
             'priority' => ['required', 'integer', 'min:0'],
             'stack_with_product_discount' => ['required', 'boolean'],
@@ -79,6 +87,24 @@ class StorePromotionRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        foreach (['starts_at', 'ends_at'] as $field) {
+            if ($this->has($field) && ($this->input($field) === '' || $this->input($field) === null)) {
+                $this->merge([$field => null]);
+
+                continue;
+            }
+
+            if ($this->filled($field)) {
+                $parsed = Carbon::parse($this->input($field), config('app.timezone'));
+
+                if ($field === 'ends_at' && $parsed->isStartOfDay()) {
+                    $parsed = $parsed->copy()->endOfDay();
+                }
+
+                $this->merge([$field => $parsed->toDateTimeString()]);
+            }
+        }
+
         if ($this->has('min_qty') && ($this->input('min_qty') === '' || $this->input('min_qty') === null)) {
             $this->merge(['min_qty' => null]);
         }

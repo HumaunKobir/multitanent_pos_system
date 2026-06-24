@@ -11,15 +11,24 @@ use Illuminate\Support\Collection;
 
 class PromotionService
 {
-    /** @var Collection<int, Promotion>|null */
-    private ?Collection $cachedPromotions = null;
+    /** @var array<string, Collection<int, Promotion>> */
+    private array $cachedPromotions = [];
 
     /**
      * @return array<int, array<string, mixed>>
      */
     public function activeForBranch(?int $branchId): array
     {
-        return $this->loadPromotions($branchId)
+        return Promotion::query()
+            ->with('targets')
+            ->active()
+            ->where(function ($query) {
+                $query->whereNull('ends_at')
+                    ->orWhere('ends_at', '>=', now());
+            })
+            ->when($branchId, fn ($query) => $query->accessibleAtBranch($branchId))
+            ->orderByDesc('priority')
+            ->get()
             ->map(fn (Promotion $promotion) => $this->serializePromotion($promotion))
             ->values()
             ->all();
@@ -33,9 +42,9 @@ class PromotionService
      *   stacking: array<string, bool>
      * }
      */
-    public function applyToCart(array $items, ?int $branchId): array
+    public function applyToCart(array $items, ?int $branchId, ?string $saleDate = null): array
     {
-        $promotions = $this->loadPromotions($branchId);
+        $promotions = $this->loadPromotions($branchId, $saleDate);
         $productMap = $this->loadProductsForItems($items, $branchId);
         $items = $this->prepareItemsForPromotion($items);
 
@@ -61,9 +70,9 @@ class PromotionService
      *   stacking: array<string, bool>
      * }
      */
-    public function validateAndResolve(array $items, ?int $branchId): array
+    public function validateAndResolve(array $items, ?int $branchId, ?string $saleDate = null): array
     {
-        return $this->applyToCart($items, $branchId);
+        return $this->applyToCart($items, $branchId, $saleDate);
     }
 
     public function matchesProduct(Promotion $promotion, Product $product): bool
@@ -497,21 +506,27 @@ class PromotionService
     }
 
     /** @return Collection<int, Promotion> */
-    private function loadPromotions(?int $branchId): Collection
+    private function loadPromotions(?int $branchId, string|\DateTimeInterface|null $saleDate = null, bool $scheduleSaleDate = true): Collection
     {
-        if ($this->cachedPromotions !== null) {
-            return $this->cachedPromotions;
+        $cacheKey = ($branchId ?? 'all').'|'.($scheduleSaleDate ? (string) $saleDate : 'all-scheduled');
+
+        if (isset($this->cachedPromotions[$cacheKey])) {
+            return $this->cachedPromotions[$cacheKey];
         }
 
-        $this->cachedPromotions = Promotion::query()
+        $query = Promotion::query()
             ->with('targets')
             ->active()
-            ->withinSchedule()
             ->when($branchId, fn ($query) => $query->accessibleAtBranch($branchId))
-            ->orderByDesc('priority')
-            ->get();
+            ->orderByDesc('priority');
 
-        return $this->cachedPromotions;
+        if ($scheduleSaleDate) {
+            $query->activeOnSaleDate($saleDate);
+        }
+
+        $this->cachedPromotions[$cacheKey] = $query->get();
+
+        return $this->cachedPromotions[$cacheKey];
     }
 
     /** @return array<string, mixed> */

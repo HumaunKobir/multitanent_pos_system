@@ -157,7 +157,7 @@ class PromotionController extends Controller
                 'get_qty' => $data['get_qty'] ?? null,
                 'get_discount_percent' => $data['get_discount_percent'] ?? null,
                 'bundle_product_ids' => $data['bundle_product_ids'] ?? null,
-                'min_qty' => $data['min_qty'],
+                'min_qty' => $data['min_qty'] ?? null,
                 'max_discount_amount' => $data['max_discount_amount'] ?? null,
                 'starts_at' => $data['starts_at'] ?? null,
                 'ends_at' => $data['ends_at'] ?? null,

@@ -150,6 +150,7 @@ class SellController extends Controller
                     $branchId,
                     (float) $data['vat'],
                     deductStock: false,
+                    saleDate: $data['date'] ?? null,
                 );
 
                 $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId, $promotionStacking);
@@ -219,6 +220,7 @@ class SellController extends Controller
             $branchId,
             (float) $data['vat'],
             deductStock: false,
+            saleDate: $data['date'] ?? null,
         );
 
         $saleTotals = $this->resolveSaleTotals($data, $grossAmount, $lineDiscountTotal, $vatAmount, $branchId, $promotionStacking);
@@ -239,6 +241,7 @@ class SellController extends Controller
                     $data['items'],
                     $branchId,
                     (float) $data['vat'],
+                    saleDate: $data['date'] ?? null,
                 );
 
                 $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId, $promotionStacking);
@@ -532,6 +535,7 @@ class SellController extends Controller
             $branchId,
             (float) $data['vat'],
             deductStock: false,
+            saleDate: $data['date'] ?? null,
         );
 
         $saleTotals = $this->resolveSaleTotals(
@@ -590,6 +594,7 @@ class SellController extends Controller
                     $data['items'],
                     $branchId,
                     (float) $data['vat'],
+                    saleDate: $data['date'] ?? null,
                 );
 
                 $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId, $promotionStacking);
@@ -1162,9 +1167,14 @@ class SellController extends Controller
      *     promotionStacking: array<string, bool>,
      *     sellProductsData: array<int, array<string, mixed>>
      * } */
-    private function processSellItems(array $items, ?int $branchId, float $vatPercent, bool $deductStock = true): array
-    {
-        $promotionResult = $this->promotionService->validateAndResolve($items, $branchId);
+    private function processSellItems(
+        array $items,
+        ?int $branchId,
+        float $vatPercent,
+        bool $deductStock = true,
+        ?string $saleDate = null,
+    ): array {
+        $promotionResult = $this->promotionService->validateAndResolve($items, $branchId, $saleDate);
         $items = $promotionResult['items'];
         $promotionDiscountTotal = (float) $promotionResult['promotion_discount_total'];
         $promotionStacking = $promotionResult['stacking'];

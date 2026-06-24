@@ -4,6 +4,7 @@ import { AppToastRegion } from '@/components/app-toast-region';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { AppToastProvider } from '@/contexts/app-toast-context';
 import { initializeTheme } from '@/hooks/use-appearance';
+import { preventNumberInputScroll } from '@/lib/prevent-number-input-scroll';
 import AdminLayout from '@/layouts/admin-layout';
 import AppLayout from '@/layouts/app-layout';
 import AuthLayout from '@/layouts/auth-layout';
@@ -63,3 +64,4 @@ createInertiaApp({
 });
 
 initializeTheme();
+preventNumberInputScroll();

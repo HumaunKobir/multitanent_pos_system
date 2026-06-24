@@ -2,6 +2,78 @@ function roundAmount(value) {
     return Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 }
 
+function localTodayYmd() {
+    const date = new Date();
+
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * @param {object|null|undefined} promotion
+ * @param {Date|string} at
+ * @returns {boolean}
+ */
+export function isPromotionWithinSchedule(promotion, at = new Date()) {
+    if (!promotion) {
+        return false;
+    }
+
+    const moment = at instanceof Date ? at : new Date(at);
+    const startsAt = promotion.starts_at ? new Date(promotion.starts_at) : null;
+    const endsAt = promotion.ends_at ? new Date(promotion.ends_at) : null;
+
+    if (startsAt && moment < startsAt) {
+        return false;
+    }
+
+    if (endsAt && moment > endsAt) {
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * @param {object|null|undefined} promotion
+ * @param {string|null|undefined} saleDate Y-m-d
+ * @returns {boolean}
+ */
+export function isPromotionActiveOnSaleDate(promotion, saleDate) {
+    if (!promotion) {
+        return false;
+    }
+
+    const effectiveSaleDate = saleDate || localTodayYmd();
+
+    if (effectiveSaleDate === localTodayYmd()) {
+        return isPromotionWithinSchedule(promotion, new Date());
+    }
+
+    const dayStart = new Date(`${effectiveSaleDate}T00:00:00`);
+    const dayEnd = new Date(`${effectiveSaleDate}T23:59:59.999`);
+    const startsAt = promotion.starts_at ? new Date(promotion.starts_at) : null;
+    const endsAt = promotion.ends_at ? new Date(promotion.ends_at) : null;
+
+    if (startsAt && startsAt > dayEnd) {
+        return false;
+    }
+
+    if (endsAt && endsAt < dayStart) {
+        return false;
+    }
+
+    return true;
+}
+
+/**
+ * @param {Array<object>} promotions
+ * @param {string|null|undefined} saleDate
+ * @returns {Array<object>}
+ */
+export function filterPromotionsForSaleDate(promotions = [], saleDate = null) {
+    return promotions.filter((promotion) => isPromotionActiveOnSaleDate(promotion, saleDate));
+}
+
 function percentDiscount(base, percent, cap = null) {
     let amount = (base * percent) / 100;
     if (cap !== null && cap !== undefined) {
@@ -142,6 +214,23 @@ function prepareItemsForPromotion(items) {
         ...item,
         free_quantity: 0,
     }));
+}
+
+function stripPromotionsFromItems(items) {
+    return items.map((item) => {
+        const catalogPrice = parseFloat(item.original_unit_price ?? item.unit_price ?? 0);
+
+        return {
+            ...item,
+            original_unit_price: catalogPrice,
+            unit_price: catalogPrice,
+            promotion_id: null,
+            promotion_discount: 0,
+            promotion_label: null,
+            promotion_meta: null,
+            free_quantity: 0,
+        };
+    });
 }
 
 function applyLinePromotions(items, promotions) {
@@ -320,16 +409,27 @@ function resolveStackingFlags(items, promotions) {
     };
 }
 
-export function applyPromotionsToCart(items = [], promotions = []) {
-    if (!items.length || !promotions.length) {
+export function applyPromotionsToCart(items = [], promotions = [], saleDate = null) {
+    if (!items.length) {
         return {
-            items: items.map((item) => ({
-                ...item,
-                original_unit_price: parseFloat(item.original_unit_price ?? item.unit_price ?? 0),
-                promotion_id: item.promotion_id ?? null,
-                promotion_discount: parseFloat(item.promotion_discount ?? 0),
-            })),
-            promotion_discount_total: items.reduce((sum, item) => sum + parseFloat(item.promotion_discount ?? 0), 0),
+            items: [],
+            promotion_discount_total: 0,
+            stacking: {
+                manual_line_discount: true,
+                invoice_discount: true,
+                special_discount: true,
+            },
+        };
+    }
+
+    const scheduledPromotions = filterPromotionsForSaleDate(promotions, saleDate);
+
+    if (!scheduledPromotions.length) {
+        const strippedItems = stripPromotionsFromItems(items);
+
+        return {
+            items: strippedItems,
+            promotion_discount_total: 0,
             stacking: {
                 manual_line_discount: true,
                 invoice_discount: true,
@@ -339,9 +439,9 @@ export function applyPromotionsToCart(items = [], promotions = []) {
     }
 
     const normalizedItems = prepareItemsForPromotion(items);
-    let resolved = applyLinePromotions(normalizedItems, promotions);
-    resolved = applyBuyXGetY(resolved, promotions);
-    resolved = applyBundlePromotions(resolved, promotions);
+    let resolved = applyLinePromotions(normalizedItems, scheduledPromotions);
+    resolved = applyBuyXGetY(resolved, scheduledPromotions);
+    resolved = applyBundlePromotions(resolved, scheduledPromotions);
 
     const promotionDiscountTotal = roundAmount(
         resolved.reduce((sum, item) => sum + parseFloat(item.promotion_discount ?? 0), 0),
@@ -350,7 +450,7 @@ export function applyPromotionsToCart(items = [], promotions = []) {
     return {
         items: resolved,
         promotion_discount_total: promotionDiscountTotal,
-        stacking: resolveStackingFlags(resolved, promotions),
+        stacking: resolveStackingFlags(resolved, scheduledPromotions),
     };
 }
 

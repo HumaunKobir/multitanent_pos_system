@@ -9,6 +9,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Carbon;
 
 class Promotion extends Model
 {
@@ -88,6 +89,32 @@ class Promotion extends Model
             ->where(function (Builder $query) use ($at) {
                 $query->whereNull('ends_at')
                     ->orWhere('ends_at', '>=', $at);
+            });
+    }
+
+    public function scopeActiveOnSaleDate(Builder $query, string|\DateTimeInterface|null $saleDate): Builder
+    {
+        if ($saleDate === null || $saleDate === '') {
+            return $query->withinSchedule(now());
+        }
+
+        $date = Carbon::parse($saleDate);
+
+        if ($date->isToday()) {
+            return $query->withinSchedule(now());
+        }
+
+        $startOfDay = $date->copy()->startOfDay();
+        $endOfDay = $date->copy()->endOfDay();
+
+        return $query
+            ->where(function (Builder $query) use ($endOfDay) {
+                $query->whereNull('starts_at')
+                    ->orWhere('starts_at', '<=', $endOfDay);
+            })
+            ->where(function (Builder $query) use ($startOfDay) {
+                $query->whereNull('ends_at')
+                    ->orWhere('ends_at', '>=', $startOfDay);
             });
     }
 

@@ -538,3 +538,199 @@ test('promotion with recorded usage cannot be deleted', function () {
 
     expect(Promotion::query()->whereKey($promotion->id)->exists())->toBeTrue();
 });
+
+test('promotion with null schedule dates always applies', function () {
+    $user = User::factory()->create();
+    $product = Product::factory()->create([
+        'branch_id' => $user->branch_id,
+        'sale_price' => 1000,
+        'discount_price' => 0,
+    ]);
+
+    $promotion = Promotion::factory()->percent(10)->forProduct()->create([
+        'branch_id' => $user->branch_id,
+        'starts_at' => null,
+        'ends_at' => null,
+    ]);
+
+    PromotionTarget::create([
+        'promotion_id' => $promotion->id,
+        'target_type' => PromotionScope::Product->value,
+        'target_id' => $product->id,
+    ]);
+
+    $service = app(PromotionService::class);
+    $result = $service->applyToCart([
+        [
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'unit_price' => 1000,
+            'discount' => 0,
+        ],
+    ], $user->branch_id, now()->format('Y-m-d'));
+
+    expect($result['items'][0]['promotion_id'])->toBe($promotion->id);
+});
+
+test('promotion applies when sale date is within scheduled window', function () {
+    $user = User::factory()->create();
+    $product = Product::factory()->create([
+        'branch_id' => $user->branch_id,
+        'sale_price' => 1000,
+        'discount_price' => 0,
+    ]);
+
+    $promotion = Promotion::factory()->percent(10)->forProduct()->create([
+        'branch_id' => $user->branch_id,
+        'starts_at' => now()->subDay(),
+        'ends_at' => now()->addDay()->endOfDay(),
+    ]);
+
+    PromotionTarget::create([
+        'promotion_id' => $promotion->id,
+        'target_type' => PromotionScope::Product->value,
+        'target_id' => $product->id,
+    ]);
+
+    $service = app(PromotionService::class);
+    $result = $service->applyToCart([
+        [
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'unit_price' => 1000,
+            'discount' => 0,
+        ],
+    ], $user->branch_id, now()->format('Y-m-d'));
+
+    expect($result['items'][0]['promotion_id'])->toBe($promotion->id);
+});
+
+test('promotion does not apply before starts at datetime on same sale day', function () {
+    $user = User::factory()->create();
+    $product = Product::factory()->create([
+        'branch_id' => $user->branch_id,
+        'sale_price' => 1000,
+        'discount_price' => 0,
+    ]);
+
+    $promotion = Promotion::factory()->percent(10)->forProduct()->create([
+        'branch_id' => $user->branch_id,
+        'starts_at' => now()->addHour(),
+        'ends_at' => now()->addDay(),
+    ]);
+
+    PromotionTarget::create([
+        'promotion_id' => $promotion->id,
+        'target_type' => PromotionScope::Product->value,
+        'target_id' => $product->id,
+    ]);
+
+    $service = app(PromotionService::class);
+    $result = $service->applyToCart([
+        [
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'unit_price' => 1000,
+            'discount' => 0,
+        ],
+    ], $user->branch_id, now()->format('Y-m-d'));
+
+    expect($result['items'][0]['promotion_id'])->toBeNull();
+});
+
+test('active promotions for branch include scheduled promotions not yet started today', function () {
+    $user = User::factory()->create();
+
+    $futurePromotion = Promotion::factory()->percent(10)->forProduct()->create([
+        'branch_id' => $user->branch_id,
+        'starts_at' => now()->addHour(),
+        'ends_at' => now()->addDay(),
+    ]);
+
+    $service = app(PromotionService::class);
+    $active = collect($service->activeForBranch($user->branch_id));
+
+    expect($active->pluck('id'))->toContain($futurePromotion->id);
+});
+
+test('creating promotion normalizes ends at midnight to end of day', function () {
+    $this->artisan('permissions:sync');
+
+    $user = promotionUser(['setting.promotion.create']);
+    $product = Product::factory()->create(['branch_id' => $user->branch_id]);
+    $promotionName = 'Ends Midnight '.uniqid();
+
+    $this->actingAs($user)
+        ->post('/setting/promotion', [
+            'name' => $promotionName,
+            'scope' => PromotionScope::Product->value,
+            'type' => PromotionType::Percent->value,
+            'discount_value' => '10',
+            'target_ids' => [$product->id],
+            'min_qty' => '1',
+            'starts_at' => now()->subDay()->format('Y-m-d\TH:i'),
+            'ends_at' => now()->format('Y-m-d').'T00:00',
+            'status' => true,
+            'priority' => 0,
+            'stack_with_product_discount' => true,
+            'stack_with_manual_line_discount' => true,
+            'stack_with_invoice_discount' => true,
+            'stack_with_special_discount' => true,
+            'exclusive' => false,
+        ])
+        ->assertRedirect(route('setting.promotion.index'));
+
+    $promotion = Promotion::query()->where('name', $promotionName)->first();
+
+    expect($promotion)->not->toBeNull();
+    expect($promotion->ends_at?->format('H:i:s'))->toBe('23:59:59');
+
+    $service = app(PromotionService::class);
+    $result = $service->applyToCart([
+        [
+            'product_id' => $product->id,
+            'quantity' => 1,
+            'unit_price' => 1000,
+            'discount' => 0,
+        ],
+    ], $user->branch_id, now()->format('Y-m-d'));
+
+    expect($result['items'][0]['promotion_id'])->toBe($promotion->id);
+});
+
+test('expired promotion does not apply on todays sale', function () {
+    $user = User::factory()->create();
+    $product = Product::factory()->create([
+        'branch_id' => $user->branch_id,
+        'sale_price' => 200,
+        'discount_price' => 0,
+    ]);
+
+    $promotion = Promotion::factory()->percent(5)->forProduct()->create([
+        'branch_id' => $user->branch_id,
+        'starts_at' => now()->subDay(),
+        'ends_at' => now()->subHour(),
+    ]);
+
+    PromotionTarget::create([
+        'promotion_id' => $promotion->id,
+        'target_type' => PromotionScope::Product->value,
+        'target_id' => $product->id,
+    ]);
+
+    $service = app(PromotionService::class);
+
+    expect(collect($service->activeForBranch($user->branch_id))->pluck('id'))->not->toContain($promotion->id);
+
+    $result = $service->applyToCart([
+        [
+            'product_id' => $product->id,
+            'quantity' => 4,
+            'unit_price' => 200,
+            'discount' => 0,
+        ],
+    ], $user->branch_id, now()->format('Y-m-d'));
+
+    expect($result['items'][0]['promotion_id'])->toBeNull();
+    expect((float) $result['items'][0]['unit_price'])->toBe(200.0);
+});

@@ -913,8 +913,8 @@ export default function SellCreate({
     const [items, setItems] = useState(resumedSell?.items ?? []);
 
     const { items: promotedItems, promotion_discount_total: promotionDiscountTotal, stacking: promotionStacking } = useMemo(
-        () => applyPromotionsToCart(items, promotions),
-        [items, promotions],
+        () => applyPromotionsToCart(items, promotions, form.data.date),
+        [items, promotions, form.data.date],
     );
 
     const grossAmount = promotedItems.reduce((sum, it) => sum + lineGross(it), 0);

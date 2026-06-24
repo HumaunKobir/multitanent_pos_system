@@ -43,6 +43,7 @@ class Customer extends Authenticatable
         'registration_type' => CustomerRegistrationType::class,
         'is_default' => 'boolean',
         'balance' => 'decimal:2',
+        'point' => 'decimal:2',
     ];
 
     protected function imageUrl(): Attribute

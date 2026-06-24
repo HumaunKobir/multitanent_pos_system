@@ -32,6 +32,7 @@ use App\Http\Controllers\Setting\AdminProfileController;
 use App\Http\Controllers\Setting\BranchProfileController;
 use App\Http\Controllers\Setting\BrandController;
 use App\Http\Controllers\Setting\CategoryController;
+use App\Http\Controllers\Setting\CoinSettingsController;
 use App\Http\Controllers\Setting\ColorController;
 use App\Http\Controllers\Setting\FaqController;
 use App\Http\Controllers\Setting\PageContentController;
@@ -148,6 +149,7 @@ Route::middleware(['auth', 'verified'])->prefix('api')->name('api.')->group(func
     Route::get('customers', [CustomerSearchController::class, 'index'])->name('customers');
     Route::post('customers', [CustomerSearchController::class, 'store'])->name('customers.store');
     Route::get('customers/{customer}/due-alert', [CustomerSearchController::class, 'dueAlert'])->name('customers.due-alert');
+    Route::get('customers/{customer}/coins', [CustomerSearchController::class, 'coins'])->name('customers.coins');
 });
 
 Route::middleware(['auth', 'verified'])->prefix('accounts')->name('accounts.')->group(function () {
@@ -209,4 +211,9 @@ Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->gr
     Route::put('branch-profile', [BranchProfileController::class, 'update'])->name('branch-profile.update');
     Route::get('pos-terms', [PosTermsController::class, 'edit'])->name('pos-terms.edit');
     Route::put('pos-terms', [PosTermsController::class, 'update'])->name('pos-terms.update');
+    Route::get('coin-settings', [CoinSettingsController::class, 'index'])->name('coin-settings.index');
+    Route::get('coin-settings/create', [CoinSettingsController::class, 'create'])->name('coin-settings.create');
+    Route::post('coin-settings', [CoinSettingsController::class, 'store'])->name('coin-settings.store');
+    Route::get('coin-settings/edit', [CoinSettingsController::class, 'edit'])->name('coin-settings.edit');
+    Route::put('coin-settings', [CoinSettingsController::class, 'update'])->name('coin-settings.update');
 });

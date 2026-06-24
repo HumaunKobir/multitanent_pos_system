@@ -38,6 +38,7 @@ return [
                 ['title' => 'Received Stock', 'href' => '/inventory/stock-distribution/received', 'permission' => 'inventory.stock-distribution.receive', 'branch_received_only' => true],
                 ['title' => 'Special Discount', 'href' => '/setting/special-discount', 'permission' => 'setting.special-discount.view'],
                 ['title' => 'Promotions', 'href' => '/setting/promotion', 'permission' => 'setting.promotion.view'],
+                ['title' => 'Coin Settings', 'href' => '/setting/coin-settings', 'permission' => 'setting.coin-settings.view', 'branch_only' => true],
             ],
         ],
         [
@@ -124,6 +125,7 @@ return [
                 ['title' => 'Size', 'href' => '/setting/size', 'permission' => 'setting.size.view'],
                 ['title' => 'Warranty', 'href' => '/setting/warranty', 'permission' => 'setting.warranty.view'],
                 ['title' => 'POS Terms & Conditions', 'href' => '/setting/pos-terms', 'permission' => 'setting.pos-terms.view', 'branch_only' => true],
+                ['title' => 'Coin Settings', 'href' => '/setting/coin-settings', 'permission' => 'setting.coin-settings.view', 'branch_only' => true],
                 ['title' => 'Product', 'href' => '/product', 'permission' => 'product.view'],
                 ['title' => 'Barcode', 'href' => '/barcode', 'permission' => 'barcode.view'],
             ],

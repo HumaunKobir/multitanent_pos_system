@@ -60,6 +60,7 @@ export function computeSellNetAmount({
     vat = 0,
     discount = 0,
     specialDiscountAmount = 0,
+    coinDiscountAmount = 0,
     roundOffAmount = 0,
     lineDiscountTotal = 0,
 } = {}) {
@@ -68,6 +69,7 @@ export function computeSellNetAmount({
         parseFloat(vat ?? 0) -
         parseFloat(discount ?? 0) -
         parseFloat(specialDiscountAmount ?? 0) -
+        parseFloat(coinDiscountAmount ?? 0) -
         parseFloat(roundOffAmount ?? 0) -
         parseFloat(lineDiscountTotal ?? 0)
     );

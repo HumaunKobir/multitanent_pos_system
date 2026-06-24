@@ -213,6 +213,13 @@ export default function CustomerIndex({ customers, filters, statuses }) {
             ),
         },
         { id: 'email', header: 'Email', render: (row) => row.email ?? '—' },
+        {
+            id: 'point',
+            header: 'Coin Balance',
+            render: (row) => (
+                <span className="tabular-nums font-medium">{parseFloat(row.point ?? 0).toFixed(2)}</span>
+            ),
+        },
         { id: 'address', header: 'Address', render: (row) => row.address ?? '—' },
         {
             id: 'status', header: 'Status', render: (row) => (

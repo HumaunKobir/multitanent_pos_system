@@ -6,8 +6,9 @@ use App\Enums\SystemAccountKey;
 use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\ChartOfAccount;
+use App\Models\CoinSettings;
 use App\Models\Customer;
-use App\Models\CustomerDueAlert;
+use App\Models\CustomerCoinTransaction;
 use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\Sell;
@@ -1520,4 +1521,292 @@ test('authenticated user can delete a sale and stock is restored', function () {
 
     $batch->refresh();
     expect((float) $batch->available)->toBe(20.0);
+});
+
+function sellCoinSettings(?int $branchId, array $overrides = []): CoinSettings
+{
+    if ($branchId === null) {
+        $branchId = Branch::factory()->create()->id;
+    }
+
+    return CoinSettings::query()->create(array_merge([
+        'branch_id' => $branchId,
+        'enabled' => true,
+        'earn_spend_amount' => 100,
+        'earn_coins' => 1,
+        'coin_value' => 1,
+        'min_redeem_coins' => 0,
+        'max_redeem_percent' => 50,
+    ], $overrides));
+}
+
+test('sale can redeem coins and earn new coins', function () {
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    $user->givePermissionTo('inventory.sell.create');
+    $cash = seedAccountingAccounts(user: $user);
+    sellCoinSettings($user->branch_id);
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = sellCustomer($user->branch_id);
+    $customer->update(['point' => 50]);
+
+    $response = $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'coins_redeemed' => '20',
+            'paid_amount' => '480',
+            'payment_account_id' => $cash->id,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '500',
+                    'quantity' => '1',
+                ],
+            ],
+        ])
+        ->assertSessionHasNoErrors()
+        ->assertRedirect();
+
+    preg_match('/\\/inventory\\/sell\\/(\\d+)/', (string) $response->headers->get('Location'), $matches);
+    $sell = Sell::query()->findOrFail((int) $matches[1]);
+
+    expect((float) $sell->coins_redeemed)->toBe(20.0);
+    expect((float) $sell->coin_discount_amount)->toBe(20.0);
+    expect((float) $sell->coins_earned)->toBe(floor((float) $sell->net_amount / 100));
+    expect((float) $sell->net_amount)->toBe(round((float) $sell->gross_amount - 20, 2));
+
+    $customer->refresh();
+    expect((float) $customer->point)->toBe(round(50 - 20 + (float) $sell->coins_earned, 2));
+
+    expect(CustomerCoinTransaction::query()->where('sell_id', $sell->id)->count())->toBe(2);
+});
+
+test('sale rejects coin redemption when balance is insufficient', function () {
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    $user->givePermissionTo('inventory.sell.create');
+    $cash = seedAccountingAccounts(user: $user);
+    sellCoinSettings($user->branch_id);
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = sellCustomer($user->branch_id);
+    $customer->update(['point' => 5]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'coins_redeemed' => '10',
+            'paid_amount' => '490',
+            'payment_account_id' => $cash->id,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '500',
+                    'quantity' => '1',
+                ],
+            ],
+        ])
+        ->assertSessionHasErrors('coins_redeemed');
+});
+
+test('updating a sale reverses and reapplies coin transactions', function () {
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    Permission::findOrCreate('inventory.sell.update', 'web');
+    $user->givePermissionTo(['inventory.sell.create', 'inventory.sell.update']);
+    $cash = seedAccountingAccounts(user: $user);
+    sellCoinSettings($user->branch_id);
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = sellCustomer($user->branch_id);
+    $customer->update(['point' => 50]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'coins_redeemed' => '10',
+            'paid_amount' => '490',
+            'payment_account_id' => $cash->id,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '500',
+                    'quantity' => '1',
+                ],
+            ],
+        ])
+        ->assertSessionHasNoErrors()
+        ->assertRedirect();
+
+    $sell = Sell::query()->where('customer_id', $customer->id)->latest('id')->first();
+    expect($sell)->not->toBeNull();
+    expect((float) $sell->coins_redeemed)->toBe(10.0);
+
+    $customer->refresh();
+    expect((float) $customer->point)->toBe(round(50 - 10 + (float) $sell->coins_earned, 2));
+
+    $this->actingAs($user)
+        ->put("/inventory/sell/{$sell->id}", [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'coins_redeemed' => '0',
+            'paid_amount' => '500',
+            'payment_account_id' => $cash->id,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '500',
+                    'quantity' => '1',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('inventory.sell.index'));
+
+    $sell->refresh();
+    expect((float) $sell->coins_redeemed)->toBe(0.0);
+    expect((float) $sell->coins_earned)->toBe(floor((float) $sell->net_amount / 100));
+
+    $customer->refresh();
+    expect((float) $customer->point)->toBe(round(50 + (float) $sell->coins_earned, 2));
+});
+
+test('updating a sale keeps existing coin redemption without insufficient balance error', function () {
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    Permission::findOrCreate('inventory.sell.update', 'web');
+    $user->givePermissionTo(['inventory.sell.create', 'inventory.sell.update']);
+    seedAccountingAccounts(user: $user);
+    sellCoinSettings($user->branch_id);
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = sellCustomer($user->branch_id);
+    $customer->update(['point' => 54]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'coins_redeemed' => '49',
+            'paid_amount' => '0',
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '200',
+                    'quantity' => '1',
+                ],
+            ],
+        ])
+        ->assertSessionHasNoErrors()
+        ->assertRedirect();
+
+    $sell = Sell::query()->where('customer_id', $customer->id)->latest('id')->first();
+    expect((float) $sell->coins_redeemed)->toBe(49.0);
+
+    $this->actingAs($user)
+        ->put("/inventory/sell/{$sell->id}", [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'coins_redeemed' => '49',
+            'paid_amount' => '0',
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '200',
+                    'quantity' => '1',
+                ],
+            ],
+        ])
+        ->assertSessionHasNoErrors()
+        ->assertRedirect(route('inventory.sell.index'));
+
+    $sell->refresh();
+    expect((float) $sell->coins_redeemed)->toBe(49.0);
+});
+
+test('due sale earns coins on full net amount not only paid portion', function () {
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    $user->givePermissionTo('inventory.sell.create');
+    $cash = seedAccountingAccounts(user: $user);
+    sellCoinSettings($user->branch_id);
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = sellCustomer($user->branch_id);
+    $customer->update(['point' => 0]);
+
+    $response = $this->actingAs($user)
+        ->post('/inventory/sell', dueSalePayload($user, $product, $customer, $cash, [
+            'paid_amount' => '200',
+        ]))
+        ->assertSessionHasNoErrors()
+        ->assertRedirect();
+
+    preg_match('/\\/inventory\\/sell\\/(\\d+)/', (string) $response->headers->get('Location'), $matches);
+    $sell = Sell::query()->findOrFail((int) $matches[1]);
+
+    expect((float) $sell->paid_amount)->toBe(200.0);
+    expect((float) $sell->net_amount)->toBeGreaterThan((float) $sell->paid_amount);
+    expect((float) $sell->coins_earned)->toBe(floor((float) $sell->net_amount / 100));
+    expect((float) $sell->coins_earned)->toBeGreaterThan(floor((float) $sell->paid_amount / 100));
+
+    $customer->refresh();
+    expect((float) $customer->point)->toBe((float) $sell->coins_earned);
+});
+
+test('sell net amount includes coin discount', function () {
+    $user = sellUser();
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'gross_amount' => 1000,
+        'discount' => 0,
+        'special_discount_amount' => 0,
+        'coin_discount_amount' => 50,
+        'round_off_amount' => 0,
+        'vat' => 0,
+        'paid_amount' => 950,
+        'type' => SaleType::Sale,
+    ]);
+
+    expect((float) $sell->net_amount)->toBe(950.0);
 });

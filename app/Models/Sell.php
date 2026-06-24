@@ -29,6 +29,9 @@ class Sell extends Model
         'special_discount_amount',
         'promotion_discount_total',
         'round_off_amount',
+        'coins_redeemed',
+        'coin_discount_amount',
+        'coins_earned',
         'vat',
         'paid_amount',
         'type',
@@ -46,6 +49,9 @@ class Sell extends Model
             'special_discount_amount' => 'decimal:2',
             'promotion_discount_total' => 'decimal:2',
             'round_off_amount' => 'decimal:2',
+            'coins_redeemed' => 'decimal:2',
+            'coin_discount_amount' => 'decimal:2',
+            'coins_earned' => 'decimal:2',
             'vat' => 'decimal:2',
             'paid_amount' => 'decimal:2',
             'type' => SaleType::class,
@@ -81,6 +87,7 @@ class Sell extends Model
             + (float) $this->vat
             - (float) $this->discount
             - (float) $this->special_discount_amount
+            - (float) $this->coin_discount_amount
             - (float) $this->round_off_amount
             - $this->lineDiscountTotal();
     }

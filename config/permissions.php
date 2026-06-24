@@ -365,6 +365,16 @@ return [
             ],
         ],
 
+        'setting.coin-settings' => [
+            'label' => 'Coin Settings',
+            'group' => 'Settings',
+            'permissions' => [
+                'setting.coin-settings.view' => 'View Coin Settings',
+                'setting.coin-settings.create' => 'Create Coin Settings',
+                'setting.coin-settings.update' => 'Update Coin Settings',
+            ],
+        ],
+
         'online-order' => [
             'label' => 'Online Orders',
             'group' => 'Ecommerce',

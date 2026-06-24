@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Enums\CommonStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Services\CoinService;
 use App\Services\CustomerDueAlertService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -71,6 +72,26 @@ class CustomerSearchController extends Controller
                 'due_given_date' => $alert->due_given_date->format('Y-m-d'),
                 'status' => $alert->status->value,
             ],
+        ]);
+    }
+
+    public function coins(Customer $customer): JsonResponse
+    {
+        $this->authorize('party.customer.view');
+
+        $branchId = auth()->user()?->branch_id;
+
+        if ($branchId !== null && $customer->branch_id !== $branchId) {
+            abort(404);
+        }
+
+        $coinService = app(CoinService::class);
+        $settings = $coinService->settingsPayloadForBranch($branchId);
+
+        return response()->json([
+            'balance' => (float) $customer->point,
+            'is_default' => (bool) $customer->is_default,
+            'settings' => $settings,
         ]);
     }
 }

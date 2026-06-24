@@ -7,7 +7,11 @@ import {
     isSpecialDiscountEligible,
 } from '@/lib/pos-discount';
 import { SalePaymentLines } from '@/components/inventory/sale-payment-lines';
+import { CustomerCoinBalance } from '@/components/inventory/customer-coin-balance';
+import { SellCoinFields } from '@/components/inventory/sell-coin-fields';
 import { SellDueAlertFields } from '@/components/inventory/sell-due-alert-fields';
+import { useCustomerCoinInfo } from '@/hooks/use-customer-coin-info';
+import { computeCoinDiscount, maxRedeemableCoins } from '@/lib/pos-coin';
 import {
     buildInitialSalePayments,
     computeSplitSalePayment,
@@ -40,7 +44,7 @@ import {
     Trash2,
     User,
 } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { applyPromotionsToCart, canApplyManualLineDiscount } from '@/lib/pos-promotion';
 
 import { RequiredMark } from '@/components/form-field';
@@ -844,6 +848,7 @@ function buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAcco
             paid_amount: resumedSell.paid_amount ?? '0',
             payments: buildInitialSalePayments([], paymentAccounts),
             round_off_amount: '0',
+            coins_redeemed: resumedSell.coins_redeemed ?? '0',
             comment: resumedSell.comment ?? '',
             due_given_date: '',
             due_alert_action: '',
@@ -861,6 +866,7 @@ function buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAcco
         paid_amount: '0',
         payments: buildInitialSalePayments([], paymentAccounts),
         round_off_amount: '0',
+        coins_redeemed: '0',
         comment: '',
         due_given_date: '',
         due_alert_action: '',
@@ -879,6 +885,7 @@ export default function SellCreate({
     pausedSales = [],
     resumedSell = null,
     posTerms = null,
+    coinSettings = null,
     cashInHandAccountId = null,
 }) {
     const { flash } = usePage().props;
@@ -886,6 +893,21 @@ export default function SellCreate({
     const initialCustomer = resumedSell?.customer ?? defaultCustomer;
 
     const form = useForm(buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAccounts }));
+    const resetCoinsRedeemed = useCallback(() => {
+        form.setData('coins_redeemed', '0');
+    }, [form]);
+    const {
+        coinInfo: customerCoinInfo,
+        loading: coinInfoLoading,
+        isWalkIn: isWalkInCustomer,
+        activeSettings: activeCoinSettings,
+        canShowCoins,
+    } = useCustomerCoinInfo({
+        customerId: form.data.customer_id,
+        walkInCustomerId: defaultCustomer?.id ?? null,
+        coinSettings,
+        onCustomerChange: resetCoinsRedeemed,
+    });
 
     const [pausedSellId, setPausedSellId] = useState(resumedSell?.id ?? null);
     const [items, setItems] = useState(resumedSell?.items ?? []);
@@ -917,7 +939,20 @@ export default function SellCreate({
               taxableAmount,
           )
         : 0;
-    const netBeforeRoundOff = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
+    const netBeforeCoin = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
+    const maxRedeemable = isWalkInCustomer
+        ? 0
+        : maxRedeemableCoins(
+              customerCoinInfo.balance + (parseFloat(resumedSell?.coins_redeemed ?? 0) - parseFloat(resumedSell?.coins_earned ?? 0)),
+              activeCoinSettings,
+              netBeforeCoin,
+          );
+    const effectiveCoinsRedeemed = Math.min(
+        Math.max(0, parseFloat(form.data.coins_redeemed || 0)),
+        maxRedeemable,
+    );
+    const coinDiscountAmount = computeCoinDiscount(effectiveCoinsRedeemed, activeCoinSettings, netBeforeCoin);
+    const netBeforeRoundOff = netBeforeCoin - coinDiscountAmount;
     const hasSaleItems = promotedItems.length > 0;
     const roundOffAmount = hasSaleItems
         ? Math.min(Math.max(0, parseFloat(form.data.round_off_amount || 0)), Math.max(0, netBeforeRoundOff))
@@ -1057,6 +1092,7 @@ export default function SellCreate({
             paid_amount: String(totalPaid),
             special_discount_id: form.data.special_discount_id || '',
             round_off_amount: String(roundOffAmount),
+            coins_redeemed: String(effectiveCoinsRedeemed),
             payments: serializedPayments.length > 0 ? serializedPayments : undefined,
         }));
         form.post(route('inventory.sell.store'));
@@ -1127,17 +1163,26 @@ export default function SellCreate({
                             </div>
                         </div>
 
-                        <div className="flex w-full flex-wrap items-end gap-1.5 sm:ml-auto sm:w-auto lg:gap-2">
+                        <div className="flex w-full flex-wrap items-start gap-1.5 sm:ml-auto sm:w-auto lg:gap-2">
                             <PausedSalesPanel
                                 pausedSales={pausedSales}
                                 currentPausedId={pausedSellId}
                                 onResume={resumePausedSale}
                             />
                             <div className="min-w-0 min-w-[120px] flex-1 sm:min-w-0 sm:w-36 lg:w-44 2xl:w-48">
-                                <span className="mb-0.5 block text-[9px] font-medium text-white/60 lg:text-[10px]">
-                                    Customer
-                                    <RequiredMark className="text-red-300" />
-                                </span>
+                                <div className="mb-0.5 flex items-center justify-between gap-2">
+                                    <span className="text-[9px] font-medium text-white/60 lg:text-[10px]">
+                                        Customer
+                                        <RequiredMark className="text-red-300" />
+                                    </span>
+                                    {canShowCoins && (
+                                        <CustomerCoinBalance
+                                            balance={customerCoinInfo.balance}
+                                            loading={coinInfoLoading}
+                                            variant="header"
+                                        />
+                                    )}
+                                </div>
                                 <CustomerSearch
                                     value={form.data.customer_id}
                                     onChange={(v) => form.setData('customer_id', v)}
@@ -1401,6 +1446,29 @@ export default function SellCreate({
                                     </div>
                                 )}
 
+                                {coinDiscountAmount > 0 && (
+                                    <div className="flex items-center justify-between gap-2 px-1">
+                                        <span className="text-muted-foreground">Coin Discount</span>
+                                        <span className="font-medium tabular-nums text-green-700">
+                                            -৳{coinDiscountAmount.toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
+
+                                <SellCoinFields
+                                    customerId={form.data.customer_id}
+                                    walkInCustomerId={defaultCustomer?.id ?? null}
+                                    coinSettings={coinSettings}
+                                    coinInfo={customerCoinInfo}
+                                    coinInfoLoading={coinInfoLoading}
+                                    coinsRedeemed={form.data.coins_redeemed}
+                                    onCoinsRedeemedChange={(value) => form.setData('coins_redeemed', value)}
+                                    netBeforeCoin={netBeforeCoin}
+                                    earnBase={netBeforeCoin}
+                                    error={form.errors.coins_redeemed}
+                                    inputClassName={inputCls}
+                                />
+
                                 <SalePaymentLines
                                     payments={form.data.payments}
                                     paymentAccounts={paymentAccounts}
@@ -1420,10 +1488,18 @@ export default function SellCreate({
                                 />
 
                                 <div className="sm:hidden">
-                                    <Label className="mb-0.5 block text-[9px] text-muted-foreground lg:text-[10px]">
-                                        Customer
-                                        <RequiredMark />
-                                    </Label>
+                                    <div className="mb-0.5 flex items-center justify-between gap-2">
+                                        <Label className="text-[9px] text-muted-foreground lg:text-[10px]">
+                                            Customer
+                                            <RequiredMark />
+                                        </Label>
+                                        {canShowCoins && (
+                                            <CustomerCoinBalance
+                                                balance={customerCoinInfo.balance}
+                                                loading={coinInfoLoading}
+                                            />
+                                        )}
+                                    </div>
                                     <CustomerSearch
                                         value={form.data.customer_id}
                                         onChange={(v) => form.setData('customer_id', v)}

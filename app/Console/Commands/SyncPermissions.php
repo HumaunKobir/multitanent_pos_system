@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use Illuminate\Console\Command;
 use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
 class SyncPermissions extends Command
@@ -25,6 +26,7 @@ class SyncPermissions extends Command
         // ── Create missing permissions ────────────────────────────────────────
         $created = 0;
         $existing = 0;
+        $createdNames = [];
 
         foreach ($modules as $module) {
             foreach (array_keys($module['permissions']) as $name) {
@@ -35,11 +37,14 @@ class SyncPermissions extends Command
                 if ($permission->wasRecentlyCreated) {
                     $this->line("  <fg=green>CREATED</> {$name}");
                     $created++;
+                    $createdNames[] = $name;
                 } else {
                     $existing++;
                 }
             }
         }
+
+        $this->inheritCoinSettingsPermissions($createdNames);
 
         $this->newLine();
         $this->info("Sync done. {$created} created, {$existing} already existed.");
@@ -71,5 +76,39 @@ class SyncPermissions extends Command
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * @param  list<string>  $createdNames
+     */
+    protected function inheritCoinSettingsPermissions(array $createdNames): void
+    {
+        $coinPermissions = [
+            'setting.coin-settings.view',
+            'setting.coin-settings.create',
+            'setting.coin-settings.update',
+        ];
+
+        if (array_intersect($createdNames, $coinPermissions) === []) {
+            return;
+        }
+
+        $anchorPermissions = [
+            'setting.pos-terms.view',
+            'setting.special-discount.view',
+        ];
+
+        $roles = Role::query()
+            ->whereHas('permissions', fn ($query) => $query->whereIn('name', $anchorPermissions))
+            ->get();
+
+        foreach ($roles as $role) {
+            $role->givePermissionTo($coinPermissions);
+        }
+
+        if ($roles->isNotEmpty()) {
+            $this->newLine();
+            $this->line("  <fg=cyan>INHERITED</> coin settings permissions to {$roles->count()} role(s) with POS/special discount access.");
+        }
     }
 }

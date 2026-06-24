@@ -118,6 +118,9 @@ function TotalsSummary({
     specialDiscountType,
     specialDiscountValue,
     promotionDiscount = 0,
+    coinDiscount = 0,
+    coinsRedeemed = 0,
+    coinsEarned = 0,
     roundOff = 0,
     lineDiscount = 0,
     net,
@@ -143,9 +146,12 @@ function TotalsSummary({
                 accent: 'text-green-600',
             }]
             : []),
+        ...(coinDiscount > 0 ? [{ label: 'Coin Discount', value: `-৳${coinDiscount.toFixed(2)}`, accent: 'text-violet-700' }] : []),
         ...(roundOff > 0 ? [{ label: 'Round Off', value: `-৳${roundOff.toFixed(2)}`, accent: 'text-green-600' }] : []),
         ...(vat > 0 ? [{ label: 'VAT', value: `৳${vat.toFixed(2)}`, muted: true }] : []),
         { label: 'Net Amount', value: `৳${net.toFixed(2)}`, bold: true, divider: true },
+        ...(coinsRedeemed > 0 ? [{ label: 'Coins Redeemed', value: coinsRedeemed.toFixed(2), muted: true }] : []),
+        ...(coinsEarned > 0 ? [{ label: 'Coins Earned', value: coinsEarned.toFixed(2), muted: true }] : []),
         { label: 'Paid', value: `৳${paid.toFixed(2)}`, accent: 'text-green-700 dark:text-green-400' },
         ...(change > 0
             ? [{ label: 'Change', value: `৳${change.toFixed(2)}`, accent: 'font-semibold text-amber-700' }]
@@ -259,6 +265,9 @@ export function InvoiceDocument({
                     specialDiscountType={totals.specialDiscountType}
                     specialDiscountValue={totals.specialDiscountValue}
                     promotionDiscount={parseFloat(totals.promotionDiscount ?? 0)}
+                    coinDiscount={parseFloat(totals.coinDiscount ?? 0)}
+                    coinsRedeemed={parseFloat(totals.coinsRedeemed ?? 0)}
+                    coinsEarned={parseFloat(totals.coinsEarned ?? 0)}
                     roundOff={parseFloat(totals.roundOff ?? 0)}
                     lineDiscount={lineDiscount}
                     net={net}

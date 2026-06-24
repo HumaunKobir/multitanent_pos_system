@@ -467,9 +467,10 @@ export function buildSellPosPrintPayload(sell, options = {}) {
     const invoiceDiscount = parseFloat(sell.discount ?? 0);
     const specialDiscount = parseFloat(sell.special_discount_amount ?? 0);
     const promotionDiscount = parseFloat(sell.promotion_discount_total ?? 0);
+    const coinDiscount = parseFloat(sell.coin_discount_amount ?? 0);
     const roundOff = parseFloat(sell.round_off_amount ?? 0);
     const lineDiscount = (sell.products ?? []).reduce((sum, item) => sum + parseFloat(item.discount ?? 0), 0);
-    const net = gross + vat - invoiceDiscount - specialDiscount - roundOff - lineDiscount;
+    const net = gross + vat - invoiceDiscount - specialDiscount - coinDiscount - roundOff - lineDiscount;
     const payments = (sell.payments ?? []).map((line) => ({
         id: line.id,
         payment_account_id: line.payment_account_id,
@@ -587,6 +588,9 @@ export function buildSellPosPrintPayload(sell, options = {}) {
                 invoiceDiscount,
                 specialDiscount,
                 specialDiscountName: sell.special_discount?.name ?? null,
+                coinDiscount,
+                coinsRedeemed: parseFloat(sell.coins_redeemed ?? 0),
+                coinsEarned: parseFloat(sell.coins_earned ?? 0),
                 roundOff,
                 lineDiscount,
                 discount: invoiceDiscount + specialDiscount + promotionDiscount + lineDiscount,
@@ -668,6 +672,7 @@ function renderPosInvoice(data) {
         parseFloat(totals.specialDiscount ?? 0) > 0
             ? totalRow(totals.specialDiscountName ? `Special (${totals.specialDiscountName})` : 'Special Discount', totals.specialDiscount)
             : '',
+        parseFloat(totals.coinDiscount ?? 0) > 0 ? totalRow('Coin Discount', totals.coinDiscount) : '',
         parseFloat(totals.roundOff ?? 0) > 0 ? totalRow('Round Off', totals.roundOff) : '',
         parseFloat(totals.vat ?? 0) > 0 ? totalRow('VAT', totals.vat) : '',
         totalRow('Total', totals.net ?? order.total_price),

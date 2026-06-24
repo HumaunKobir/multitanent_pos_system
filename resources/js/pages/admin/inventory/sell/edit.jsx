@@ -8,7 +8,11 @@ import {
     isSpecialDiscountEligible,
 } from '@/lib/pos-discount';
 import { SalePaymentLines } from '@/components/inventory/sale-payment-lines';
+import { CustomerCoinBalance } from '@/components/inventory/customer-coin-balance';
+import { SellCoinFields } from '@/components/inventory/sell-coin-fields';
 import { SellDueAlertFields } from '@/components/inventory/sell-due-alert-fields';
+import { useCustomerCoinInfo } from '@/hooks/use-customer-coin-info';
+import { computeCoinDiscount, maxRedeemableCoins } from '@/lib/pos-coin';
 import {
     buildInitialSalePayments,
     computeSplitSalePayment,
@@ -21,7 +25,7 @@ import { customerModalDefaultsFromSearch } from '@/lib/customer-modal-defaults';
 import { route } from '@/lib/route';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Save, Search, ShoppingCart, Trash2, User } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { RequiredMark } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
@@ -464,7 +468,7 @@ function ProductSearchBox({ onAdd }) {
     );
 }
 
-export default function SellEdit({ sell, walkInCustomerId = null, paymentAccounts = [], specialDiscounts = [], discountTypes = [], cashInHandAccountId = null }) {
+export default function SellEdit({ sell, walkInCustomerId = null, paymentAccounts = [], specialDiscounts = [], discountTypes = [], coinSettings = null, cashInHandAccountId = null }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const form = useForm({
@@ -477,10 +481,26 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
         paid_amount: String(sell.paid_amount ?? '0'),
         payments: buildInitialSalePayments(sell.payments, paymentAccounts),
         round_off_amount: String(sell.round_off_amount ?? '0'),
+        coins_redeemed: String(sell.coins_redeemed ?? '0'),
         comment: sell.comment ?? '',
         due_given_date: '',
         due_alert_action: '',
         items: sell.items ?? [],
+    });
+    const resetCoinsRedeemed = useCallback(() => {
+        form.setData('coins_redeemed', '0');
+    }, [form]);
+    const {
+        coinInfo: customerCoinInfo,
+        loading: coinInfoLoading,
+        isWalkIn: isWalkInCustomer,
+        activeSettings: activeCoinSettings,
+        canShowCoins,
+    } = useCustomerCoinInfo({
+        customerId: form.data.customer_id,
+        walkInCustomerId,
+        coinSettings,
+        onCustomerChange: resetCoinsRedeemed,
     });
 
     const [items, setItems] = useState(sell.items ?? []);
@@ -503,7 +523,17 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
               taxableAmount,
           )
         : 0;
-    const netBeforeRoundOff = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
+    const netBeforeCoin = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
+    const coinBalanceOffset = (parseFloat(sell.coins_redeemed ?? 0) || 0) - (parseFloat(sell.coins_earned ?? 0) || 0);
+    const maxRedeemable = isWalkInCustomer
+        ? 0
+        : maxRedeemableCoins(customerCoinInfo.balance + coinBalanceOffset, activeCoinSettings, netBeforeCoin);
+    const effectiveCoinsRedeemed = Math.min(
+        Math.max(0, parseFloat(form.data.coins_redeemed || 0)),
+        maxRedeemable,
+    );
+    const coinDiscountAmount = computeCoinDiscount(effectiveCoinsRedeemed, activeCoinSettings, netBeforeCoin);
+    const netBeforeRoundOff = netBeforeCoin - coinDiscountAmount;
     const hasSaleItems = items.length > 0;
     const roundOffAmount = hasSaleItems
         ? Math.min(Math.max(0, parseFloat(form.data.round_off_amount || 0)), Math.max(0, netBeforeRoundOff))
@@ -605,6 +635,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
             items: lineItems,
             paid_amount: String(totalPaid),
             round_off_amount: String(roundOffAmount),
+            coins_redeemed: String(effectiveCoinsRedeemed),
             payments: serializedPayments.length > 0 ? serializedPayments : undefined,
         }));
         form.put(route('inventory.sell.update', sell.id), {
@@ -648,15 +679,30 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <Card title="Sale Details" icon={CalendarDays}>
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <Field label="Customer" required error={form.errors.customer_id}>
+                            <div>
+                                <div className="mb-1 flex items-center justify-between gap-2">
+                                    <Label className="text-xs text-muted-foreground">
+                                        Customer
+                                        <RequiredMark />
+                                    </Label>
+                                    {canShowCoins && (
+                                        <CustomerCoinBalance
+                                            balance={customerCoinInfo.balance}
+                                            loading={coinInfoLoading}
+                                        />
+                                    )}
+                                </div>
                                 <CustomerSearch
                                     initialCustomer={sell.customer ?? null}
                                     value={form.data.customer_id}
                                     onChange={(v) => form.setData('customer_id', v)}
                                     error={form.errors.customer_id}
                                 />
+                                {form.errors.customer_id && (
+                                    <p className="mt-1 text-xs text-destructive">{form.errors.customer_id}</p>
+                                )}
                                 <p className="mt-0.5 text-[10px] text-muted-foreground">Leave blank for walk-in customer.</p>
-                            </Field>
+                            </div>
                             <Field label="Date" required error={form.errors.date}>
                                 <Input
                                     type="date"
@@ -933,6 +979,30 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                         </span>
                                     </div>
                                 )}
+
+                                {coinDiscountAmount > 0 && (
+                                    <div className="flex items-center justify-between gap-2 px-1 text-sm">
+                                        <span className="text-muted-foreground">Coin Discount</span>
+                                        <span className="font-medium tabular-nums text-green-700">
+                                            -৳{coinDiscountAmount.toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
+
+                                <SellCoinFields
+                                    customerId={form.data.customer_id}
+                                    walkInCustomerId={walkInCustomerId}
+                                    coinSettings={coinSettings}
+                                    coinInfo={customerCoinInfo}
+                                    coinInfoLoading={coinInfoLoading}
+                                    coinsRedeemed={form.data.coins_redeemed}
+                                    onCoinsRedeemedChange={(value) => form.setData('coins_redeemed', value)}
+                                    netBeforeCoin={netBeforeCoin}
+                                    earnBase={netBeforeCoin}
+                                    error={form.errors.coins_redeemed}
+                                    inputClassName={inputCls}
+                                    balanceOffset={coinBalanceOffset}
+                                />
 
                                 <SalePaymentLines
                                     payments={form.data.payments}

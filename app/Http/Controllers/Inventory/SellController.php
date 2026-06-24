@@ -12,12 +12,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Category;
+use App\Models\CoinSettings;
 use App\Models\Customer;
 use App\Models\ProductExchange;
 use App\Models\ProductVariation;
 use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\SpecialDiscount;
+use App\Services\CoinService;
 use App\Services\CustomerDueAlertService;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
@@ -47,6 +49,7 @@ class SellController extends Controller
         private SpecialDiscountService $specialDiscountService,
         private PromotionService $promotionService,
         private CustomerDueAlertService $dueAlertService,
+        private CoinService $coinService,
     ) {}
 
     public function index(Request $request): Response
@@ -120,6 +123,7 @@ class SellController extends Controller
             'pausedSales' => $this->pausedSalesList($branchId),
             'resumedSell' => $resumedSell,
             'posTerms' => $this->currentBranchPosTerms(),
+            'coinSettings' => $this->coinService->settingsPayloadForBranch($branchId),
             'cashInHandAccountId' => SystemAccountService::id(SystemAccountKey::CashInHand, $branchId),
         ]);
     }
@@ -247,6 +251,16 @@ class SellController extends Controller
                     $sell = new Sell(['branch_id' => $branchId, 'user_id' => $this->currentUserId()]);
                 }
 
+                $customer = Customer::query()->lockForUpdate()->findOrFail((int) $data['customer_id']);
+                $settings = $this->coinService->settingsForBranch($branchId);
+                $coinResult = $this->resolveCoinResult(
+                    $customer,
+                    $settings,
+                    $saleTotals['net_before_coin'],
+                    $saleTotals['coins_redeemed'],
+                    $saleTotals['net_before_coin'],
+                );
+
                 $sell->fill([
                     'customer_id' => $data['customer_id'] ?? null,
                     'date' => $data['date'],
@@ -258,6 +272,9 @@ class SellController extends Controller
                     'special_discount_amount' => $discountFields['special_discount_amount'],
                     'promotion_discount_total' => $promotionDiscountTotal,
                     'round_off_amount' => $saleTotals['round_off_amount'],
+                    'coins_redeemed' => $coinResult['coins_redeemed'],
+                    'coin_discount_amount' => $coinResult['coin_discount_amount'],
+                    'coins_earned' => $coinResult['coins_earned'],
                     'vat' => $vatAmount,
                     'paid_amount' => $payment['effective_paid'],
                     'type' => SaleType::Sale,
@@ -270,6 +287,9 @@ class SellController extends Controller
                 }
 
                 $sell->load('products');
+
+                $coinResult['effective_paid'] = $payment['effective_paid'];
+                $this->coinService->applyToSale($sell, $customer, $coinResult);
 
                 if ($sell->customer_id && $payment['due_amount'] > 0) {
                     Customer::whereKey($sell->customer_id)->increment('balance', $payment['due_amount']);
@@ -359,7 +379,7 @@ class SellController extends Controller
         }
 
         $sell->load([
-            'customer:id,name,phone',
+            'customer:id,name,phone,point,is_default',
             'specialDiscount:id,name,discount_type,discount_value',
             'products.product:id,name,code,sale_price,discount_price',
             'products.variation:id,variation_data,price,stock',
@@ -422,6 +442,9 @@ class SellController extends Controller
                 'special_discount_id' => $sell->special_discount_id,
                 'special_discount_amount' => (float) $sell->special_discount_amount,
                 'round_off_amount' => (float) $sell->round_off_amount,
+                'coins_redeemed' => (float) $sell->coins_redeemed,
+                'coin_discount_amount' => (float) $sell->coin_discount_amount,
+                'coins_earned' => (float) $sell->coins_earned,
                 'special_discount' => $sell->specialDiscount ? [
                     'id' => $sell->specialDiscount->id,
                     'name' => $sell->specialDiscount->name,
@@ -446,6 +469,7 @@ class SellController extends Controller
                 'label' => $type->label(),
             ])->values(),
             'cashInHandAccountId' => SystemAccountService::id(SystemAccountKey::CashInHand, $branchId),
+            'coinSettings' => $this->coinService->settingsPayloadForBranch($branchId),
         ]);
     }
 
@@ -470,6 +494,7 @@ class SellController extends Controller
             'discount_value' => ['required', 'numeric', 'min:0'],
             'special_discount_id' => ['nullable', 'integer', 'exists:special_discounts,id'],
             'round_off_amount' => ['nullable', 'numeric', 'min:0'],
+            'coins_redeemed' => ['nullable', 'numeric', 'min:0'],
             'vat' => ['required', 'numeric', 'min:0'],
             'paid_amount' => ['required', 'numeric', 'min:0'],
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
@@ -501,7 +526,15 @@ class SellController extends Controller
             deductStock: false,
         );
 
-        $saleTotals = $this->resolveSaleTotals($data, $grossAmount, $lineDiscountTotal, $vatAmount, $branchId, $promotionStacking);
+        $saleTotals = $this->resolveSaleTotals(
+            $data,
+            $grossAmount,
+            $lineDiscountTotal,
+            $vatAmount,
+            $branchId,
+            $promotionStacking,
+            $this->coinBalanceOffsetForSaleEdit($sell, $data),
+        );
         $payment = $this->resolveSalePayments($data, $saleTotals['net_amount']);
         $this->assertCustomerForDueSale($data['customer_id'] ? (int) $data['customer_id'] : null, $payment['due_amount']);
         $this->assertDueAlertFields($data, $branchId, $payment['due_amount']);
@@ -509,6 +542,7 @@ class SellController extends Controller
         try {
             DB::transaction(function () use ($sell, $data, $branchId, $payment, $saleTotals) {
                 $this->accounting->reverseFor($sell);
+                $this->coinService->reverseForSell($sell);
                 $sell->load(['products']);
 
                 $oldDue = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
@@ -552,6 +586,16 @@ class SellController extends Controller
 
                 $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId, $promotionStacking);
 
+                $customer = Customer::query()->lockForUpdate()->findOrFail((int) $data['customer_id']);
+                $settings = $this->coinService->settingsForBranch($branchId);
+                $coinResult = $this->resolveCoinResult(
+                    $customer,
+                    $settings,
+                    $saleTotals['net_before_coin'],
+                    $saleTotals['coins_redeemed'],
+                    $saleTotals['net_before_coin'],
+                );
+
                 $sell->update([
                     'customer_id' => $data['customer_id'] ?? null,
                     'date' => $data['date'],
@@ -563,6 +607,9 @@ class SellController extends Controller
                     'special_discount_amount' => $discountFields['special_discount_amount'],
                     'promotion_discount_total' => $promotionDiscountTotal,
                     'round_off_amount' => $saleTotals['round_off_amount'],
+                    'coins_redeemed' => $coinResult['coins_redeemed'],
+                    'coin_discount_amount' => $coinResult['coin_discount_amount'],
+                    'coins_earned' => $coinResult['coins_earned'],
                     'vat' => $vatAmount,
                     'paid_amount' => $payment['effective_paid'],
                     'comment' => $data['comment'] ?? null,
@@ -573,6 +620,9 @@ class SellController extends Controller
                 }
 
                 $sell->load('products');
+
+                $coinResult['effective_paid'] = $payment['effective_paid'];
+                $this->coinService->applyToSale($sell, $customer, $coinResult);
 
                 if ($sell->customer_id && $payment['due_amount'] > 0) {
                     Customer::whereKey($sell->customer_id)->increment('balance', $payment['due_amount']);
@@ -622,6 +672,7 @@ class SellController extends Controller
             DB::transaction(function () use ($sell) {
                 if ($sell->type !== SaleType::Paused) {
                     $this->accounting->reverseFor($sell);
+                    $this->coinService->reverseForSell($sell);
 
                     $dueAmount = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
                     if ($sell->customer_id && $dueAmount > 0) {
@@ -749,20 +800,111 @@ class SellController extends Controller
         float $vatAmount,
         ?int $branchId,
         ?array $promotionStacking = null,
+        float $coinBalanceOffset = 0,
     ): array {
         $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId, $promotionStacking);
-        $netBeforeRoundOff = round(
+        $netBeforeCoin = round(
             $grossAmount + $vatAmount - $discountFields['discount'] - $discountFields['special_discount_amount'] - $lineDiscountTotal,
             2,
         );
+        $coinFields = $this->resolveCoinFields($data, $netBeforeCoin, $branchId, $coinBalanceOffset);
+        $netBeforeRoundOff = round($netBeforeCoin - $coinFields['coin_discount_amount'], 2);
         $paymentLines = $this->paymentLinesForRoundOff($data);
         $roundOffAmount = $this->resolveRoundOffAmount($data, $netBeforeRoundOff, $paymentLines, $branchId);
 
         return [
             ...$discountFields,
+            ...$coinFields,
+            'net_before_coin' => $netBeforeCoin,
             'round_off_amount' => $roundOffAmount,
             'net_amount' => round($netBeforeRoundOff - $roundOffAmount, 2),
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{coins_redeemed: float, coin_discount_amount: float}
+     */
+    private function resolveCoinFields(
+        array $data,
+        float $netBeforeCoin,
+        ?int $branchId,
+        float $coinBalanceOffset = 0,
+    ): array {
+        $coinsRedeemed = round(max(0, (float) ($data['coins_redeemed'] ?? 0)), 2);
+
+        if ($coinsRedeemed <= 0) {
+            return [
+                'coins_redeemed' => 0.0,
+                'coin_discount_amount' => 0.0,
+            ];
+        }
+
+        $settings = $this->coinService->settingsForBranch($branchId);
+
+        if ($settings === null || ! $settings->isActive()) {
+            throw ValidationException::withMessages([
+                'coins_redeemed' => 'Coin redemption is not enabled for this branch.',
+            ]);
+        }
+
+        $customer = Customer::query()->findOrFail((int) $data['customer_id']);
+        $result = $this->coinService->resolveForSale(
+            $customer,
+            $settings,
+            $netBeforeCoin,
+            $coinsRedeemed,
+            0,
+            $coinBalanceOffset,
+        );
+
+        return [
+            'coins_redeemed' => $result['coins_redeemed'],
+            'coin_discount_amount' => $result['coin_discount_amount'],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     */
+    private function coinBalanceOffsetForSaleEdit(?Sell $sell, array $data): float
+    {
+        if ($sell === null) {
+            return 0.0;
+        }
+
+        if ((int) $sell->customer_id !== (int) ($data['customer_id'] ?? 0)) {
+            return 0.0;
+        }
+
+        return round((float) $sell->coins_redeemed - (float) $sell->coins_earned, 2);
+    }
+
+    /**
+     * @return array{coins_redeemed: float, coin_discount_amount: float, coins_earned: float}
+     */
+    private function resolveCoinResult(
+        Customer $customer,
+        ?CoinSettings $settings,
+        float $netBeforeCoin,
+        float $coinsRedeemed,
+        float $earnBase,
+    ): array {
+        if ($settings === null || ! $settings->isActive()) {
+            return [
+                'coins_redeemed' => 0.0,
+                'coin_discount_amount' => 0.0,
+                'coins_earned' => 0.0,
+            ];
+        }
+
+        return $this->coinService->resolveForSale(
+            $customer,
+            $settings,
+            $netBeforeCoin,
+            $coinsRedeemed,
+            $earnBase,
+        );
     }
 
     /**
@@ -906,6 +1048,7 @@ class SellController extends Controller
             'discount_value' => ['required', 'numeric', 'min:0'],
             'special_discount_id' => ['nullable', 'integer', 'exists:special_discounts,id'],
             'round_off_amount' => ['nullable', 'numeric', 'min:0'],
+            'coins_redeemed' => ['nullable', 'numeric', 'min:0'],
             'vat' => ['required', 'numeric', 'min:0'],
             'paid_amount' => [$requirePayment ? 'required' : 'nullable', 'numeric', 'min:0'],
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
@@ -995,6 +1138,7 @@ class SellController extends Controller
             'discount_type' => $sell->discount_type?->value ?? DiscountType::Flat->value,
             'discount_value' => (string) (float) ($sell->discount_value ?? $sell->discount),
             'special_discount_id' => $sell->special_discount_id,
+            'coins_redeemed' => (string) (float) $sell->coins_redeemed,
             'vat_percent' => (string) round($vatPercent, 6),
             'paid_amount' => (string) (float) $sell->paid_amount,
             'comment' => $sell->comment,

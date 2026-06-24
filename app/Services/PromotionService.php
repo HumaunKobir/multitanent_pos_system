@@ -299,10 +299,6 @@ class PromotionService
 
         $amount = $bundleGross * ((float) $promotion->discount_value / 100);
 
-        if ($promotion->max_discount_amount !== null) {
-            $amount = min($amount, (float) $promotion->max_discount_amount);
-        }
-
         return round(min($amount, $bundleGross), 2);
     }
 
@@ -407,7 +403,7 @@ class PromotionService
         $lineGross = $basePrice * $qty;
 
         $discountAmount = match ($promotion->type) {
-            PromotionType::Percent => $this->percentDiscount($lineGross, (float) $promotion->discount_value, $promotion->max_discount_amount),
+            PromotionType::Percent => $this->percentDiscount($lineGross, (float) $promotion->discount_value),
             PromotionType::Flat => min((float) $promotion->discount_value, $lineGross),
             PromotionType::FixedPrice => max(0, $lineGross - ((float) $promotion->fixed_price * $qty)),
             default => 0.0,
@@ -418,13 +414,9 @@ class PromotionService
         return round($finalLine / max($qty, 1), 2);
     }
 
-    private function percentDiscount(float $base, float $percent, ?float $cap): float
+    private function percentDiscount(float $base, float $percent): float
     {
         $amount = $base * $percent / 100;
-
-        if ($cap !== null) {
-            $amount = min($amount, (float) $cap);
-        }
 
         return round(min($amount, $base), 2);
     }
@@ -545,7 +537,6 @@ class PromotionService
             'get_discount_percent' => $promotion->get_discount_percent !== null ? (float) $promotion->get_discount_percent : null,
             'bundle_product_ids' => $promotion->bundle_product_ids ?? [],
             'min_qty' => $promotion->min_qty !== null ? (float) $promotion->min_qty : null,
-            'max_discount_amount' => $promotion->max_discount_amount !== null ? (float) $promotion->max_discount_amount : null,
             'starts_at' => $promotion->starts_at?->toIso8601String(),
             'ends_at' => $promotion->ends_at?->toIso8601String(),
             'priority' => $promotion->priority,

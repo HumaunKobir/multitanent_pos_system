@@ -29,7 +29,6 @@ function defaultForm(item) {
         bundle_product_ids: item?.bundle_product_ids ?? [],
         target_ids: item?.target_ids ?? [],
         min_qty: item?.min_qty !== undefined && item?.min_qty !== null ? String(item.min_qty) : '',
-        max_discount_amount: item?.max_discount_amount !== undefined && item?.max_discount_amount !== null ? String(item.max_discount_amount) : '',
         starts_at: item?.starts_at ?? '',
         ends_at: item?.ends_at ?? '',
         status: boolField(item?.status),
@@ -45,9 +44,13 @@ export default function PromotionFormDialog({ open, onOpenChange, item, routes, 
     const form = useForm(defaultForm(item));
 
     useEffect(() => {
+        if (!open) {
+            return;
+        }
+
         form.setData(defaultForm(item));
         form.clearErrors();
-    }, [item]);
+    }, [open, item]);
 
     const targetOptions = useMemo(() => {
         if (form.data.scope === 'category') return catalogOptions.categories ?? [];
@@ -127,7 +130,6 @@ export default function PromotionFormDialog({ open, onOpenChange, item, routes, 
             buy_qty: form.data.buy_qty === '' ? null : form.data.buy_qty,
             get_qty: form.data.get_qty === '' ? null : form.data.get_qty,
             get_discount_percent: form.data.get_discount_percent === '' ? null : form.data.get_discount_percent,
-            max_discount_amount: form.data.max_discount_amount === '' ? null : form.data.max_discount_amount,
             min_qty: form.data.min_qty === '' ? null : form.data.min_qty,
             starts_at: form.data.starts_at === '' ? null : form.data.starts_at,
             ends_at: form.data.ends_at === '' ? null : form.data.ends_at,
@@ -310,27 +312,21 @@ export default function PromotionFormDialog({ open, onOpenChange, item, routes, 
                         </div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-2">
-                        {showMinQty && (
-                            <div>
-                                <Label>Min Qty <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
-                                <Input
-                                    type="number"
-                                    min="0.01"
-                                    step="0.01"
-                                    value={form.data.min_qty}
-                                    onChange={(e) => form.setData('min_qty', e.target.value)}
-                                    placeholder="Any quantity"
-                                    className="mt-1"
-                                />
-                                {form.errors.min_qty && <p className="mt-1 text-xs text-destructive">{form.errors.min_qty}</p>}
-                            </div>
-                        )}
-                        <div className={showMinQty ? '' : 'col-span-2'}>
-                            <Label>Max Discount (৳)</Label>
-                            <Input type="number" min="0" step="0.01" value={form.data.max_discount_amount} onChange={(e) => form.setData('max_discount_amount', e.target.value)} className="mt-1" />
+                    {showMinQty && (
+                        <div>
+                            <Label>Min Qty <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
+                            <Input
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                value={form.data.min_qty}
+                                onChange={(e) => form.setData('min_qty', e.target.value)}
+                                placeholder="Any quantity"
+                                className="mt-1"
+                            />
+                            {form.errors.min_qty && <p className="mt-1 text-xs text-destructive">{form.errors.min_qty}</p>}
                         </div>
-                    </div>
+                    )}
 
                     <div className="grid grid-cols-2 gap-2">
                         <div>

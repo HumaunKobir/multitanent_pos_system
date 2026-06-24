@@ -165,8 +165,14 @@ export default function PromotionIndex({ promotions, filters, promotionScopes, p
 
             <Can permission={[`${PERM}.create`, `${PERM}.update`]}>
                 <PromotionFormDialog
+                    key={editing?.id ?? 'create'}
                     open={formOpen}
-                    onOpenChange={setFormOpen}
+                    onOpenChange={(nextOpen) => {
+                        setFormOpen(nextOpen);
+                        if (!nextOpen) {
+                            setEditing(null);
+                        }
+                    }}
                     item={editing}
                     routes={routes}
                     promotionScopes={promotionScopes}

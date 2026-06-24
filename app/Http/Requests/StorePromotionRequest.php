@@ -65,7 +65,6 @@ class StorePromotionRequest extends FormRequest
             'target_ids' => ['required', 'array', 'min:1'],
             'target_ids.*' => ['integer', 'min:1'],
             'min_qty' => ['nullable', 'numeric', 'min:0.01'],
-            'max_discount_amount' => ['nullable', 'numeric', 'min:0'],
             'starts_at' => ['nullable', 'date'],
             'ends_at' => [
                 'nullable',

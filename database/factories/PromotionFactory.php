@@ -29,7 +29,6 @@ class PromotionFactory extends Factory
             'get_discount_percent' => null,
             'bundle_product_ids' => null,
             'min_qty' => null,
-            'max_discount_amount' => null,
             'starts_at' => null,
             'ends_at' => null,
             'status' => true,

@@ -74,11 +74,8 @@ export function filterPromotionsForSaleDate(promotions = [], saleDate = null) {
     return promotions.filter((promotion) => isPromotionActiveOnSaleDate(promotion, saleDate));
 }
 
-function percentDiscount(base, percent, cap = null) {
-    let amount = (base * percent) / 100;
-    if (cap !== null && cap !== undefined) {
-        amount = Math.min(amount, parseFloat(cap));
-    }
+function percentDiscount(base, percent) {
+    const amount = (base * percent) / 100;
 
     return roundAmount(Math.min(amount, base));
 }
@@ -134,7 +131,7 @@ function computePromoUnitPrice(promotion, basePrice, qty) {
     let discountAmount = 0;
 
     if (promotion.type === 'percent') {
-        discountAmount = percentDiscount(lineGross, parseFloat(promotion.discount_value ?? 0), promotion.max_discount_amount);
+        discountAmount = percentDiscount(lineGross, parseFloat(promotion.discount_value ?? 0));
     } else if (promotion.type === 'flat') {
         discountAmount = Math.min(parseFloat(promotion.discount_value ?? 0), lineGross);
     } else if (promotion.type === 'fixed_price') {
@@ -155,9 +152,6 @@ function computeBundleDiscountAmount(promotion, bundleGross) {
     }
 
     let amount = bundleGross * (parseFloat(promotion.discount_value) / 100);
-    if (promotion.max_discount_amount !== null && promotion.max_discount_amount !== undefined) {
-        amount = Math.min(amount, parseFloat(promotion.max_discount_amount));
-    }
 
     return roundAmount(Math.min(amount, bundleGross));
 }

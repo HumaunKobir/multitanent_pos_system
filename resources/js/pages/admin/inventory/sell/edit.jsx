@@ -469,7 +469,16 @@ function ProductSearchBox({ onAdd }) {
     );
 }
 
-export default function SellEdit({ sell, walkInCustomerId = null, paymentAccounts = [], specialDiscounts = [], discountTypes = [], coinSettings = null, cashInHandAccountId = null }) {
+export default function SellEdit({
+    sell,
+    walkInCustomerId = null,
+    paymentAccounts = [],
+    specialDiscounts = [],
+    discountTypes = [],
+    coinSettings = null,
+    cashInHandAccountId = null,
+    paymentOnlyEdit = false,
+}) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const form = useForm({
@@ -681,7 +690,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
 
     return (
         <>
-            <Head title={`Edit Sale — ${sell.invoice_number}`} />
+            <Head title={paymentOnlyEdit ? `Update Payment — ${sell.invoice_number}` : `Edit Sale — ${sell.invoice_number}`} />
 
             <div className="px-2 py-1">
                 <div className="mb-3 flex items-center justify-between rounded-lg bg-blue-950 px-5 py-3">
@@ -690,7 +699,9 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                             <ShoppingCart className="size-4 text-white" />
                         </div>
                         <div>
-                            <h1 className="text-base font-semibold text-white">Edit Sale</h1>
+                            <h1 className="text-base font-semibold text-white">
+                                {paymentOnlyEdit ? 'Update Payment' : 'Edit Sale'}
+                            </h1>
                             <p className="font-mono text-xs text-white/60">{sell.invoice_number}</p>
                         </div>
                     </div>
@@ -706,6 +717,13 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                     </Button>
                 </div>
 
+                {paymentOnlyEdit && (
+                    <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                        This sale has a partial payment. Products and discounts are locked — you can only update
+                        payment amounts.
+                    </div>
+                )}
+
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <Card title="Sale Details" icon={CalendarDays}>
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -713,39 +731,49 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                 <div className="mb-1 flex items-center justify-between gap-2">
                                     <Label className="text-xs text-muted-foreground">
                                         Customer
-                                        <RequiredMark />
+                                        {!paymentOnlyEdit && <RequiredMark />}
                                     </Label>
-                                    {canShowCoins && (
+                                    {!paymentOnlyEdit && canShowCoins && (
                                         <CustomerCoinBalance
                                             balance={customerCoinInfo.balance}
                                             loading={coinInfoLoading}
                                         />
                                     )}
                                 </div>
-                                <CustomerSearch
-                                    initialCustomer={sell.customer ?? null}
-                                    value={form.data.customer_id}
-                                    onChange={(v) => form.setData('customer_id', v)}
-                                    error={form.errors.customer_id}
-                                />
-                                {form.errors.customer_id && (
-                                    <p className="mt-1 text-xs text-destructive">{form.errors.customer_id}</p>
+                                {paymentOnlyEdit ? (
+                                    <p className="text-sm font-medium">{sell.customer?.name ?? 'Walk-in Customer'}</p>
+                                ) : (
+                                    <>
+                                        <CustomerSearch
+                                            initialCustomer={sell.customer ?? null}
+                                            value={form.data.customer_id}
+                                            onChange={(v) => form.setData('customer_id', v)}
+                                            error={form.errors.customer_id}
+                                        />
+                                        {form.errors.customer_id && (
+                                            <p className="mt-1 text-xs text-destructive">{form.errors.customer_id}</p>
+                                        )}
+                                        <p className="mt-0.5 text-[10px] text-muted-foreground">Leave blank for walk-in customer.</p>
+                                    </>
                                 )}
-                                <p className="mt-0.5 text-[10px] text-muted-foreground">Leave blank for walk-in customer.</p>
                             </div>
-                            <Field label="Date" required error={form.errors.date}>
-                                <Input
-                                    type="date"
-                                    value={form.data.date}
-                                    onChange={(e) => form.setData('date', e.target.value)}
-                                    className={`h-8 text-xs ${dateInputRightIconClassName}`}
-                                />
+                            <Field label="Date" required={!paymentOnlyEdit} error={form.errors.date}>
+                                {paymentOnlyEdit ? (
+                                    <p className="text-sm font-medium">{form.data.date}</p>
+                                ) : (
+                                    <Input
+                                        type="date"
+                                        value={form.data.date}
+                                        onChange={(e) => form.setData('date', e.target.value)}
+                                        className={`h-8 text-xs ${dateInputRightIconClassName}`}
+                                    />
+                                )}
                             </Field>
                         </div>
                     </Card>
 
                     <Card title="Products" icon={Package}>
-                        <ProductSearchBox onAdd={addItem} />
+                        {!paymentOnlyEdit && <ProductSearchBox onAdd={addItem} />}
                         {form.errors.items && <p className="mt-1 text-xs text-destructive">{form.errors.items}</p>}
 
                         {items.length > 0 && (
@@ -760,7 +788,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                             <th className="whitespace-nowrap px-2 py-2 text-right font-semibold">Disc</th>
                                             <th className="whitespace-nowrap px-2 py-2 text-right font-semibold">Stock</th>
                                             <th className="whitespace-nowrap px-3 py-2 text-right font-semibold">Sub Total</th>
-                                            <th className="px-2 py-2"></th>
+                                            {!paymentOnlyEdit && <th className="px-2 py-2"></th>}
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
@@ -780,43 +808,61 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                                         )}
                                                     </td>
                                                     <td className="px-2 py-1.5">
-                                                        <Input
-                                                            type="number"
-                                                            min="0"
-                                                            step="0.01"
-                                                            value={item.unit_price ?? ''}
-                                                            onChange={(e) => updateItem(i, 'unit_price', e.target.value)}
-                                                            className={`${inputCls} w-full text-right`}
-                                                        />
+                                                        {paymentOnlyEdit ? (
+                                                            <span className="block px-2 py-1 text-right font-medium">
+                                                                ৳{parseFloat(item.unit_price || 0).toFixed(2)}
+                                                            </span>
+                                                        ) : (
+                                                            <Input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.01"
+                                                                value={item.unit_price ?? ''}
+                                                                onChange={(e) => updateItem(i, 'unit_price', e.target.value)}
+                                                                className={`${inputCls} w-full text-right`}
+                                                            />
+                                                        )}
                                                     </td>
                                                     <td className="px-2 py-1.5">
-                                                        <Input
-                                                            type="number"
-                                                            min="1"
-                                                            step="1"
-                                                            value={item.quantity ?? ''}
-                                                            onChange={(e) =>
-                                                                updateItem(
-                                                                    i,
-                                                                    'quantity',
-                                                                    clampQuantityInput(e.target.value, item.available_stock),
-                                                                )
-                                                            }
-                                                            className={`${inputCls} w-full text-right ${overStock ? 'border-destructive' : ''}`}
-                                                        />
+                                                        {paymentOnlyEdit ? (
+                                                            <span className="block px-2 py-1 text-right font-medium">{qty}</span>
+                                                        ) : (
+                                                            <Input
+                                                                type="number"
+                                                                min="1"
+                                                                step="1"
+                                                                value={item.quantity ?? ''}
+                                                                onChange={(e) =>
+                                                                    updateItem(
+                                                                        i,
+                                                                        'quantity',
+                                                                        clampQuantityInput(e.target.value, item.available_stock),
+                                                                    )
+                                                                }
+                                                                className={`${inputCls} w-full text-right ${overStock ? 'border-destructive' : ''}`}
+                                                            />
+                                                        )}
                                                     </td>
                                                     <td className="px-2 py-1.5">
-                                                        <Input
-                                                            type="number"
-                                                            min="0"
-                                                            step="0.01"
-                                                            value={item.discount ?? '0'}
-                                                            onChange={(e) => updateItem(i, 'discount', clampLineDiscount(e.target.value, item))}
-                                                            onBlur={(e) => {
-                                                                if (e.target.value === '') updateItem(i, 'discount', '0');
-                                                            }}
-                                                            className={`${inputCls} w-full text-right text-green-700`}
-                                                        />
+                                                        {paymentOnlyEdit ? (
+                                                            <span className="block px-2 py-1 text-right font-medium text-green-700">
+                                                                {parseFloat(item.discount || 0) > 0
+                                                                    ? `-৳${parseFloat(item.discount || 0).toFixed(2)}`
+                                                                    : '—'}
+                                                            </span>
+                                                        ) : (
+                                                            <Input
+                                                                type="number"
+                                                                min="0"
+                                                                step="0.01"
+                                                                value={item.discount ?? '0'}
+                                                                onChange={(e) => updateItem(i, 'discount', clampLineDiscount(e.target.value, item))}
+                                                                onBlur={(e) => {
+                                                                    if (e.target.value === '') updateItem(i, 'discount', '0');
+                                                                }}
+                                                                className={`${inputCls} w-full text-right text-green-700`}
+                                                            />
+                                                        )}
                                                     </td>
                                                     <td className={`px-3 py-2 text-right font-medium ${overStock ? 'text-destructive' : 'text-muted-foreground'}`}>
                                                         {item.available_stock !== null && item.available_stock !== undefined ? remaining : '—'}
@@ -824,17 +870,19 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                                     <td className="px-3 py-2 text-right font-semibold">
                                                         ৳{subTotal.toFixed(2)}
                                                     </td>
-                                                    <td className="px-2 py-1.5 text-right">
-                                                        <Button
-                                                            type="button"
-                                                            size="sm"
-                                                            variant="ghost"
-                                                            onClick={() => removeItem(i)}
-                                                            className="h-7 text-destructive hover:text-destructive"
-                                                        >
-                                                            <Trash2 className="size-3.5" />
-                                                        </Button>
-                                                    </td>
+                                                    {!paymentOnlyEdit && (
+                                                        <td className="px-2 py-1.5 text-right">
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="ghost"
+                                                                onClick={() => removeItem(i)}
+                                                                className="h-7 text-destructive hover:text-destructive"
+                                                            >
+                                                                <Trash2 className="size-3.5" />
+                                                            </Button>
+                                                        </td>
+                                                    )}
                                                 </tr>
                                             );
                                         })}
@@ -845,19 +893,21 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                     </Card>
 
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <Card title="Comment" icon={MessageSquare}>
-                            <Field label="Note" error={form.errors.comment}>
-                                <textarea
-                                    rows={5}
-                                    value={form.data.comment}
-                                    onChange={(e) => form.setData('comment', e.target.value)}
-                                    placeholder="Optional note…"
-                                    className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-xs shadow-xs outline-none focus:border-primary focus:ring-[3px] focus:ring-ring/50"
-                                />
-                            </Field>
-                        </Card>
+                        {!paymentOnlyEdit && (
+                            <Card title="Comment" icon={MessageSquare}>
+                                <Field label="Note" error={form.errors.comment}>
+                                    <textarea
+                                        rows={5}
+                                        value={form.data.comment}
+                                        onChange={(e) => form.setData('comment', e.target.value)}
+                                        placeholder="Optional note…"
+                                        className="w-full resize-none rounded-md border border-input bg-background px-3 py-2 text-xs shadow-xs outline-none focus:border-primary focus:ring-[3px] focus:ring-ring/50"
+                                    />
+                                </Field>
+                            </Card>
+                        )}
 
-                        <Card title="Summary" icon={HandCoins}>
+                        <Card title="Summary" icon={HandCoins} className={paymentOnlyEdit ? 'sm:col-span-2' : ''}>
                             <div className="space-y-3 text-xs">
                                 <div className="flex justify-between text-sm lg:text-base">
                                     <span className="font-medium text-muted-foreground">Gross Amount</span>
@@ -878,7 +928,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                     </div>
                                 )}
 
-                                {specialDiscounts.length > 0 && (
+                                {specialDiscounts.length > 0 && !paymentOnlyEdit && (
                                     <div className="space-y-1">
                                         <Label className="text-xs text-muted-foreground">Special Discount</Label>
                                         <select
@@ -917,32 +967,36 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                     </div>
                                 )}
 
-                                <div className="flex items-center justify-between gap-4">
-                                    <Label className="text-xs text-muted-foreground">Inv. Disc. Type</Label>
-                                    <select
-                                        className="h-7 w-28 rounded-md border border-input bg-background px-2 text-xs"
-                                        value={form.data.discount_type}
-                                        onChange={(e) => form.setData('discount_type', e.target.value)}
-                                    >
-                                        {discountTypes.map((type) => (
-                                            <option key={type.value} value={type.value}>
-                                                {type.label}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
+                                {!paymentOnlyEdit && (
+                                    <>
+                                        <div className="flex items-center justify-between gap-4">
+                                            <Label className="text-xs text-muted-foreground">Inv. Disc. Type</Label>
+                                            <select
+                                                className="h-7 w-28 rounded-md border border-input bg-background px-2 text-xs"
+                                                value={form.data.discount_type}
+                                                onChange={(e) => form.setData('discount_type', e.target.value)}
+                                            >
+                                                {discountTypes.map((type) => (
+                                                    <option key={type.value} value={type.value}>
+                                                        {type.label}
+                                                    </option>
+                                                ))}
+                                            </select>
+                                        </div>
 
-                                <div className="flex items-center justify-between gap-4">
-                                    <Label className="text-xs text-muted-foreground">Inv. Discount</Label>
-                                    <Input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={form.data.discount_value}
-                                        onChange={(e) => form.setData('discount_value', e.target.value)}
-                                        className={`${inputCls} w-28 text-right`}
-                                    />
-                                </div>
+                                        <div className="flex items-center justify-between gap-4">
+                                            <Label className="text-xs text-muted-foreground">Inv. Discount</Label>
+                                            <Input
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={form.data.discount_value}
+                                                onChange={(e) => form.setData('discount_value', e.target.value)}
+                                                className={`${inputCls} w-28 text-right`}
+                                            />
+                                        </div>
+                                    </>
+                                )}
 
                                 {invoiceDiscountAmount > 0 && (
                                     <div className="flex justify-between text-green-700">
@@ -951,35 +1005,39 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                     </div>
                                 )}
 
-                                <div className="flex items-center justify-between gap-4">
-                                    <Label className="text-xs text-muted-foreground">VAT %</Label>
-                                    <Input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={form.data.vat}
-                                        onChange={(e) => form.setData('vat', e.target.value)}
-                                        className={`${inputCls} w-28 text-right`}
-                                    />
-                                </div>
+                                {!paymentOnlyEdit && (
+                                    <div className="flex items-center justify-between gap-4">
+                                        <Label className="text-xs text-muted-foreground">VAT %</Label>
+                                        <Input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={form.data.vat}
+                                            onChange={(e) => form.setData('vat', e.target.value)}
+                                            className={`${inputCls} w-28 text-right`}
+                                        />
+                                    </div>
+                                )}
 
-                                <div>
-                                    <Label className="mb-0.5 block text-[9px] text-muted-foreground">
-                                        Round Off
-                                    </Label>
-                                    <Input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        value={form.data.round_off_amount}
-                                        disabled={!hasSaleItems}
-                                        onChange={(e) => form.setData('round_off_amount', e.target.value)}
-                                        className={cn(inputCls, 'text-right')}
-                                    />
-                                    {form.errors.round_off_amount && (
-                                        <p className="mt-0.5 text-[10px] text-destructive">{form.errors.round_off_amount}</p>
-                                    )}
-                                </div>
+                                {!paymentOnlyEdit && (
+                                    <div>
+                                        <Label className="mb-0.5 block text-[9px] text-muted-foreground">
+                                            Round Off
+                                        </Label>
+                                        <Input
+                                            type="number"
+                                            min="0"
+                                            step="0.01"
+                                            value={form.data.round_off_amount}
+                                            disabled={!hasSaleItems}
+                                            onChange={(e) => form.setData('round_off_amount', e.target.value)}
+                                            className={cn(inputCls, 'text-right')}
+                                        />
+                                        {form.errors.round_off_amount && (
+                                            <p className="mt-0.5 text-[10px] text-destructive">{form.errors.round_off_amount}</p>
+                                        )}
+                                    </div>
+                                )}
 
                                 {roundOffAmount > 0 && (
                                     <div className="flex items-center justify-between gap-2 px-1 text-sm">
@@ -1026,20 +1084,22 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                     </div>
                                 </div>
 
-                                <SellCoinFields
-                                    customerId={form.data.customer_id}
-                                    walkInCustomerId={walkInCustomerId}
-                                    coinSettings={coinSettings}
-                                    coinInfo={customerCoinInfo}
-                                    coinInfoLoading={coinInfoLoading}
-                                    coinsRedeemed={form.data.coins_redeemed}
-                                    onCoinsRedeemedChange={(value) => form.setData('coins_redeemed', value)}
-                                    netBeforeCoin={netBeforeCoin}
-                                    earnBase={netBeforeCoin}
-                                    error={form.errors.coins_redeemed}
-                                    inputClassName={inputCls}
-                                    balanceOffset={coinBalanceOffset}
-                                />
+                                {!paymentOnlyEdit && (
+                                    <SellCoinFields
+                                        customerId={form.data.customer_id}
+                                        walkInCustomerId={walkInCustomerId}
+                                        coinSettings={coinSettings}
+                                        coinInfo={customerCoinInfo}
+                                        coinInfoLoading={coinInfoLoading}
+                                        coinsRedeemed={form.data.coins_redeemed}
+                                        onCoinsRedeemedChange={(value) => form.setData('coins_redeemed', value)}
+                                        netBeforeCoin={netBeforeCoin}
+                                        earnBase={netBeforeCoin}
+                                        error={form.errors.coins_redeemed}
+                                        inputClassName={inputCls}
+                                        balanceOffset={coinBalanceOffset}
+                                    />
+                                )}
 
                                 <SalePaymentLines
                                     payments={form.data.payments}
@@ -1074,11 +1134,11 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                         <Button
                             type="submit"
                             size="sm"
-                            disabled={form.processing || items.length === 0 || hasOverStock}
+                            disabled={form.processing || (!paymentOnlyEdit && (items.length === 0 || hasOverStock))}
                             className="bg-emerald-600 text-white shadow-sm shadow-emerald-500/30 transition-all duration-150 hover:-translate-y-0.5 hover:bg-emerald-600 hover:shadow-md hover:shadow-emerald-500/50"
                         >
                             <Save className="size-3.5" />
-                            {form.processing ? 'Saving…' : 'Update Sale'}
+                            {form.processing ? 'Saving…' : paymentOnlyEdit ? 'Update Payment' : 'Update Sale'}
                         </Button>
                     </div>
                 </form>

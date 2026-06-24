@@ -9,6 +9,7 @@ import { route } from '@/lib/route';
 import { buildSellPosPrintPayload, posPrint } from '@/lib/pos-print';
 import { computeSellDisplayGross, computeSellNetAmount } from '@/lib/pos-discount';
 import { computeSplitSalePayment } from '@/lib/sale-payment';
+import { resolveSellEditAccess } from '@/lib/sell-summary';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, Edit, Receipt, ShoppingCart, Trash2, User } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -58,6 +59,7 @@ export default function SellShow({ sell }) {
     const { dueAmount, changeAmount } = computeSplitSalePayment(paymentLines, net);
     const due = dueAmount;
     const change = changeAmount;
+    const { canEdit } = resolveSellEditAccess({ netAmount: net, paidAmount: paid, dueAmount: due });
     const actionClass = headerActionClassName();
 
     const handlePosPrint = useCallback(() => {
@@ -106,12 +108,14 @@ export default function SellShow({ sell }) {
                         POS Print
                     </button>
                     <Can permission="inventory.sell.update">
-                        <Button size="sm" asChild className={actionClass}>
-                            <Link href={route('inventory.sell.edit', sell.id)}>
-                                <Edit className="size-3.5" />
-                                Edit
-                            </Link>
-                        </Button>
+                        {canEdit && (
+                            <Button size="sm" asChild className={actionClass}>
+                                <Link href={route('inventory.sell.edit', sell.id)}>
+                                    <Edit className="size-3.5" />
+                                    Edit
+                                </Link>
+                            </Button>
+                        )}
                     </Can>
                     <Can permission="inventory.sell.delete">
                         <Button

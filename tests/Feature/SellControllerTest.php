@@ -23,9 +23,19 @@ use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\Permission\Models\Permission;
 
-function sellUser(): User
+function sellUser(array $permissions = ['inventory.sell.view', 'inventory.sell.create', 'inventory.sell.update', 'inventory.sell.delete']): User
 {
-    return User::factory()->create();
+    $user = User::factory()->create();
+
+    foreach ($permissions as $permission) {
+        Permission::findOrCreate($permission, 'web');
+    }
+
+    if ($permissions !== []) {
+        $user->givePermissionTo($permissions);
+    }
+
+    return $user;
 }
 
 function sellCustomer(?int $branchId = null): Customer
@@ -1388,6 +1398,157 @@ test('authenticated user can view the edit form', function () {
         ->get("/inventory/sell/{$sell->id}/edit")
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page->component('admin/inventory/sell/edit')->has('sell'));
+});
+
+test('fully paid sale cannot be edited', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'gross_amount' => 500,
+        'discount' => 0,
+        'vat' => 0,
+        'paid_amount' => 500,
+        'type' => SaleType::Sale,
+    ]);
+
+    SellProduct::query()->create([
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'variation_id' => null,
+        'unit_price' => 500,
+        'quantity' => 1,
+        'discount' => 0,
+    ]);
+
+    expect(max(0, (float) $sell->fresh()->net_amount - (float) $sell->paid_amount))->toBe(0.0);
+
+    $this->actingAs($user)
+        ->get("/inventory/sell/{$sell->id}/edit")
+        ->assertRedirect(route('inventory.sell.show', $sell))
+        ->assertSessionHas('error', 'Fully paid sales cannot be edited.');
+
+    $this->actingAs($user)
+        ->put("/inventory/sell/{$sell->id}", [
+            'paid_amount' => '500',
+            'payment_account_id' => $cash->id,
+            'items' => [['product_id' => $product->id, 'variation_id' => null, 'unit_price' => '100', 'quantity' => '5']],
+        ])
+        ->assertRedirect(route('inventory.sell.show', $sell))
+        ->assertSessionHas('error', 'Fully paid sales cannot be edited.');
+
+    $sell->refresh();
+    expect((float) $sell->gross_amount)->toBe(500.0);
+});
+
+test('partially paid sale opens payment-only edit mode', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+    $customer = sellCustomer($user->branch_id);
+
+    $this->actingAs($user)->post('/inventory/sell', dueSalePayload($user, $product, $customer, $cash))
+        ->assertRedirect();
+
+    $sell = Sell::query()->where('user_id', $user->id)->latest('id')->first();
+    expect((float) $sell->paid_amount)->toBe(200.0);
+    expect(max(0, (float) $sell->net_amount - (float) $sell->paid_amount))->toBeGreaterThan(0.0);
+
+    $this->actingAs($user)
+        ->get("/inventory/sell/{$sell->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/sell/edit')
+            ->where('paymentOnlyEdit', true));
+});
+
+test('partially paid sale update only changes payments not products', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product, 'batch' => $batch] = sellProduct(10, $user->branch_id);
+    $customer = sellCustomer($user->branch_id);
+
+    $this->actingAs($user)->post('/inventory/sell', dueSalePayload($user, $product, $customer, $cash))
+        ->assertRedirect();
+
+    $batch->refresh();
+    expect((float) $batch->available)->toBe(9.0);
+
+    $sell = Sell::query()->where('user_id', $user->id)->latest('id')->first();
+    $originalGross = (float) $sell->gross_amount;
+    $netAmount = (float) $sell->net_amount;
+
+    $this->actingAs($user)
+        ->put("/inventory/sell/{$sell->id}", [
+            'paid_amount' => (string) $netAmount,
+            'payment_account_id' => $cash->id,
+            'payments' => [['payment_account_id' => $cash->id, 'amount' => (string) $netAmount]],
+            'items' => [['product_id' => $product->id, 'variation_id' => null, 'unit_price' => '100', 'quantity' => '5']],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.sell.show', $sell));
+
+    $sell->refresh();
+    $batch->refresh();
+
+    expect((float) $sell->gross_amount)->toBe($originalGross);
+    expect((float) $sell->paid_amount)->toBe($netAmount);
+    expect((float) $batch->available)->toBe(9.0);
+    expect($sell->products)->toHaveCount(1);
+    expect((float) $sell->products->first()->quantity)->toBe(1.0);
+});
+
+test('unpaid due sale still allows full edit', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product, 'batch' => $batch] = sellProduct(10, $user->branch_id);
+    $customer = sellCustomer($user->branch_id);
+    $marker = 'unpaid-full-edit-'.Str::uuid();
+
+    $this->actingAs($user)->post('/inventory/sell', dueSalePayload($user, $product, $customer, $cash, [
+        'paid_amount' => '0',
+        'payment_account_id' => null,
+        'payments' => [],
+        'comment' => $marker,
+    ]))->assertRedirect();
+
+    $sell = Sell::query()->where('comment', $marker)->first();
+    expect($sell)->not->toBeNull();
+    expect((float) $sell->paid_amount)->toBe(0.0);
+    expect(max(0, (float) $sell->net_amount - (float) $sell->paid_amount))->toBeGreaterThan(0.0);
+
+    $this->actingAs($user)
+        ->get("/inventory/sell/{$sell->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/sell/edit')
+            ->where('paymentOnlyEdit', false));
+
+    $this->actingAs($user)
+        ->put("/inventory/sell/{$sell->id}", [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '0',
+            'payment_account_id' => null,
+            'payments' => [],
+            'comment' => $marker,
+            'items' => [['product_id' => $product->id, 'variation_id' => null, 'unit_price' => '500', 'quantity' => '2']],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect('/inventory/sell');
+
+    $batch->refresh();
+    $sell->refresh();
+
+    expect((float) $sell->gross_amount)->toBe(1000.0);
+    expect((float) $batch->available)->toBe(8.0);
 });
 
 // ── Update ────────────────────────────────────────────────────────────────────

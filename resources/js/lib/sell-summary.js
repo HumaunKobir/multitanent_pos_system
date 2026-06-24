@@ -40,3 +40,16 @@ export function buildSellRowSummary(row) {
         dueAmount,
     };
 }
+
+export function resolveSellEditAccess({ netAmount, paidAmount, dueAmount } = {}) {
+    const net = parseFloat(netAmount ?? 0);
+    const paid = parseFloat(paidAmount ?? 0);
+    const due = dueAmount != null ? parseFloat(dueAmount) : Math.max(0, net - paid);
+    const isFullyPaid = due <= 0.009;
+    const isPartiallyPaid = paid > 0.009 && due > 0.009;
+
+    return {
+        canEdit: !isFullyPaid,
+        paymentOnlyEdit: isPartiallyPaid,
+    };
+}

@@ -381,6 +381,14 @@ class SellController extends Controller
                 ->with('error', 'This sale cannot be edited because it has been exchanged.');
         }
 
+        if ($this->sellIsFullyPaid($sell)) {
+            return redirect()
+                ->route('inventory.sell.show', $sell)
+                ->with('error', 'Fully paid sales cannot be edited.');
+        }
+
+        $paymentOnlyEdit = $this->sellIsPartiallyPaid($sell);
+
         $sell->load([
             'customer:id,name,phone,point,is_default',
             'specialDiscount:id,name,discount_type,discount_value',
@@ -440,6 +448,7 @@ class SellController extends Controller
 
         return Inertia::render('admin/inventory/sell/edit', [
             'walkInCustomerId' => $walkInCustomerId,
+            'paymentOnlyEdit' => $paymentOnlyEdit,
             'sell' => [
                 'id' => $sell->id,
                 'customer_id' => $sell->customer_id,
@@ -495,6 +504,14 @@ class SellController extends Controller
 
         if (ProductExchange::where('sell_id', $sell->id)->exists()) {
             return back()->with('error', 'This sale cannot be edited because it has been exchanged.');
+        }
+
+        if ($this->sellIsFullyPaid($sell)) {
+            return back()->with('error', 'Fully paid sales cannot be edited.');
+        }
+
+        if ($this->sellIsPartiallyPaid($sell)) {
+            return $this->updateSellPaymentsOnly($request, $sell);
         }
 
         $data = $request->validate([
@@ -1355,5 +1372,91 @@ class SellController extends Controller
             ->value('pos_terms_and_conditions');
 
         return Branch::hasPosTerms($content) ? $content : null;
+    }
+
+    private function sellDueAmount(Sell $sell): float
+    {
+        return round(max(0, (float) $sell->net_amount - (float) $sell->paid_amount), 2);
+    }
+
+    private function sellIsFullyPaid(Sell $sell): bool
+    {
+        return $this->sellDueAmount($sell) <= 0;
+    }
+
+    private function sellIsPartiallyPaid(Sell $sell): bool
+    {
+        return (float) $sell->paid_amount > 0 && $this->sellDueAmount($sell) > 0;
+    }
+
+    private function updateSellPaymentsOnly(Request $request, Sell $sell): RedirectResponse
+    {
+        $data = $request->validate([
+            'paid_amount' => ['required', 'numeric', 'min:0'],
+            'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
+            'payments' => ['nullable', 'array'],
+            'payments.*.payment_account_id' => ['required_with:payments', 'integer', 'exists:chart_of_accounts,id'],
+            'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0'],
+            'due_given_date' => ['nullable', 'date'],
+            'due_alert_action' => ['nullable', 'in:merge,separate'],
+        ]);
+
+        $branchId = Auth::user()?->branch_id;
+        $netAmount = round((float) $sell->net_amount, 2);
+        $payment = $this->resolveSalePayments($data, $netAmount);
+        $this->assertCustomerForDueSale($sell->customer_id ? (int) $sell->customer_id : null, $payment['due_amount']);
+        $this->assertDueAlertFields($data, $branchId, $payment['due_amount']);
+
+        try {
+            DB::transaction(function () use ($sell, $data, $branchId, $payment) {
+                $sell->load(['products', 'payments']);
+
+                $oldDue = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
+
+                $this->accounting->reverseFor($sell);
+
+                if ($sell->customer_id && $oldDue > 0) {
+                    Customer::whereKey($sell->customer_id)->decrement('balance', $oldDue);
+                }
+
+                $sell->update([
+                    'paid_amount' => $payment['effective_paid'],
+                ]);
+
+                if ($sell->customer_id && $payment['due_amount'] > 0) {
+                    Customer::whereKey($sell->customer_id)->increment('balance', $payment['due_amount']);
+
+                    $this->dueAlertService->syncFromDueSale(
+                        (int) $sell->customer_id,
+                        $branchId,
+                        $payment['due_amount'],
+                        $data['due_given_date'] ?? null,
+                        $data['due_alert_action'] ?? null,
+                    );
+                }
+
+                $this->syncSellPayments($sell, $payment['payment_lines']);
+
+                $this->accounting->postSale(
+                    $sell->fresh(['customer']),
+                    $payment['payment_lines'],
+                    $this->costService->costForSell($sell),
+                    $payment['change_amount'],
+                );
+            });
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            report($e);
+
+            return back()
+                ->withErrors([
+                    'payments' => $this->saleStoreErrorMessage($e, 'Unable to update sale payment.'),
+                ])
+                ->withInput();
+        }
+
+        return redirect()->route('inventory.sell.show', $sell)
+            ->with('success', 'Sale payment updated successfully.');
     }
 }

@@ -1,6 +1,6 @@
 import { useAppToast } from '@/contexts/app-toast-context';
 import { formatBdDate } from '@/lib/format-bd-date';
-import { buildSellRowSummary } from '@/lib/sell-summary';
+import { buildSellRowSummary, resolveSellEditAccess } from '@/lib/sell-summary';
 import { route } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Edit, Eye, Plus, Search, ShoppingCart, Trash2 } from 'lucide-react';
@@ -141,7 +141,7 @@ export default function SellIndex({ sells, filters }) {
                             </Link>
                         </Button>
                     )}
-                    {can('inventory.sell.update') && (
+                    {can('inventory.sell.update') && resolveSellEditAccess(buildSellRowSummary(row)).canEdit && (
                         <Button size="sm" variant="outline" asChild>
                             <Link href={route('inventory.sell.edit', row.id)}>
                                 <Edit className="size-3.5" />

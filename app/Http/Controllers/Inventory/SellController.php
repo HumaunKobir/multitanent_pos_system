@@ -463,7 +463,7 @@ class SellController extends Controller
         }
 
         $data = $request->validate([
-            'customer_id' => ['nullable', 'exists:customers,id'],
+            'customer_id' => ['required', 'exists:customers,id'],
             'date' => ['required', 'date'],
             'comment' => ['nullable', 'string'],
             'discount_type' => ['required', Rule::enum(DiscountType::class)],
@@ -808,12 +808,6 @@ class SellController extends Controller
             return 0.0;
         }
 
-        if (! $this->hasCashPayment($paymentLines, $branchId)) {
-            throw ValidationException::withMessages([
-                'round_off_amount' => 'Round off is only available when cash payment is included.',
-            ]);
-        }
-
         $netBeforeRoundOff = round(max(0, $netBeforeRoundOff), 2);
 
         if ($roundOffAmount > $netBeforeRoundOff) {
@@ -822,7 +816,30 @@ class SellController extends Controller
             ]);
         }
 
+        $finalNet = round($netBeforeRoundOff - $roundOffAmount, 2);
+        $totalPaid = $this->totalPaymentAmount($paymentLines);
+
+        if (! $this->hasCashPayment($paymentLines, $branchId) && $totalPaid >= $finalNet) {
+            throw ValidationException::withMessages([
+                'round_off_amount' => 'Round off is only available when cash payment is included or the sale has due amount.',
+            ]);
+        }
+
         return $roundOffAmount;
+    }
+
+    /**
+     * @param  array<int, array{payment_account_id: int, amount: float}>  $paymentLines
+     */
+    private function totalPaymentAmount(array $paymentLines): float
+    {
+        $total = 0.0;
+
+        foreach ($paymentLines as $line) {
+            $total += max(0, (float) ($line['amount'] ?? 0));
+        }
+
+        return round($total, 2);
     }
 
     /**
@@ -882,7 +899,7 @@ class SellController extends Controller
     private function validateSellCart(Request $request, bool $requirePayment = false): array
     {
         return $request->validate([
-            'customer_id' => ['nullable', 'exists:customers,id'],
+            'customer_id' => ['required', 'exists:customers,id'],
             'date' => ['required', 'date'],
             'comment' => ['nullable', 'string'],
             'discount_type' => ['required', Rule::enum(DiscountType::class)],

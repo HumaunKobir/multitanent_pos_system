@@ -12,6 +12,7 @@ import {
     buildInitialSalePayments,
     computeSplitSalePayment,
     dueSaleCustomerError,
+    saleCustomerRequiredError,
     serializeSalePayments,
     splitPaymentValidationError,
 } from '@/lib/sale-payment';
@@ -924,6 +925,7 @@ export default function SellCreate({
     const netAmount = netBeforeRoundOff - roundOffAmount;
 
     const { totalPaid, dueAmount, changeAmount } = computeSplitSalePayment(form.data.payments, netAmount);
+    const customerRequiredError = saleCustomerRequiredError(form.data.customer_id);
     const dueCustomerError = dueSaleCustomerError(form.data.customer_id, defaultCustomer?.id ?? null, dueAmount);
     const hasOverStock = promotedItems.some((item) => linePhysicalQty(item) > parseFloat(item.available_stock ?? 0));
     const itemCount = promotedItems.reduce((sum, item) => sum + linePhysicalQty(item), 0);
@@ -1030,6 +1032,11 @@ export default function SellCreate({
     function handleSubmit(e) {
         e.preventDefault();
 
+        if (customerRequiredError) {
+            toast.error(customerRequiredError);
+            return;
+        }
+
         if (dueCustomerError) {
             toast.error(dueCustomerError);
             return;
@@ -1057,6 +1064,12 @@ export default function SellCreate({
 
     function handlePause(e) {
         e.preventDefault();
+
+        if (customerRequiredError) {
+            toast.error(customerRequiredError);
+            return;
+        }
+
         router.post(
             route('inventory.sell.pause'),
             {
@@ -1121,7 +1134,10 @@ export default function SellCreate({
                                 onResume={resumePausedSale}
                             />
                             <div className="min-w-0 min-w-[120px] flex-1 sm:min-w-0 sm:w-36 lg:w-44 2xl:w-48">
-                                <span className="mb-0.5 block text-[9px] font-medium text-white/60 lg:text-[10px]">Customer</span>
+                                <span className="mb-0.5 block text-[9px] font-medium text-white/60 lg:text-[10px]">
+                                    Customer
+                                    <RequiredMark className="text-red-300" />
+                                </span>
                                 <CustomerSearch
                                     value={form.data.customer_id}
                                     onChange={(v) => form.setData('customer_id', v)}
@@ -1359,7 +1375,7 @@ export default function SellCreate({
                                 <div className="grid grid-cols-2 gap-1 lg:gap-2">
                                     <div>
                                         <Label className="mb-0.5 block text-[9px] text-muted-foreground lg:text-[10px]">
-                                            Round Off (Cash)
+                                            Round Off
                                         </Label>
                                         <Input
                                             type="number"
@@ -1404,7 +1420,10 @@ export default function SellCreate({
                                 />
 
                                 <div className="sm:hidden">
-                                    <Label className="mb-0.5 block text-[9px] text-muted-foreground lg:text-[10px]">Customer</Label>
+                                    <Label className="mb-0.5 block text-[9px] text-muted-foreground lg:text-[10px]">
+                                        Customer
+                                        <RequiredMark />
+                                    </Label>
                                     <CustomerSearch
                                         value={form.data.customer_id}
                                         onChange={(v) => form.setData('customer_id', v)}

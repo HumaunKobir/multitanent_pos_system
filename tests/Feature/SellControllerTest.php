@@ -27,6 +27,14 @@ function sellUser(): User
     return User::factory()->create();
 }
 
+function sellCustomer(?int $branchId = null): Customer
+{
+    return Customer::factory()->create([
+        'branch_id' => $branchId,
+        'is_default' => false,
+    ]);
+}
+
 function sellProduct(float $available = 20, ?int $branchId = null): array
 {
     $product = Product::factory()->create(['branch_id' => $branchId]);
@@ -89,7 +97,7 @@ test('authenticated user can create a sale and stock is deducted', function () {
 
     $response = $this->actingAs($user)
         ->post('/inventory/sell', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -130,7 +138,7 @@ test('authenticated user can create a sale with per-line product discount', func
 
     $this->actingAs($user)
         ->post('/inventory/sell', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -172,7 +180,7 @@ test('sale fails when quantity exceeds available stock', function () {
 
     $this->actingAs($user)
         ->post('/inventory/sell', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -201,7 +209,7 @@ test('authenticated user can pause a sale without deducting stock', function () 
 
     $this->actingAs($user)
         ->post('/inventory/sell/pause', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -238,7 +246,7 @@ test('paused sale can be resumed and completed with stock deduction', function (
 
     $this->actingAs($user)
         ->post('/inventory/sell/pause', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -268,7 +276,7 @@ test('paused sale can be resumed and completed with stock deduction', function (
 
     $this->actingAs($user)
         ->post('/inventory/sell', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -304,7 +312,7 @@ test('paused sale can be deleted without restoring stock', function () {
 
     $this->actingAs($user)
         ->post('/inventory/sell/pause', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -358,7 +366,7 @@ test('main branch user can sell products with stock at main branch', function ()
 
     $this->actingAs($user)
         ->post('/inventory/sell', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -484,7 +492,7 @@ test('purchase stores stock in main warehouse until manually distributed', funct
 
     $this->actingAs($branchUser)
         ->post('/inventory/sell', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($branchUser->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -786,6 +794,31 @@ test('due sale requires a registered customer', function () {
         ->assertSessionHasErrors('customer_id');
 });
 
+test('sale requires a customer', function () {
+    $user = sellUser();
+    seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => null,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '500',
+            'comment' => null,
+            'items' => [[
+                'product_id' => $product->id,
+                'variation_id' => null,
+                'unit_price' => '500',
+                'quantity' => '1',
+            ]],
+        ])
+        ->assertSessionHasErrors('customer_id');
+});
+
 test('sale can be paid across multiple accounts with balanced accounting', function () {
     $user = sellUser();
     $cash = seedAccountingAccounts();
@@ -795,7 +828,7 @@ test('sale can be paid across multiple accounts with balanced accounting', funct
 
     $this->actingAs($user)
         ->post('/inventory/sell', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -850,7 +883,7 @@ test('overpayment stores effective paid amount for accounting', function () {
 
     $response = $this->actingAs($user)
         ->post('/inventory/sell', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -896,7 +929,7 @@ test('overpayment via payment accounts stores effective paid amount and change',
 
     $response = $this->actingAs($user)
         ->post('/inventory/sell', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -952,7 +985,7 @@ test('overpayment across multiple accounts records tendered receipts and change 
 
     $response = $this->actingAs($user)
         ->post('/inventory/sell', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -1016,7 +1049,7 @@ test('cash sale can apply manual round off discount', function () {
 
     $this->actingAs($user)
         ->post('/inventory/sell', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -1044,6 +1077,52 @@ test('cash sale can apply manual round off discount', function () {
     expect((float) $sell->net_amount)->toBe(475.0);
 });
 
+test('due sale can apply round off when no payment is received', function () {
+    $this->artisan('permissions:sync');
+
+    $user = sellUser();
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    $user->givePermissionTo('inventory.sell.create');
+
+    $cash = seedAccountingAccounts(user: $user);
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+    $customer = sellCustomer($user->branch_id);
+    $sellIdBefore = (int) (Sell::query()->max('id') ?? 0);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'round_off_amount' => '2',
+            'vat' => '0',
+            'paid_amount' => '0',
+            'payments' => [
+                ['payment_account_id' => $cash->id, 'amount' => 0],
+            ],
+            'comment' => null,
+            'items' => [[
+                'product_id' => $product->id,
+                'variation_id' => null,
+                'unit_price' => '500',
+                'quantity' => '1',
+            ]],
+        ])
+        ->assertRedirect()
+        ->assertSessionDoesntHaveErrors();
+
+    $sell = Sell::query()->where('id', '>', $sellIdBefore)->first();
+    expect($sell)->not->toBeNull();
+    expect((float) $sell->round_off_amount)->toBe(2.0);
+    expect((float) $sell->net_amount)->toBe(498.0);
+    expect((float) $sell->paid_amount)->toBe(0.0);
+
+    $customer->refresh();
+    expect((float) $customer->balance)->toBe(498.0);
+});
+
 test('round off is rejected when payment has no cash line', function () {
     $this->artisan('permissions:sync');
 
@@ -1056,7 +1135,7 @@ test('round off is rejected when payment has no cash line', function () {
 
     $this->actingAs($user)
         ->post('/inventory/sell', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -1092,7 +1171,7 @@ test('split cash and non-cash sale can apply round off', function () {
 
     $this->actingAs($user)
         ->post('/inventory/sell', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -1126,7 +1205,7 @@ test('store requires at least one item', function () {
 
     $this->actingAs($user)
         ->post('/inventory/sell', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -1148,7 +1227,7 @@ test('sale succeeds when product inventory account balance is lower than cogs', 
 
     $this->actingAs($user)
         ->post('/inventory/sell', [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -1318,7 +1397,7 @@ test('authenticated user can update a sale and stock is adjusted', function () {
     ['product' => $product, 'batch' => $batch] = sellProduct(20, $user->branch_id);
 
     $this->actingAs($user)->post('/inventory/sell', [
-        'customer_id' => null,
+        'customer_id' => sellCustomer($user->branch_id)->id,
         'date' => now()->format('Y-m-d'),
         'discount_type' => 'flat',
         'discount_value' => '0',
@@ -1337,7 +1416,7 @@ test('authenticated user can update a sale and stock is adjusted', function () {
 
     $this->actingAs($user)
         ->put("/inventory/sell/{$sell->id}", [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -1364,7 +1443,7 @@ test('sell edit exposes reserved stock for existing line items so zero warehouse
     ['product' => $product, 'batch' => $batch] = sellProduct(1, $user->branch_id);
 
     $this->actingAs($user)->post('/inventory/sell', [
-        'customer_id' => null,
+        'customer_id' => sellCustomer($user->branch_id)->id,
         'date' => now()->format('Y-m-d'),
         'discount_type' => 'flat',
         'discount_value' => '0',
@@ -1391,7 +1470,7 @@ test('sell edit exposes reserved stock for existing line items so zero warehouse
 
     $this->actingAs($user)
         ->put("/inventory/sell/{$sell->id}", [
-            'customer_id' => null,
+            'customer_id' => sellCustomer($user->branch_id)->id,
             'date' => now()->format('Y-m-d'),
             'discount_type' => 'flat',
             'discount_value' => '0',
@@ -1416,7 +1495,7 @@ test('authenticated user can delete a sale and stock is restored', function () {
     ['product' => $product, 'batch' => $batch] = sellProduct(20, $user->branch_id);
 
     $this->actingAs($user)->post('/inventory/sell', [
-        'customer_id' => null,
+        'customer_id' => sellCustomer($user->branch_id)->id,
         'date' => now()->format('Y-m-d'),
         'discount_type' => 'flat',
         'discount_value' => '0',

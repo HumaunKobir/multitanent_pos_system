@@ -13,6 +13,7 @@ import {
     buildInitialSalePayments,
     computeSplitSalePayment,
     dueSaleCustomerError,
+    saleCustomerRequiredError,
     serializeSalePayments,
     splitPaymentValidationError,
 } from '@/lib/sale-payment';
@@ -509,6 +510,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
         : 0;
     const netAmount = netBeforeRoundOff - roundOffAmount;
     const { totalPaid, dueAmount, changeAmount } = computeSplitSalePayment(form.data.payments, netAmount);
+    const customerRequiredError = saleCustomerRequiredError(form.data.customer_id);
     const dueCustomerError = dueSaleCustomerError(form.data.customer_id, walkInCustomerId, dueAmount);
 
     useEffect(() => {
@@ -580,6 +582,11 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
             return;
         }
 
+        if (customerRequiredError) {
+            toast.error(customerRequiredError);
+            return;
+        }
+
         if (dueCustomerError) {
             toast.error(dueCustomerError);
             return;
@@ -641,7 +648,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <Card title="Sale Details" icon={CalendarDays}>
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <Field label="Customer" error={form.errors.customer_id}>
+                            <Field label="Customer" required error={form.errors.customer_id}>
                                 <CustomerSearch
                                     initialCustomer={sell.customer ?? null}
                                     value={form.data.customer_id}
@@ -902,7 +909,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
 
                                 <div>
                                     <Label className="mb-0.5 block text-[9px] text-muted-foreground">
-                                        Round Off (Cash)
+                                        Round Off
                                     </Label>
                                     <Input
                                         type="number"

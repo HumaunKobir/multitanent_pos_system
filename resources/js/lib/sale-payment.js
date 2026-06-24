@@ -64,6 +64,18 @@ export function splitPaymentValidationError(payments) {
 
 /**
  * @param {number|string|null|undefined} customerId
+ * @returns {string|null}
+ */
+export function saleCustomerRequiredError(customerId) {
+    if (!customerId) {
+        return 'Select a customer to complete the sale.';
+    }
+
+    return null;
+}
+
+/**
+ * @param {number|string|null|undefined} customerId
  * @param {number|string|null|undefined} walkInCustomerId
  * @param {number} dueAmount
  * @returns {string|null}

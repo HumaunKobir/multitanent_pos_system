@@ -159,7 +159,7 @@ class PromotionService
         $bogoPromotions = $promotions->filter(fn (Promotion $promotion) => $promotion->type === PromotionType::BuyXGetY);
 
         if ($bogoPromotions->isEmpty()) {
-            return $items;
+            return ['items' => $items];
         }
 
         foreach ($items as $index => $item) {

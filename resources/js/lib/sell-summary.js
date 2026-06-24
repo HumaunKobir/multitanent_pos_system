@@ -1,4 +1,4 @@
-import { computeSellNetAmount, computeSellNonCoinDiscount } from '@/lib/pos-discount';
+import { computeSellIndexDiscountTotal, computeSellNetAmount, computeSellNonCoinDiscount } from '@/lib/pos-discount';
 
 export function buildSellRowSummary(row) {
     const grossAmount = parseFloat(row.gross_amount ?? 0);
@@ -29,11 +29,21 @@ export function buildSellRowSummary(row) {
         lineDiscountTotal,
     });
 
+    const indexDiscountTotal = computeSellIndexDiscountTotal({
+        discount,
+        specialDiscountAmount,
+        promotionDiscountAmount,
+        coinDiscountAmount,
+        roundOffAmount,
+        lineDiscountTotal,
+    });
+
     const dueAmount = Math.max(0, netAmount - paidAmount);
 
     return {
         netAmount,
         nonCoinDiscount,
+        indexDiscountTotal,
         coinDiscountAmount,
         promotionDiscountAmount,
         paidAmount,

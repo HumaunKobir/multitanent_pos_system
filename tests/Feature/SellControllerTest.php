@@ -69,6 +69,52 @@ test('authenticated user can view sell index', function () {
         ->assertInertia(fn (Assert $page) => $page->component('admin/inventory/sell/index')->has('sells'));
 });
 
+test('sell index includes all discount fields for table total', function () {
+    $user = sellUser();
+    ['product' => $product] = sellProduct(20, $user->branch_id);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'discount' => 50,
+        'special_discount_amount' => 100,
+        'promotion_discount_total' => 75,
+        'coin_discount_amount' => 25,
+        'round_off_amount' => 10,
+        'gross_amount' => 1000,
+        'vat' => 0,
+        'paid_amount' => 710,
+        'type' => SaleType::Sale,
+    ]);
+
+    SellProduct::query()->create([
+        'branch_id' => $user->branch_id,
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'quantity' => 1,
+        'unit_price' => 1000,
+        'discount' => 30,
+        'batches' => [],
+    ]);
+
+    expect($sell->fresh()->indexDiscountTotal())->toBe(290.0);
+
+    $this->actingAs($user)
+        ->get('/inventory/sell')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/sell/index')
+            ->has('sells.data', 1)
+            ->where('sells.data.0.id', $sell->id)
+            ->where('sells.data.0.discount', '50.00')
+            ->where('sells.data.0.special_discount_amount', '100.00')
+            ->where('sells.data.0.promotion_discount_total', '75.00')
+            ->where('sells.data.0.coin_discount_amount', '25.00')
+            ->where('sells.data.0.round_off_amount', '10.00')
+            ->where('sells.data.0.line_discount_total', '30.00')
+        );
+});
+
 test('sell net amount includes special discount and round off', function () {
     $user = sellUser();
 

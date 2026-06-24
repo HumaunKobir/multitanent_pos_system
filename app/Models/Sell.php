@@ -81,6 +81,16 @@ class Sell extends Model
         return (float) $this->products()->sum('discount');
     }
 
+    public function indexDiscountTotal(): float
+    {
+        return (float) $this->discount
+            + (float) $this->special_discount_amount
+            + (float) $this->promotion_discount_total
+            + (float) $this->coin_discount_amount
+            + (float) $this->round_off_amount
+            + $this->lineDiscountTotal();
+    }
+
     public function getNetAmountAttribute(): float
     {
         return (float) $this->gross_amount

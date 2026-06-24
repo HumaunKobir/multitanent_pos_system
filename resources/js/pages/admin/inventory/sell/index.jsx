@@ -61,6 +61,19 @@ export default function SellIndex({ sells, filters }) {
             render: (row) => row.customer?.name ?? <span className="text-muted-foreground">Walk-in</span>,
         },
         {
+            id: 'discount',
+            header: 'Discount',
+            render: (row) => {
+                const { indexDiscountTotal } = buildSellRowSummary(row);
+
+                return indexDiscountTotal > 0 ? (
+                    <span className="font-medium text-amber-700 dark:text-amber-400">৳{indexDiscountTotal.toFixed(2)}</span>
+                ) : (
+                    <span className="text-muted-foreground">—</span>
+                );
+            },
+        },
+        {
             id: 'total',
             header: 'Net Payable',
             render: (row) => {

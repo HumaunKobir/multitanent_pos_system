@@ -17,6 +17,16 @@ import { useCan } from '@/hooks/use-can';
 function SupplierForm({ form, onSubmit, onCancel, isEditing }) {
     return (
         <form onSubmit={onSubmit} className="space-y-1.5 px-3 py-2">
+            <FormField label="Company Name" required name="company_name" error={form.errors.company_name}>
+                <Input
+                    id="company_name"
+                    value={form.data.company_name}
+                    onChange={(e) => form.setData('company_name', e.target.value)}
+                    placeholder="Company name"
+                    className="mt-1"
+                    aria-invalid={!!form.errors.company_name}
+                />
+            </FormField>
             <div className="grid grid-cols-2 gap-3">
                 <FormField label="Name" required name="name" error={form.errors.name}>
                     <Input
@@ -39,15 +49,6 @@ function SupplierForm({ form, onSubmit, onCancel, isEditing }) {
                     />
                 </FormField>
             </div>
-            <FormField label="Company Name" required name="company_name" error={form.errors.company_name}>
-                <Input
-                    id="company_name"
-                    value={form.data.company_name}
-                    onChange={(e) => form.setData('company_name', e.target.value)}
-                    placeholder="Company name"
-                    className="mt-1"
-                />
-            </FormField>
             <FormField label="Address" name="address" error={form.errors.address}>
                 <Input
                     id="address"

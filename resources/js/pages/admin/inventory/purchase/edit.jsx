@@ -45,12 +45,13 @@ function Field({ label, required, error, children }) {
 }
 
 function supplierMatchesQuery(supplier, query) {
-    const needle = query.toLowerCase();
+    const needle = query.toLowerCase().trim();
+    const phoneNeedle = query.replace(/\D/g, '');
 
     return (
-        supplier.name.toLowerCase().includes(needle)
-        || supplier.phone.includes(query)
+        (supplier.name ?? '').toLowerCase().includes(needle)
         || (supplier.company_name ?? '').toLowerCase().includes(needle)
+        || (phoneNeedle !== '' && (supplier.phone ?? '').replace(/\D/g, '').includes(phoneNeedle))
     );
 }
 
@@ -91,7 +92,7 @@ function SupplierSearch({ suppliers, value, onChange, onCreated, error }) {
     }, []);
 
     function openModal() {
-        setModalData({ name: q.trim(), phone: '', company_name: '', address: '', opening_balance: '' });
+        setModalData({ name: '', phone: '', company_name: q.trim(), address: '', opening_balance: '' });
         setModalErrors({});
         setOpen(false);
         setModalOpen(true);
@@ -149,7 +150,7 @@ function SupplierSearch({ suppliers, value, onChange, onCreated, error }) {
                             value={q}
                             onChange={(e) => { setQ(e.target.value); setOpen(true); }}
                             onFocus={() => setOpen(true)}
-                            placeholder="Search supplier…"
+                            placeholder="Search by name, company or phone…"
                             className={`h-8 pl-8 text-xs ${error ? 'border-destructive' : ''}`}
                         />
                     </div>
@@ -158,7 +159,7 @@ function SupplierSearch({ suppliers, value, onChange, onCreated, error }) {
                     <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md">
                         {selected && (
                             <div className="p-2">
-                                <Input autoFocus placeholder="Search supplier…" value={q} onChange={(e) => setQ(e.target.value)} className="h-7 text-xs" />
+                                <Input autoFocus placeholder="Search by name, company or phone…" value={q} onChange={(e) => setQ(e.target.value)} className="h-7 text-xs" />
                             </div>
                         )}
                         <ul className="max-h-52 overflow-auto">
@@ -198,6 +199,9 @@ function SupplierSearch({ suppliers, value, onChange, onCreated, error }) {
                         <h2 className="text-sm font-semibold text-white">Add Supplier</h2>
                     </div>
                     <form onSubmit={handleCreate} className="space-y-1.5 px-3 py-2">
+                        <Field label="Company Name" required error={modalErrors.company_name}>
+                            <Input value={modalData.company_name} onChange={(e) => setField('company_name', e.target.value)} placeholder="Company name" className="mt-1" />
+                        </Field>
                         <div className="grid grid-cols-2 gap-3">
                             <Field label="Name" required error={modalErrors.name}>
                                 <Input value={modalData.name} onChange={(e) => setField('name', e.target.value)} placeholder="Supplier name" className="mt-1" />
@@ -206,9 +210,6 @@ function SupplierSearch({ suppliers, value, onChange, onCreated, error }) {
                                 <Input value={modalData.phone} onChange={(e) => setField('phone', e.target.value)} placeholder="01XXXXXXXXX" className="mt-1" />
                             </Field>
                         </div>
-                        <Field label="Company Name" required error={modalErrors.company_name}>
-                            <Input value={modalData.company_name} onChange={(e) => setField('company_name', e.target.value)} placeholder="Company name" className="mt-1" />
-                        </Field>
                         <Field label="Address" error={modalErrors.address}>
                             <Input value={modalData.address} onChange={(e) => setField('address', e.target.value)} placeholder="Address" className="mt-1" />
                         </Field>

@@ -7,6 +7,7 @@ use App\Models\CoinSettings;
 use App\Models\Customer;
 use App\Models\CustomerCoinTransaction;
 use App\Models\Sell;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
 class CoinService
@@ -215,13 +216,11 @@ class CoinService
 
     public function reverseForSell(Sell $sell): void
     {
-        $reversedTransactionIds = CustomerCoinTransaction::query()
-            ->where('sell_id', $sell->id)
-            ->whereIn('type', [CoinTransactionType::ReverseRedeem, CoinTransactionType::ReverseEarn])
-            ->get()
-            ->map(fn (CustomerCoinTransaction $transaction): ?int => $transaction->meta['reversed_transaction_id'] ?? null)
-            ->filter()
-            ->all();
+        if ($sell->customer_id === null) {
+            return;
+        }
+
+        $reversedTransactionIds = $this->reversedOriginalTransactionIds($sell);
 
         $transactions = CustomerCoinTransaction::query()
             ->where('sell_id', $sell->id)
@@ -230,13 +229,51 @@ class CoinService
                 $reversedTransactionIds !== [],
                 fn ($query) => $query->whereNotIn('id', $reversedTransactionIds),
             )
+            ->orderBy('id')
             ->get();
 
-        if ($transactions->isEmpty()) {
+        if ($transactions->isNotEmpty()) {
+            $this->reverseCoinTransactions($sell, $transactions);
+
             return;
         }
 
-        $customerId = $transactions->first()->customer_id;
+        if ($this->sellCoinsAlreadyReversed($sell)) {
+            return;
+        }
+
+        $this->reverseSellCoinSnapshot($sell);
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function reversedOriginalTransactionIds(Sell $sell): array
+    {
+        return CustomerCoinTransaction::query()
+            ->where('sell_id', $sell->id)
+            ->whereIn('type', [CoinTransactionType::ReverseRedeem, CoinTransactionType::ReverseEarn])
+            ->get()
+            ->map(fn (CustomerCoinTransaction $transaction): ?int => $transaction->meta['reversed_transaction_id'] ?? null)
+            ->filter()
+            ->values()
+            ->all();
+    }
+
+    private function sellCoinsAlreadyReversed(Sell $sell): bool
+    {
+        return CustomerCoinTransaction::query()
+            ->where('sell_id', $sell->id)
+            ->whereIn('type', [CoinTransactionType::ReverseRedeem, CoinTransactionType::ReverseEarn])
+            ->exists();
+    }
+
+    /**
+     * @param  Collection<int, CustomerCoinTransaction>  $transactions
+     */
+    private function reverseCoinTransactions(Sell $sell, Collection $transactions): void
+    {
+        $customerId = $transactions->first()->customer_id ?? $sell->customer_id;
         $customer = Customer::query()->lockForUpdate()->find($customerId);
 
         if ($customer === null) {
@@ -261,6 +298,58 @@ class CoinService
                 'balance_after' => $balance,
                 'meta' => [
                     'reversed_transaction_id' => $transaction->id,
+                ],
+            ]);
+        }
+
+        $customer->update(['point' => max(0, $balance)]);
+    }
+
+    private function reverseSellCoinSnapshot(Sell $sell): void
+    {
+        $coinsRedeemed = round((float) $sell->coins_redeemed, 2);
+        $coinsEarned = round((float) $sell->coins_earned, 2);
+
+        if ($coinsRedeemed <= 0 && $coinsEarned <= 0) {
+            return;
+        }
+
+        $customer = Customer::query()->lockForUpdate()->find($sell->customer_id);
+
+        if ($customer === null || $customer->is_default) {
+            return;
+        }
+
+        $balance = (float) $customer->point;
+
+        if ($coinsRedeemed > 0) {
+            $balance = round($balance + $coinsRedeemed, 2);
+
+            CustomerCoinTransaction::create([
+                'customer_id' => $customer->id,
+                'branch_id' => $sell->branch_id,
+                'sell_id' => $sell->id,
+                'type' => CoinTransactionType::ReverseRedeem,
+                'coins' => $coinsRedeemed,
+                'balance_after' => $balance,
+                'meta' => [
+                    'source' => 'sell_snapshot',
+                ],
+            ]);
+        }
+
+        if ($coinsEarned > 0) {
+            $balance = round($balance - $coinsEarned, 2);
+
+            CustomerCoinTransaction::create([
+                'customer_id' => $customer->id,
+                'branch_id' => $sell->branch_id,
+                'sell_id' => $sell->id,
+                'type' => CoinTransactionType::ReverseEarn,
+                'coins' => -$coinsEarned,
+                'balance_after' => $balance,
+                'meta' => [
+                    'source' => 'sell_snapshot',
                 ],
             ]);
         }

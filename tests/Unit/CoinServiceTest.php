@@ -1,7 +1,10 @@
 <?php
 
+use App\Models\Branch;
 use App\Models\CoinSettings;
 use App\Models\Customer;
+use App\Models\CustomerCoinTransaction;
+use App\Models\Sell;
 use App\Services\CoinService;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -120,4 +123,27 @@ test('insufficient balance throws validation error', function () {
     } catch (ValidationException $exception) {
         expect($exception->errors())->toHaveKey('coins_redeemed');
     }
+});
+
+test('reverse for sell restores balance from sell snapshot when ledger rows are missing', function () {
+    $branch = Branch::factory()->create();
+    $customer = Customer::factory()->create([
+        'branch_id' => $branch->id,
+        'point' => 19,
+        'is_default' => false,
+    ]);
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'customer_id' => $customer->id,
+        'coins_redeemed' => 50,
+        'coins_earned' => 5,
+        'coin_discount_amount' => 50,
+    ]);
+
+    $this->coinService->reverseForSell($sell);
+
+    $customer->refresh();
+
+    expect((float) $customer->point)->toBe(64.0);
+    expect(CustomerCoinTransaction::query()->where('sell_id', $sell->id)->count())->toBe(2);
 });

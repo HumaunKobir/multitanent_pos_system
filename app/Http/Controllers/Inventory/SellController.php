@@ -684,6 +684,7 @@ class SellController extends Controller
         try {
             DB::transaction(function () use ($sell) {
                 if ($sell->type !== SaleType::Paused) {
+                    $sell->refresh();
                     $this->accounting->reverseFor($sell);
                     $this->coinService->reverseForSell($sell);
 

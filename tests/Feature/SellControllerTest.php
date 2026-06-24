@@ -1589,6 +1589,60 @@ test('sale can redeem coins and earn new coins', function () {
     expect(CustomerCoinTransaction::query()->where('sell_id', $sell->id)->count())->toBe(2);
 });
 
+test('deleting a sale restores customer coin balance', function () {
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    Permission::findOrCreate('inventory.sell.delete', 'web');
+    $user->givePermissionTo(['inventory.sell.create', 'inventory.sell.delete']);
+    $cash = seedAccountingAccounts(user: $user);
+    sellCoinSettings($user->branch_id);
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = sellCustomer($user->branch_id);
+    $customer->update(['point' => 64]);
+    $startingBalance = 64.0;
+
+    $response = $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'coins_redeemed' => '50',
+            'paid_amount' => '450',
+            'payment_account_id' => $cash->id,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '500',
+                    'quantity' => '1',
+                ],
+            ],
+        ])
+        ->assertSessionHasNoErrors()
+        ->assertRedirect();
+
+    preg_match('/\\/inventory\\/sell\\/(\\d+)/', (string) $response->headers->get('Location'), $matches);
+    $sell = Sell::query()->findOrFail((int) $matches[1]);
+
+    $customer->refresh();
+    expect((float) $customer->point)->toBe(round($startingBalance - 50 + (float) $sell->coins_earned, 2));
+    expect(CustomerCoinTransaction::query()->where('sell_id', $sell->id)->count())->toBe(2);
+
+    $this->actingAs($user)
+        ->delete("/inventory/sell/{$sell->id}")
+        ->assertRedirect('/inventory/sell');
+
+    expect(Sell::find($sell->id))->toBeNull();
+
+    $customer->refresh();
+    expect((float) $customer->point)->toBe($startingBalance);
+});
+
 test('sale rejects coin redemption when balance is insufficient', function () {
     $branch = Branch::factory()->create();
     $user = User::factory()->create(['branch_id' => $branch->id]);

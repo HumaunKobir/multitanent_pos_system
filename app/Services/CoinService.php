@@ -215,9 +215,21 @@ class CoinService
 
     public function reverseForSell(Sell $sell): void
     {
+        $reversedTransactionIds = CustomerCoinTransaction::query()
+            ->where('sell_id', $sell->id)
+            ->whereIn('type', [CoinTransactionType::ReverseRedeem, CoinTransactionType::ReverseEarn])
+            ->get()
+            ->map(fn (CustomerCoinTransaction $transaction): ?int => $transaction->meta['reversed_transaction_id'] ?? null)
+            ->filter()
+            ->all();
+
         $transactions = CustomerCoinTransaction::query()
             ->where('sell_id', $sell->id)
             ->whereIn('type', [CoinTransactionType::Redeem, CoinTransactionType::Earn])
+            ->when(
+                $reversedTransactionIds !== [],
+                fn ($query) => $query->whereNotIn('id', $reversedTransactionIds),
+            )
             ->get();
 
         if ($transactions->isEmpty()) {

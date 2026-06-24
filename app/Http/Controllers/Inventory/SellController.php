@@ -383,6 +383,7 @@ class SellController extends Controller
             'specialDiscount:id,name,discount_type,discount_value',
             'products.product:id,name,code,sale_price,discount_price',
             'products.variation:id,variation_data,price,stock',
+            'products.promotion:id,name',
             'payments.paymentAccount:id,code,name',
         ]);
 
@@ -410,7 +411,13 @@ class SellController extends Controller
                 'variation_id' => $sp->variation_id,
                 'variation_label' => $sp->variation?->variation_data['label'] ?? null,
                 'unit_price' => (float) $sp->unit_price,
+                'original_unit_price' => (float) ($sp->original_unit_price ?? $sp->unit_price),
                 'discount' => (float) $sp->discount,
+                'promotion_id' => $sp->promotion_id,
+                'promotion_discount' => (float) $sp->promotion_discount,
+                'promotion_label' => $sp->promotion?->name,
+                'promotion_meta' => $sp->promotion_meta,
+                'free_quantity' => (float) ($sp->free_quantity ?? 0),
                 'sell_price' => $sp->variation_id
                     ? (float) ($sp->variation?->price ?? $sp->unit_price)
                     : (float) ($sp->product?->sale_price ?? $sp->unit_price),
@@ -441,6 +448,7 @@ class SellController extends Controller
                 'discount_value' => (float) ($sell->discount_value ?? $sell->discount),
                 'special_discount_id' => $sell->special_discount_id,
                 'special_discount_amount' => (float) $sell->special_discount_amount,
+                'promotion_discount_total' => (float) $sell->promotion_discount_total,
                 'round_off_amount' => (float) $sell->round_off_amount,
                 'coins_redeemed' => (float) $sell->coins_redeemed,
                 'coin_discount_amount' => (float) $sell->coin_discount_amount,

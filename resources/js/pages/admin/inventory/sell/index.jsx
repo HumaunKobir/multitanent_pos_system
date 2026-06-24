@@ -1,6 +1,6 @@
 import { useAppToast } from '@/contexts/app-toast-context';
 import { formatBdDate } from '@/lib/format-bd-date';
-import { computeSellNetAmount } from '@/lib/pos-discount';
+import { buildSellRowSummary } from '@/lib/sell-summary';
 import { route } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Edit, Eye, Plus, Search, ShoppingCart, Trash2 } from 'lucide-react';
@@ -61,45 +61,60 @@ export default function SellIndex({ sells, filters }) {
             render: (row) => row.customer?.name ?? <span className="text-muted-foreground">Walk-in</span>,
         },
         {
+            id: 'discount',
+            header: 'Discount',
+            render: (row) => {
+                const { nonCoinDiscount, coinDiscountAmount } = buildSellRowSummary(row);
+
+                if (nonCoinDiscount <= 0 && coinDiscountAmount <= 0) {
+                    return <span className="text-muted-foreground">—</span>;
+                }
+
+                return (
+                    <div className="text-xs leading-tight">
+                        {nonCoinDiscount > 0 && (
+                            <span className="font-medium text-green-700 dark:text-green-400">
+                                -৳{nonCoinDiscount.toFixed(2)}
+                            </span>
+                        )}
+                        {coinDiscountAmount > 0 && (
+                            <span className="block text-violet-700 dark:text-violet-300">
+                                Coin -৳{coinDiscountAmount.toFixed(2)}
+                            </span>
+                        )}
+                    </div>
+                );
+            },
+        },
+        {
             id: 'total',
-            header: 'Total Amount',
-            render: (row) => (
-                <span className="font-medium">
-                    ৳
-                    {computeSellNetAmount({
-                        grossAmount: row.gross_amount,
-                        vat: row.vat,
-                        discount: row.discount,
-                        specialDiscountAmount: row.special_discount_amount,
-                        roundOffAmount: row.round_off_amount,
-                        lineDiscountTotal: row.line_discount_total,
-                    }).toFixed(2)}
-                </span>
-            ),
+            header: 'Net Payable',
+            render: (row) => {
+                const { netAmount } = buildSellRowSummary(row);
+
+                return <span className="font-medium">৳{netAmount.toFixed(2)}</span>;
+            },
         },
         {
             id: 'paid',
             header: 'Paid',
-            render: (row) => (
-                <span className="text-green-700 dark:text-green-400">৳{parseFloat(row.paid_amount).toFixed(2)}</span>
-            ),
+            render: (row) => {
+                const { paidAmount } = buildSellRowSummary(row);
+
+                return (
+                    <span className="text-green-700 dark:text-green-400">৳{paidAmount.toFixed(2)}</span>
+                );
+            },
         },
         {
             id: 'due',
             header: 'Due',
             render: (row) => {
-                const net = computeSellNetAmount({
-                    grossAmount: row.gross_amount,
-                    vat: row.vat,
-                    discount: row.discount,
-                    specialDiscountAmount: row.special_discount_amount,
-                    roundOffAmount: row.round_off_amount,
-                    lineDiscountTotal: row.line_discount_total,
-                });
-                const due = Math.max(0, net - parseFloat(row.paid_amount ?? 0));
+                const { dueAmount } = buildSellRowSummary(row);
+
                 return (
-                    <span className={due > 0 ? 'font-semibold text-destructive' : 'font-semibold text-green-700 dark:text-green-400'}>
-                        ৳{due.toFixed(2)}
+                    <span className={dueAmount > 0 ? 'font-semibold text-destructive' : 'font-semibold text-green-700 dark:text-green-400'}>
+                        ৳{dueAmount.toFixed(2)}
                     </span>
                 );
             },

@@ -41,7 +41,7 @@ export default function SellShow({ sell }) {
     const promotionDiscount = parseFloat(sell.promotion_discount_total ?? 0);
     const coinDiscount = parseFloat(sell.coin_discount_amount ?? 0);
     const roundOff = parseFloat(sell.round_off_amount ?? 0);
-    const net = gross + vat - discount - specialDiscount - coinDiscount - roundOff - lineDiscount;
+    const net = gross + vat - discount - specialDiscount - promotionDiscount - coinDiscount - roundOff - lineDiscount;
     const paid = parseFloat(sell.paid_amount ?? 0);
     const paymentLines = sell.payments ?? [];
     const { dueAmount, changeAmount } = computeSplitSalePayment(paymentLines, net);

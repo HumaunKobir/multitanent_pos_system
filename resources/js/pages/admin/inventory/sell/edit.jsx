@@ -504,6 +504,10 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
     });
 
     const [items, setItems] = useState(sell.items ?? []);
+    const promotionDiscountTotal = items.reduce(
+        (sum, item) => sum + (parseFloat(item.promotion_discount || 0) || 0),
+        0,
+    ) || parseFloat(sell.promotion_discount_total ?? 0);
 
     const grossAmount = items.reduce((sum, it) => sum + parseFloat(it.quantity || 0) * parseFloat(it.unit_price || 0), 0);
     const lineDiscountTotal = items.reduce((sum, it) => sum + parseFloat(it.discount || 0), 0);
@@ -841,6 +845,13 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                     </div>
                                 )}
 
+                                {promotionDiscountTotal > 0 && (
+                                    <div className="flex justify-between text-amber-700">
+                                        <span>Promotion</span>
+                                        <span className="font-semibold">-৳{promotionDiscountTotal.toFixed(2)}</span>
+                                    </div>
+                                )}
+
                                 {specialDiscounts.length > 0 && (
                                     <div className="space-y-1">
                                         <Label className="text-xs text-muted-foreground">Special Discount</Label>
@@ -926,33 +937,6 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                     />
                                 </div>
 
-                                <div className="grid grid-cols-3 gap-2 rounded-lg border border-blue-200 bg-blue-950 px-3 py-3">
-                                    <div className="text-center">
-                                        <p className="text-xs font-semibold uppercase tracking-wider text-white/60">Net Payable</p>
-                                        <p className="mt-1 text-lg font-bold tabular-nums text-white">৳{netAmount.toFixed(2)}</p>
-                                    </div>
-                                    <div className="border-x border-white/15 px-2 text-center">
-                                        <p className="text-xs font-semibold uppercase tracking-wider text-white/60">Amount</p>
-                                        <p className="mt-1 text-lg font-bold tabular-nums text-emerald-300">৳{totalPaid.toFixed(2)}</p>
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="text-xs font-semibold uppercase tracking-wider text-white/60">
-                                            {changeAmount > 0 ? 'Change' : 'Due Amount'}
-                                        </p>
-                                        <p
-                                            className={`mt-1 text-lg font-bold tabular-nums ${
-                                                changeAmount > 0
-                                                    ? 'text-amber-300'
-                                                    : dueAmount > 0
-                                                      ? 'text-red-300'
-                                                      : 'text-white/50'
-                                            }`}
-                                        >
-                                            ৳{(changeAmount > 0 ? changeAmount : dueAmount).toFixed(2)}
-                                        </p>
-                                    </div>
-                                </div>
-
                                 <div>
                                     <Label className="mb-0.5 block text-[9px] text-muted-foreground">
                                         Round Off
@@ -988,6 +972,33 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                                         </span>
                                     </div>
                                 )}
+
+                                <div className="grid grid-cols-3 gap-2 rounded-lg border border-blue-200 bg-blue-950 px-3 py-3">
+                                    <div className="text-center">
+                                        <p className="text-xs font-semibold uppercase tracking-wider text-white/60">Net Payable</p>
+                                        <p className="mt-1 text-lg font-bold tabular-nums text-white">৳{netAmount.toFixed(2)}</p>
+                                    </div>
+                                    <div className="border-x border-white/15 px-2 text-center">
+                                        <p className="text-xs font-semibold uppercase tracking-wider text-white/60">Amount</p>
+                                        <p className="mt-1 text-lg font-bold tabular-nums text-emerald-300">৳{totalPaid.toFixed(2)}</p>
+                                    </div>
+                                    <div className="text-center">
+                                        <p className="text-xs font-semibold uppercase tracking-wider text-white/60">
+                                            {changeAmount > 0 ? 'Change' : 'Due Amount'}
+                                        </p>
+                                        <p
+                                            className={`mt-1 text-lg font-bold tabular-nums ${
+                                                changeAmount > 0
+                                                    ? 'text-amber-300'
+                                                    : dueAmount > 0
+                                                      ? 'text-red-300'
+                                                      : 'text-white/50'
+                                            }`}
+                                        >
+                                            ৳{(changeAmount > 0 ? changeAmount : dueAmount).toFixed(2)}
+                                        </p>
+                                    </div>
+                                </div>
 
                                 <SellCoinFields
                                     customerId={form.data.customer_id}

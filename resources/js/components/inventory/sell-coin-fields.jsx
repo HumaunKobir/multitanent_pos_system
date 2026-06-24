@@ -51,6 +51,37 @@ export function SellCoinFields({
 
     const displayAvailable = Math.max(0, effectiveBalance - redeemed);
 
+    const handleRedeemChange = (rawValue) => {
+        if (rawValue === '') {
+            onCoinsRedeemedChange('');
+
+            return;
+        }
+
+        const parsed = parseFloat(rawValue);
+
+        if (Number.isNaN(parsed)) {
+            onCoinsRedeemedChange('0');
+
+            return;
+        }
+
+        const clamped = Math.min(Math.max(0, parsed), maxRedeemable);
+        onCoinsRedeemedChange(String(clamped));
+    };
+
+    useEffect(() => {
+        if (!showRedeemField) {
+            return;
+        }
+
+        const current = parseFloat(coinsRedeemed);
+
+        if (!Number.isNaN(current) && current > maxRedeemable) {
+            onCoinsRedeemedChange(String(maxRedeemable));
+        }
+    }, [showRedeemField, maxRedeemable, coinsRedeemed, onCoinsRedeemedChange]);
+
     useEffect(() => {
         if (showCoins && !showRedeemField && parseFloat(coinsRedeemed) > 0) {
             onCoinsRedeemedChange('0');
@@ -86,9 +117,15 @@ export function SellCoinFields({
                     <Input
                         type="number"
                         min="0"
+                        max={maxRedeemable}
                         step="1"
                         value={coinsRedeemed}
-                        onChange={(e) => onCoinsRedeemedChange(e.target.value)}
+                        onChange={(e) => handleRedeemChange(e.target.value)}
+                        onBlur={() => {
+                            if (coinsRedeemed === '') {
+                                onCoinsRedeemedChange('0');
+                            }
+                        }}
                         className={inputClassName}
                     />
                     {error && <p className="mt-0.5 text-[10px] text-destructive">{error}</p>}

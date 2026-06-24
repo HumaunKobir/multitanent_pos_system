@@ -1761,6 +1761,62 @@ test('updating a sale keeps existing coin redemption without insufficient balanc
     expect((float) $sell->coins_redeemed)->toBe(49.0);
 });
 
+test('updating a sale twice does not inflate customer coin balance', function () {
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    Permission::findOrCreate('inventory.sell.update', 'web');
+    $user->givePermissionTo(['inventory.sell.create', 'inventory.sell.update']);
+    seedAccountingAccounts(user: $user);
+    sellCoinSettings($user->branch_id);
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = sellCustomer($user->branch_id);
+    $customer->update(['point' => 54]);
+
+    $updatePayload = fn (Sell $sell) => [
+        'customer_id' => $customer->id,
+        'date' => now()->format('Y-m-d'),
+        'discount_type' => 'flat',
+        'discount_value' => '0',
+        'special_discount_id' => null,
+        'vat' => '0',
+        'coins_redeemed' => '49',
+        'paid_amount' => '0',
+        'items' => [
+            [
+                'product_id' => $product->id,
+                'variation_id' => null,
+                'unit_price' => '200',
+                'quantity' => '1',
+            ],
+        ],
+    ];
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', $updatePayload(new Sell))
+        ->assertSessionHasNoErrors()
+        ->assertRedirect();
+
+    $sell = Sell::query()->where('customer_id', $customer->id)->latest('id')->first();
+
+    $this->actingAs($user)
+        ->put("/inventory/sell/{$sell->id}", $updatePayload($sell))
+        ->assertSessionHasNoErrors()
+        ->assertRedirect(route('inventory.sell.index'));
+
+    $customer->refresh();
+    $balanceAfterFirstEdit = (float) $customer->point;
+
+    $this->actingAs($user)
+        ->put("/inventory/sell/{$sell->id}", $updatePayload($sell))
+        ->assertSessionHasNoErrors()
+        ->assertRedirect(route('inventory.sell.index'));
+
+    $customer->refresh();
+    expect((float) $customer->point)->toBe($balanceAfterFirstEdit);
+});
+
 test('due sale earns coins on full net amount not only paid portion', function () {
     $branch = Branch::factory()->create();
     $user = User::factory()->create(['branch_id' => $branch->id]);

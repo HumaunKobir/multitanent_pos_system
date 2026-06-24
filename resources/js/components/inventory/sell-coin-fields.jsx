@@ -1,4 +1,11 @@
-import { computeCoinDiscount, computeCoinsEarned, isCoinSystemActive, maxRedeemableCoins, previewCoinSale } from '@/lib/pos-coin';
+import {
+    computeCoinDiscount,
+    computeCoinsEarned,
+    isCoinSystemActive,
+    maxRedeemableCoins,
+    previewCoinSale,
+    resolveEffectiveCoinsRedeemed,
+} from '@/lib/pos-coin';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Coins } from 'lucide-react';
@@ -31,11 +38,14 @@ export function SellCoinFields({
         coinInfo?.is_default;
     const activeSettings = coinInfo?.settings?.enabled ? coinInfo.settings : coinSettings;
     const showCoins = isCoinSystemActive(activeSettings) && !isWalkIn && customerId;
-    const effectiveBalance = showCoins ? (coinInfo?.balance ?? 0) + (parseFloat(balanceOffset) || 0) : 0;
+    const rawBalance = parseFloat(coinInfo?.balance ?? 0) || 0;
+    const balanceOffsetValue = parseFloat(balanceOffset) || 0;
+    const effectiveBalance = showCoins ? rawBalance + balanceOffsetValue : 0;
     const maxRedeemable = showCoins ? maxRedeemableCoins(effectiveBalance, activeSettings, netBeforeCoin) : 0;
     const showRedeemField = showCoins ? canRedeemCoins(effectiveBalance, activeSettings, netBeforeCoin) : false;
+    const deferCoinClamp = coinInfoLoading || (balanceOffsetValue > 0 && rawBalance <= 0);
     const redeemed = showRedeemField
-        ? Math.min(Math.max(0, parseFloat(coinsRedeemed) || 0), maxRedeemable)
+        ? resolveEffectiveCoinsRedeemed(coinsRedeemed, maxRedeemable, deferCoinClamp)
         : 0;
     const coinDiscount = showCoins ? computeCoinDiscount(redeemed, activeSettings, netBeforeCoin) : 0;
     const preview = showCoins
@@ -71,7 +81,7 @@ export function SellCoinFields({
     };
 
     useEffect(() => {
-        if (!showRedeemField) {
+        if (deferCoinClamp || !showRedeemField) {
             return;
         }
 
@@ -80,7 +90,7 @@ export function SellCoinFields({
         if (!Number.isNaN(current) && current > maxRedeemable) {
             onCoinsRedeemedChange(String(maxRedeemable));
         }
-    }, [showRedeemField, maxRedeemable, coinsRedeemed, onCoinsRedeemedChange]);
+    }, [deferCoinClamp, showRedeemField, maxRedeemable, coinsRedeemed, onCoinsRedeemedChange]);
 
     useEffect(() => {
         if (showCoins && !showRedeemField && parseFloat(coinsRedeemed) > 0) {
@@ -106,7 +116,9 @@ export function SellCoinFields({
 
             <div className="flex items-center justify-between gap-2 text-[11px] lg:text-xs">
                 <span className="text-violet-800">Available</span>
-                <span className="font-semibold tabular-nums text-violet-950">{displayAvailable.toFixed(2)}</span>
+                <span className="font-semibold tabular-nums text-violet-950">
+                    {coinInfoLoading ? '...' : displayAvailable.toFixed(2)}
+                </span>
             </div>
 
             {showRedeemField && (

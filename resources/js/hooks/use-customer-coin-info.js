@@ -2,21 +2,46 @@ import { isCoinSystemActive } from '@/lib/pos-coin';
 import { route } from '@/lib/route';
 import { useEffect, useRef, useState } from 'react';
 
+function shouldFetchCustomerCoins(customerId, walkInCustomerId) {
+    return Boolean(customerId) && String(customerId) !== String(walkInCustomerId ?? '');
+}
+
+function hasProvidedBalance(initialBalance) {
+    return initialBalance !== null && initialBalance !== undefined && initialBalance !== '';
+}
+
 /**
  * @param {object} params
  * @param {string|number|null|undefined} params.customerId
  * @param {string|number|null|undefined} params.walkInCustomerId
  * @param {object|null|undefined} params.coinSettings
+ * @param {number|string|null|undefined} [params.initialBalance]
+ * @param {boolean} [params.initialIsDefault]
  * @param {() => void} [params.onCustomerChange]
  */
-export function useCustomerCoinInfo({ customerId, walkInCustomerId, coinSettings, onCustomerChange }) {
+export function useCustomerCoinInfo({
+    customerId,
+    walkInCustomerId,
+    coinSettings,
+    initialBalance,
+    initialIsDefault = false,
+    onCustomerChange,
+}) {
+    const needsFetch = shouldFetchCustomerCoins(customerId, walkInCustomerId);
+    const seedBalance = hasProvidedBalance(initialBalance);
+
     const [coinInfo, setCoinInfo] = useState({
-        balance: 0,
-        is_default: false,
+        balance: seedBalance ? parseFloat(initialBalance) || 0 : 0,
+        is_default: initialIsDefault,
         settings: coinSettings ?? { enabled: false },
     });
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(needsFetch && !seedBalance);
     const previousCustomerIdRef = useRef(undefined);
+    const onCustomerChangeRef = useRef(onCustomerChange);
+    const coinSettingsRef = useRef(coinSettings);
+
+    onCustomerChangeRef.current = onCustomerChange;
+    coinSettingsRef.current = coinSettings;
 
     const isWalkIn =
         !customerId ||
@@ -30,20 +55,24 @@ export function useCustomerCoinInfo({ customerId, walkInCustomerId, coinSettings
             previousCustomerIdRef.current !== undefined && previousCustomerIdRef.current !== customerId;
         previousCustomerIdRef.current = customerId;
 
-        if (!customerId || String(customerId) === String(walkInCustomerId ?? '')) {
-            setCoinInfo({ balance: 0, is_default: true, settings: coinSettings ?? { enabled: false } });
+        if (!needsFetch) {
+            setCoinInfo({ balance: 0, is_default: true, settings: coinSettingsRef.current ?? { enabled: false } });
+            setLoading(false);
 
             if (customerChanged) {
-                onCustomerChange?.();
+                onCustomerChangeRef.current?.();
             }
 
             return;
         }
 
         let cancelled = false;
+        const showLoadingState = !seedBalance;
 
         async function fetchCoins() {
-            setLoading(true);
+            if (showLoadingState) {
+                setLoading(true);
+            }
 
             try {
                 const res = await fetch(route('api.customers.coins', { customer: customerId }), {
@@ -51,29 +80,35 @@ export function useCustomerCoinInfo({ customerId, walkInCustomerId, coinSettings
                     headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 });
 
-                if (!res.ok || cancelled) {
+                if (cancelled) {
+                    return;
+                }
+
+                if (!res.ok) {
                     return;
                 }
 
                 const payload = await res.json();
 
-                if (!cancelled) {
-                    setCoinInfo({
-                        balance: payload.balance ?? 0,
-                        is_default: Boolean(payload.is_default),
-                        settings: payload.settings ?? coinSettings,
-                    });
+                setCoinInfo({
+                    balance: payload.balance ?? 0,
+                    is_default: Boolean(payload.is_default),
+                    settings: payload.settings ?? coinSettingsRef.current,
+                });
 
-                    if (customerChanged) {
-                        onCustomerChange?.();
-                    }
+                if (customerChanged) {
+                    onCustomerChangeRef.current?.();
                 }
             } catch {
-                if (!cancelled) {
-                    setCoinInfo({ balance: 0, is_default: false, settings: coinSettings ?? { enabled: false } });
+                if (!cancelled && showLoadingState) {
+                    setCoinInfo({
+                        balance: 0,
+                        is_default: false,
+                        settings: coinSettingsRef.current ?? { enabled: false },
+                    });
                 }
             } finally {
-                if (!cancelled) {
+                if (!cancelled && showLoadingState) {
                     setLoading(false);
                 }
             }
@@ -84,7 +119,7 @@ export function useCustomerCoinInfo({ customerId, walkInCustomerId, coinSettings
         return () => {
             cancelled = true;
         };
-    }, [customerId, walkInCustomerId, coinSettings]);
+    }, [customerId, walkInCustomerId, needsFetch, seedBalance]);
 
     return {
         coinInfo,

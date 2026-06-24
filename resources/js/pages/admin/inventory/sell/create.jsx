@@ -11,7 +11,7 @@ import { CustomerCoinBalance } from '@/components/inventory/customer-coin-balanc
 import { SellCoinFields } from '@/components/inventory/sell-coin-fields';
 import { SellDueAlertFields } from '@/components/inventory/sell-due-alert-fields';
 import { useCustomerCoinInfo } from '@/hooks/use-customer-coin-info';
-import { computeCoinDiscount, maxRedeemableCoins } from '@/lib/pos-coin';
+import { computeCoinDiscount, maxRedeemableCoins, resolveEffectiveCoinsRedeemed } from '@/lib/pos-coin';
 import {
     buildInitialSalePayments,
     computeSplitSalePayment,
@@ -893,6 +893,8 @@ export default function SellCreate({
     const initialCustomer = resumedSell?.customer ?? defaultCustomer;
 
     const form = useForm(buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAccounts }));
+    const isInitialCustomer =
+        initialCustomer?.id != null && String(form.data.customer_id) === String(initialCustomer.id);
     const resetCoinsRedeemed = useCallback(() => {
         form.setData('coins_redeemed', '0');
     }, [form]);
@@ -906,6 +908,8 @@ export default function SellCreate({
         customerId: form.data.customer_id,
         walkInCustomerId: defaultCustomer?.id ?? null,
         coinSettings,
+        initialBalance: isInitialCustomer ? initialCustomer?.point : undefined,
+        initialIsDefault: isInitialCustomer && Boolean(initialCustomer?.is_default),
         onCustomerChange: resetCoinsRedeemed,
     });
 
@@ -940,16 +944,17 @@ export default function SellCreate({
           )
         : 0;
     const netBeforeCoin = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
+    const resumedCoinOffset =
+        (parseFloat(resumedSell?.coins_redeemed ?? 0) || 0) - (parseFloat(resumedSell?.coins_earned ?? 0) || 0);
+    const rawCoinBalance = parseFloat(customerCoinInfo.balance ?? 0) || 0;
+    const deferCoinClamp = coinInfoLoading || (resumedCoinOffset > 0 && rawCoinBalance <= 0);
     const maxRedeemable = isWalkInCustomer
         ? 0
-        : maxRedeemableCoins(
-              customerCoinInfo.balance + (parseFloat(resumedSell?.coins_redeemed ?? 0) - parseFloat(resumedSell?.coins_earned ?? 0)),
-              activeCoinSettings,
-              netBeforeCoin,
-          );
-    const effectiveCoinsRedeemed = Math.min(
-        Math.max(0, parseFloat(form.data.coins_redeemed || 0)),
+        : maxRedeemableCoins(customerCoinInfo.balance + resumedCoinOffset, activeCoinSettings, netBeforeCoin);
+    const effectiveCoinsRedeemed = resolveEffectiveCoinsRedeemed(
+        form.data.coins_redeemed,
         maxRedeemable,
+        deferCoinClamp,
     );
     const coinDiscountAmount = computeCoinDiscount(effectiveCoinsRedeemed, activeCoinSettings, netBeforeCoin);
     const netBeforeRoundOff = netBeforeCoin - coinDiscountAmount;

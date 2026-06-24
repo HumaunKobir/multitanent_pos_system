@@ -47,6 +47,16 @@ export function computeCoinsEarned(paidBase, settings) {
  * @param {number|string} netBeforeCoin
  * @returns {number}
  */
+export function resolveEffectiveCoinsRedeemed(coinsRedeemed, maxRedeemable, deferClamp = false) {
+    const parsed = Math.max(0, parseFloat(coinsRedeemed) || 0);
+
+    if (deferClamp) {
+        return parsed;
+    }
+
+    return Math.min(parsed, maxRedeemable);
+}
+
 export function maxRedeemableCoins(balance, settings, netBeforeCoin) {
     const available = Math.max(0, parseFloat(balance) || 0);
     const net = Math.max(0, parseFloat(netBeforeCoin) || 0);

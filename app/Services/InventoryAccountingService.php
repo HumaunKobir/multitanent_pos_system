@@ -11,6 +11,7 @@ use App\Models\ChartOfAccount;
 use App\Models\Customer;
 use App\Models\CustomerPayment;
 use App\Models\Damage;
+use App\Models\Ledger;
 use App\Models\OnlineOrder;
 use App\Models\ProductExchange;
 use App\Models\ProductInitialStock;
@@ -771,6 +772,25 @@ class InventoryAccountingService
             ->where('source_type', $source::class)
             ->where('source_id', $source->getKey())
             ->first();
+    }
+
+    public function paymentAccountIdFor(Model $source): ?int
+    {
+        $transaction = $this->findTransactionFor($source);
+
+        if ($transaction === null) {
+            return null;
+        }
+
+        $accountId = Ledger::query()
+            ->where('transaction_id', $transaction->id)
+            ->where('credit', '>', 0)
+            ->with('account')
+            ->get()
+            ->first(fn (Ledger $line) => $line->account?->isPaymentAccount())
+            ?->account_id;
+
+        return $accountId !== null ? (int) $accountId : null;
     }
 
     /**

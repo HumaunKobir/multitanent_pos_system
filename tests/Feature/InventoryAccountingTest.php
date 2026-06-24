@@ -16,6 +16,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Services\InventoryAccountingService;
 use App\Services\SystemAccountService;
+use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\Permission\Models\Permission;
 
 function accountingUser(array $permissions = []): User
@@ -387,4 +388,48 @@ test('purchase can be created fully on due with empty paid amount', function () 
 
     $supplier->refresh();
     expect((float) $supplier->balance)->toBe(200.0);
+});
+
+test('purchase edit page pre-fills payment account from journal', function () {
+    $this->artisan('permissions:sync');
+    $this->withoutVite();
+
+    $user = accountingUser(['inventory.purchase.create', 'inventory.purchase.update']);
+    $cash = seedAccountingAccounts(branchId: $user->branch_id);
+
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+    ]);
+
+    $product = Product::factory()->create(['branch_id' => $user->branch_id]);
+
+    $this->actingAs($user)
+        ->post('/inventory/purchase', [
+            'supplier_id' => $supplier->id,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '550',
+            'payment_account_id' => $cash->id,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '1000',
+                    'quantity' => '1',
+                    'free_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase.index'));
+
+    $purchase = Purchase::query()->latest('id')->first();
+
+    $this->actingAs($user)
+        ->get("/inventory/purchase/{$purchase->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/purchase/edit')
+            ->where('purchase.payment_account_id', $cash->id));
 });

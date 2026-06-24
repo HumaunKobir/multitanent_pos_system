@@ -8,6 +8,8 @@ use App\Models\Branch;
 use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\ProductInOutLog;
+use App\Models\ProductVariation;
+use App\Models\Purchase;
 use App\Models\StockDistribution;
 use App\Models\StockDistributionProduct;
 use App\Models\Supplier;
@@ -760,6 +762,327 @@ test('purchase can create pending stock distribution for branch', function () {
         ->first();
 
     expect((float) $mainBatch->available)->toBe(2.0);
+});
+
+test('purchase edit can create pending stock distribution for branch', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = Branch::resolveMainBranchId();
+    $user = mainBranchUser([
+        'inventory.purchase.create',
+        'inventory.purchase.update',
+        'inventory.stock-distribution.create',
+    ]);
+    $targetBranch = Branch::factory()->create();
+    $supplier = Supplier::factory()->create(['branch_id' => $mainBranchId]);
+    $product = Product::factory()->create(['branch_id' => $mainBranchId]);
+
+    $cash = seedAccountingAccounts(branchId: $mainBranchId);
+
+    $this->actingAs($user)
+        ->post('/inventory/purchase', [
+            'supplier_id' => $supplier->id,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '500',
+            'payment_account_id' => $cash->id,
+            'comment' => 'Purchase without distribution',
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '100',
+                    'quantity' => '5',
+                    'free_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase.index'));
+
+    $purchase = Purchase::query()->latest('id')->first();
+
+    $this->actingAs($user)
+        ->put("/inventory/purchase/{$purchase->id}", [
+            'supplier_id' => $supplier->id,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '500',
+            'payment_account_id' => $cash->id,
+            'comment' => 'Purchase updated with distribution',
+            'distribute_to_branch_id' => $targetBranch->id,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '100',
+                    'quantity' => '5',
+                    'free_quantity' => '0',
+                    'distribute_quantity' => '3',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase.index'));
+
+    $distribution = StockDistribution::query()->where('purchase_id', $purchase->id)->first();
+
+    expect($distribution)->not->toBeNull();
+    expect($distribution->status)->toBe(StockDistributionStatus::Pending);
+    expect($distribution->to_branch_id)->toBe($targetBranch->id);
+    expect((float) $distribution->products->first()->quantity)->toBe(3.0);
+});
+
+test('purchase edit page pre-fills existing distribution branch and quantities', function () {
+    $this->artisan('permissions:sync');
+    $this->withoutVite();
+
+    $mainBranchId = Branch::resolveMainBranchId();
+    $user = mainBranchUser([
+        'inventory.purchase.create',
+        'inventory.purchase.update',
+        'inventory.stock-distribution.create',
+    ]);
+    $targetBranch = Branch::factory()->create();
+    $supplier = Supplier::factory()->create(['branch_id' => $mainBranchId]);
+    $product = Product::factory()->create(['branch_id' => $mainBranchId]);
+
+    $cash = seedAccountingAccounts(branchId: $mainBranchId);
+
+    $this->actingAs($user)
+        ->post('/inventory/purchase', [
+            'supplier_id' => $supplier->id,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '500',
+            'payment_account_id' => $cash->id,
+            'distribute_to_branch_id' => $targetBranch->id,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '100',
+                    'quantity' => '5',
+                    'free_quantity' => '0',
+                    'distribute_quantity' => '3',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase.index'));
+
+    $purchase = Purchase::query()->latest('id')->first();
+
+    $this->actingAs($user)
+        ->get("/inventory/purchase/{$purchase->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/purchase/edit')
+            ->where('purchase.distribute_to_branch_id', $targetBranch->id)
+            ->where('purchase.items.0.distribute_quantity', 3));
+});
+
+test('purchase edit update with existing distribution re-applies without stock error', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = Branch::resolveMainBranchId();
+    $user = mainBranchUser([
+        'inventory.purchase.create',
+        'inventory.purchase.update',
+        'inventory.stock-distribution.create',
+    ]);
+    $targetBranch = Branch::factory()->create();
+    $supplier = Supplier::factory()->create(['branch_id' => $mainBranchId]);
+    $product = Product::factory()->create(['branch_id' => $mainBranchId]);
+
+    $cash = seedAccountingAccounts(branchId: $mainBranchId);
+
+    $this->actingAs($user)
+        ->post('/inventory/purchase', [
+            'supplier_id' => $supplier->id,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '500',
+            'payment_account_id' => $cash->id,
+            'distribute_to_branch_id' => $targetBranch->id,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '100',
+                    'quantity' => '5',
+                    'free_quantity' => '0',
+                    'distribute_quantity' => '3',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase.index'));
+
+    $purchase = Purchase::query()->latest('id')->first();
+    $distributionId = StockDistribution::query()->where('purchase_id', $purchase->id)->value('id');
+
+    $this->actingAs($user)
+        ->put("/inventory/purchase/{$purchase->id}", [
+            'supplier_id' => $supplier->id,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '500',
+            'payment_account_id' => $cash->id,
+            'comment' => 'Updated after distribution',
+            'distribute_to_branch_id' => $targetBranch->id,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '100',
+                    'quantity' => '5',
+                    'free_quantity' => '0',
+                    'distribute_quantity' => '3',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase.index'));
+
+    $newDistribution = StockDistribution::query()->where('purchase_id', $purchase->id)->first();
+
+    expect($newDistribution)->not->toBeNull();
+    expect($newDistribution->id)->not->toBe($distributionId);
+    expect($newDistribution->to_branch_id)->toBe($targetBranch->id);
+    expect((float) $newDistribution->products->first()->quantity)->toBe(3.0);
+});
+
+test('purchase edit can remove distributed variation line without destination catalog entry', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = Branch::resolveMainBranchId();
+    $user = mainBranchUser([
+        'inventory.purchase.create',
+        'inventory.purchase.update',
+        'inventory.stock-distribution.create',
+    ]);
+    $targetBranch = Branch::factory()->create();
+    $supplier = Supplier::factory()->create(['branch_id' => $mainBranchId]);
+    $groupId = (string) Str::uuid();
+
+    $product = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'product_group_id' => $groupId,
+        'name' => 'Grouped Shirt '.fake()->unique()->numerify('###'),
+    ]);
+
+    $variations = collect(['Ash-M', 'Ash-XL', 'Blue-M'])->map(fn (string $label) => ProductVariation::query()->create([
+        'product_id' => $product->id,
+        'branch_id' => $mainBranchId,
+        'sku' => 'SKU-'.$label.'-'.fake()->unique()->numerify('####'),
+        'price' => 695,
+        'purchase_price' => 595,
+        'stock' => 0,
+        'variation_data' => ['label' => $label],
+    ]));
+
+    $cash = seedAccountingAccounts(branchId: $mainBranchId);
+
+    $purchaseItems = $variations->map(fn (ProductVariation $variation) => [
+        'product_id' => $product->id,
+        'variation_id' => $variation->id,
+        'unit_price' => '595',
+        'quantity' => '1',
+        'free_quantity' => '0',
+        'distribute_quantity' => '1',
+    ])->all();
+
+    $this->actingAs($user)
+        ->post('/inventory/purchase', [
+            'supplier_id' => $supplier->id,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '1785',
+            'payment_account_id' => $cash->id,
+            'distribute_to_branch_id' => $targetBranch->id,
+            'items' => $purchaseItems,
+        ])
+        ->assertRedirect(route('inventory.purchase.index'));
+
+    $purchase = Purchase::query()->latest('id')->first();
+
+    expect(StockDistribution::query()->where('purchase_id', $purchase->id)->first()?->products)->toHaveCount(3);
+
+    $remainingItems = $variations->take(2)->map(fn (ProductVariation $variation) => [
+        'product_id' => $product->id,
+        'variation_id' => $variation->id,
+        'unit_price' => '595',
+        'quantity' => '1',
+        'free_quantity' => '0',
+        'distribute_quantity' => '1',
+    ])->values()->all();
+
+    $this->actingAs($user)
+        ->put("/inventory/purchase/{$purchase->id}", [
+            'supplier_id' => $supplier->id,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '1190',
+            'payment_account_id' => $cash->id,
+            'distribute_to_branch_id' => $targetBranch->id,
+            'items' => $remainingItems,
+        ])
+        ->assertRedirect(route('inventory.purchase.index'));
+
+    $distribution = StockDistribution::query()->where('purchase_id', $purchase->id)->first();
+
+    expect($distribution)->not->toBeNull();
+    expect($distribution->products)->toHaveCount(2);
+    expect($distribution->products->sum(fn ($line) => (float) $line->quantity))->toBe(2.0);
+});
+
+test('purchase edit page exposes distribute props when allowed', function () {
+    $this->artisan('permissions:sync');
+    $this->withoutVite();
+
+    $mainBranchId = Branch::resolveMainBranchId();
+    $user = mainBranchUser([
+        'inventory.purchase.create',
+        'inventory.purchase.update',
+        'inventory.stock-distribution.create',
+    ]);
+    $supplier = Supplier::factory()->create(['branch_id' => $mainBranchId]);
+    $product = Product::factory()->create(['branch_id' => $mainBranchId]);
+
+    $cash = seedAccountingAccounts(branchId: $mainBranchId);
+
+    $this->actingAs($user)
+        ->post('/inventory/purchase', [
+            'supplier_id' => $supplier->id,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '100',
+            'payment_account_id' => $cash->id,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '100',
+                    'quantity' => '1',
+                    'free_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase.index'));
+
+    $purchase = Purchase::query()->latest('id')->first();
+
+    $this->actingAs($user)
+        ->get("/inventory/purchase/{$purchase->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/purchase/edit')
+            ->where('canDistribute', true)
+            ->has('branches'));
 });
 
 test('branch can partially receive selected distribution lines', function () {

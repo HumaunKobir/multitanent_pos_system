@@ -13,6 +13,7 @@ use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Models\Purchase;
 use App\Models\PurchaseReturn;
+use App\Models\StockDistribution;
 use App\Models\Supplier;
 use App\Services\InventoryAccountingService;
 use App\Services\StockDistributionService;
@@ -286,7 +287,23 @@ class PurchaseController extends Controller
         $grossAmount = (float) $purchase->gross_amount;
         $vatPercent = $grossAmount > 0 ? ((float) $purchase->vat / $grossAmount) * 100 : 0;
 
-        $items = $purchaseProducts->map(function ($pp) use ($batchesById) {
+        $existingDistribution = StockDistribution::query()
+            ->where('purchase_id', $purchase->id)
+            ->with('products')
+            ->latest('id')
+            ->first();
+
+        /** @var array<string, float> $distributeQuantitiesByLine */
+        $distributeQuantitiesByLine = [];
+
+        if ($existingDistribution) {
+            foreach ($existingDistribution->products as $line) {
+                $key = $line->product_id.'-'.($line->variation_id ?? 'null');
+                $distributeQuantitiesByLine[$key] = ($distributeQuantitiesByLine[$key] ?? 0) + (float) $line->quantity;
+            }
+        }
+
+        $items = $purchaseProducts->map(function ($pp) use ($batchesById, $distributeQuantitiesByLine) {
             $freeQty = 0.0;
             $expiryDate = null;
 
@@ -306,6 +323,7 @@ class PurchaseController extends Controller
             $product = $pp->product;
             $variation = $pp->variation;
             $sellPrice = $variation ? (float) $variation->price : (float) ($product?->sale_price ?? 0);
+            $lineKey = $pp->product_id.'-'.($pp->variation_id ?? 'null');
 
             return [
                 'product_id' => $pp->product_id,
@@ -317,10 +335,15 @@ class PurchaseController extends Controller
                 'sell_price' => $sellPrice,
                 'quantity' => (float) $pp->quantity,
                 'free_quantity' => $freeQty,
+                'distribute_quantity' => (int) ($distributeQuantitiesByLine[$lineKey] ?? 0),
                 'expiry_date' => $expiryDate ?? '',
                 'serial' => $pp->serial ?? '',
             ];
         })->values();
+
+        $paymentAccountId = (float) $purchase->paid_amount > 0
+            ? $this->accounting->paymentAccountIdFor($purchase)
+            : null;
 
         return Inertia::render('admin/inventory/purchase/edit', [
             'purchase' => [
@@ -334,11 +357,17 @@ class PurchaseController extends Controller
                 'due_amount' => (float) $purchase->due_amount,
                 'comment' => $purchase->comment,
                 'invoice_number' => $purchase->invoice_number,
+                'distribute_to_branch_id' => $existingDistribution?->to_branch_id,
+                'payment_account_id' => $paymentAccountId,
                 'supplier' => $purchase->supplier,
                 'items' => $items,
             ],
             'suppliers' => Supplier::query()->ownBranch()->orderBy('name', 'asc')->get(['id', 'name', 'company_name', 'phone']),
             'paymentAccounts' => $this->paymentAccounts(),
+            'canDistribute' => $this->canDistributeFromPurchase(),
+            'branches' => $this->canDistributeFromPurchase()
+                ? Branch::query()->operating()->active()->orderBy('name')->get(['id', 'name'])
+                : [],
         ]);
     }
 
@@ -367,9 +396,26 @@ class PurchaseController extends Controller
             'items.*.free_quantity' => ['required', 'integer', 'min:0'],
             'items.*.expiry_date' => ['nullable', 'date'],
             'items.*.serial' => ['nullable', 'string'],
+            'distribute_to_branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+            'items.*.distribute_quantity' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $data['paid_amount'] = max(0, (float) ($data['paid_amount'] ?? 0));
+
+        if ($this->canDistributeFromPurchase() && ! empty($data['distribute_to_branch_id'])) {
+            foreach ($data['items'] as $index => $item) {
+                $distributeQty = (int) ($item['distribute_quantity'] ?? 0);
+                $maxQty = (int) $item['quantity'] + (int) $item['free_quantity'];
+
+                if ($distributeQty > $maxQty) {
+                    return back()
+                        ->withErrors([
+                            "items.{$index}.distribute_quantity" => 'Distribute quantity cannot exceed purchased quantity.',
+                        ])
+                        ->withInput();
+                }
+            }
+        }
 
         $paidAmount = (float) $data['paid_amount'];
         $paymentAccountId = $this->resolvePaymentAccountId($request, $paidAmount);
@@ -394,6 +440,8 @@ class PurchaseController extends Controller
             DB::transaction(function () use ($purchase, $data, $branchId, $paymentAccountId) {
                 $this->accounting->reverseFor($purchase);
                 $purchase->load(['purchaseProducts']);
+
+                $this->rollbackPurchaseDistributions($purchase);
 
                 // Rollback previous stock changes
                 foreach ($purchase->purchaseProducts as $purchaseProduct) {
@@ -525,6 +573,8 @@ class PurchaseController extends Controller
                 Supplier::whereKey($data['supplier_id'])->increment('balance', $newDueChange);
 
                 $this->accounting->postPurchase($purchase->fresh(['supplier']), $paymentAccountId);
+
+                $this->maybeCreatePendingDistribution($data, $branchId, $purchase);
             });
         } catch (\Throwable $e) {
             if ($this->isInsufficientBalanceException($e)) {
@@ -645,6 +695,24 @@ class PurchaseController extends Controller
         $batch->refresh();
 
         return $batch;
+    }
+
+    private function rollbackPurchaseDistributions(Purchase $purchase): void
+    {
+        $distributions = StockDistribution::query()
+            ->where('purchase_id', $purchase->id)
+            ->with('products')
+            ->get();
+
+        foreach ($distributions as $distribution) {
+            if ($distribution->isReceived()) {
+                throw new \RuntimeException('This purchase cannot be edited because its stock distribution has already been received.');
+            }
+
+            $this->distribution->rollbackDistribution($distribution);
+            $distribution->products()->delete();
+            $distribution->delete();
+        }
     }
 
     private function canDistributeFromPurchase(): bool

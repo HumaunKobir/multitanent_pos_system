@@ -282,12 +282,18 @@ class StockDistributionService
         }
 
         if ($line->variation_id) {
-            $destinationProduct = $this->resolveDestinationProduct((int) $line->product_id, $toBranchId);
+            $destinationProductId = (int) $line->product_id;
+
+            if ($wasReceived) {
+                $destinationProduct = $this->resolveDestinationProduct((int) $line->product_id, $toBranchId);
+                $destinationProductId = $destinationProduct->id;
+            }
+
             $this->rollbackVariation(
                 (int) $line->variation_id,
                 $toBranchId,
                 (int) $line->product_id,
-                $destinationProduct->id,
+                $destinationProductId,
                 $qty,
                 $wasReceived,
             );

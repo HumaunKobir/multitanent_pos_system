@@ -1,10 +1,23 @@
 import { formatBdDate, formatBdDateTime, formatBdTime } from '@/lib/format-bd-date';
 
 const POS_PRINT_STYLES = `
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+}
+
 @media print {
     @page {
-        size: 80mm 200mm;
+        size: 80mm auto;
         margin: 0;
+    }
+    html, body {
+        margin: 0 !important;
+        padding: 0 !important;
     }
     * {
         -webkit-print-color-adjust: exact !important;
@@ -14,68 +27,77 @@ const POS_PRINT_STYLES = `
 }
 
 body {
-    font-family: 'Courier New', monospace;
+    font-family: 'Courier New', 'Liberation Mono', monospace;
     font-size: 11px;
-    line-height: 1.25;
+    line-height: 1.2;
     margin: 0;
-    padding: 5px;
+    padding: 0;
     color: #000;
     background: #fff;
+    font-weight: 700;
 }
 
 .pos-container {
     width: 100%;
     max-width: 80mm;
-    margin: 0 auto;
+    margin: 0;
+    padding: 2px 4px 4px;
 }
 
 .pos-header {
     text-align: center;
     border-bottom: 1px dashed #000;
-    padding-bottom: 10px;
-    margin-bottom: 10px;
+    padding-bottom: 4px;
+    margin-bottom: 6px;
+    padding-top: 0;
 }
 
 .pos-title {
     font-size: 15px;
-    font-weight: bold;
-    margin-bottom: 5px;
+    font-weight: 900;
+    margin-bottom: 2px;
     color: #000;
 }
 
 .pos-logo-wrap {
-    margin-bottom: 6px;
+    margin: 0 0 3px;
+    line-height: 0;
+    min-height: 0;
 }
 
 .pos-logo {
-    max-height: 44px;
-    max-width: 120px;
+    display: block;
+    margin: 0 auto;
+    max-height: 48px;
+    max-width: 72mm;
+    width: auto;
+    height: auto;
     object-fit: contain;
 }
 
 .pos-subtitle {
     font-size: 9px;
-    margin-bottom: 5px;
+    margin-bottom: 2px;
     color: #000;
-    font-weight: 500;
+    font-weight: 700;
 }
 
 .pos-info {
     font-size: 9px;
-    margin-bottom: 10px;
+    margin-bottom: 4px;
     color: #000;
-    font-weight: 500;
+    font-weight: 700;
 }
 
 .pos-customer {
     border-bottom: 1px dashed #000;
-    padding-bottom: 10px;
-    margin-bottom: 10px;
+    padding-bottom: 6px;
+    margin-bottom: 6px;
 }
 
 .pos-customer-line {
     color: #000;
-    font-weight: 500;
+    font-weight: 700;
     font-size: 11px;
 }
 
@@ -111,7 +133,7 @@ body {
     font-size: 9px;
     padding-left: 2px;
     color: #000;
-    font-weight: 500;
+    font-weight: 700;
 }
 
 .pos-totals {
@@ -156,7 +178,7 @@ body {
 
 .pos-divider {
     border-top: 1px dashed #000;
-    margin: 10px 0;
+    margin: 4px 0;
 }
 
 .pos-center {
@@ -168,7 +190,7 @@ body {
 }
 
 .pos-bold {
-    font-weight: bold;
+    font-weight: 900;
     font-size: 12px;
     color: #000;
 }
@@ -176,13 +198,13 @@ body {
 .pos-small {
     font-size: 9px;
     color: #000;
-    font-weight: 500;
+    font-weight: 700;
 }
 
 .pos-tiny {
     font-size: 8px;
     color: #000;
-    font-weight: 500;
+    font-weight: 700;
 }
 
 .pos-note {
@@ -218,6 +240,12 @@ body {
     margin: 0 0 4px 14px;
     padding: 0;
 }
+
+.pos-terms,
+.pos-terms * {
+    color: #000 !important;
+    font-weight: 700;
+}
 `;
 
 function escapeHtml(value) {
@@ -227,6 +255,91 @@ function escapeHtml(value) {
         .replace(/>/g, '&gt;')
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
+}
+
+function resolveAbsoluteUrl(url) {
+    if (!url) {
+        return '';
+    }
+
+    try {
+        return new URL(url, window.location.href).href;
+    } catch {
+        return String(url);
+    }
+}
+
+/**
+ * Embed logo as a data URL so thermal printers and popup print windows load it reliably.
+ */
+async function embedLogoDataUrl(url) {
+    const absoluteUrl = resolveAbsoluteUrl(url);
+
+    if (!absoluteUrl) {
+        return '';
+    }
+
+    if (absoluteUrl.startsWith('data:')) {
+        return absoluteUrl;
+    }
+
+    try {
+        const response = await fetch(absoluteUrl, { credentials: 'same-origin' });
+
+        if (!response.ok) {
+            return absoluteUrl;
+        }
+
+        const blob = await response.blob();
+
+        return await new Promise((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(String(reader.result || absoluteUrl));
+            reader.onerror = () => resolve(absoluteUrl);
+            reader.readAsDataURL(blob);
+        });
+    } catch {
+        return absoluteUrl;
+    }
+}
+
+async function preparePrintData(payload) {
+    const data = payload?.order ? payload : buildSellPosPrintPayload(payload?.sell ?? {}, payload?.options ?? payload);
+
+    if (data.options.companyLogo) {
+        data.options.companyLogo = await embedLogoDataUrl(data.options.companyLogo);
+    }
+
+    return data;
+}
+
+function waitForPrintImages(printWindow, onReady) {
+    const images = Array.from(printWindow.document.images ?? []);
+
+    if (images.length === 0) {
+        onReady();
+        return;
+    }
+
+    let pending = images.length;
+
+    const markLoaded = () => {
+        pending -= 1;
+
+        if (pending <= 0) {
+            onReady();
+        }
+    };
+
+    for (const image of images) {
+        if (image.complete) {
+            markLoaded();
+            continue;
+        }
+
+        image.addEventListener('load', markLoaded, { once: true });
+        image.addEventListener('error', markLoaded, { once: true });
+    }
 }
 
 function formatMoneyTk(value) {
@@ -494,7 +607,7 @@ function renderPosInvoice(data) {
     const headerBlock = options.showHeader
         ? `
         <div class="pos-header">
-            ${options.companyLogo ? `<div class="pos-logo-wrap"><img class="pos-logo" src="${escapeHtml(options.companyLogo)}" alt="" onerror="this.parentElement.style.display='none'" /></div>` : ''}
+            ${options.companyLogo ? `<div class="pos-logo-wrap"><img class="pos-logo" src="${escapeHtml(options.companyLogo)}" alt="${escapeHtml(options.companyName)}" /></div>` : ''}
             <div class="pos-title">${escapeHtml(options.companyName)}</div>
             ${options.branchName && options.branchName.trim().toLowerCase() !== String(options.companyName ?? '').trim().toLowerCase() ? `<div class="pos-subtitle">${escapeHtml(options.branchName)}</div>` : ''}
             ${options.companyAddress ? `<div class="pos-subtitle">${escapeHtml(options.companyAddress)}</div>` : ''}
@@ -628,12 +741,12 @@ function renderPosInvoice(data) {
 /**
  * Print POS invoice from buildSellPosPrintPayload() output or legacy flat payload.
  */
-export function posPrint(payload) {
+export async function posPrint(payload) {
     try {
-        const data = payload?.order ? payload : buildSellPosPrintPayload(payload?.sell ?? {}, payload?.options ?? payload);
+        const data = await preparePrintData(payload);
         const html = renderPosInvoice(data);
 
-        const printWindow = window.open('', '_blank', 'width=300,height=600');
+        const printWindow = window.open('', '_blank', 'width=320,height=700');
 
         if (!printWindow) {
             alert('Please allow popups to print the POS receipt.');
@@ -654,15 +767,19 @@ export function posPrint(payload) {
             printed = true;
             printWindow.focus();
             printWindow.print();
-        };
-
-        printWindow.onload = () => {
-            triggerPrint();
             printWindow.onafterprint = () => printWindow.close();
         };
 
+        const schedulePrint = () => {
+            waitForPrintImages(printWindow, () => {
+                requestAnimationFrame(() => triggerPrint());
+            });
+        };
+
+        printWindow.onload = schedulePrint;
+
         // Fallback for browsers where onload already fired before assignment.
-        setTimeout(triggerPrint, 500);
+        setTimeout(schedulePrint, 300);
     } catch (error) {
         console.error('POS print failed:', error);
         alert('Failed to print POS receipt.');

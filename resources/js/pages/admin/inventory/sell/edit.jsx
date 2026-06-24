@@ -2,6 +2,7 @@ import { clampQuantityInput } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
 import {
     computeDiscountAmount,
+    computeSellDisplayGross,
     filterEligibleSpecialDiscounts,
     findSpecialDiscountById,
     formatDiscountLabel,
@@ -510,6 +511,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
     ) || parseFloat(sell.promotion_discount_total ?? 0);
 
     const grossAmount = items.reduce((sum, it) => sum + parseFloat(it.quantity || 0) * parseFloat(it.unit_price || 0), 0);
+    const displayGrossAmount = computeSellDisplayGross(grossAmount, promotionDiscountTotal, items);
     const lineDiscountTotal = items.reduce((sum, it) => sum + parseFloat(it.discount || 0), 0);
     const taxableAmount = Math.max(0, grossAmount - lineDiscountTotal);
     const eligibleSpecialDiscounts = filterEligibleSpecialDiscounts(specialDiscounts, taxableAmount);
@@ -835,7 +837,7 @@ export default function SellEdit({ sell, walkInCustomerId = null, paymentAccount
                             <div className="space-y-3 text-xs">
                                 <div className="flex justify-between text-sm lg:text-base">
                                     <span className="font-medium text-muted-foreground">Gross Amount</span>
-                                    <span className="font-semibold tabular-nums">৳{grossAmount.toFixed(2)}</span>
+                                    <span className="font-semibold tabular-nums">৳{displayGrossAmount.toFixed(2)}</span>
                                 </div>
 
                                 {lineDiscountTotal > 0 && (

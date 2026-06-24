@@ -7,6 +7,7 @@ import {
 } from '@/components/inventory/invoice-show-layout';
 import { route } from '@/lib/route';
 import { buildSellPosPrintPayload, posPrint } from '@/lib/pos-print';
+import { computeSellDisplayGross, computeSellNetAmount } from '@/lib/pos-discount';
 import { computeSplitSalePayment } from '@/lib/sale-payment';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, Edit, Receipt, ShoppingCart, Trash2, User } from 'lucide-react';
@@ -33,15 +34,25 @@ export default function SellShow({ sell }) {
     }, [flash.success, flash.error]);
 
     const invoiceNumber = sell.invoice_number ?? `INVS${String(sell.id).padStart(8, '0')}`;
-    const lineDiscount = (sell.products ?? []).reduce((sum, line) => sum + parseFloat(line.discount ?? 0), 0);
-    const gross = parseFloat(sell.gross_amount ?? 0);
+    const products = sell.products ?? [];
+    const lineDiscount = products.reduce((sum, line) => sum + parseFloat(line.discount ?? 0), 0);
+    const grossAmount = parseFloat(sell.gross_amount ?? 0);
     const vat = parseFloat(sell.vat ?? 0);
     const discount = parseFloat(sell.discount ?? 0);
     const specialDiscount = parseFloat(sell.special_discount_amount ?? 0);
     const promotionDiscount = parseFloat(sell.promotion_discount_total ?? 0);
     const coinDiscount = parseFloat(sell.coin_discount_amount ?? 0);
     const roundOff = parseFloat(sell.round_off_amount ?? 0);
-    const net = gross + vat - discount - specialDiscount - promotionDiscount - coinDiscount - roundOff - lineDiscount;
+    const gross = computeSellDisplayGross(grossAmount, promotionDiscount, products);
+    const net = computeSellNetAmount({
+        grossAmount,
+        vat,
+        discount,
+        specialDiscountAmount: specialDiscount,
+        coinDiscountAmount: coinDiscount,
+        roundOffAmount: roundOff,
+        lineDiscountTotal: lineDiscount,
+    });
     const paid = parseFloat(sell.paid_amount ?? 0);
     const paymentLines = sell.payments ?? [];
     const { dueAmount, changeAmount } = computeSplitSalePayment(paymentLines, net);

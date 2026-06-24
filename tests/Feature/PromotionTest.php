@@ -5,10 +5,13 @@ use App\Enums\PromotionType;
 use App\Enums\SaleType;
 use App\Models\Batch;
 use App\Models\Category;
+use App\Models\CoinSettings;
+use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Promotion;
 use App\Models\PromotionTarget;
 use App\Models\Sell;
+use App\Models\SpecialDiscount;
 use App\Models\User;
 use App\Services\PromotionService;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -442,6 +445,88 @@ test('pos sale applies branch product promotion server side', function () {
 
     $batch->refresh();
     expect((float) $batch->available)->toBe(18.0);
+});
+
+test('sale net amount does not double count promotion discount with other reductions', function () {
+    $this->artisan('permissions:sync');
+
+    $user = promotionSellUser();
+    $cash = seedAccountingAccounts(user: $user);
+    $product = Product::factory()->create([
+        'branch_id' => $user->branch_id,
+        'sale_price' => 200,
+        'discount_price' => 0,
+    ]);
+    Batch::factory()->for($product)->withStock(20)->create(['branch_id' => $user->branch_id]);
+
+    $promotion = Promotion::factory()->percent(5)->forProduct()->create([
+        'branch_id' => $user->branch_id,
+        'stack_with_invoice_discount' => true,
+        'stack_with_special_discount' => true,
+    ]);
+
+    PromotionTarget::create([
+        'promotion_id' => $promotion->id,
+        'target_type' => PromotionScope::Product->value,
+        'target_id' => $product->id,
+    ]);
+
+    $specialDiscount = SpecialDiscount::factory()->create([
+        'branch_id' => $user->branch_id,
+        'discount_type' => 'percent',
+        'discount_value' => 3,
+        'min_amount' => 0,
+    ]);
+
+    CoinSettings::query()->create([
+        'branch_id' => $user->branch_id,
+        'enabled' => true,
+        'earn_spend_amount' => 100,
+        'earn_coins' => 1,
+        'coin_value' => 1,
+        'min_redeem_coins' => 0,
+        'max_redeem_percent' => 100,
+    ]);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'point' => 50,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => $specialDiscount->id,
+            'round_off_amount' => '2.90',
+            'coins_redeemed' => '50',
+            'vat' => '0',
+            'paid_amount' => '0',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '200',
+                    'quantity' => '3',
+                ],
+            ],
+        ])
+        ->assertRedirect();
+
+    $sell = Sell::query()->latest('id')->first();
+
+    expect((float) $sell->gross_amount)->toBe(570.0);
+    expect((float) $sell->promotion_discount_total)->toBe(30.0);
+    expect((float) $sell->special_discount_amount)->toBe(17.10);
+    expect((float) $sell->coin_discount_amount)->toBe(50.0);
+    expect((float) $sell->round_off_amount)->toBe(2.90);
+    expect((float) $sell->net_amount)->toBe(500.0);
+    expect((float) $sell->products->first()->unit_price)->toBe(190.0);
+    expect((float) $sell->products->first()->original_unit_price)->toBe(200.0);
 });
 
 test('sale blocks invoice discount when promotion stacking disallows it', function () {

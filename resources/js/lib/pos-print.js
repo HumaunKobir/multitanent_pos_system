@@ -1,3 +1,4 @@
+import { computeSellDisplayGross } from '@/lib/pos-discount';
 import { formatBdDate, formatBdDateTime, formatBdTime } from '@/lib/format-bd-date';
 
 const POS_PRINT_STYLES = `
@@ -462,7 +463,7 @@ export function hasRichTextContent(html) {
  * Transform a sell record into POS print data (similar to buildPosOrderData).
  */
 export function buildSellPosPrintPayload(sell, options = {}) {
-    const gross = parseFloat(sell.gross_amount ?? 0);
+    const grossAmount = parseFloat(sell.gross_amount ?? 0);
     const vat = parseFloat(sell.vat ?? 0);
     const invoiceDiscount = parseFloat(sell.discount ?? 0);
     const specialDiscount = parseFloat(sell.special_discount_amount ?? 0);
@@ -470,7 +471,8 @@ export function buildSellPosPrintPayload(sell, options = {}) {
     const coinDiscount = parseFloat(sell.coin_discount_amount ?? 0);
     const roundOff = parseFloat(sell.round_off_amount ?? 0);
     const lineDiscount = (sell.products ?? []).reduce((sum, item) => sum + parseFloat(item.discount ?? 0), 0);
-    const net = gross + vat - invoiceDiscount - specialDiscount - coinDiscount - roundOff - lineDiscount;
+    const gross = computeSellDisplayGross(grossAmount, promotionDiscount, sell.products ?? []);
+    const net = grossAmount + vat - invoiceDiscount - specialDiscount - coinDiscount - roundOff - lineDiscount;
     const payments = (sell.payments ?? []).map((line) => ({
         id: line.id,
         payment_account_id: line.payment_account_id,

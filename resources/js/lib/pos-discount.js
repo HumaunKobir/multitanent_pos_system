@@ -55,22 +55,44 @@ export function findBestSpecialDiscount(specialDiscounts, taxableAmount) {
     return matches[0] ?? null;
 }
 
+export function computeSellCatalogGross(products = []) {
+    return products.reduce((sum, line) => {
+        const qty = parseFloat(line.quantity ?? 0);
+        const unitPrice = parseFloat(line.original_unit_price ?? line.unit_price ?? 0);
+
+        return sum + qty * unitPrice;
+    }, 0);
+}
+
+/** Gross before promotion, for invoice breakdown when promo prices are stored in gross_amount. */
+export function computeSellDisplayGross(grossAmount, promotionDiscountTotal, products = []) {
+    const gross = parseFloat(grossAmount ?? 0);
+    const promotionDiscount = parseFloat(promotionDiscountTotal ?? 0);
+
+    if (promotionDiscount <= 0) {
+        return gross;
+    }
+
+    const catalogGross = computeSellCatalogGross(products);
+
+    return catalogGross > gross ? catalogGross : gross;
+}
+
 export function computeSellNetAmount({
     grossAmount = 0,
     vat = 0,
     discount = 0,
     specialDiscountAmount = 0,
-    promotionDiscountAmount = 0,
     coinDiscountAmount = 0,
     roundOffAmount = 0,
     lineDiscountTotal = 0,
 } = {}) {
+    // promotion_discount_total is already reflected in gross_amount via promo unit prices.
     return (
         parseFloat(grossAmount ?? 0) +
         parseFloat(vat ?? 0) -
         parseFloat(discount ?? 0) -
         parseFloat(specialDiscountAmount ?? 0) -
-        parseFloat(promotionDiscountAmount ?? 0) -
         parseFloat(coinDiscountAmount ?? 0) -
         parseFloat(roundOffAmount ?? 0) -
         parseFloat(lineDiscountTotal ?? 0)

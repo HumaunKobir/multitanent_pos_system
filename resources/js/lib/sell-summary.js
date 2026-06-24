@@ -16,7 +16,6 @@ export function buildSellRowSummary(row) {
         vat,
         discount,
         specialDiscountAmount,
-        promotionDiscountAmount,
         coinDiscountAmount,
         roundOffAmount,
         lineDiscountTotal,

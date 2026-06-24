@@ -26,7 +26,8 @@ import { customerModalDefaultsFromSearch } from '@/lib/customer-modal-defaults';
 import { route } from '@/lib/route';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Save, Search, ShoppingCart, Trash2, User } from 'lucide-react';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { applyPromotionsToCart, canApplyManualLineDiscount } from '@/lib/pos-promotion';
 
 import { RequiredMark } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { cn } from '@/lib/utils';
 
+
+function linePhysicalQty(item) {
+    return parseFloat(item.quantity || 0) + parseFloat(item.free_quantity || 0);
+}
 
 function lineGross(item) {
     return parseFloat(item.quantity || 0) * parseFloat(item.unit_price || 0);
@@ -395,9 +400,15 @@ function ProductSearchBox({ onAdd }) {
             product_id: product.id,
             product_name: product.name,
             product_code: product.code,
+            category_id: product.category_id ?? null,
+            brand_id: product.brand_id ?? null,
             variation_id: variation?.id ?? null,
             variation_label: variation?.label ?? null,
             unit_price: unitPrice,
+            original_unit_price: unitPrice,
+            base_unit_price: variation
+                ? parseFloat(variation.sale_price ?? 0)
+                : parseFloat(product.original_sale_price ?? product.sale_price ?? 0),
             quantity: 1,
             available_stock: stock,
         });
@@ -474,6 +485,7 @@ export default function SellEdit({
     walkInCustomerId = null,
     paymentAccounts = [],
     specialDiscounts = [],
+    promotions = [],
     discountTypes = [],
     coinSettings = null,
     cashInHandAccountId = null,
@@ -518,18 +530,41 @@ export default function SellEdit({
     });
 
     const [items, setItems] = useState(sell.items ?? []);
-    const coinsSyncedRef = useRef(false);
-    const promotionDiscountTotal = items.reduce(
-        (sum, item) => sum + (parseFloat(item.promotion_discount || 0) || 0),
-        0,
-    ) || parseFloat(sell.promotion_discount_total ?? 0);
 
-    const grossAmount = items.reduce((sum, it) => sum + parseFloat(it.quantity || 0) * parseFloat(it.unit_price || 0), 0);
-    const displayGrossAmount = computeSellDisplayGross(grossAmount, promotionDiscountTotal, items);
-    const lineDiscountTotal = items.reduce((sum, it) => sum + parseFloat(it.discount || 0), 0);
+    const {
+        items: cartItems,
+        promotion_discount_total: promotionDiscountTotal,
+        stacking: promotionStacking,
+    } = useMemo(() => {
+        if (paymentOnlyEdit) {
+            const storedPromotionTotal =
+                items.reduce((sum, item) => sum + (parseFloat(item.promotion_discount || 0) || 0), 0) ||
+                parseFloat(sell.promotion_discount_total ?? 0);
+
+            return {
+                items,
+                promotion_discount_total: storedPromotionTotal,
+                stacking: {
+                    manual_line_discount: true,
+                    invoice_discount: true,
+                    special_discount: true,
+                },
+            };
+        }
+
+        return applyPromotionsToCart(items, promotions, form.data.date);
+    }, [items, promotions, form.data.date, paymentOnlyEdit, sell.promotion_discount_total]);
+
+    const grossAmount = cartItems.reduce((sum, it) => sum + lineGross(it), 0);
+    const displayGrossAmount = computeSellDisplayGross(grossAmount, promotionDiscountTotal, cartItems);
+    const lineDiscountTotal = cartItems.reduce((sum, it) => sum + parseFloat(it.discount || 0), 0);
     const taxableAmount = Math.max(0, grossAmount - lineDiscountTotal);
-    const eligibleSpecialDiscounts = filterEligibleSpecialDiscounts(specialDiscounts, taxableAmount);
-    const selectedSpecialDiscount = findSpecialDiscountById(specialDiscounts, form.data.special_discount_id);
+    const eligibleSpecialDiscounts = promotionStacking.special_discount
+        ? filterEligibleSpecialDiscounts(specialDiscounts, taxableAmount)
+        : [];
+    const selectedSpecialDiscount = promotionStacking.special_discount
+        ? findSpecialDiscountById(specialDiscounts, form.data.special_discount_id)
+        : null;
     const vatAmount = taxableAmount * (parseFloat(form.data.vat || 0) / 100);
     const invoiceDiscountAmount = computeDiscountAmount(
         form.data.discount_type,
@@ -556,6 +591,7 @@ export default function SellEdit({
         deferCoinClamp,
     );
     const storedCoinsRedeemed = parseFloat(sell.coins_redeemed ?? 0) || 0;
+    const coinsSyncedRef = useRef(false);
 
     useEffect(() => {
         if (deferCoinClamp || isWalkInCustomer || coinsSyncedRef.current || storedCoinsRedeemed <= 0) {
@@ -573,7 +609,7 @@ export default function SellEdit({
     }, [deferCoinClamp, isWalkInCustomer, maxRedeemable, storedCoinsRedeemed, form]);
     const coinDiscountAmount = computeCoinDiscount(effectiveCoinsRedeemed, activeCoinSettings, netBeforeCoin);
     const netBeforeRoundOff = netBeforeCoin - coinDiscountAmount;
-    const hasSaleItems = items.length > 0;
+    const hasSaleItems = cartItems.length > 0;
     const roundOffAmount = hasSaleItems
         ? Math.min(Math.max(0, parseFloat(form.data.round_off_amount || 0)), Math.max(0, netBeforeRoundOff))
         : 0;
@@ -581,6 +617,18 @@ export default function SellEdit({
     const { totalPaid, dueAmount, changeAmount } = computeSplitSalePayment(form.data.payments, netAmount);
     const customerRequiredError = saleCustomerRequiredError(form.data.customer_id);
     const dueCustomerError = dueSaleCustomerError(form.data.customer_id, walkInCustomerId, dueAmount);
+
+    useEffect(() => {
+        if (!paymentOnlyEdit && !promotionStacking.invoice_discount && parseFloat(form.data.discount_value || 0) > 0) {
+            form.setData('discount_value', '0');
+        }
+    }, [paymentOnlyEdit, promotionStacking.invoice_discount]);
+
+    useEffect(() => {
+        if (!paymentOnlyEdit && !promotionStacking.special_discount && form.data.special_discount_id) {
+            form.setData('special_discount_id', '');
+        }
+    }, [paymentOnlyEdit, promotionStacking.special_discount]);
 
     useEffect(() => {
         if (
@@ -597,7 +645,7 @@ export default function SellEdit({
         }
     }, [hasSaleItems]);
 
-    const hasOverStock = items.some((item) => parseFloat(item.quantity || 0) > parseFloat(item.available_stock ?? 0));
+    const hasOverStock = cartItems.some((item) => linePhysicalQty(item) > parseFloat(item.available_stock ?? 0));
 
     function addItem(item) {
         const duplicate = items.find(
@@ -622,7 +670,7 @@ export default function SellEdit({
         if (maxStock <= 0) {
             return;
         }
-        setItems((prev) => [...prev, { ...item, quantity: 1, discount: '0' }]);
+        setItems((prev) => [...prev, { ...item, quantity: 1, discount: item.discount ?? '0' }]);
     }
 
     function updateItem(index, field, value) {
@@ -645,7 +693,7 @@ export default function SellEdit({
     function handleSubmit(e) {
         e.preventDefault();
 
-        const lineItems = items.filter((it) => parseFloat(it.quantity || 0) >= 1);
+        const lineItems = cartItems.filter((it) => parseFloat(it.quantity || 0) >= 1);
         if (lineItems.length === 0) {
             toast.error('Add at least one line with quantity 1 or more.');
             return;
@@ -776,7 +824,7 @@ export default function SellEdit({
                         {!paymentOnlyEdit && <ProductSearchBox onAdd={addItem} />}
                         {form.errors.items && <p className="mt-1 text-xs text-destructive">{form.errors.items}</p>}
 
-                        {items.length > 0 && (
+                        {cartItems.length > 0 && (
                             <div className="mt-4 overflow-x-auto rounded-md border border-border">
                                 <table className="w-full table-auto text-xs">
                                     <thead className="bg-muted/40 text-xs uppercase tracking-wide">
@@ -792,12 +840,15 @@ export default function SellEdit({
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border">
-                                        {items.map((item, i) => {
-                                            const qty = parseInt(item.quantity || 0, 10);
+                                        {cartItems.map((item, i) => {
+                                            const paidQty = parseFloat(item.quantity || 0);
+                                            const freeQty = parseFloat(item.free_quantity || 0);
+                                            const totalQty = linePhysicalQty(item);
                                             const stock = parseFloat(item.available_stock ?? 0);
-                                            const remaining = Math.max(0, stock - qty);
-                                            const overStock = item.available_stock !== null && item.available_stock !== undefined && qty > stock;
-                                            const subTotal = qty * parseFloat(item.unit_price || 0) - parseFloat(item.discount || 0);
+                                            const remaining = Math.max(0, stock - totalQty);
+                                            const overStock = item.available_stock !== null && item.available_stock !== undefined && totalQty > stock;
+                                            const subTotal = paidQty * parseFloat(item.unit_price || 0) - parseFloat(item.discount || 0);
+                                            const manualLineDiscountAllowed = canApplyManualLineDiscount(item, promotionStacking);
                                             return (
                                                 <tr key={i} className="hover:bg-muted/20">
                                                     <td className="px-3 py-2 text-muted-foreground">{i + 1}</td>
@@ -805,6 +856,12 @@ export default function SellEdit({
                                                         <p className="font-medium">{item.product_name}</p>
                                                         {item.variation_label && (
                                                             <p className="text-muted-foreground">{item.variation_label}</p>
+                                                        )}
+                                                        {item.promotion_label && (
+                                                            <p className="mt-0.5 text-[10px] font-medium text-amber-700">{item.promotion_label}</p>
+                                                        )}
+                                                        {freeQty > 0 && (
+                                                            <p className="text-[10px] font-medium text-emerald-700">FREE × {freeQty}</p>
                                                         )}
                                                     </td>
                                                     <td className="px-2 py-1.5">
@@ -819,13 +876,17 @@ export default function SellEdit({
                                                                 step="0.01"
                                                                 value={item.unit_price ?? ''}
                                                                 onChange={(e) => updateItem(i, 'unit_price', e.target.value)}
-                                                                className={`${inputCls} w-full text-right`}
+                                                                disabled={!!item.promotion_id}
+                                                                className={cn(
+                                                                    `${inputCls} w-full text-right`,
+                                                                    item.promotion_id && 'bg-muted',
+                                                                )}
                                                             />
                                                         )}
                                                     </td>
                                                     <td className="px-2 py-1.5">
                                                         {paymentOnlyEdit ? (
-                                                            <span className="block px-2 py-1 text-right font-medium">{qty}</span>
+                                                            <span className="block px-2 py-1 text-right font-medium">{paidQty}</span>
                                                         ) : (
                                                             <Input
                                                                 type="number"
@@ -860,7 +921,11 @@ export default function SellEdit({
                                                                 onBlur={(e) => {
                                                                     if (e.target.value === '') updateItem(i, 'discount', '0');
                                                                 }}
-                                                                className={`${inputCls} w-full text-right text-green-700`}
+                                                                disabled={!manualLineDiscountAllowed}
+                                                                className={cn(
+                                                                    `${inputCls} w-full text-right text-green-700`,
+                                                                    !manualLineDiscountAllowed && 'bg-muted',
+                                                                )}
                                                             />
                                                         )}
                                                     </td>
@@ -1134,7 +1199,7 @@ export default function SellEdit({
                         <Button
                             type="submit"
                             size="sm"
-                            disabled={form.processing || (!paymentOnlyEdit && (items.length === 0 || hasOverStock))}
+                            disabled={form.processing || (!paymentOnlyEdit && (cartItems.length === 0 || hasOverStock))}
                             className="bg-emerald-600 text-white shadow-sm shadow-emerald-500/30 transition-all duration-150 hover:-translate-y-0.5 hover:bg-emerald-600 hover:shadow-md hover:shadow-emerald-500/50"
                         >
                             <Save className="size-3.5" />

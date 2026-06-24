@@ -392,7 +392,7 @@ class SellController extends Controller
         $sell->load([
             'customer:id,name,phone,point,is_default',
             'specialDiscount:id,name,discount_type,discount_value',
-            'products.product:id,name,code,sale_price,discount_price',
+            'products.product:id,name,code,sale_price,discount_price,category_id,brand_id',
             'products.variation:id,variation_data,price,stock',
             'products.promotion:id,name',
             'payments.paymentAccount:id,code,name',
@@ -419,6 +419,8 @@ class SellController extends Controller
                 'product_id' => $sp->product_id,
                 'product_name' => $sp->product?->name,
                 'product_code' => $sp->product?->code,
+                'category_id' => $sp->product?->category_id,
+                'brand_id' => $sp->product?->brand_id,
                 'variation_id' => $sp->variation_id,
                 'variation_label' => $sp->variation?->variation_data['label'] ?? null,
                 'unit_price' => (float) $sp->unit_price,

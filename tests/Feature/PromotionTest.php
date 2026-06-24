@@ -819,3 +819,70 @@ test('expired promotion does not apply on todays sale', function () {
     expect($result['items'][0]['promotion_id'])->toBeNull();
     expect((float) $result['items'][0]['unit_price'])->toBe(200.0);
 });
+
+test('due sale edit exposes promotions and product targeting fields', function () {
+    $this->artisan('permissions:sync');
+
+    $user = promotionUser(['inventory.sell.create', 'inventory.sell.update']);
+    $cash = seedAccountingAccounts(user: $user);
+    $product = Product::factory()->create([
+        'branch_id' => $user->branch_id,
+        'sale_price' => 500,
+        'discount_price' => 0,
+    ]);
+    Batch::factory()->for($product)->withStock(20)->create(['branch_id' => $user->branch_id]);
+
+    $promotion = Promotion::factory()->percent(20)->forProduct()->create([
+        'branch_id' => $user->branch_id,
+        'name' => 'Edit Promo '.uniqid(),
+    ]);
+
+    PromotionTarget::create([
+        'promotion_id' => $promotion->id,
+        'target_type' => PromotionScope::Product->value,
+        'target_id' => $product->id,
+    ]);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'is_default' => false,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '0',
+            'payment_account_id' => null,
+            'payments' => [],
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '500',
+                    'quantity' => '2',
+                ],
+            ],
+        ])
+        ->assertRedirect();
+
+    $sell = Sell::query()->where('user_id', $user->id)->latest('id')->first();
+    expect($sell)->not->toBeNull();
+    expect((float) $sell->paid_amount)->toBe(0.0);
+    expect(max(0, (float) $sell->net_amount - (float) $sell->paid_amount))->toBeGreaterThan(0.0);
+
+    $this->actingAs($user)
+        ->get("/inventory/sell/{$sell->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/sell/edit')
+            ->where('paymentOnlyEdit', false)
+            ->where('promotions', fn ($promotions) => collect($promotions)->pluck('id')->contains($promotion->id))
+            ->where('sell.items.0.category_id', $product->category_id)
+            ->where('sell.items.0.brand_id', $product->brand_id)
+            ->where('sell.items.0.promotion_id', $promotion->id));
+});

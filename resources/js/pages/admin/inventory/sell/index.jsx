@@ -61,32 +61,6 @@ export default function SellIndex({ sells, filters }) {
             render: (row) => row.customer?.name ?? <span className="text-muted-foreground">Walk-in</span>,
         },
         {
-            id: 'discount',
-            header: 'Discount',
-            render: (row) => {
-                const { nonCoinDiscount, coinDiscountAmount } = buildSellRowSummary(row);
-
-                if (nonCoinDiscount <= 0 && coinDiscountAmount <= 0) {
-                    return <span className="text-muted-foreground">—</span>;
-                }
-
-                return (
-                    <div className="text-xs leading-tight">
-                        {nonCoinDiscount > 0 && (
-                            <span className="font-medium text-green-700 dark:text-green-400">
-                                -৳{nonCoinDiscount.toFixed(2)}
-                            </span>
-                        )}
-                        {coinDiscountAmount > 0 && (
-                            <span className="block text-violet-700 dark:text-violet-300">
-                                Coin -৳{coinDiscountAmount.toFixed(2)}
-                            </span>
-                        )}
-                    </div>
-                );
-            },
-        },
-        {
             id: 'total',
             header: 'Net Payable',
             render: (row) => {

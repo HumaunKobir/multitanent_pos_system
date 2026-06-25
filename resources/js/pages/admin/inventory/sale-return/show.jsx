@@ -13,7 +13,17 @@ export default function SaleReturnShow({ saleReturn }) {
             id={saleReturn.id}
             date={saleReturn.date}
             comment={saleReturn.comment}
-            extra={<p className="mt-1">Customer: {saleReturn.customer?.name ?? '—'} · Sale #{saleReturn.sell_id} · Total ৳{parseFloat(saleReturn.gross_amount).toFixed(2)}</p>}
+            extra={
+                <p className="mt-1">
+                    Customer: {saleReturn.customer?.name ?? '—'} · Sale #{saleReturn.sell_id} · Gross ৳
+                    {parseFloat(saleReturn.gross_amount).toFixed(2)}
+                    {parseFloat(saleReturn.discount_amount ?? 0) > 0
+                        ? ` · Discount ৳${parseFloat(saleReturn.discount_amount).toFixed(2)}`
+                        : ''}{' '}
+                    · Net ৳{parseFloat(saleReturn.net_amount ?? saleReturn.gross_amount).toFixed(2)} · Refund ৳
+                    {parseFloat(saleReturn.paid_amount).toFixed(2)}
+                </p>
+            }
             lines={saleReturn.products?.map((p) => ({
                 name: p.product?.name,
                 code: p.product?.code,

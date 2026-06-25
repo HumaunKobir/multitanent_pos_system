@@ -6,11 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Models\ProductExchange;
 use App\Models\SaleReturn;
 use App\Models\Sell;
+use App\Services\CoinService;
+use App\Services\PromotionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class SaleLookupController extends Controller
 {
+    public function __construct(
+        private PromotionService $promotionService,
+        private CoinService $coinService,
+    ) {}
+
     public function __invoke(Request $request): JsonResponse
     {
         abort_unless(
@@ -34,7 +41,8 @@ class SaleLookupController extends Controller
             ->sale()
             ->with([
                 'customer:id,name,phone',
-                'products.product:id,name,code,sale_price,discount_price',
+                'payments:id,sell_id,payment_account_id,amount',
+                'products.product:id,name,code,sale_price,discount_price,category_id,brand_id',
                 'products.variation:id,variation_data,price,stock',
             ])
             ->find($id);
@@ -66,8 +74,13 @@ class SaleLookupController extends Controller
                 'product_code' => $line->product?->code,
                 'variation_id' => $line->variation_id,
                 'variation_label' => $line->variation?->variation_data['label'] ?? null,
-                'unit_price' => (float) $line->unit_price,
-                'sold_quantity' => (int) $sold,
+                'category_id' => $line->product?->category_id,
+                'brand_id' => $line->product?->brand_id,
+                'unit_price' => (float) ($line->original_unit_price ?? $line->unit_price),
+                'line_discount' => (float) $line->discount,
+                'promotion_discount' => (float) $line->promotion_discount,
+                'promotion_id' => $line->promotion_id,
+                'sold_quantity' => $sold,
                 'returned_quantity' => (int) $alreadyReturned,
                 'max_return_quantity' => (int) max(0, $sold - $alreadyReturned),
                 'batches' => $line->batches ?? [],
@@ -83,9 +96,27 @@ class SaleLookupController extends Controller
             'customer_id' => $sell->customer_id,
             'customer' => $sell->customer,
             'date' => optional($sell->date)->format('Y-m-d'),
-            'discount' => (float) $sell->discount,
             'has_discount' => $sell->hasAnyDiscount(),
-            'has_manual_discount' => $sell->hasManualDiscount(),
+            'sell_discounts' => [
+                'gross_amount' => (float) $sell->gross_amount,
+                'line_discount_total' => $sell->lineDiscountTotal(),
+                'invoice_discount' => (float) $sell->discount,
+                'special_discount_amount' => (float) $sell->special_discount_amount,
+                'promotion_discount_total' => (float) $sell->promotion_discount_total,
+                'coin_discount_amount' => (float) $sell->coin_discount_amount,
+                'round_off_amount' => (float) $sell->round_off_amount,
+                'net_amount' => (float) $sell->net_amount,
+                'paid_amount' => (float) $sell->paid_amount,
+                'coins_redeemed' => (float) $sell->coins_redeemed,
+            ],
+            'coin_settings' => $this->coinService->settingsPayloadForBranch($sell->branch_id),
+            'promotions' => $this->promotionService->activeForBranch($sell->branch_id),
+            'payments' => $sell->payments
+                ->map(fn ($payment) => [
+                    'payment_account_id' => $payment->payment_account_id,
+                    'amount' => (float) $payment->amount,
+                ])
+                ->values(),
             'items' => $items,
         ]);
     }

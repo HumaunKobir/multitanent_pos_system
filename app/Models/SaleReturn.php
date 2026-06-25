@@ -12,7 +12,7 @@ class SaleReturn extends Model
 {
     use HasBranchUser;
 
-    protected $appends = ['invoice_number'];
+    protected $appends = ['invoice_number', 'net_amount'];
 
     protected $fillable = [
         'branch_id',
@@ -21,17 +21,25 @@ class SaleReturn extends Model
         'customer_id',
         'date',
         'gross_amount',
+        'discount_amount',
         'paid_amount',
         'payment_type',
+        'payment_account_id',
         'comment',
     ];
 
     protected $casts = [
         'date' => 'date',
         'gross_amount' => 'decimal:2',
+        'discount_amount' => 'decimal:2',
         'paid_amount' => 'decimal:2',
         'payment_type' => ReceivedPaymentMethod::class,
     ];
+
+    public function getNetAmountAttribute(): float
+    {
+        return round(max(0, (float) $this->gross_amount - (float) $this->discount_amount), 2);
+    }
 
     public function getInvoiceNumberAttribute(): string
     {
@@ -48,8 +56,18 @@ class SaleReturn extends Model
         return $this->belongsTo(Customer::class);
     }
 
+    public function paymentAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'payment_account_id');
+    }
+
     public function products(): HasMany
     {
         return $this->hasMany(SaleReturnProduct::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(SaleReturnPayment::class);
     }
 }

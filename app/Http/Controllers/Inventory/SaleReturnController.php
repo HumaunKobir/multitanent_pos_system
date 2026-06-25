@@ -11,13 +11,17 @@ use App\Models\Batch;
 use App\Models\Customer;
 use App\Models\SaleReturn;
 use App\Models\Sell;
+use App\Services\CoinService;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
 use App\Services\InventoryStockService;
+use App\Services\PromotionService;
+use App\Services\SaleReturnDiscountService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -31,6 +35,9 @@ class SaleReturnController extends Controller
         private InventoryStockService $stock,
         private InventoryAccountingService $accounting,
         private InventoryCostService $costService,
+        private SaleReturnDiscountService $returnDiscounts,
+        private PromotionService $promotionService,
+        private CoinService $coinService,
     ) {}
 
     public function index(Request $request): Response
@@ -74,32 +81,29 @@ class SaleReturnController extends Controller
             'paid_amount' => ['required', 'numeric', 'min:0'],
             'payment_type' => ['required', 'integer'],
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
+            'payments' => ['nullable', 'array'],
+            'payments.*.payment_account_id' => ['required_with:payments', 'integer', 'exists:chart_of_accounts,id'],
+            'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
         ]);
 
         $branchId = Auth::user()?->branch_id;
-        $paymentType = ReceivedPaymentMethod::from((int) $data['payment_type']);
-        $paymentAccountId = $paymentType === ReceivedPaymentMethod::Cash
-            ? $this->resolvePaymentAccountId($request, (float) $data['paid_amount'])
-            : null;
 
         try {
-            DB::transaction(function () use ($data, $branchId, $paymentAccountId, $paymentType) {
+            DB::transaction(function () use ($request, $data, $branchId) {
                 $parent = Sell::query()
                     ->ownBranchUser()
                     ->sale()
-                    ->with(['products'])
+                    ->with(['products', 'customer'])
                     ->lockForUpdate()
                     ->findOrFail($data['sell_id']);
 
-                if ($parent->hasAnyDiscount()) {
-                    throw new \RuntimeException('Sales with a discount cannot be returned.');
-                }
-
                 $returnedByLine = $this->returnedQuantities($parent->id);
                 $grossAmount = 0.0;
+                $returnLineDiscount = 0.0;
+                $returnPromotionDiscount = 0.0;
                 $lines = [];
 
                 foreach ($data['items'] as $item) {
@@ -135,7 +139,19 @@ class SaleReturnController extends Controller
                         throw new \RuntimeException('Unable to restore stock for a sale line.');
                     }
 
-                    $grossAmount += $returnQty * (float) $sellProduct->unit_price;
+                    $catalogUnitPrice = (float) ($sellProduct->original_unit_price ?? $sellProduct->unit_price);
+                    $grossAmount += $returnQty * $catalogUnitPrice;
+
+                    $soldQty = (float) $sellProduct->quantity;
+                    if ($soldQty > 0) {
+                        $ratio = $returnQty / $soldQty;
+                        $returnLineDiscount += (float) $sellProduct->discount * $ratio;
+                        $returnPromotionDiscount += $this->returnDiscounts->promotionClawback(
+                            $sellProduct,
+                            $returnQty,
+                            $parent,
+                        );
+                    }
 
                     $lines[] = [
                         'branch_id' => $branchId,
@@ -143,7 +159,7 @@ class SaleReturnController extends Controller
                         'product_id' => $sellProduct->product_id,
                         'variation_id' => $sellProduct->variation_id,
                         'quantity' => $returnQty,
-                        'unit_price' => $sellProduct->unit_price,
+                        'unit_price' => $catalogUnitPrice,
                         'batches' => $batchMap,
                     ];
                 }
@@ -152,7 +168,19 @@ class SaleReturnController extends Controller
                     throw new \RuntimeException('At least one line with return quantity greater than zero is required.');
                 }
 
-                $paidAmount = min((float) $data['paid_amount'], $grossAmount);
+                $totals = $this->returnDiscounts->calculate(
+                    $parent,
+                    $grossAmount,
+                    $returnLineDiscount,
+                    $returnPromotionDiscount,
+                );
+                $discountAmount = $totals['discount_amount'];
+                $netReturnAmount = $totals['net_return_amount'];
+                $refund = $this->resolveReturnRefund($data, $request, $netReturnAmount);
+                $paidAmount = $refund['paid_amount'];
+                $paymentType = $refund['payment_type'];
+                $paymentAccountId = $refund['payment_account_id'];
+                $paymentLines = $refund['payment_lines'];
 
                 $saleReturn = SaleReturn::create([
                     'branch_id' => $branchId,
@@ -161,8 +189,10 @@ class SaleReturnController extends Controller
                     'customer_id' => $parent->customer_id,
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
+                    'discount_amount' => $discountAmount,
                     'paid_amount' => $paidAmount,
                     'payment_type' => $paymentType,
+                    'payment_account_id' => $paymentAccountId,
                     'comment' => $data['comment'] ?? null,
                 ]);
 
@@ -174,13 +204,16 @@ class SaleReturnController extends Controller
                     Customer::whereKey($parent->customer_id)->increment('balance', $paidAmount);
                 }
 
+                $this->syncSaleReturnPayments($saleReturn, $paymentLines);
                 $saleReturn->load('products');
                 $this->accounting->postSaleReturn(
                     $saleReturn->fresh(['customer', 'sell']),
-                    $paymentAccountId,
+                    $paymentLines,
                     $this->costService->costForSaleReturn($saleReturn),
                 );
             });
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             return back()
                 ->withErrors([
@@ -217,17 +250,13 @@ class SaleReturnController extends Controller
         $this->authorize('inventory.sale-return.update');
         $this->authorizeBranchUserRecord($saleReturn);
 
-        $saleReturn->load(['customer', 'sell', 'products.product']);
+        $saleReturn->load(['customer', 'sell', 'products.product', 'payments']);
 
         $parent = Sell::query()
             ->ownBranchUser()
             ->sale()
-            ->with(['products.product'])
+            ->with(['products.product:id,name,code,category_id,brand_id', 'payments'])
             ->findOrFail($saleReturn->sell_id);
-
-        if ($parent->hasAnyDiscount()) {
-            abort(403, 'Sales with a discount cannot be returned.');
-        }
 
         $returnedByLine = $this->returnedQuantities($parent->id, $saleReturn->id);
         $linesOnReturn = $saleReturn->products->keyBy('sell_product_id');
@@ -243,9 +272,17 @@ class SaleReturnController extends Controller
 
                 return [
                     'sell_product_id' => $sp->id,
+                    'product_id' => $sp->product_id,
+                    'variation_id' => $sp->variation_id,
+                    'category_id' => $sp->product?->category_id,
+                    'brand_id' => $sp->product?->brand_id,
                     'product_name' => $sp->product?->name,
                     'product_code' => $sp->product?->code,
-                    'unit_price' => (float) $sp->unit_price,
+                    'unit_price' => (float) ($sp->original_unit_price ?? $sp->unit_price),
+                    'line_discount' => (float) $sp->discount,
+                    'promotion_discount' => (float) $sp->promotion_discount,
+                    'promotion_id' => $sp->promotion_id,
+                    'sold_quantity' => (float) $sp->quantity,
                     'max_return_quantity' => (int) $maxReturn,
                     'quantity' => $current ? (string) (int) $current->quantity : '0',
                 ];
@@ -265,7 +302,38 @@ class SaleReturnController extends Controller
                 'comment' => $saleReturn->comment,
                 'paid_amount' => (string) $saleReturn->paid_amount,
                 'payment_type' => $saleReturn->payment_type?->value,
+                'payment_account_id' => $saleReturn->payment_account_id
+                    ?? ($saleReturn->payment_type === ReceivedPaymentMethod::Cash
+                        ? $parent->payments->sortByDesc('amount')->first()?->payment_account_id
+                        : null),
+                'refund_payments' => $saleReturn->payments
+                    ->map(fn ($payment) => [
+                        'payment_account_id' => $payment->payment_account_id,
+                        'amount' => (float) $payment->amount,
+                    ])
+                    ->values(),
                 'items' => $items,
+                'sell_discounts' => [
+                    'gross_amount' => (float) $parent->gross_amount,
+                    'line_discount_total' => $parent->lineDiscountTotal(),
+                    'invoice_discount' => (float) $parent->discount,
+                    'special_discount_amount' => (float) $parent->special_discount_amount,
+                    'promotion_discount_total' => (float) $parent->promotion_discount_total,
+                    'coin_discount_amount' => (float) $parent->coin_discount_amount,
+                    'round_off_amount' => (float) $parent->round_off_amount,
+                    'net_amount' => (float) $parent->net_amount,
+                    'paid_amount' => (float) $parent->paid_amount,
+                    'coins_redeemed' => (float) $parent->coins_redeemed,
+                ],
+                'sale_date' => optional($parent->date)->format('Y-m-d'),
+                'coin_settings' => $this->coinService->settingsPayloadForBranch($parent->branch_id),
+                'promotions' => $this->promotionService->activeForBranch($parent->branch_id),
+                'payments' => $parent->payments
+                    ->map(fn ($payment) => [
+                        'payment_account_id' => $payment->payment_account_id,
+                        'amount' => (float) $payment->amount,
+                    ])
+                    ->values(),
             ],
         ]);
     }
@@ -280,38 +348,36 @@ class SaleReturnController extends Controller
             'paid_amount' => ['required', 'numeric', 'min:0'],
             'payment_type' => ['required', 'integer'],
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
+            'payments' => ['nullable', 'array'],
+            'payments.*.payment_account_id' => ['required_with:payments', 'integer', 'exists:chart_of_accounts,id'],
+            'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
         ]);
 
         $branchId = Auth::user()?->branch_id;
-        $paymentType = ReceivedPaymentMethod::from((int) $data['payment_type']);
-        $paymentAccountId = $paymentType === ReceivedPaymentMethod::Cash
-            ? $this->resolvePaymentAccountId($request, (float) $data['paid_amount'])
-            : null;
 
         try {
-            DB::transaction(function () use ($saleReturn, $data, $branchId, $paymentAccountId, $paymentType) {
+            DB::transaction(function () use ($request, $saleReturn, $data, $branchId) {
                 $this->accounting->reverseFor($saleReturn);
                 $saleReturn->load(['products']);
 
                 $this->rollbackSaleReturn($saleReturn);
                 $saleReturn->products()->delete();
+                $saleReturn->payments()->delete();
 
                 $parent = Sell::query()
                     ->ownBranchUser()
                     ->sale()
-                    ->with(['products'])
+                    ->with(['products', 'customer'])
                     ->lockForUpdate()
                     ->findOrFail($saleReturn->sell_id);
 
-                if ($parent->hasAnyDiscount()) {
-                    throw new \RuntimeException('Sales with a discount cannot be returned.');
-                }
-
                 $returnedByLine = $this->returnedQuantities($parent->id, $saleReturn->id);
                 $grossAmount = 0.0;
+                $returnLineDiscount = 0.0;
+                $returnPromotionDiscount = 0.0;
                 $lines = [];
 
                 foreach ($data['items'] as $item) {
@@ -347,7 +413,19 @@ class SaleReturnController extends Controller
                         throw new \RuntimeException('Unable to restore stock for a sale line.');
                     }
 
-                    $grossAmount += $returnQty * (float) $sellProduct->unit_price;
+                    $catalogUnitPrice = (float) ($sellProduct->original_unit_price ?? $sellProduct->unit_price);
+                    $grossAmount += $returnQty * $catalogUnitPrice;
+
+                    $soldQty = (float) $sellProduct->quantity;
+                    if ($soldQty > 0) {
+                        $ratio = $returnQty / $soldQty;
+                        $returnLineDiscount += (float) $sellProduct->discount * $ratio;
+                        $returnPromotionDiscount += $this->returnDiscounts->promotionClawback(
+                            $sellProduct,
+                            $returnQty,
+                            $parent,
+                        );
+                    }
 
                     $lines[] = [
                         'branch_id' => $branchId,
@@ -355,7 +433,7 @@ class SaleReturnController extends Controller
                         'product_id' => $sellProduct->product_id,
                         'variation_id' => $sellProduct->variation_id,
                         'quantity' => $returnQty,
-                        'unit_price' => $sellProduct->unit_price,
+                        'unit_price' => $catalogUnitPrice,
                         'batches' => $batchMap,
                     ];
                 }
@@ -364,13 +442,27 @@ class SaleReturnController extends Controller
                     throw new \RuntimeException('At least one line with return quantity greater than zero is required.');
                 }
 
-                $paidAmount = min((float) $data['paid_amount'], $grossAmount);
+                $totals = $this->returnDiscounts->calculate(
+                    $parent,
+                    $grossAmount,
+                    $returnLineDiscount,
+                    $returnPromotionDiscount,
+                );
+                $discountAmount = $totals['discount_amount'];
+                $netReturnAmount = $totals['net_return_amount'];
+                $refund = $this->resolveReturnRefund($data, $request, $netReturnAmount);
+                $paidAmount = $refund['paid_amount'];
+                $paymentType = $refund['payment_type'];
+                $paymentAccountId = $refund['payment_account_id'];
+                $paymentLines = $refund['payment_lines'];
 
                 $saleReturn->update([
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
+                    'discount_amount' => $discountAmount,
                     'paid_amount' => $paidAmount,
                     'payment_type' => $paymentType,
+                    'payment_account_id' => $paymentAccountId,
                     'comment' => $data['comment'] ?? null,
                 ]);
 
@@ -382,13 +474,16 @@ class SaleReturnController extends Controller
                     Customer::whereKey($parent->customer_id)->increment('balance', $paidAmount);
                 }
 
+                $this->syncSaleReturnPayments($saleReturn, $paymentLines);
                 $saleReturn->load('products');
                 $this->accounting->postSaleReturn(
                     $saleReturn->fresh(['customer', 'sell']),
-                    $paymentAccountId,
+                    $paymentLines,
                     $this->costService->costForSaleReturn($saleReturn),
                 );
             });
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             return back()
                 ->withErrors([
@@ -414,6 +509,7 @@ class SaleReturnController extends Controller
                 $this->accounting->reverseFor($saleReturn);
                 $this->rollbackSaleReturn($saleReturn);
                 $saleReturn->products()->delete();
+                $saleReturn->payments()->delete();
                 $saleReturn->delete();
             });
         } catch (\Throwable $e) {

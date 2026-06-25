@@ -101,12 +101,26 @@ function matchesPromotion(promotion, item) {
     return false;
 }
 
-function meetsMinQty(promotion, qty) {
+export function meetsMinQty(promotion, qty) {
     if (promotion.min_qty === null || promotion.min_qty === undefined || promotion.min_qty === '') {
         return true;
     }
 
     return qty >= parseFloat(promotion.min_qty);
+}
+
+export function remainingQuantityKeepsPromotion(promotion, remainingQty) {
+    const qty = parseFloat(remainingQty) || 0;
+
+    if (qty <= 0 || !promotion) {
+        return false;
+    }
+
+    if (promotion.type === 'buy_x_get_y') {
+        return qty >= parseFloat(promotion.buy_qty || 0);
+    }
+
+    return meetsMinQty(promotion, qty);
 }
 
 function selectPromotionForLine(promotions, item, qty) {

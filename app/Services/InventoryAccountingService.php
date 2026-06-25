@@ -144,18 +144,22 @@ class InventoryAccountingService
         );
     }
 
-    public function postSaleReturn(SaleReturn $saleReturn, ?int $paymentAccountId, float $returnCost): Transaction
+    public function postSaleReturn(SaleReturn $saleReturn, array $paymentLines, float $returnCost): Transaction
     {
-        $saleReturn->loadMissing(['customer:id,name', 'sell:id,gross_amount,discount,vat']);
+        $saleReturn->loadMissing([
+            'customer:id,name',
+            'sell:id,gross_amount,discount,special_discount_amount,coin_discount_amount,round_off_amount,vat',
+            'sell.products:id,sell_id,discount',
+        ]);
 
-        $returnGross = round((float) $saleReturn->gross_amount, 2);
+        $returnNet = round((float) $saleReturn->net_amount, 2);
         $paidAmount = round((float) $saleReturn->paid_amount, 2);
         $parent = $saleReturn->sell;
-        $parentNet = $parent ? (float) $parent->net_amount : $returnGross;
+        $parentNet = $parent ? (float) $parent->net_amount : $returnNet;
         $parentVat = $parent ? (float) $parent->vat : 0.0;
         $vatRatio = $parentNet > 0 ? $parentVat / $parentNet : 0.0;
-        $returnVat = round($returnGross * $vatRatio, 2);
-        $returnBase = round($returnGross - $returnVat, 2);
+        $returnVat = round($returnNet * $vatRatio, 2);
+        $returnBase = round($returnNet - $returnVat, 2);
 
         $invoice = $saleReturn->invoice_number;
         $customerName = $saleReturn->customer?->name ?? 'Customer';
@@ -173,24 +177,39 @@ class InventoryAccountingService
         $cashCredit = 0.0;
         $arCredit = 0.0;
 
-        if ($saleReturn->payment_type === ReceivedPaymentMethod::Cash && $paidAmount > 0) {
-            $cashCredit = $paidAmount;
+        foreach ($paymentLines as $paymentLine) {
+            $lineAmount = round((float) $paymentLine['amount'], 2);
+
+            if ($lineAmount <= 0) {
+                continue;
+            }
+
+            $lines[] = $this->creditPaymentAccount(
+                (int) $paymentLine['payment_account_id'],
+                $lineAmount,
+                "Cash refunded — Sale Return {$invoice}",
+            );
+            $cashCredit = round($cashCredit + $lineAmount, 2);
         }
 
         if ($saleReturn->payment_type === ReceivedPaymentMethod::Customer_Account && $paidAmount > 0) {
             $arCredit = $paidAmount;
         }
 
-        $remainingCredit = round(max(0, $returnGross - $cashCredit - $arCredit), 2);
+        $remainingCredit = round(max(0, $returnNet - $cashCredit - $arCredit), 2);
 
         if ($remainingCredit > 0 && $saleReturn->customer_id) {
             $arCredit = round($arCredit + $remainingCredit, 2);
-        } elseif ($remainingCredit > 0) {
-            $cashCredit = round($cashCredit + $remainingCredit, 2);
-        }
-
-        if ($cashCredit > 0) {
-            $lines[] = $this->creditPaymentAccount($paymentAccountId, $cashCredit, "Cash refunded — Sale Return {$invoice}");
+        } elseif ($remainingCredit > 0 && $cashCredit <= 0) {
+            $fallbackAccountId = $paymentLines[0]['payment_account_id'] ?? null;
+            if ($fallbackAccountId) {
+                $lines[] = $this->creditPaymentAccount(
+                    (int) $fallbackAccountId,
+                    $remainingCredit,
+                    "Cash refunded — Sale Return {$invoice}",
+                );
+                $cashCredit = round($cashCredit + $remainingCredit, 2);
+            }
         }
 
         if ($arCredit > 0) {

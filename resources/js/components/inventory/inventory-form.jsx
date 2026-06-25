@@ -1,9 +1,11 @@
 import { route } from '@/lib/route';
+import { computeSplitSalePayment } from '@/lib/sale-payment';
 import { Link } from '@inertiajs/react';
-import { ArrowLeft, MessageSquare, Search } from 'lucide-react';
+import { ArrowLeft, MessageSquare, Percent, Search } from 'lucide-react';
 import { useState } from 'react';
 
 import { RequiredMark } from '@/components/form-field';
+import { SalePaymentLines } from '@/components/inventory/sale-payment-lines';
 import { Button } from '@/components/ui/button';
 import { dateInputRightIconClassName } from '@/components/ui/date-kit';
 import { Input } from '@/components/ui/input';
@@ -107,18 +109,43 @@ export function PaymentSummaryCard({
     partyLabel = 'On Account',
     paidError,
     showDue = true,
+    subtotalAmount = null,
+    discountAmount = 0,
+    parentPaymentInfo = null,
+    paidLabel = 'Paid Amount',
 }) {
     const paid = parseFloat(paidAmount || 0);
     const due = Math.max(0, grossAmount - paid);
     const isParty = paymentMode === 'party';
+    const showDiscountBreakdown = subtotalAmount != null && discountAmount > 0.009;
 
     return (
         <InventoryCard title="Summary & Payment" icon={Icon}>
             <div className="space-y-3 text-xs">
+                {showDiscountBreakdown && (
+                    <>
+                        <div className="flex justify-between">
+                            <span className="text-muted-foreground">Gross Amount</span>
+                            <span>৳{subtotalAmount.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-destructive">
+                            <span>Discount</span>
+                            <span>-৳{discountAmount.toFixed(2)}</span>
+                        </div>
+                    </>
+                )}
                 <div className="flex justify-between">
                     <span className="text-muted-foreground">Total Amount</span>
                     <span className="font-semibold">৳{grossAmount.toFixed(2)}</span>
                 </div>
+
+                {parentPaymentInfo && (parentPaymentInfo.paid > 0.009 || parentPaymentInfo.due > 0.009) && (
+                    <p className="text-[10px] leading-relaxed text-muted-foreground">
+                        Original sale paid ৳{parentPaymentInfo.paid.toFixed(2)}
+                        {parentPaymentInfo.due > 0.009 ? ` · due ৳${parentPaymentInfo.due.toFixed(2)}` : ''}. Refund
+                        cannot exceed the paid portion; remaining return value reduces customer due.
+                    </p>
+                )}
 
                 <InventoryField label="Payment Option">
                     <select
@@ -139,7 +166,7 @@ export function PaymentSummaryCard({
                 </InventoryField>
 
                 <div className="flex items-center justify-between gap-4">
-                    <Label className="text-xs text-muted-foreground">Paid Amount</Label>
+                    <Label className="text-xs text-muted-foreground">{paidLabel}</Label>
                     <Input
                         type="number"
                         min="0"
@@ -157,6 +184,134 @@ export function PaymentSummaryCard({
                         <span className="font-bold text-destructive">৳{due.toFixed(2)}</span>
                     </div>
                 )}
+            </div>
+        </InventoryCard>
+    );
+}
+
+export function SaleReturnRefundCard({
+    Icon,
+    grossAmount,
+    subtotalAmount = null,
+    discountAmount = 0,
+    parentPaymentInfo = null,
+    maxRefundAmount = 0,
+    payments = [],
+    onPaymentsChange,
+    paymentAccounts = [],
+    errors = {},
+}) {
+    const { totalPaid } = computeSplitSalePayment(payments, maxRefundAmount);
+    const dueReduction = Math.max(0, grossAmount - totalPaid);
+    const showDiscountBreakdown = subtotalAmount != null && discountAmount > 0.009;
+
+    return (
+        <InventoryCard title="Summary & Payment" icon={Icon}>
+            <div className="space-y-3 text-xs">
+                {showDiscountBreakdown && (
+                    <>
+                        <div className="flex justify-between">
+                            <span className="text-muted-foreground">Gross Amount</span>
+                            <span>৳{subtotalAmount.toFixed(2)}</span>
+                        </div>
+                        <div className="flex justify-between text-destructive">
+                            <span>Discount</span>
+                            <span>-৳{discountAmount.toFixed(2)}</span>
+                        </div>
+                    </>
+                )}
+                <div className="flex justify-between">
+                    <span className="text-muted-foreground">Total Amount</span>
+                    <span className="font-semibold">৳{grossAmount.toFixed(2)}</span>
+                </div>
+
+                {parentPaymentInfo && (parentPaymentInfo.paid > 0.009 || parentPaymentInfo.due > 0.009) && (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] leading-relaxed text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
+                        Original sale paid ৳{parentPaymentInfo.paid.toFixed(2)}
+                        {parentPaymentInfo.due > 0.009 ? ` · due ৳${parentPaymentInfo.due.toFixed(2)}` : ''}. Refund
+                        cannot exceed the paid portion; remaining return value reduces customer due.
+                    </div>
+                )}
+                    <SalePaymentLines
+                        payments={payments}
+                        paymentAccounts={paymentAccounts}
+                        netAmount={maxRefundAmount}
+                        onChange={onPaymentsChange}
+                        errors={errors}
+                        inputClassName={inputCls}
+                        compact
+                        hideSummary
+                    />
+                ) : (
+                    <p className="text-[10px] text-muted-foreground">
+                        No cash refund — return value will reduce customer due.
+                    </p>
+                )}
+
+                {maxRefundAmount > 0.009 && (
+                    <>
+                        <div className="flex justify-between border-t border-border pt-2">
+                            <span className="text-muted-foreground">Cash Refund</span>
+                            <span className="font-semibold">৳{totalPaid.toFixed(2)}</span>
+                        </div>
+                        {dueReduction > 0.009 && (
+                            <div className="flex justify-between text-destructive">
+                                <span>Reduces Due</span>
+                                <span className="font-semibold">৳{dueReduction.toFixed(2)}</span>
+                            </div>
+                        )}
+                    </>
+                )}
+
+                {errors.paid_amount && <p className="text-xs text-destructive">{errors.paid_amount}</p>}
+                {errors.payments && <p className="text-xs text-destructive">{errors.payments}</p>}
+            </div>
+        </InventoryCard>
+    );
+}
+
+export function SaleReturnSourceDiscounts({ sellDiscounts, returnSummary }) {
+    if (!sellDiscounts) {
+        return null;
+    }
+
+    const ret = returnSummary?.returnDiscounts ?? {};
+    const rows = [
+        { key: 'line', label: 'Line discount', sale: sellDiscounts.line_discount_total },
+        { key: 'invoice', label: 'Invoice discount', sale: sellDiscounts.invoice_discount },
+        { key: 'special', label: 'Special discount', sale: sellDiscounts.special_discount_amount },
+        {
+            key: 'promotion',
+            label: 'Promotion discount',
+            sale: sellDiscounts.promotion_discount_total,
+        },
+        { key: 'coin', label: 'Coin discount', sale: sellDiscounts.coin_discount_amount },
+        { key: 'roundOff', label: 'Round off', sale: sellDiscounts.round_off_amount },
+    ].filter((row) => parseFloat(row.sale || 0) > 0.009 || parseFloat(ret[row.key] || 0) > 0.009);
+
+    if (rows.length === 0) {
+        return null;
+    }
+
+    return (
+        <InventoryCard title="Discounts" icon={Percent}>
+            <div className="space-y-2 text-xs">
+                <div className="grid grid-cols-3 gap-2 border-b border-border pb-2 font-medium text-muted-foreground">
+                    <span>Type</span>
+                    <span className="text-right">On Sale</span>
+                    <span className="text-right">This Return</span>
+                </div>
+                {rows.map((row) => (
+                    <div key={row.key} className="grid grid-cols-3 gap-2">
+                        <span className="text-muted-foreground">{row.label}</span>
+                        <span className="text-right">৳{parseFloat(row.sale || 0).toFixed(2)}</span>
+                        <span className="text-right font-medium text-destructive">
+                            {parseFloat(ret[row.key] || 0) > 0.009
+                                ? `-৳${parseFloat(ret[row.key]).toFixed(2)}`
+                                : '—'}
+                        </span>
+                    </div>
+                ))}
             </div>
         </InventoryCard>
     );

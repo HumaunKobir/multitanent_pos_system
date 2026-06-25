@@ -8,17 +8,18 @@ import {
     InventoryPageHeader,
     InvoiceLookupField,
     LineItemsTable,
-    PaymentSummaryCard,
     ProductNameWithCode,
+    SaleReturnRefundCard,
+    SaleReturnSourceDiscounts,
     inputCls,
-    paymentModeToType,
-    paymentModeToAccountId,
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
+import { computeSplitSalePayment, serializeSalePayments, splitPaymentValidationError } from '@/lib/sale-payment';
+import { buildInitialReturnPayments, calcSaleReturnSummary } from '@/lib/sale-return-summary';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { CalendarDays, Package, RotateCcw } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { Input } from '@/components/ui/input';
 
@@ -29,21 +30,45 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
     const [invoiceQuery, setInvoiceQuery] = useState('');
     const [lookupError, setLookupError] = useState('');
     const [items, setItems] = useState([]);
-    const [paymentMode, setPaymentMode] = useState('party');
 
     const form = useForm({
         sell_id: '',
         date: today,
         comment: '',
         paid_amount: '0',
-        payment_type: '5',
+        payment_type: '0',
+        payments: [{ payment_account_id: '', amount: '0' }],
         items: [],
     });
 
-    const grossAmount = items.reduce(
-        (s, it) => s + parseFloat(it.quantity || 0) * parseFloat(it.unit_price || 0),
-        0,
-    );
+    const returnSummary = source?.sell_discounts
+        ? calcSaleReturnSummary(items, source.sell_discounts, {
+              promotions: source.promotions ?? [],
+              saleDate: source.date,
+              coinSettings: source.coin_settings,
+          })
+        : null;
+
+    function returnContextFromSource(json) {
+        return {
+            promotions: json.promotions ?? [],
+            saleDate: json.date,
+            coinSettings: json.coin_settings,
+        };
+    }
+
+    function syncPaymentState(lines, sellDiscounts, payments, context) {
+        const summary = calcSaleReturnSummary(lines, sellDiscounts, context);
+        const initialPayments = buildInitialReturnPayments(payments, summary.suggestedPaid, paymentAccounts);
+        const { totalPaid } = computeSplitSalePayment(initialPayments, summary.suggestedPaid);
+
+        form.setData({
+            ...form.data,
+            paid_amount: totalPaid.toFixed(2),
+            payment_type: totalPaid > 0 ? '0' : '5',
+            payments: initialPayments,
+        });
+    }
 
     async function lookupSale() {
         setLookupError('');
@@ -56,27 +81,28 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
             setLookupError(json.message ?? 'Sale not found.');
             return;
         }
-        if (json.has_discount) {
-            setLookupError('Sales with a discount cannot be returned.');
-            return;
-        }
-        setSource(json);
         const lines = json.items
             .filter((i) => i.max_return_quantity > 0)
             .map((i) => ({
                 sell_product_id: i.sell_product_id,
+                product_id: i.product_id,
+                variation_id: i.variation_id,
+                category_id: i.category_id,
+                brand_id: i.brand_id,
                 product_name: i.product_name,
                 product_code: i.product_code,
                 max_return_quantity: i.max_return_quantity,
+                sold_quantity: i.sold_quantity,
+                line_discount: i.line_discount,
+                promotion_discount: i.promotion_discount,
+                promotion_id: i.promotion_id,
                 unit_price: i.unit_price,
                 quantity: String(i.max_return_quantity),
             }));
+        setSource(json);
         setItems(lines);
         form.setData({ ...form.data, sell_id: String(json.id) });
-    }
-
-    function updateItem(index, field, value) {
-        setItems((prev) => prev.map((it, i) => (i === index ? { ...it, [field]: value } : it)));
+        syncPaymentState(lines, json.sell_discounts, json.payments, returnContextFromSource(json));
     }
 
     function updateReturnQty(index, rawValue) {
@@ -84,7 +110,22 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
         const next = clampQuantityInput(rawValue, item.max_return_quantity, (max) => {
             toast.error(`Return quantity cannot exceed ${max} for this line.`);
         });
-        updateItem(index, 'quantity', next);
+        const nextItems = items.map((it, i) => (i === index ? { ...it, quantity: next } : it));
+        setItems(nextItems);
+        if (source?.sell_discounts) {
+            syncPaymentState(nextItems, source.sell_discounts, source.payments, returnContextFromSource(source));
+        }
+    }
+
+    function handlePaymentsChange(payments) {
+        const maxRefund = returnSummary?.suggestedPaid ?? 0;
+        const { totalPaid } = computeSplitSalePayment(payments, maxRefund);
+        form.setData({
+            ...form.data,
+            payments,
+            paid_amount: totalPaid.toFixed(2),
+            payment_type: totalPaid > 0 ? '0' : '5',
+        });
     }
 
     function handleSubmit(e) {
@@ -107,10 +148,21 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
             return;
         }
 
+        const paymentError = splitPaymentValidationError(form.data.payments);
+        if (paymentError) {
+            toast.error(paymentError);
+            return;
+        }
+
+        const maxRefund = returnSummary?.suggestedPaid ?? 0;
+        const { totalPaid } = computeSplitSalePayment(form.data.payments, maxRefund);
+        const serializedPayments = serializeSalePayments(form.data.payments);
+
         form.transform((data) => ({
             ...data,
-            payment_type: paymentModeToType(paymentMode),
-            payment_account_id: paymentModeToAccountId(paymentMode),
+            paid_amount: String(totalPaid),
+            payment_type: totalPaid > 0 ? '0' : '5',
+            payments: serializedPayments.length > 0 ? serializedPayments : undefined,
             items: returnItems,
         }));
         form.post(route('inventory.sale-return.store'), {
@@ -202,23 +254,34 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                         </InventoryCard>
                     )}
 
+                    {source?.sell_discounts && (
+                        <SaleReturnSourceDiscounts
+                            sellDiscounts={source.sell_discounts}
+                            returnSummary={returnSummary}
+                        />
+                    )}
+
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                         <CommentCard
                             value={form.data.comment}
                             onChange={(v) => form.setData('comment', v)}
                             error={form.errors.comment}
                         />
-                        <PaymentSummaryCard
+                        <SaleReturnRefundCard
                             Icon={RotateCcw}
-                            grossAmount={grossAmount}
-                            paidAmount={form.data.paid_amount}
-                            onPaidAmountChange={(v) => form.setData('paid_amount', v)}
-                            paymentMode={paymentMode}
-                            onPaymentModeChange={setPaymentMode}
+                            grossAmount={returnSummary?.netAmount ?? 0}
+                            subtotalAmount={returnSummary?.grossAmount ?? null}
+                            discountAmount={returnSummary?.discountAmount ?? 0}
+                            parentPaymentInfo={
+                                returnSummary
+                                    ? { paid: returnSummary.parentPaid, due: returnSummary.parentDue }
+                                    : null
+                            }
+                            maxRefundAmount={returnSummary?.suggestedPaid ?? 0}
+                            payments={form.data.payments}
+                            onPaymentsChange={handlePaymentsChange}
                             paymentAccounts={paymentAccounts}
-                            partyLabel="Customer Account"
-                            paidError={form.errors.paid_amount}
-                            showDue={false}
+                            errors={form.errors}
                         />
                     </div>
 

@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers\Concerns;
 
+use App\Enums\ReceivedPaymentMethod;
 use App\Models\ChartOfAccount;
+use App\Models\SaleReturn;
 use App\Models\Sell;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -214,5 +216,78 @@ trait UsesInventoryAccounting
                 'amount' => $paymentLine['amount'],
             ]);
         }
+    }
+
+    /**
+     * @param  array<int, array{payment_account_id: int, amount: float}>  $paymentLines
+     */
+    protected function syncSaleReturnPayments(SaleReturn $saleReturn, array $paymentLines): void
+    {
+        $saleReturn->payments()->delete();
+
+        foreach ($paymentLines as $paymentLine) {
+            $saleReturn->payments()->create([
+                'payment_account_id' => $paymentLine['payment_account_id'],
+                'amount' => $paymentLine['amount'],
+            ]);
+        }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{
+     *     paid_amount: float,
+     *     payment_type: ReceivedPaymentMethod,
+     *     payment_account_id: ?int,
+     *     payment_lines: array<int, array{payment_account_id: int, amount: float}>
+     * }
+     */
+    protected function resolveReturnRefund(array $data, Request $request, float $netReturnAmount): array
+    {
+        $paymentLines = $this->normalizeSalePaymentLines($data);
+        $maxRefund = round(min((float) ($data['paid_amount'] ?? 0), $netReturnAmount), 2);
+
+        if ($paymentLines !== []) {
+            $totalTendered = round(array_sum(array_column($paymentLines, 'amount')), 2);
+
+            if ($totalTendered > $maxRefund + 0.009) {
+                throw ValidationException::withMessages([
+                    'payments' => 'Refund total cannot exceed the refundable amount.',
+                ]);
+            }
+
+            $effectivePaid = round(min($totalTendered, $maxRefund), 2);
+
+            return [
+                'paid_amount' => $effectivePaid,
+                'payment_type' => ReceivedPaymentMethod::Cash,
+                'payment_account_id' => $paymentLines[0]['payment_account_id'] ?? null,
+                'payment_lines' => $paymentLines,
+            ];
+        }
+
+        $paymentType = ReceivedPaymentMethod::from((int) $data['payment_type']);
+        $paymentAccountId = $paymentType === ReceivedPaymentMethod::Cash
+            ? $this->resolvePaymentAccountId($request, $maxRefund)
+            : null;
+        $paidAmount = $paymentType === ReceivedPaymentMethod::Cash
+            ? $maxRefund
+            : round(min((float) ($data['paid_amount'] ?? 0), $netReturnAmount), 2);
+
+        $lines = [];
+
+        if ($paymentType === ReceivedPaymentMethod::Cash && $paidAmount > 0 && $paymentAccountId) {
+            $lines[] = [
+                'payment_account_id' => $paymentAccountId,
+                'amount' => $paidAmount,
+            ];
+        }
+
+        return [
+            'paid_amount' => $paidAmount,
+            'payment_type' => $paymentType,
+            'payment_account_id' => $paymentAccountId,
+            'payment_lines' => $lines,
+        ];
     }
 }

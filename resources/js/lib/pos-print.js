@@ -107,26 +107,34 @@ body {
 }
 
 .pos-item {
-    display: flex;
-    justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 16px 56px 62px;
+    column-gap: 6px;
+    align-items: start;
     margin-bottom: 3px;
-    font-size: 10px;
+    font-size: 9px;
     color: #000;
 }
 
+.pos-items .pos-item.pos-bold {
+    font-size: 9px;
+}
+
 .pos-item-name {
-    flex: 1;
-    margin-right: 5px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    line-height: 1.15;
 }
 
 .pos-item-qty {
-    width: 24px;
     text-align: center;
+    white-space: nowrap;
 }
 
+.pos-item-unit-price,
 .pos-item-price {
-    width: 58px;
     text-align: right;
+    white-space: nowrap;
 }
 
 .pos-item-meta {
@@ -348,12 +356,17 @@ function formatMoneyTk(value) {
     return `${amount.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} TK`;
 }
 
+function formatMoneyAmount(value) {
+    const amount = parseFloat(value ?? 0);
+    return amount.toLocaleString('en-BD', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function formatQty(value) {
     const qty = parseFloat(value ?? 0);
     return Number.isInteger(qty) ? String(qty) : qty.toFixed(2);
 }
 
-function truncateName(name, max = 28) {
+function truncateName(name, max = 22) {
     const text = String(name ?? '').trim();
     if (text.length <= max) {
         return text;
@@ -650,6 +663,7 @@ function renderPosInvoice(data) {
             <div class="pos-item pos-bold">
                 <div class="pos-item-name">Item</div>
                 <div class="pos-item-qty">Qty</div>
+                <div class="pos-item-unit-price">U.Price</div>
                 <div class="pos-item-price">Price</div>
             </div>
             <div class="pos-divider"></div>
@@ -661,12 +675,15 @@ function renderPosInvoice(data) {
                         parseFloat(item.amount ?? item.price ?? 0) +
                         parseFloat(item.promotion_discount ?? 0) +
                         parseFloat(item.line_discount ?? 0);
+                    const qty = parseFloat(item.quantity ?? 0);
+                    const unitPrice = qty > 0 ? originalAmount / qty : 0;
 
                     return `
                 <div class="pos-item">
                     <div class="pos-item-name">${escapeHtml(buildItemName(item))}</div>
                     <div class="pos-item-qty">${formatQty(item.quantity)}</div>
-                    <div class="pos-item-price">${formatMoneyTk(originalAmount)}</div>
+                    <div class="pos-item-unit-price">${formatMoneyAmount(unitPrice)}</div>
+                    <div class="pos-item-price">${formatMoneyAmount(originalAmount)}</div>
                 </div>
                 ${metaParts.length ? `<div class="pos-item-meta">${escapeHtml(metaParts.join(' | '))}</div>` : ''}`;
                 })

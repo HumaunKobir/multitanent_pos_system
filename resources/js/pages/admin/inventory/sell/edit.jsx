@@ -867,7 +867,7 @@ export default function SellEdit({
                                                     <td className="px-2 py-1.5">
                                                         {paymentOnlyEdit ? (
                                                             <span className="block px-2 py-1 text-right font-medium">
-                                                                ৳{parseFloat(item.original_unit_price ?? item.unit_price || 0).toFixed(2)}
+                                                                ৳{parseFloat((item.original_unit_price ?? item.unit_price) || 0).toFixed(2)}
                                                             </span>
                                                         ) : (
                                                             <Input

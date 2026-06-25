@@ -17,6 +17,7 @@ import { useCan } from '@/hooks/use-can';
 import { useFlashToast } from '@/hooks/use-flash-toast';
 import {
     PaymentAllocationTable,
+    allocationAmountsFromApiDocuments,
     allocationTotal,
     buildAllocations,
 } from '@/components/party/payment-allocation-table';
@@ -99,9 +100,23 @@ function PaymentForm({ form, suppliers, paymentAccounts = [], payment = null, on
     const totalAmount = useMemo(() => allocationTotal(amountsById), [amountsById]);
 
     useEffect(() => {
+        if (!isEditing || !payment?.allocations?.length) {
+            return;
+        }
+
+        setAmountsById(
+            Object.fromEntries(
+                payment.allocations.map((allocation) => [allocation.purchase_id, String(allocation.amount)]),
+            ),
+        );
+    }, [payment?.id, isEditing, payment?.allocations]);
+
+    useEffect(() => {
         if (!form.data.supplier_id) {
             setDuePurchases([]);
-            setAmountsById({});
+            if (!isEditing) {
+                setAmountsById({});
+            }
             return;
         }
 
@@ -117,11 +132,9 @@ function PaymentForm({ form, suppliers, paymentAccounts = [], payment = null, on
             .then((data) => {
                 if (!cancelled) {
                     setDuePurchases(data.purchases ?? []);
-                    setAmountsById(
-                        Object.fromEntries(
-                            (payment?.allocations ?? []).map((allocation) => [allocation.purchase_id, String(allocation.amount)]),
-                        ),
-                    );
+                    if (isEditing) {
+                        setAmountsById(allocationAmountsFromApiDocuments(data.purchases));
+                    }
                 }
             })
             .catch(() => {
@@ -138,7 +151,7 @@ function PaymentForm({ form, suppliers, paymentAccounts = [], payment = null, on
         return () => {
             cancelled = true;
         };
-    }, [form.data.supplier_id, payment?.id]);
+    }, [form.data.supplier_id, payment?.id, isEditing]);
 
     function handleAmountChange(purchaseId, value) {
         setAmountsById((prev) => ({ ...prev, [purchaseId]: value }));
@@ -377,20 +390,6 @@ export default function SupplierPaymentIndex({ payments, suppliers, filters, tod
             id: 'amount',
             header: 'Amount',
             render: (row) => <span className="font-medium text-emerald-700">৳{parseFloat(row.amount).toFixed(2)}</span>,
-        },
-        {
-            id: 'purchases',
-            header: 'Purchases',
-            render: (row) => (
-                <div className="space-y-0.5">
-                    {(row.allocations ?? []).map((allocation) => (
-                        <p key={allocation.id} className="font-mono text-[11px] text-muted-foreground">
-                            {allocation.purchase?.serial ?? `INVP${String(allocation.purchase_id).padStart(8, '0')}`}
-                            {' — '}৳{parseFloat(allocation.amount).toFixed(2)}
-                        </p>
-                    ))}
-                </div>
-            ),
         },
         { id: 'comment', header: 'Note', render: (row) => row.comment ?? '—' },
         {

@@ -5,10 +5,8 @@ namespace App\Http\Controllers\Inventory;
 use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
 use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
-use App\Models\ChartOfAccount;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
-use App\Models\Transaction;
 use App\Services\InventoryAccountingService;
 use App\Services\PartyPaymentAllocationService;
 use Illuminate\Http\RedirectResponse;
@@ -59,7 +57,7 @@ class SupplierPaymentController extends Controller
         $paymentAccountLabels = collect($paymentAccounts)->keyBy('id');
 
         $payments->through(function (SupplierPayment $payment) use ($paymentAccountLabels) {
-            $paymentAccountId = $this->resolvePaymentAccountId($payment, 'credit_account_id');
+            $paymentAccountId = $this->accounting->paymentAccountIdFor($payment, latest: true);
 
             return [
                 ...$payment->toArray(),
@@ -237,22 +235,5 @@ class SupplierPaymentController extends Controller
         if ($branchId !== null && $supplierPayment->branch_id !== $branchId) {
             abort(404);
         }
-    }
-
-    private function resolvePaymentAccountId(SupplierPayment $payment, string $column): ?int
-    {
-        $accountId = Transaction::query()
-            ->where('source_type', SupplierPayment::class)
-            ->where('source_id', $payment->id)
-            ->latest('id')
-            ->value($column);
-
-        if ($accountId === null) {
-            return null;
-        }
-
-        return ChartOfAccount::query()->paymentAccount()->whereKey($accountId)->exists()
-            ? (int) $accountId
-            : null;
     }
 }

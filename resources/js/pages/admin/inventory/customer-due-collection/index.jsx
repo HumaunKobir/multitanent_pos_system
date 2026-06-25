@@ -17,6 +17,7 @@ import { useCan } from '@/hooks/use-can';
 import { useFlashToast } from '@/hooks/use-flash-toast';
 import {
     PaymentAllocationTable,
+    allocationAmountsFromApiDocuments,
     allocationTotal,
     buildAllocations,
 } from '@/components/party/payment-allocation-table';
@@ -99,9 +100,23 @@ function CollectionForm({ form, customers, paymentAccounts = [], payment = null,
     const totalAmount = useMemo(() => allocationTotal(amountsById), [amountsById]);
 
     useEffect(() => {
+        if (!isEditing || !payment?.allocations?.length) {
+            return;
+        }
+
+        setAmountsById(
+            Object.fromEntries(
+                payment.allocations.map((allocation) => [allocation.sell_id, String(allocation.amount)]),
+            ),
+        );
+    }, [payment?.id, isEditing, payment?.allocations]);
+
+    useEffect(() => {
         if (!form.data.customer_id) {
             setDueSales([]);
-            setAmountsById({});
+            if (!isEditing) {
+                setAmountsById({});
+            }
             return;
         }
 
@@ -117,11 +132,9 @@ function CollectionForm({ form, customers, paymentAccounts = [], payment = null,
             .then((data) => {
                 if (!cancelled) {
                     setDueSales(data.sales ?? []);
-                    setAmountsById(
-                        Object.fromEntries(
-                            (payment?.allocations ?? []).map((allocation) => [allocation.sell_id, String(allocation.amount)]),
-                        ),
-                    );
+                    if (isEditing) {
+                        setAmountsById(allocationAmountsFromApiDocuments(data.sales));
+                    }
                 }
             })
             .catch(() => {
@@ -138,7 +151,7 @@ function CollectionForm({ form, customers, paymentAccounts = [], payment = null,
         return () => {
             cancelled = true;
         };
-    }, [form.data.customer_id, payment?.id]);
+    }, [form.data.customer_id, payment?.id, isEditing]);
 
     function handleAmountChange(sellId, value) {
         setAmountsById((prev) => ({ ...prev, [sellId]: value }));
@@ -377,20 +390,6 @@ export default function CustomerDueCollectionIndex({ payments, customers, filter
             id: 'amount',
             header: 'Amount',
             render: (row) => <span className="font-medium text-emerald-700">৳{parseFloat(row.amount).toFixed(2)}</span>,
-        },
-        {
-            id: 'invoices',
-            header: 'Invoices',
-            render: (row) => (
-                <div className="space-y-0.5">
-                    {(row.allocations ?? []).map((allocation) => (
-                        <p key={allocation.id} className="font-mono text-[11px] text-muted-foreground">
-                            {`INVS${String(allocation.sell_id).padStart(8, '0')}`}
-                            {' — '}৳{parseFloat(allocation.amount).toFixed(2)}
-                        </p>
-                    ))}
-                </div>
-            ),
         },
         { id: 'comment', header: 'Note', render: (row) => row.comment ?? '—' },
         {

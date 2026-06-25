@@ -37,6 +37,28 @@ export function computeSplitSalePayment(payments, netAmount) {
 }
 
 /**
+ * @param {Array<{ amount?: number|string }>} payments
+ * @param {Array<{ amount?: number|string }>} collectionPayments
+ * @param {number|string} netAmount
+ */
+export function computeSplitSalePaymentWithCollections(payments, collectionPayments, netAmount) {
+    const net = Math.max(0, parseFloat(netAmount) || 0);
+    const collectionTotal = (collectionPayments ?? []).reduce(
+        (sum, line) => sum + Math.max(0, parseFloat(line.amount) || 0),
+        0,
+    );
+    const saleResult = computeSplitSalePayment(payments, net);
+    const totalPaid = saleResult.totalPaid + collectionTotal;
+
+    return {
+        ...saleResult,
+        collectionTotal,
+        totalPaid,
+        dueAmount: Math.max(0, net - totalPaid),
+    };
+}
+
+/**
  * @param {Array<{ payment_account_id?: number|string, amount?: number|string }>} payments
  * @returns {string|null}
  */
@@ -127,6 +149,95 @@ export function buildInitialSalePayments(initialPayments, paymentAccounts) {
     }
 
     return [{ payment_account_id: '', amount: '' }];
+}
+
+function collectionAmountForAccount(collectionPayments, accountId) {
+    return (collectionPayments ?? [])
+        .filter((line) => String(line.payment_account_id ?? '') === String(accountId))
+        .reduce((sum, line) => sum + Math.max(0, parseFloat(line.amount) || 0), 0);
+}
+
+/**
+ * @param {Array<{ payment_account_id?: number|string, amount?: number|string }>|null|undefined} salePayments
+ * @param {Array<{ payment_account_id?: number|string, amount?: number|string }>|null|undefined} collectionPayments
+ * @param {Array<{ id: number }>} paymentAccounts
+ * @returns {{ payments: Array<{ payment_account_id: string, amount: string }>, collectionPayments: Array<{ payment_account_id?: number|string, amount?: number|string }> }}
+ */
+export function buildEditSalePaymentState(salePayments = [], collectionPayments = [], paymentAccounts = []) {
+    const collections = collectionPayments ?? [];
+    const collectionTotalByAccount = new Map();
+
+    collections.forEach((line) => {
+        const accountId = String(line.payment_account_id ?? '');
+        const amount = parseFloat(line.amount) || 0;
+
+        if (accountId && amount > 0) {
+            collectionTotalByAccount.set(accountId, (collectionTotalByAccount.get(accountId) || 0) + amount);
+        }
+    });
+
+    const saleLines = (salePayments ?? [])
+        .map((line) => ({
+            payment_account_id: String(line.payment_account_id ?? ''),
+            amount: String(line.amount ?? '0'),
+        }))
+        .filter((line) => line.payment_account_id);
+
+    if (collectionTotalByAccount.size > 0) {
+        const editablePayments = saleLines.filter((line) => {
+            const saleAmount = parseFloat(line.amount) || 0;
+            const collectionAmount = collectionTotalByAccount.get(line.payment_account_id) || 0;
+
+            return !(collectionAmount > 0 && saleAmount <= 0);
+        });
+
+        if (saleLines.length === 0 || editablePayments.length > 0) {
+            return {
+                payments: editablePayments,
+                collectionPayments: collections,
+            };
+        }
+
+        return {
+            payments: [],
+            collectionPayments: collections,
+        };
+    }
+
+    return {
+        payments: buildInitialSalePayments(salePayments, paymentAccounts),
+        collectionPayments: collections,
+    };
+}
+
+/**
+ * @param {Array<{ payment_account_id?: number|string, amount?: number|string }>} payments
+ * @param {Array<{ payment_account_id?: number|string, amount?: number|string }>} collectionPayments
+ */
+export function visibleSalePaymentLines(payments, collectionPayments) {
+    return (payments ?? []).filter((line) => {
+        const accountId = String(line.payment_account_id ?? '');
+        const saleAmount = parseFloat(line.amount) || 0;
+        const collectionAmount = collectionAmountForAccount(collectionPayments, accountId);
+
+        return !(collectionAmount > 0 && saleAmount <= 0);
+    });
+}
+
+/**
+ * @param {Array<{ payment_account_id?: number|string, amount?: number|string }>} payments
+ * @param {Array<{ payment_account_id?: number|string, amount?: number|string }>} collectionPayments
+ */
+export function visibleCollectionPaymentLines(payments, collectionPayments) {
+    return (collectionPayments ?? []).filter((line) => {
+        const accountId = String(line.payment_account_id ?? '');
+        const matchingPayment = (payments ?? []).find(
+            (payment) => String(payment.payment_account_id ?? '') === accountId,
+        );
+        const saleAmount = parseFloat(matchingPayment?.amount) || 0;
+
+        return saleAmount <= 0;
+    });
 }
 
 /**

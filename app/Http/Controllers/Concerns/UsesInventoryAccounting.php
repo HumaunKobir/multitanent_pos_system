@@ -74,6 +74,45 @@ trait UsesInventoryAccounting
 
     /**
      * @param  array<string, mixed>  $data
+     * @return array{
+     *     effective_paid: float,
+     *     due_amount: float,
+     *     change_amount: float,
+     *     payment_lines: array<int, array{payment_account_id: int, amount: float}>
+     * }
+     */
+    protected function resolveSalePaymentsWithCollectionAmount(array $data, float $netAmount, float $collectionTotal): array
+    {
+        $collectionTotal = round(max(0, $collectionTotal), 2);
+        $dataForResolve = $data;
+        $paymentLines = $this->normalizeSalePaymentLines($data);
+
+        if ($paymentLines === []) {
+            $reportedPaid = round(max(0, (float) ($data['paid_amount'] ?? 0)), 2);
+            $dataForResolve['paid_amount'] = max(0, round($reportedPaid - $collectionTotal, 2));
+        }
+
+        $payment = $this->resolveSalePayments($dataForResolve, $netAmount);
+        $sellTendered = round(array_sum(array_column($payment['payment_lines'], 'amount')), 2);
+
+        if ($sellTendered + $collectionTotal > $netAmount + 0.01) {
+            throw ValidationException::withMessages([
+                'payments' => 'Sale payments and due collections cannot exceed the invoice total.',
+            ]);
+        }
+
+        $totalPaid = round(min($netAmount, $sellTendered + $collectionTotal), 2);
+
+        return [
+            'effective_paid' => $totalPaid,
+            'due_amount' => round(max(0, $netAmount - $totalPaid), 2),
+            'change_amount' => $payment['change_amount'],
+            'payment_lines' => $payment['payment_lines'],
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
      * @return array<int, array{payment_account_id: int, amount: float}>
      */
     protected function normalizeSalePaymentLines(array $data): array

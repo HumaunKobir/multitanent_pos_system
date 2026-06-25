@@ -31,14 +31,14 @@ class InventoryAccountingService
 {
     public function __construct(private InventoryCostService $costService) {}
 
-    public function postPurchase(Purchase $purchase, ?int $paymentAccountId): ?Transaction
+    public function postPurchase(Purchase $purchase, ?int $paymentAccountId, ?float $cashPaidAmount = null): ?Transaction
     {
         $purchase->loadMissing('supplier:id,name');
 
         $inventoryBase = round((float) $purchase->gross_amount - (float) $purchase->discount, 2);
         $vatAmount = round((float) $purchase->vat, 2);
         $inventoryTotal = round($inventoryBase + $vatAmount, 2);
-        $paidAmount = round((float) $purchase->paid_amount, 2);
+        $paidAmount = round($cashPaidAmount ?? (float) $purchase->paid_amount, 2);
         $dueAmount = round(max(0, (float) $purchase->net_amount - $paidAmount), 2);
         $supplierName = $purchase->supplier?->name ?? 'Supplier';
         $serial = $purchase->serial ?? ('#'.$purchase->id);
@@ -84,8 +84,11 @@ class InventoryAccountingService
 
         $salesBase = round(max(0, (float) $sell->net_amount - (float) $sell->vat), 2);
         $vatAmount = round((float) $sell->vat, 2);
-        $paidAmount = round((float) $sell->paid_amount, 2);
-        $dueAmount = round(max(0, (float) $sell->net_amount - $paidAmount), 2);
+        $paymentLineTotal = round(array_sum(array_map(
+            fn (array $paymentLine): float => max(0, round((float) ($paymentLine['amount'] ?? 0), 2)),
+            $paymentLines,
+        )), 2);
+        $dueAmount = round(max(0, (float) $sell->net_amount - $paymentLineTotal), 2);
         $invoice = $sell->invoice_number;
         $customerName = $sell->customer?->name ?? 'Customer';
         $branchId = $sell->branch_id;
@@ -792,21 +795,40 @@ class InventoryAccountingService
             ->first();
     }
 
-    public function paymentAccountIdFor(Model $source): ?int
+    public function paymentAccountIdFor(Model $source, bool $latest = false): ?int
     {
-        $transaction = $this->findTransactionFor($source);
+        $query = Transaction::query()
+            ->where('source_type', $source::class)
+            ->where('source_id', $source->getKey());
+
+        $transaction = $latest ? $query->latest('id')->first() : $query->first();
 
         if ($transaction === null) {
             return null;
         }
 
-        $accountId = Ledger::query()
+        $ledgers = Ledger::query()
             ->where('transaction_id', $transaction->id)
-            ->where('credit', '>', 0)
             ->with('account')
-            ->get()
-            ->first(fn (Ledger $line) => $line->account?->isPaymentAccount())
-            ?->account_id;
+            ->get();
+
+        $accountId = null;
+
+        if ($source instanceof Purchase || $source instanceof SupplierPayment) {
+            $accountId = $ledgers
+                ->first(fn (Ledger $line) => $line->credit > 0 && $line->account?->isPaymentAccount())
+                ?->account_id;
+        } elseif ($source instanceof CustomerPayment || $source instanceof Sell) {
+            $accountId = $ledgers
+                ->first(fn (Ledger $line) => $line->debit > 0 && $line->account?->isPaymentAccount())
+                ?->account_id;
+        }
+
+        if ($accountId === null) {
+            $accountId = $ledgers
+                ->first(fn (Ledger $line) => ($line->debit > 0 || $line->credit > 0) && $line->account?->isPaymentAccount())
+                ?->account_id;
+        }
 
         return $accountId !== null ? (int) $accountId : null;
     }

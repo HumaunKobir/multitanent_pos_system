@@ -382,7 +382,7 @@ export default function PurchaseEdit({
         date: purchase.date ?? '',
         discount: String(purchase.discount ?? 0),
         vat: String(purchase.vat_percent ?? 0),
-        paid_amount: String(purchase.paid_amount ?? 0),
+        additional_payment: '',
         payment_account_id: purchase.payment_account_id ? String(purchase.payment_account_id) : '',
         comment: purchase.comment ?? '',
         distribute_to_branch_id: purchase.distribute_to_branch_id ? String(purchase.distribute_to_branch_id) : '',
@@ -401,7 +401,32 @@ export default function PurchaseEdit({
     const grossAmount = items.reduce((sum, it) => sum + parseFloat(it.quantity || 0) * parseFloat(it.unit_price || 0), 0);
     const vatAmount = grossAmount * (parseFloat(form.data.vat || 0) / 100);
     const netAmount = grossAmount + vatAmount - parseFloat(form.data.discount || 0);
-    const dueAmount = Math.max(0, netAmount - parseFloat(form.data.paid_amount || 0));
+    const supplierPaymentAllocations = purchase.supplier_payment_allocations ?? [];
+    const allocationTotal = supplierPaymentAllocations.reduce(
+        (sum, line) => sum + (parseFloat(line.amount) || 0),
+        0,
+    );
+    const basePaidAmount = parseFloat(purchase.paid_amount ?? 0);
+    const additionalPayment = parseFloat(form.data.additional_payment || 0) || 0;
+    const maxAdditionalPayment = Math.max(0, netAmount - basePaidAmount);
+    const totalPaidAmount = Math.min(netAmount, basePaidAmount + additionalPayment);
+    const dueAmount = Math.max(0, netAmount - totalPaidAmount);
+    const existingDirectPaid = Math.max(0, basePaidAmount - allocationTotal);
+
+    function handleAdditionalPaymentChange(value) {
+        if (value === '' || value === null) {
+            form.setData('additional_payment', '');
+            return;
+        }
+
+        const parsed = parseFloat(value);
+
+        if (!Number.isFinite(parsed) || parsed < 0) {
+            return;
+        }
+
+        form.setData('additional_payment', String(Math.min(parsed, maxAdditionalPayment)));
+    }
 
     function addItem(item) {
         const duplicate = items.find((it) => it.product_id === item.product_id && String(it.variation_id) === String(item.variation_id));
@@ -455,11 +480,26 @@ export default function PurchaseEdit({
         }
 
         form.setData('items', lineItems);
+
+        const additional = parseFloat(form.data.additional_payment || 0) || 0;
+        const totalPaid = Math.min(netAmount, basePaidAmount + additional);
+
+        if (additional > 0 && !form.data.payment_account_id) {
+            toast.error('Select a payment account for the new payment.');
+            return;
+        }
+
+        if (additional === 0 && existingDirectPaid > 0 && !form.data.payment_account_id) {
+            toast.error('Select a payment account for the paid amount.');
+            return;
+        }
+
         form.transform((data) => ({
             ...data,
             items: lineItems,
-            paid_amount: data.paid_amount === '' || data.paid_amount == null ? '0' : data.paid_amount,
-            payment_account_id: parseFloat(data.paid_amount || 0) > 0 ? data.payment_account_id : '',
+            paid_amount: String(totalPaid),
+            payment_account_id:
+                additional > 0 || existingDirectPaid > 0 ? data.payment_account_id : '',
         }));
         form.put(route('inventory.purchase.update', purchase.id), {
             preserveScroll: true,
@@ -711,18 +751,44 @@ export default function PurchaseEdit({
                                 <div className="flex items-center justify-between gap-4">
                                     <Label className="text-xs text-muted-foreground">Paid Amount</Label>
                                     <Input
-                                        type="number"
-                                        min="0"
-                                        step="0.01"
-                                        placeholder="0"
-                                        value={form.data.paid_amount}
-                                        onChange={(e) => form.setData('paid_amount', e.target.value)}
-                                        className={`${inputCls} w-28 text-right`}
+                                        type="text"
+                                        readOnly
+                                        value={basePaidAmount.toFixed(2)}
+                                        className={`${inputCls} w-28 bg-muted text-right`}
                                     />
                                 </div>
+                                {allocationTotal > 0 && (
+                                    <p className="text-[10px] text-muted-foreground">
+                                        Includes ৳{allocationTotal.toFixed(2)} from supplier payment that cannot be changed here.
+                                    </p>
+                                )}
+
+                                {dueAmount > 0 && (
+                                    <div className="flex items-center justify-between gap-4">
+                                        <Label className="text-xs text-muted-foreground">Pay Now</Label>
+                                        <Input
+                                            type="number"
+                                            min="0"
+                                            max={maxAdditionalPayment}
+                                            step="0.01"
+                                            placeholder="0"
+                                            value={form.data.additional_payment}
+                                            onChange={(e) => handleAdditionalPaymentChange(e.target.value)}
+                                            className={`${inputCls} w-28 text-right`}
+                                        />
+                                    </div>
+                                )}
+                                {additionalPayment > 0 && (
+                                    <div className="flex justify-between text-xs text-muted-foreground">
+                                        <span>Total after payment</span>
+                                        <span className="font-medium tabular-nums text-foreground">
+                                            ৳{totalPaidAmount.toFixed(2)}
+                                        </span>
+                                    </div>
+                                )}
                                 {form.errors.paid_amount && <p className="text-xs text-destructive">{form.errors.paid_amount}</p>}
 
-                                {parseFloat(form.data.paid_amount || 0) > 0 && (
+                                {(dueAmount > 0 || additionalPayment > 0 || existingDirectPaid > 0) && (
                                     <div>
                                         <Label className="mb-1 block text-xs text-muted-foreground">Payment Account</Label>
                                         <select
@@ -737,9 +803,39 @@ export default function PurchaseEdit({
                                                 </option>
                                             ))}
                                         </select>
+                                        {dueAmount > 0 && (
+                                            <p className="mt-1 text-[10px] text-muted-foreground">
+                                                Enter pay now amount to pay remaining due from this account.
+                                            </p>
+                                        )}
                                         {form.errors.payment_account_id && (
                                             <p className="mt-1 text-xs text-destructive">{form.errors.payment_account_id}</p>
                                         )}
+                                    </div>
+                                )}
+
+                                {supplierPaymentAllocations.length > 0 && (
+                                    <div className="space-y-1 rounded-md border border-dashed px-2 py-2">
+                                        <p className="text-[10px] font-medium text-muted-foreground">Supplier Payment Allocations</p>
+                                        {supplierPaymentAllocations.map((line, index) => {
+                                            const account = paymentAccounts.find(
+                                                (acc) => String(acc.id) === String(line.payment_account_id),
+                                            );
+
+                                            return (
+                                                <div
+                                                    key={`${line.payment_account_id}-${index}`}
+                                                    className="flex items-center justify-between gap-2 text-[11px]"
+                                                >
+                                                    <span className="text-muted-foreground">
+                                                        {account?.label ?? 'Payment account'}
+                                                    </span>
+                                                    <span className="font-medium tabular-nums">
+                                                        ৳{parseFloat(line.amount).toFixed(2)}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })}
                                     </div>
                                 )}
 

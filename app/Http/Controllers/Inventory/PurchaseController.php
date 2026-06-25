@@ -16,6 +16,7 @@ use App\Models\PurchaseReturn;
 use App\Models\StockDistribution;
 use App\Models\Supplier;
 use App\Services\InventoryAccountingService;
+use App\Services\PartyPaymentAllocationService;
 use App\Services\StockDistributionService;
 use App\Support\StorageUrl;
 use Illuminate\Http\RedirectResponse;
@@ -34,6 +35,7 @@ class PurchaseController extends Controller
     public function __construct(
         private InventoryAccountingService $accounting,
         private StockDistributionService $distribution,
+        private PartyPaymentAllocationService $allocations,
     ) {}
 
     public function index(Request $request): Response
@@ -342,7 +344,7 @@ class PurchaseController extends Controller
         })->values();
 
         $paymentAccountId = (float) $purchase->paid_amount > 0
-            ? $this->accounting->paymentAccountIdFor($purchase)
+            ? $this->allocations->purchasePaymentAccountIdForEdit($purchase)
             : null;
 
         return Inertia::render('admin/inventory/purchase/edit', [
@@ -359,6 +361,7 @@ class PurchaseController extends Controller
                 'invoice_number' => $purchase->invoice_number,
                 'distribute_to_branch_id' => $existingDistribution?->to_branch_id,
                 'payment_account_id' => $paymentAccountId,
+                'supplier_payment_allocations' => $this->allocations->supplierPaymentLinesForPurchase($purchase),
                 'supplier' => $purchase->supplier,
                 'items' => $items,
             ],
@@ -417,14 +420,26 @@ class PurchaseController extends Controller
             }
         }
 
-        $paidAmount = (float) $data['paid_amount'];
-        $paymentAccountId = $this->resolvePaymentAccountId($request, $paidAmount);
+        $allocationTotal = $this->allocations->totalSupplierAllocationAmountForPurchase($purchase);
+        $formPaid = (float) $data['paid_amount'];
+
+        if ($formPaid + 0.01 < $allocationTotal) {
+            return back()
+                ->withErrors([
+                    'paid_amount' => 'Paid amount cannot be less than supplier payments already allocated to this purchase.',
+                ])
+                ->withInput();
+        }
+
+        $directPaid = round(max(0, $formPaid - $allocationTotal), 2);
+        $paymentAccountId = $directPaid > 0 ? $this->resolvePaymentAccountId($request, $directPaid) : null;
 
         if ($paymentAccountId !== null) {
+            $previousDirectPaid = $this->allocations->purchaseDirectPaidAmount($purchase);
             $balanceWarning = $this->paymentAccountBalanceWarning(
                 $paymentAccountId,
-                $paidAmount,
-                (float) $purchase->paid_amount,
+                $directPaid,
+                $previousDirectPaid,
             );
 
             if ($balanceWarning !== null) {
@@ -437,7 +452,7 @@ class PurchaseController extends Controller
         $branchId = Auth::user()?->branch_id;
 
         try {
-            DB::transaction(function () use ($purchase, $data, $branchId, $paymentAccountId) {
+            DB::transaction(function () use ($purchase, $data, $branchId, $paymentAccountId, $allocationTotal, $formPaid) {
                 $this->accounting->reverseFor($purchase);
                 $purchase->load(['purchaseProducts']);
 
@@ -552,7 +567,9 @@ class PurchaseController extends Controller
 
                 $vatAmount = $grossAmount * ((float) $data['vat'] / 100);
                 $netAmount = $grossAmount + $vatAmount - (float) $data['discount'];
-                $dueAmount = max(0, $netAmount - (float) $data['paid_amount']);
+                $totalPaid = round(min($netAmount, $formPaid), 2);
+                $directPaid = round(max(0, $totalPaid - $allocationTotal), 2);
+                $dueAmount = max(0, $netAmount - $totalPaid);
 
                 $purchase->update([
                     'supplier_id' => $data['supplier_id'],
@@ -560,7 +577,7 @@ class PurchaseController extends Controller
                     'gross_amount' => $grossAmount,
                     'discount' => $data['discount'],
                     'vat' => $vatAmount,
-                    'paid_amount' => $data['paid_amount'],
+                    'paid_amount' => $totalPaid,
                     'due_amount' => $dueAmount,
                     'comment' => $data['comment'] ?? null,
                 ]);
@@ -569,10 +586,10 @@ class PurchaseController extends Controller
                     $purchase->purchaseProducts()->create($lineItem);
                 }
 
-                $newDueChange = $netAmount - (float) $data['paid_amount'];
+                $newDueChange = $netAmount - $totalPaid;
                 Supplier::whereKey($data['supplier_id'])->increment('balance', $newDueChange);
 
-                $this->accounting->postPurchase($purchase->fresh(['supplier']), $paymentAccountId);
+                $this->accounting->postPurchase($purchase->fresh(['supplier']), $paymentAccountId, $directPaid);
 
                 $this->maybeCreatePendingDistribution($data, $branchId, $purchase);
             });

@@ -134,7 +134,7 @@ test('user can record customer due collection against invoices and reduce custom
     $payment = CustomerPayment::query()->where('customer_id', $customer->id)->first();
 
     expect($payment)->not->toBeNull();
-    expect((float) $payment->amount)->toBe($collectionAmount);
+    expect((float) $payment->amount)->toBe((float) $collectionAmount);
     expect($payment->comment)->toBe('Partial collection');
     expect($payment->created_by)->toBe($user->id);
     expect($payment->allocations)->toHaveCount(1);
@@ -343,4 +343,44 @@ test('customer due collection posts cash debit and receivable credit', function 
 
     $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
     expect(round($ledgers->sum('debit'), 2))->toBe(round($ledgers->sum('credit'), 2));
+});
+
+test('customer due collection index includes payment account from journal', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerDueCollectionUser([
+        'party.customer-due-collection.view',
+        'party.customer-due-collection.create',
+        'inventory.sell.create',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+    ]);
+
+    $sell = customerDueSale($user, $customer);
+    $collectionAmount = min(500, max(0, (float) $sell->net_amount - (float) $sell->paid_amount));
+
+    $this->actingAs($user)
+        ->post('/party/customer-due-collection', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'payment_account_id' => $cash->id,
+            'allocations' => [
+                ['sell_id' => $sell->id, 'amount' => $collectionAmount],
+            ],
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    $this->actingAs($user)
+        ->get(route('party.customer-due-collection.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/inventory/customer-due-collection/index')
+            ->has('payments.data', 1)
+            ->where('payments.data.0.payment_account_id', $cash->id)
+            ->where('payments.data.0.payment_account_label', fn ($label) => is_string($label) && $label !== ''));
 });

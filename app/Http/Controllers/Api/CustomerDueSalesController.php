@@ -15,7 +15,7 @@ class CustomerDueSalesController extends Controller
 
     public function __invoke(Request $request, Customer $customer): JsonResponse
     {
-        $this->authorize('party.customer-due-collection.create');
+        $this->authorize('party.customer-due-collection.view');
 
         $branchId = $request->user()?->branch_id;
 

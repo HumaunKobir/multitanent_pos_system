@@ -1597,6 +1597,105 @@ test('unpaid due sale still allows full edit', function () {
     expect((float) $batch->available)->toBe(8.0);
 });
 
+test('sell edit shows due collection payment accounts and sale payment lines separately', function () {
+    $this->artisan('permissions:sync');
+
+    $user = sellUser([
+        'inventory.sell.view',
+        'inventory.sell.create',
+        'inventory.sell.update',
+        'party.customer-due-collection.create',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+    $customer = sellCustomer($user->branch_id);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', dueSalePayload($user, $product, $customer, $cash))
+        ->assertRedirect();
+
+    $sell = Sell::query()->where('user_id', $user->id)->latest('id')->first();
+    $collectionAmount = 150.0;
+
+    $this->actingAs($user)
+        ->post('/party/customer-due-collection', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'payment_account_id' => $cash->id,
+            'allocations' => [
+                ['sell_id' => $sell->id, 'amount' => $collectionAmount],
+            ],
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    $sell->refresh();
+
+    $this->actingAs($user)
+        ->get("/inventory/sell/{$sell->id}/edit")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/sell/edit')
+            ->where('paymentOnlyEdit', true)
+            ->has('sell.payments', 1)
+            ->where('sell.payments.0.payment_account_id', $cash->id)
+            ->where('sell.payments.0.amount', 200)
+            ->has('sell.collection_payments', 1)
+            ->where('sell.collection_payments.0.payment_account_id', $cash->id)
+            ->where('sell.collection_payments.0.amount', 150));
+});
+
+test('partially paid sale with only due collection can update payment without payment account error', function () {
+    $this->artisan('permissions:sync');
+
+    $user = sellUser([
+        'inventory.sell.view',
+        'inventory.sell.create',
+        'inventory.sell.update',
+        'party.customer-due-collection.create',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+    $customer = sellCustomer($user->branch_id);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', dueSalePayload($user, $product, $customer, $cash, [
+            'paid_amount' => '0',
+            'payment_account_id' => null,
+            'payments' => [],
+        ]))
+        ->assertRedirect();
+
+    $sell = Sell::query()->where('user_id', $user->id)->latest('id')->first();
+    $collectionAmount = 300.0;
+
+    $this->actingAs($user)
+        ->post('/party/customer-due-collection', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'payment_account_id' => $cash->id,
+            'allocations' => [
+                ['sell_id' => $sell->id, 'amount' => $collectionAmount],
+            ],
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    $sell->refresh();
+
+    $this->actingAs($user)
+        ->put("/inventory/sell/{$sell->id}", [
+            'paid_amount' => (string) $collectionAmount,
+            'payments' => [],
+            'due_given_date' => now()->format('Y-m-d'),
+            'due_alert_action' => 'merge',
+        ])
+        ->assertRedirect(route('inventory.sell.show', $sell))
+        ->assertSessionHas('success');
+
+    expect((float) $sell->fresh()->paid_amount)->toBe($collectionAmount);
+});
+
 // ── Update ────────────────────────────────────────────────────────────────────
 
 test('authenticated user can update a sale and stock is adjusted', function () {

@@ -23,6 +23,7 @@ use App\Services\CoinService;
 use App\Services\CustomerDueAlertService;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
+use App\Services\PartyPaymentAllocationService;
 use App\Services\PromotionService;
 use App\Services\SpecialDiscountService;
 use App\Services\SystemAccountService;
@@ -50,6 +51,7 @@ class SellController extends Controller
         private PromotionService $promotionService,
         private CustomerDueAlertService $dueAlertService,
         private CoinService $coinService,
+        private PartyPaymentAllocationService $allocations,
     ) {}
 
     public function index(Request $request): Response
@@ -475,10 +477,8 @@ class SellController extends Controller
                 ] : null,
                 'vat_percent' => round($vatPercent, 6),
                 'paid_amount' => (float) $sell->paid_amount,
-                'payments' => $sell->payments->map(fn ($payment) => [
-                    'payment_account_id' => $payment->payment_account_id,
-                    'amount' => (float) $payment->amount,
-                ])->values()->all(),
+                'payments' => $this->allocations->sellPaymentLinesForEdit($sell),
+                'collection_payments' => $this->allocations->collectionPaymentLinesForSell($sell),
                 'comment' => $sell->comment,
                 'invoice_number' => 'INVS'.str_pad($sell->id, 8, '0', STR_PAD_LEFT),
                 'items' => $items,
@@ -566,7 +566,8 @@ class SellController extends Controller
             $promotionStacking,
             $this->coinBalanceOffsetForSaleEdit($sell, $data),
         );
-        $payment = $this->resolveSalePayments($data, $saleTotals['net_amount']);
+        $collectionTotal = $this->allocations->totalCollectionAmountForSell($sell);
+        $payment = $this->resolveSalePaymentsWithCollectionAmount($data, $saleTotals['net_amount'], $collectionTotal);
         $this->assertCustomerForDueSale($data['customer_id'] ? (int) $data['customer_id'] : null, $payment['due_amount']);
         $this->assertDueAlertFields($data, $branchId, $payment['due_amount']);
 
@@ -1405,7 +1406,8 @@ class SellController extends Controller
 
         $branchId = Auth::user()?->branch_id;
         $netAmount = round((float) $sell->net_amount, 2);
-        $payment = $this->resolveSalePayments($data, $netAmount);
+        $collectionTotal = $this->allocations->totalCollectionAmountForSell($sell);
+        $payment = $this->resolveSalePaymentsWithCollectionAmount($data, $netAmount, $collectionTotal);
         $this->assertCustomerForDueSale($sell->customer_id ? (int) $sell->customer_id : null, $payment['due_amount']);
         $this->assertDueAlertFields($data, $branchId, $payment['due_amount']);
 

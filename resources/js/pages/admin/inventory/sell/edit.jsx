@@ -15,8 +15,9 @@ import { SellDueAlertFields } from '@/components/inventory/sell-due-alert-fields
 import { useCustomerCoinInfo } from '@/hooks/use-customer-coin-info';
 import { computeCoinDiscount, maxRedeemableCoins, resolveEffectiveCoinsRedeemed } from '@/lib/pos-coin';
 import {
-    buildInitialSalePayments,
+    buildEditSalePaymentState,
     computeSplitSalePayment,
+    computeSplitSalePaymentWithCollections,
     dueSaleCustomerError,
     saleCustomerRequiredError,
     serializeSalePayments,
@@ -493,6 +494,11 @@ export default function SellEdit({
 }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
+    const initialPaymentState = buildEditSalePaymentState(
+        sell.payments,
+        sell.collection_payments,
+        paymentAccounts,
+    );
     const form = useForm({
         customer_id: sell.customer_id ? String(sell.customer_id) : '',
         date: sell.date ?? '',
@@ -501,7 +507,7 @@ export default function SellEdit({
         special_discount_id: sell.special_discount_id ? String(sell.special_discount_id) : '',
         vat: String(sell.vat_percent ?? '0'),
         paid_amount: String(sell.paid_amount ?? '0'),
-        payments: buildInitialSalePayments(sell.payments, paymentAccounts),
+        payments: initialPaymentState.payments,
         round_off_amount: String(sell.round_off_amount ?? '0'),
         coins_redeemed: String(sell.coins_redeemed ?? '0'),
         comment: sell.comment ?? '',
@@ -614,7 +620,12 @@ export default function SellEdit({
         ? Math.min(Math.max(0, parseFloat(form.data.round_off_amount || 0)), Math.max(0, netBeforeRoundOff))
         : 0;
     const netAmount = netBeforeRoundOff - roundOffAmount;
-    const { totalPaid, dueAmount, changeAmount } = computeSplitSalePayment(form.data.payments, netAmount);
+    const collectionPayments = sell.collection_payments ?? [];
+    const paymentSummary =
+        collectionPayments.length > 0
+            ? computeSplitSalePaymentWithCollections(form.data.payments, collectionPayments, netAmount)
+            : computeSplitSalePayment(form.data.payments, netAmount);
+    const { totalPaid, dueAmount, changeAmount } = paymentSummary;
     const customerRequiredError = saleCustomerRequiredError(form.data.customer_id);
     const dueCustomerError = dueSaleCustomerError(form.data.customer_id, walkInCustomerId, dueAmount);
 
@@ -1168,6 +1179,7 @@ export default function SellEdit({
 
                                 <SalePaymentLines
                                     payments={form.data.payments}
+                                    collectionPayments={collectionPayments}
                                     paymentAccounts={paymentAccounts}
                                     netAmount={netAmount}
                                     onChange={(payments) => form.setData('payments', payments)}

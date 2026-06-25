@@ -341,3 +341,83 @@ test('branch user cannot delete payment from another branch', function () {
         ->delete("/party/supplier-payment/{$payment->id}")
         ->assertNotFound();
 });
+
+test('supplier payment index includes payment account from journal', function () {
+    $this->artisan('permissions:sync');
+
+    $user = supplierPaymentUser([
+        'party.supplier-payment.view',
+        'party.supplier-payment.create',
+        'inventory.purchase.create',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+    ]);
+
+    $purchase = supplierDuePurchase($user, $supplier, 1000);
+
+    $this->actingAs($user)
+        ->post('/party/supplier-payment', [
+            'supplier_id' => $supplier->id,
+            'date' => '2026-06-04',
+            'payment_account_id' => $cash->id,
+            'allocations' => [
+                ['purchase_id' => $purchase->id, 'amount' => 300],
+            ],
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    $this->actingAs($user)
+        ->get(route('party.supplier-payment.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/inventory/supplier-payment/index')
+            ->has('payments.data', 1)
+            ->where('payments.data.0.payment_account_id', $cash->id)
+            ->where('payments.data.0.payment_account_label', fn ($label) => is_string($label) && $label !== ''));
+});
+
+test('purchase edit shows payment account from supplier payment allocation', function () {
+    $this->artisan('permissions:sync');
+
+    $user = supplierPaymentUser([
+        'party.supplier-payment.create',
+        'inventory.purchase.create',
+        'inventory.purchase.update',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+    ]);
+
+    $purchase = supplierDuePurchase($user, $supplier, 5000);
+
+    $this->actingAs($user)
+        ->post('/party/supplier-payment', [
+            'supplier_id' => $supplier->id,
+            'date' => '2026-06-04',
+            'payment_account_id' => $cash->id,
+            'allocations' => [
+                ['purchase_id' => $purchase->id, 'amount' => 3000],
+            ],
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    $this->actingAs($user)
+        ->get(route('inventory.purchase.edit', $purchase))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/inventory/purchase/edit')
+            ->where('purchase.payment_account_id', $cash->id)
+            ->where('purchase.paid_amount', 3000)
+            ->has('purchase.supplier_payment_allocations', 1)
+            ->where('purchase.supplier_payment_allocations.0.payment_account_id', $cash->id)
+            ->where('purchase.supplier_payment_allocations.0.amount', 3000));
+});

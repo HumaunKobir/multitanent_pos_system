@@ -7,6 +7,7 @@ use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentAllocation;
 use App\Models\Purchase;
 use App\Models\Sell;
+use App\Models\SellPayment;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
 use App\Models\SupplierPaymentAllocation;
@@ -15,6 +16,8 @@ use Illuminate\Validation\ValidationException;
 
 class PartyPaymentAllocationService
 {
+    public function __construct(private InventoryAccountingService $accounting) {}
+
     /**
      * @return Collection<int, array{id: int, invoice_number: string, date: string|null, net_amount: float, paid_amount: float, due_amount: float}>
      */
@@ -298,6 +301,162 @@ class PartyPaymentAllocationService
         }
 
         $payment->allocations()->delete();
+    }
+
+    public function totalSupplierAllocationAmountForPurchase(Purchase $purchase): float
+    {
+        return round((float) SupplierPaymentAllocation::query()
+            ->where('purchase_id', $purchase->id)
+            ->sum('amount'), 2);
+    }
+
+    public function purchaseDirectPaidAmount(Purchase $purchase): float
+    {
+        return round(max(0, (float) $purchase->paid_amount - $this->totalSupplierAllocationAmountForPurchase($purchase)), 2);
+    }
+
+    /**
+     * @return array<int, array{payment_account_id: int, amount: float}>
+     */
+    public function supplierPaymentLinesForPurchase(Purchase $purchase): array
+    {
+        $allocations = SupplierPaymentAllocation::query()
+            ->where('purchase_id', $purchase->id)
+            ->with('supplierPayment')
+            ->get();
+
+        $byAccount = [];
+
+        foreach ($allocations as $allocation) {
+            $supplierPayment = $allocation->supplierPayment;
+
+            if ($supplierPayment === null) {
+                continue;
+            }
+
+            $paymentAccountId = $this->accounting->paymentAccountIdFor($supplierPayment, latest: true);
+
+            if ($paymentAccountId === null) {
+                continue;
+            }
+
+            $byAccount[$paymentAccountId] = round(
+                ($byAccount[$paymentAccountId] ?? 0) + (float) $allocation->amount,
+                2,
+            );
+        }
+
+        return collect($byAccount)
+            ->map(fn (float $amount, int $accountId) => [
+                'payment_account_id' => $accountId,
+                'amount' => $amount,
+            ])
+            ->values()
+            ->all();
+    }
+
+    public function purchasePaymentAccountIdForEdit(Purchase $purchase): ?int
+    {
+        if ((float) $purchase->paid_amount <= 0) {
+            return null;
+        }
+
+        if ($this->purchaseDirectPaidAmount($purchase) > 0) {
+            $accountId = $this->accounting->paymentAccountIdFor($purchase);
+
+            if ($accountId !== null) {
+                return $accountId;
+            }
+        }
+
+        $lines = $this->supplierPaymentLinesForPurchase($purchase);
+
+        return isset($lines[0]) ? (int) $lines[0]['payment_account_id'] : null;
+    }
+
+    /**
+     * @return array<int, array{payment_account_id: int, amount: float}>
+     */
+    public function collectionPaymentLinesForSell(Sell $sell): array
+    {
+        $allocations = CustomerPaymentAllocation::query()
+            ->where('sell_id', $sell->id)
+            ->with('customerPayment')
+            ->get();
+
+        $byAccount = [];
+
+        foreach ($allocations as $allocation) {
+            $customerPayment = $allocation->customerPayment;
+
+            if ($customerPayment === null) {
+                continue;
+            }
+
+            $paymentAccountId = $this->accounting->paymentAccountIdFor($customerPayment, latest: true);
+
+            if ($paymentAccountId === null) {
+                continue;
+            }
+
+            $byAccount[$paymentAccountId] = round(
+                ($byAccount[$paymentAccountId] ?? 0) + (float) $allocation->amount,
+                2,
+            );
+        }
+
+        return collect($byAccount)
+            ->map(fn (float $amount, int $accountId) => [
+                'payment_account_id' => $accountId,
+                'amount' => $amount,
+            ])
+            ->values()
+            ->all();
+    }
+
+    public function totalCollectionAmountForSell(Sell $sell): float
+    {
+        return round((float) CustomerPaymentAllocation::query()
+            ->where('sell_id', $sell->id)
+            ->sum('amount'), 2);
+    }
+
+    /**
+     * @return array<int, array{payment_account_id: int, amount: float}>
+     */
+    public function sellPaymentLinesForEdit(Sell $sell): array
+    {
+        $sell->loadMissing('payments');
+
+        $lines = $sell->payments
+            ->map(fn (SellPayment $payment) => [
+                'payment_account_id' => (int) $payment->payment_account_id,
+                'amount' => round((float) $payment->amount, 2),
+            ])
+            ->values()
+            ->all();
+
+        if ($lines !== []) {
+            return $lines;
+        }
+
+        $collectionTotal = $this->totalCollectionAmountForSell($sell);
+        $sellOnlyPaid = round(max(0, (float) $sell->paid_amount - $collectionTotal), 2);
+
+        if ($sellOnlyPaid <= 0) {
+            return [];
+        }
+
+        $paymentAccountId = $this->accounting->paymentAccountIdFor($sell);
+
+        if ($paymentAccountId === null) {
+            return [];
+        }
+
+        return [[
+            'payment_account_id' => $paymentAccountId,
+            'amount' => $sellOnlyPaid,
+        ]];
     }
 
     /**

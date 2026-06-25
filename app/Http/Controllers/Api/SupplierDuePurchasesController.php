@@ -15,7 +15,7 @@ class SupplierDuePurchasesController extends Controller
 
     public function __invoke(Request $request, Supplier $supplier): JsonResponse
     {
-        $this->authorize('party.supplier-payment.create');
+        $this->authorize('party.supplier-payment.view');
 
         $branchId = $request->user()?->branch_id;
 

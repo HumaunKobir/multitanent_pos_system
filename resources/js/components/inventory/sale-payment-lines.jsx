@@ -1,4 +1,4 @@
-import { computeSplitSalePayment } from '@/lib/sale-payment';
+import { computeSplitSalePayment, computeSplitSalePaymentWithCollections, visibleCollectionPaymentLines, visibleSalePaymentLines } from '@/lib/sale-payment';
 import { cn } from '@/lib/utils';
 import { Plus, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -76,8 +76,33 @@ function PaymentLineRow({ line, index, paymentAccounts, onUpdate, onRemove, sele
     );
 }
 
+function ReadOnlyCollectionLine({ line, paymentAccounts, selectClassName, inputClassName }) {
+    const account = paymentAccounts.find((item) => String(item.id) === String(line.payment_account_id));
+
+    return (
+        <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_auto] items-start gap-1.5">
+            <div>
+                <select className={selectClassName} value={String(line.payment_account_id ?? '')} disabled>
+                    <option value={String(line.payment_account_id ?? '')}>
+                        {account?.label ?? 'Due collection account'}
+                    </option>
+                </select>
+                <p className="mt-0.5 text-[10px] text-muted-foreground">Collected via due collection</p>
+            </div>
+            <Input
+                type="number"
+                readOnly
+                value={line.amount ?? ''}
+                className={cn(inputClassName, 'bg-muted text-right tabular-nums')}
+            />
+            <div className="mt-0.5 size-8 shrink-0" />
+        </div>
+    );
+}
+
 export function SalePaymentLines({
     payments = [],
+    collectionPayments = [],
     paymentAccounts = [],
     netAmount,
     onChange,
@@ -86,11 +111,22 @@ export function SalePaymentLines({
     compact = false,
     hideSummary = false,
 }) {
-    const { totalPaid, dueAmount, changeAmount } = computeSplitSalePayment(payments, netAmount);
+    const paymentSummary =
+        collectionPayments.length > 0
+            ? computeSplitSalePaymentWithCollections(payments, collectionPayments, netAmount)
+            : computeSplitSalePayment(payments, netAmount);
+    const { totalPaid, dueAmount, changeAmount } = paymentSummary;
+    const visiblePayments = visibleSalePaymentLines(payments, collectionPayments);
+    const visibleCollections = visibleCollectionPaymentLines(payments, collectionPayments);
 
     function updateLine(index, field, value) {
+        const lineToUpdate = visiblePayments[index];
+        const lineIndex = payments.findIndex((line) => line === lineToUpdate);
+
         onChange(
-            payments.map((line, lineIndex) => (lineIndex === index ? { ...line, [field]: value } : line)),
+            payments.map((line, currentIndex) =>
+                currentIndex === lineIndex ? { ...line, [field]: value } : line,
+            ),
         );
     }
 
@@ -99,13 +135,16 @@ export function SalePaymentLines({
     }
 
     function removeLine(index) {
-        if (payments.length <= 1) {
-            onChange([{ payment_account_id: paymentAccounts[0] ? String(paymentAccounts[0].id) : '', amount: '' }]);
+        const lineToRemove = visiblePayments[index];
+        const nextPayments = payments.filter((line) => line !== lineToRemove);
+
+        if (nextPayments.length === 0) {
+            onChange([]);
 
             return;
         }
 
-        onChange(payments.filter((_, lineIndex) => lineIndex !== index));
+        onChange(nextPayments);
     }
 
     const selectClassName = cn(
@@ -131,7 +170,7 @@ export function SalePaymentLines({
                 </Button>
             </div>
 
-            {payments.map((line, index) => (
+            {visiblePayments.map((line, index) => (
                 <PaymentLineRow
                     key={`${line.payment_account_id}-${index}`}
                     line={line}
@@ -142,6 +181,16 @@ export function SalePaymentLines({
                     selectClassName={selectClassName}
                     inputClassName={inputClassName}
                     errors={errors}
+                />
+            ))}
+
+            {visibleCollections.map((line, index) => (
+                <ReadOnlyCollectionLine
+                    key={`collection-${line.payment_account_id}-${index}`}
+                    line={line}
+                    paymentAccounts={paymentAccounts}
+                    selectClassName={selectClassName}
+                    inputClassName={inputClassName}
                 />
             ))}
 

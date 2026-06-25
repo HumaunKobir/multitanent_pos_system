@@ -155,6 +155,7 @@ return [
             'permissions' => [
                 'party.supplier-payment.view' => 'View Supplier Payments',
                 'party.supplier-payment.create' => 'Create Supplier Payment',
+                'party.supplier-payment.update' => 'Update Supplier Payment',
                 'party.supplier-payment.delete' => 'Delete Supplier Payment',
             ],
         ],
@@ -176,6 +177,7 @@ return [
             'permissions' => [
                 'party.customer-due-collection.view' => 'View Due Collections',
                 'party.customer-due-collection.create' => 'Create Due Collection',
+                'party.customer-due-collection.update' => 'Update Due Collection',
                 'party.customer-due-collection.delete' => 'Delete Due Collection',
             ],
         ],

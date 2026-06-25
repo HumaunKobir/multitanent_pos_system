@@ -15,6 +15,14 @@ export function allocationTotal(amountsById) {
     return Object.values(amountsById).reduce((sum, value) => sum + (parseFloat(value) || 0), 0);
 }
 
+export function allocationAmountsFromApiDocuments(documents = []) {
+    return Object.fromEntries(
+        documents
+            .filter((doc) => parseFloat(doc.allocated_amount) > 0)
+            .map((doc) => [doc.id, String(doc.allocated_amount)]),
+    );
+}
+
 export function PaymentAllocationTable({
     documents = [],
     idField,

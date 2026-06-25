@@ -501,13 +501,20 @@ class ReportService
             $vouchersQuery->where('branch_id', $effectiveBranchId);
         }
 
-        if ($effectiveUserId !== null) {
-            $salesQuery->where('user_id', $effectiveUserId);
-            $purchasesQuery->where('user_id', $effectiveUserId);
-        }
+        $this->applyDailySummaryUserFilter(
+            $salesQuery,
+            $purchasesQuery,
+            $paymentsQuery,
+            $collectionsQuery,
+            $returnsQuery,
+            $damagesQuery,
+            $vouchersQuery,
+            $effectiveUserId,
+        );
 
-        $sales = $salesQuery->get(['gross_amount', 'discount', 'vat', 'paid_amount']);
-        $purchases = $purchasesQuery->get(['gross_amount', 'discount', 'vat', 'paid_amount']);
+        $sales = $salesQuery->with(['products:id,sell_id,discount'])->get();
+        $purchases = $purchasesQuery->get();
+        $returns = $returnsQuery->get();
         $vouchers = $vouchersQuery->get(['type', 'total_amount']);
 
         $salesNet = $sales->sum(fn (Sell $s) => $s->net_amount);
@@ -543,8 +550,8 @@ class ReportService
                 'amount' => round((float) $expenseVouchers->sum('total_amount'), 2),
             ],
             'sale_returns' => [
-                'count' => $returnsQuery->count(),
-                'amount' => round((float) $returnsQuery->sum('gross_amount'), 2),
+                'count' => $returns->count(),
+                'amount' => round($returns->sum(fn (SaleReturn $return) => $return->net_amount), 2),
             ],
             'damages' => [
                 'count' => $damagesQuery->count(),
@@ -591,19 +598,32 @@ class ReportService
             ->whereDate('date', $date)
             ->with(['user:id,name']);
 
+        $paymentsQuery = SupplierPayment::query()->whereDate('date', $date);
+        $collectionsQuery = CustomerPayment::query()->whereDate('date', $date);
+
         if ($branchId !== null) {
             $salesQuery->where('branch_id', $branchId);
             $purchasesQuery->where('branch_id', $branchId);
+            $paymentsQuery->where('branch_id', $branchId);
+            $collectionsQuery->where('branch_id', $branchId);
         }
 
         if ($userId !== null) {
             $salesQuery->where('user_id', $userId);
             $purchasesQuery->where('user_id', $userId);
+            $paymentsQuery->where('created_by', $userId);
+            $collectionsQuery->where('created_by', $userId);
         }
 
         $salesByStaff = $salesQuery->get()->groupBy(fn (Sell $sell) => "{$sell->branch_id}-{$sell->user_id}");
         $purchasesByStaff = $purchasesQuery->get()->groupBy(fn (Purchase $purchase) => "{$purchase->branch_id}-{$purchase->user_id}");
-        $staffKeys = $salesByStaff->keys()->merge($purchasesByStaff->keys())->unique();
+        $paymentsByStaff = $paymentsQuery->get()->groupBy(fn (SupplierPayment $payment) => "{$payment->branch_id}-{$payment->created_by}");
+        $collectionsByStaff = $collectionsQuery->get()->groupBy(fn (CustomerPayment $payment) => "{$payment->branch_id}-{$payment->created_by}");
+        $staffKeys = $salesByStaff->keys()
+            ->merge($purchasesByStaff->keys())
+            ->merge($paymentsByStaff->keys())
+            ->merge($collectionsByStaff->keys())
+            ->unique();
 
         $branchIds = $staffKeys
             ->map(fn (string $key) => (int) explode('-', $key, 2)[0])
@@ -615,29 +635,44 @@ class ReportService
             ->whereIn('id', $branchIds)
             ->pluck('name', 'id');
 
+        $userNames = User::query()
+            ->whereIn('id', $staffKeys
+                ->map(fn (string $key) => (int) explode('-', $key, 2)[1])
+                ->filter()
+                ->unique()
+                ->values())
+            ->pluck('name', 'id');
+
         return $staffKeys
-            ->map(function (string $key) use ($salesByStaff, $purchasesByStaff, $branchNames) {
+            ->map(function (string $key) use ($salesByStaff, $purchasesByStaff, $paymentsByStaff, $collectionsByStaff, $branchNames, $userNames) {
                 $sales = $salesByStaff->get($key, collect());
                 $purchases = $purchasesByStaff->get($key, collect());
-                $sample = $sales->first() ?? $purchases->first();
+                $payments = $paymentsByStaff->get($key, collect());
+                $collections = $collectionsByStaff->get($key, collect());
+                $sample = $sales->first() ?? $purchases->first() ?? $payments->first() ?? $collections->first();
 
                 if ($sample === null) {
                     return null;
                 }
 
+                [$branchId, $staffUserId] = array_pad(explode('-', $key, 2), 2, null);
+                $staffUserId = $staffUserId !== null && $staffUserId !== '' ? (int) $staffUserId : null;
+
                 $salesGross = $sales->sum(fn (Sell $sell) => $sell->net_amount);
                 $salesPaid = $sales->sum(fn (Sell $sell) => (float) $sell->paid_amount);
                 $purchaseGross = $purchases->sum(fn (Purchase $purchase) => $purchase->net_amount);
                 $purchasePaid = $purchases->sum(fn (Purchase $purchase) => (float) $purchase->paid_amount);
-                $user = $sample instanceof Sell ? $sample->user : $purchases->first()?->user;
+                $user = $sample instanceof Sell
+                    ? $sample->user
+                    : ($sample instanceof Purchase ? $sample->user : null);
 
                 return [
-                    'branch_id' => $sample->branch_id,
+                    'branch_id' => (int) $branchId,
                     'branch_name' => $sample instanceof Sell
                         ? ($sample->branch?->name ?? '—')
-                        : ($branchNames[$sample->branch_id] ?? '—'),
-                    'user_id' => $sample->user_id,
-                    'user_name' => $user?->name ?? '—',
+                        : ($branchNames[(int) $branchId] ?? '—'),
+                    'user_id' => $staffUserId ?? $sample->user_id ?? $sample->created_by ?? null,
+                    'user_name' => $user?->name ?? ($staffUserId !== null ? ($userNames[$staffUserId] ?? '—') : '—'),
                     'sales' => [
                         'count' => $sales->count(),
                         'gross' => round($salesGross, 2),
@@ -649,6 +684,14 @@ class ReportService
                         'gross' => round($purchaseGross, 2),
                         'paid' => round($purchasePaid, 2),
                         'due' => round(max(0, $purchaseGross - $purchasePaid), 2),
+                    ],
+                    'supplier_payments' => [
+                        'count' => $payments->count(),
+                        'amount' => round((float) $payments->sum('amount'), 2),
+                    ],
+                    'customer_collections' => [
+                        'count' => $collections->count(),
+                        'amount' => round((float) $collections->sum('amount'), 2),
                     ],
                     'sales_items' => $sales
                         ->sortBy('id')
@@ -667,7 +710,10 @@ class ReportService
                     return false;
                 }
 
-                return ($row['sales']['count'] ?? 0) > 0 || ($row['purchases']['count'] ?? 0) > 0;
+                return ($row['sales']['count'] ?? 0) > 0
+                    || ($row['purchases']['count'] ?? 0) > 0
+                    || ($row['supplier_payments']['count'] ?? 0) > 0
+                    || ($row['customer_collections']['count'] ?? 0) > 0;
             })
             ->sortBy([
                 ['branch_name', 'asc'],
@@ -675,6 +721,29 @@ class ReportService
             ])
             ->values()
             ->all();
+    }
+
+    private function applyDailySummaryUserFilter(
+        Builder $salesQuery,
+        Builder $purchasesQuery,
+        Builder $paymentsQuery,
+        Builder $collectionsQuery,
+        Builder $returnsQuery,
+        Builder $damagesQuery,
+        Builder $vouchersQuery,
+        ?int $userId,
+    ): void {
+        if ($userId === null) {
+            return;
+        }
+
+        $salesQuery->where('user_id', $userId);
+        $purchasesQuery->where('user_id', $userId);
+        $paymentsQuery->where('created_by', $userId);
+        $collectionsQuery->where('created_by', $userId);
+        $returnsQuery->where('user_id', $userId);
+        $damagesQuery->where('user_id', $userId);
+        $vouchersQuery->where('created_by', $userId);
     }
 
     /**

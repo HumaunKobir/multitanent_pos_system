@@ -10,9 +10,14 @@ use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Models\Customer;
+use App\Models\CustomerPayment;
 use App\Models\Product;
 use App\Models\Purchase;
+use App\Models\SaleReturn;
 use App\Models\Sell;
+use App\Models\SellProduct;
+use App\Models\Supplier;
+use App\Models\SupplierPayment;
 use App\Models\User;
 use App\Models\Voucher;
 use App\Support\AdminNavigation;
@@ -484,6 +489,178 @@ test('branch user daily summary staff breakdown only includes their own sales', 
             ->where('summary.staff_breakdown.0.user_id', $branchUser->id)
             ->where('summary.staff_breakdown.0.sales.gross', 550)
             ->where('summary.staff_breakdown.0.sales.count', 1));
+});
+
+test('daily summary branch totals match staff breakdown including line discounts and payments', function () {
+    $this->artisan('permissions:sync');
+
+    $date = '2026-06-25';
+    $unique = uniqid();
+    $branch = Branch::factory()->create(['name' => 'Branch '.$unique]);
+    $staffA = User::factory()->create(['branch_id' => $branch->id, 'name' => 'Staff A '.$unique]);
+    $staffB = User::factory()->create(['branch_id' => $branch->id, 'name' => 'Staff B '.$unique]);
+    $admin = reportUser([ReportController::PERMISSION_DAILY_SUMMARY]);
+    $admin->update(['branch_id' => null]);
+    $product = Product::factory()->create();
+    $supplier = Supplier::factory()->create(['branch_id' => $branch->id]);
+    $customer = Customer::factory()->create(['branch_id' => $branch->id]);
+
+    $sellA = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $staffA->id,
+        'type' => SaleType::Sale,
+        'date' => $date,
+        'gross_amount' => 200,
+        'paid_amount' => 195.50,
+    ]);
+
+    SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $sellA->id,
+        'product_id' => $product->id,
+        'quantity' => 1,
+        'unit_price' => 200,
+        'discount' => 4.50,
+        'batches' => [],
+    ]);
+
+    Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $staffB->id,
+        'type' => SaleType::Sale,
+        'date' => $date,
+        'gross_amount' => 200,
+        'paid_amount' => 200,
+    ]);
+
+    SupplierPayment::query()->create([
+        'branch_id' => $branch->id,
+        'supplier_id' => $supplier->id,
+        'date' => $date,
+        'amount' => 150,
+        'serial' => 'INVSP-DS-'.$unique.'-A',
+        'created_by' => $staffA->id,
+    ]);
+
+    SupplierPayment::query()->create([
+        'branch_id' => $branch->id,
+        'supplier_id' => $supplier->id,
+        'date' => $date,
+        'amount' => 100,
+        'serial' => 'INVSP-DS-'.$unique.'-B',
+        'created_by' => $staffB->id,
+    ]);
+
+    CustomerPayment::query()->create([
+        'branch_id' => $branch->id,
+        'customer_id' => $customer->id,
+        'date' => $date,
+        'amount' => 80,
+        'serial' => 'INVCP-DS-'.$unique.'-A',
+        'created_by' => $staffA->id,
+    ]);
+
+    CustomerPayment::query()->create([
+        'branch_id' => $branch->id,
+        'customer_id' => $customer->id,
+        'date' => $date,
+        'amount' => 120,
+        'serial' => 'INVCP-DS-'.$unique.'-B',
+        'created_by' => $staffB->id,
+    ]);
+
+    $this->actingAs($admin)
+        ->get('/report/daily-summary?date='.$date.'&branch_id='.$branch->id)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('summary.sales.gross', 395.50)
+            ->where('summary.supplier_payments.amount', 250)
+            ->where('summary.customer_collections.amount', 200)
+            ->where('summary.staff_breakdown', function ($rows): bool {
+                $rows = collect($rows);
+                $salesGross = round($rows->sum(fn (array $row) => (float) ($row['sales']['gross'] ?? 0)), 2);
+                $supplierPaid = round($rows->sum(fn (array $row) => (float) ($row['supplier_payments']['amount'] ?? 0)), 2);
+                $collections = round($rows->sum(fn (array $row) => (float) ($row['customer_collections']['amount'] ?? 0)), 2);
+
+                return $salesGross === 395.50
+                    && $supplierPaid === 250.0
+                    && $collections === 200.0
+                    && $rows->count() === 2;
+            }));
+
+    $this->actingAs($admin)
+        ->get('/report/daily-summary?date='.$date.'&user_id='.$staffA->id)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('summary.sales.gross', 195.50)
+            ->where('summary.supplier_payments.amount', 150)
+            ->where('summary.customer_collections.amount', 80));
+
+    $this->actingAs($admin)
+        ->get('/report/daily-summary?date='.$date.'&user_id='.$staffB->id)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('summary.sales.gross', 200)
+            ->where('summary.supplier_payments.amount', 100)
+            ->where('summary.customer_collections.amount', 120));
+});
+
+test('daily summary applies all sell discount types and sale return net amount', function () {
+    $this->artisan('permissions:sync');
+
+    $date = '2026-06-25';
+    $unique = uniqid();
+    $branch = Branch::factory()->create(['name' => 'Branch '.$unique]);
+    $staff = User::factory()->create(['branch_id' => $branch->id]);
+    $admin = reportUser([ReportController::PERMISSION_DAILY_SUMMARY]);
+    $admin->update(['branch_id' => null]);
+    $product = Product::factory()->create();
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $staff->id,
+        'type' => SaleType::Sale,
+        'date' => $date,
+        'gross_amount' => 1000,
+        'discount' => 50,
+        'special_discount_amount' => 100,
+        'promotion_discount_total' => 75,
+        'coin_discount_amount' => 25,
+        'round_off_amount' => 10,
+        'vat' => 0,
+        'paid_amount' => 785,
+    ]);
+
+    SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'quantity' => 1,
+        'unit_price' => 1000,
+        'discount' => 30,
+        'batches' => [],
+    ]);
+
+    expect($sell->fresh()->net_amount)->toBe(785.0);
+
+    SaleReturn::query()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $staff->id,
+        'sell_id' => $sell->id,
+        'customer_id' => null,
+        'date' => $date,
+        'gross_amount' => 300,
+        'discount_amount' => 45,
+        'paid_amount' => 255,
+    ]);
+
+    $this->actingAs($admin)
+        ->get('/report/daily-summary?date='.$date.'&branch_id='.$branch->id)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('summary.sales.gross', 785)
+            ->where('summary.sale_returns.amount', 255)
+            ->where('summary.staff_breakdown.0.sales.gross', 785));
 });
 
 test('branch user customer ledger options exclude other branches', function () {

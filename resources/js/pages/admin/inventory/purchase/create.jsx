@@ -1,4 +1,5 @@
 import { formatQty } from '@/components/inventory/inventory-form';
+import { PurchaseProductSearchBox } from '@/components/inventory/purchase-product-search-box';
 import { route } from '@/lib/route';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { ArrowLeft, ArrowRightLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Search, Trash2, User } from 'lucide-react';
@@ -232,208 +233,6 @@ function SupplierSearch({ suppliers, value, onChange, onCreated, error }) {
     );
 }
 
-function ProductSearchBox({ onAdd }) {
-    const [query, setQuery] = useState('');
-    const [results, setResults] = useState([]);
-    const [loading, setLoading] = useState(false);
-    const [open, setOpen] = useState(false);
-    const timerRef = useRef(null);
-    const ref = useRef(null);
-    const apiUrl = route('api.products.purchase');
-
-    async function fetchProducts(search) {
-        setLoading(true);
-        try {
-            const res = await fetch(`${apiUrl}?search=${encodeURIComponent(search)}`, {
-                credentials: 'include',
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-            });
-            if (!res.ok) return;
-            const data = await res.json();
-            setResults(Array.isArray(data) ? data : []);
-        } catch {
-            setResults([]);
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    function handleFocus() {
-        setOpen(true);
-        if (results.length === 0) fetchProducts('');
-    }
-
-    function handleChange(e) {
-        const val = e.target.value;
-        setQuery(val);
-        setOpen(true);
-        clearTimeout(timerRef.current);
-        timerRef.current = setTimeout(() => fetchProducts(val), 350);
-    }
-
-    async function triggerBarcodeSearch(term) {
-        clearTimeout(timerRef.current);
-        setLoading(true);
-        try {
-            const res = await fetch(`${apiUrl}?search=${encodeURIComponent(term)}`, {
-                credentials: 'include',
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-            });
-            if (!res.ok) return;
-            const json = await res.json();
-            const data = Array.isArray(json) ? json : [];
-            const exact = data.find((p) => p.code === term);
-            const match = exact ?? (data.length === 1 ? data[0] : null);
-            if (match && !match.has_variations) {
-                addItem(match, null);
-            } else if (match && match.has_variations) {
-                setResults([match]);
-                setQuery('');
-                setOpen(true);
-            } else {
-                setQuery(term);
-                setResults(data);
-                setOpen(true);
-            }
-        } catch {
-            setResults([]);
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    async function handleKeyDown(e) {
-        if (e.key !== 'Enter') return;
-        e.preventDefault();
-        const term = query.trim();
-        if (term) triggerBarcodeSearch(term);
-    }
-
-    const triggerRef = useRef(null);
-    triggerRef.current = triggerBarcodeSearch;
-    const globalBufRef = useRef('');
-    const globalLastKeyRef = useRef(0);
-
-    useEffect(() => {
-        function handleClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-        document.addEventListener('mousedown', handleClick);
-        return () => document.removeEventListener('mousedown', handleClick);
-    }, []);
-
-    useEffect(() => {
-        function onGlobalKey(e) {
-            const tag = document.activeElement?.tagName ?? '';
-            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
-            const now = Date.now();
-            if (now - globalLastKeyRef.current > 100) globalBufRef.current = '';
-            globalLastKeyRef.current = now;
-            if (e.key === 'Enter') {
-                const term = globalBufRef.current.trim();
-                globalBufRef.current = '';
-                if (term) triggerRef.current(term);
-            } else if (e.key.length === 1) {
-                globalBufRef.current += e.key;
-            }
-        }
-        document.addEventListener('keydown', onGlobalKey);
-        return () => document.removeEventListener('keydown', onGlobalKey);
-    }, []);
-
-    function addItem(product, variation) {
-        const unitPrice = variation ? parseFloat(variation.purchase_price ?? 0) : parseFloat(product.purchase_price ?? 0);
-        const sellPrice = variation ? parseFloat(variation.sale_price ?? 0) : parseFloat(product.sale_price ?? 0);
-        const currentStock = variation ? parseFloat(variation.stock ?? 0) : parseFloat(product.stock ?? 0);
-        onAdd({
-            product_id: product.id,
-            product_name: product.name,
-            product_code: product.code,
-            variation_id: variation?.id ?? null,
-            variation_label: variation?.label ?? null,
-            unit_price: unitPrice,
-            sell_price: sellPrice,
-            current_stock: currentStock,
-            quantity: 1,
-            free_quantity: 0,
-            distribute_quantity: 0,
-            expiry_date: '',
-            serial: '',
-        });
-    }
-
-    return (
-        <div ref={ref} className="relative">
-            <div className="relative">
-                <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                    value={query}
-                    onChange={handleChange}
-                    onFocus={handleFocus}
-                    onKeyDown={handleKeyDown}
-                    placeholder="Click or search product by name / code…"
-                    className="h-8 pl-8 text-xs"
-                />
-            </div>
-
-            {open && (
-                <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md">
-                    {loading ? (
-                        <p className="px-3 py-2 text-xs text-muted-foreground">Loading…</p>
-                    ) : results.length === 0 ? (
-                        <p className="px-3 py-2 text-xs text-muted-foreground">No products found.</p>
-                    ) : (
-                        <ul className="max-h-64 overflow-auto">
-                            {results.map((p) => (
-                                <li key={p.id} className="border-b border-border/50 last:border-0">
-                                    {!p.has_variations ? (
-                                        <div
-                                            className="flex cursor-pointer items-center justify-between px-3 py-2 text-xs hover:bg-accent"
-                                            onClick={() => { addItem(p, null); setOpen(false); setQuery(''); }}
-                                        >
-                                            <span>
-                                                <span className="font-medium">{p.name}</span>
-                                                {p.code && <span className="ml-2 text-muted-foreground">{p.code}</span>}
-                                            </span>
-                                            <span className="ml-4 flex shrink-0 items-center gap-3 text-muted-foreground">
-                                                <span>Stock: {parseFloat(p.stock ?? 0)}</span>
-                                                <span>৳{parseFloat(p.purchase_price ?? 0).toFixed(2)}</span>
-                                            </span>
-                                        </div>
-                                    ) : (
-                                        <div>
-                                            <div className="flex items-center gap-1.5 bg-muted/30 px-3 py-1.5">
-                                                <span className="text-xs font-semibold">{p.name}</span>
-                                                {p.code && <span className="text-[10px] text-muted-foreground">{p.code}</span>}
-                                                <span className="ml-auto text-[10px] text-blue-600">{p.variations?.length ?? 0} variants</span>
-                                            </div>
-                                            {(p.variations ?? []).map((v) => (
-                                                <div
-                                                    key={v.id}
-                                                    className="flex cursor-pointer items-center justify-between py-1.5 pr-3 pl-7 text-xs hover:bg-accent"
-                                                    onClick={() => { addItem(p, v); }}
-                                                >
-                                                    <span className="flex items-center gap-2">
-                                                        <span className="inline-flex items-center rounded-none bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 ring-1 ring-blue-200">
-                                                            {v.label}
-                                                        </span>
-                                                    </span>
-                                                    <span className="ml-4 flex shrink-0 items-center gap-3 text-muted-foreground">
-                                                        <span>Stock: {parseFloat(v.stock ?? 0)}</span>
-                                                        <span>৳{parseFloat(v.purchase_price ?? 0).toFixed(2)}</span>
-                                                    </span>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                </div>
-            )}
-        </div>
-    );
-}
-
 export default function PurchaseCreate({
     suppliers: initialSuppliers,
     today,
@@ -487,6 +286,14 @@ export default function PurchaseCreate({
 
     function removeItem(index) {
         setItems((prev) => prev.filter((_, i) => i !== index));
+    }
+
+    function removeItemByKey(productId, variationId) {
+        setItems((prev) =>
+            prev.filter(
+                (item) => !(item.product_id === productId && String(item.variation_id) === String(variationId ?? null)),
+            ),
+        );
     }
 
     function handleSubmit(e) {
@@ -579,7 +386,7 @@ export default function PurchaseCreate({
 
                     {/* Product Search */}
                     <Card title="Add Products" icon={Package}>
-                        <ProductSearchBox onAdd={addItem} />
+                        <PurchaseProductSearchBox items={items} onAdd={addItem} onRemove={removeItemByKey} />
                         {form.errors.items && <p className="mt-1 text-xs text-destructive">{form.errors.items}</p>}
 
                         {/* Line Items Table */}

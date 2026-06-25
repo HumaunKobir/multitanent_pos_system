@@ -98,3 +98,75 @@ test('customer creation requires phone', function () {
         ])
         ->assertSessionHasErrors('phone');
 });
+
+test('same phone can be used in different branches', function () {
+    $this->artisan('permissions:sync');
+
+    $branchA = Branch::factory()->create();
+    $branchB = Branch::factory()->create();
+    $phone = fake()->unique()->numerify('01#########');
+
+    $userA = User::factory()->create(['branch_id' => $branchA->id]);
+    Permission::findOrCreate('party.customer.create', 'web');
+    $userA->givePermissionTo('party.customer.create');
+
+    $userB = User::factory()->create(['branch_id' => $branchB->id]);
+    $userB->givePermissionTo('party.customer.create');
+
+    $this->actingAs($userA)
+        ->post('/party/customer', [
+            'name' => 'Branch A Customer',
+            'phone' => $phone,
+            'email' => '',
+            'address' => '',
+            'opening_balance' => '',
+            'is_default' => '0',
+            'status' => 1,
+        ])
+        ->assertRedirect();
+
+    $this->actingAs($userB)
+        ->post('/party/customer', [
+            'name' => 'Branch B Customer',
+            'phone' => $phone,
+            'email' => '',
+            'address' => '',
+            'opening_balance' => '',
+            'is_default' => '0',
+            'status' => 1,
+        ])
+        ->assertRedirect();
+
+    expect(Customer::query()->where('phone', $phone)->count())->toBe(2);
+});
+
+test('duplicate phone is rejected within the same branch', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerManagementUser(['party.customer.create']);
+    $phone = fake()->unique()->numerify('01#########');
+
+    $this->actingAs($user)
+        ->post('/party/customer', [
+            'name' => 'First Customer',
+            'phone' => $phone,
+            'email' => '',
+            'address' => '',
+            'opening_balance' => '',
+            'is_default' => '0',
+            'status' => 1,
+        ])
+        ->assertRedirect();
+
+    $this->actingAs($user)
+        ->post('/party/customer', [
+            'name' => 'Duplicate Customer',
+            'phone' => $phone,
+            'email' => '',
+            'address' => '',
+            'opening_balance' => '',
+            'is_default' => '0',
+            'status' => 1,
+        ])
+        ->assertSessionHasErrors('phone');
+});

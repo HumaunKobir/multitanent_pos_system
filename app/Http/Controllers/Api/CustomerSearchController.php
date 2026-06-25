@@ -9,6 +9,7 @@ use App\Services\CoinService;
 use App\Services\CustomerDueAlertService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class CustomerSearchController extends Controller
 {
@@ -18,9 +19,17 @@ class CustomerSearchController extends Controller
     {
         $this->authorize('party.customer.create');
 
+        $branchId = auth()->user()?->branch_id;
+
         $data = $request->validate([
             'name' => ['nullable', 'string', 'max:255'],
-            'phone' => ['required', 'string', 'min:11', 'max:11', 'unique:customers,phone'],
+            'phone' => [
+                'required',
+                'string',
+                'min:11',
+                'max:11',
+                Rule::unique('customers', 'phone')->where(fn ($query) => $query->where('branch_id', $branchId)),
+            ],
             'email' => ['nullable', 'string', 'email', 'max:255', 'unique:customers,email'],
             'address' => ['nullable', 'string', 'max:255'],
         ]);
@@ -28,7 +37,7 @@ class CustomerSearchController extends Controller
         $data['password'] = bcrypt('12345678');
         $data['is_default'] = false;
         $data['status'] = CommonStatus::Active;
-        $data['branch_id'] = auth()->user()?->branch_id;
+        $data['branch_id'] = $branchId;
 
         $customer = Customer::create($data);
 

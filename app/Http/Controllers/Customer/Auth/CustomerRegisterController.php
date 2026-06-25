@@ -34,13 +34,21 @@ class CustomerRegisterController extends Controller
             'password' => 'required|string|min:6|confirmed',
         ]);
 
-        $existing = Customer::query()->where('phone', $validated['phone'])->first();
+        $existingOnline = Customer::query()
+            ->where('phone', $validated['phone'])
+            ->where('registration_type', CustomerRegistrationType::Online)
+            ->first();
+
+        if ($existingOnline) {
+            return back()->withErrors(['phone' => 'This phone number is already registered.'])->onlyInput('name', 'email', 'phone');
+        }
+
+        $existing = Customer::query()
+            ->where('phone', $validated['phone'])
+            ->where('registration_type', CustomerRegistrationType::Offline)
+            ->first();
 
         if ($existing) {
-            if ($existing->registration_type === CustomerRegistrationType::Online) {
-                return back()->withErrors(['phone' => 'This phone number is already registered.'])->onlyInput('name', 'email', 'phone');
-            }
-
             $existing->update([
                 'name' => $validated['name'],
                 'email' => $validated['email'] ?? $existing->email,

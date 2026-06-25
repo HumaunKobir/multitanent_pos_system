@@ -44,9 +44,17 @@ class CustomerController extends Controller
     {
         $this->authorize('party.customer.create');
 
+        $branchId = auth()->user()?->branch_id;
+
         $data = $request->validate([
             'name' => ['nullable', 'string', 'max:255'],
-            'phone' => ['required', 'string', 'min:11', 'max:11', 'unique:customers,phone'],
+            'phone' => [
+                'required',
+                'string',
+                'min:11',
+                'max:11',
+                Rule::unique('customers', 'phone')->where(fn ($query) => $query->where('branch_id', $branchId)),
+            ],
             'email' => ['nullable', 'string', 'email', 'max:255', 'unique:customers,email'],
             'address' => ['nullable', 'string', 'max:255'],
             'opening_balance' => ['nullable', 'numeric', 'min:0'],
@@ -56,7 +64,7 @@ class CustomerController extends Controller
 
         $data['password'] = '12345678';
 
-        $data['branch_id'] = auth()->user()?->branch_id;
+        $data['branch_id'] = $branchId;
         $data['registration_type'] = CustomerRegistrationType::Offline;
 
         if ((int) $data['is_default'] === 1) {
@@ -86,7 +94,15 @@ class CustomerController extends Controller
 
         $data = $request->validate([
             'name' => ['nullable', 'string', 'max:255'],
-            'phone' => ['required', 'string', 'min:11', 'max:11', Rule::unique('customers', 'phone')->ignore($customer->id)],
+            'phone' => [
+                'required',
+                'string',
+                'min:11',
+                'max:11',
+                Rule::unique('customers', 'phone')
+                    ->where(fn ($query) => $query->where('branch_id', $customer->branch_id))
+                    ->ignore($customer->id),
+            ],
             'email' => ['nullable', 'string', 'email', 'max:255', Rule::unique('customers', 'email')->ignore($customer->id)],
             'address' => ['nullable', 'string', 'max:255'],
             'is_default' => ['required', 'in:0,1'],

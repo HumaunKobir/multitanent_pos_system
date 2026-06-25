@@ -15,6 +15,30 @@ import { AdminCreateButton, AdminInlineActions } from '@/components/admin/row-ac
 import { Can } from '@/components/can';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { useCan } from '@/hooks/use-can';
+import { normalizeOptionalNumeric } from '@/lib/form-numeric';
+
+function createCustomerFormDefaults() {
+    return {
+        name: '',
+        phone: '',
+        email: '',
+        address: '',
+        opening_balance: '',
+        is_default: '0',
+        status: 1,
+    };
+}
+
+function editCustomerFormDefaults() {
+    return {
+        name: '',
+        phone: '',
+        email: '',
+        address: '',
+        is_default: '0',
+        status: 1,
+    };
+}
 
 function CustomerForm({ form, onSubmit, onCancel, isEditing, statuses }) {
     return (
@@ -71,7 +95,7 @@ function CustomerForm({ form, onSubmit, onCancel, isEditing, statuses }) {
                         step="0.01"
                         value={form.data.opening_balance}
                         onChange={(e) => form.setData('opening_balance', e.target.value)}
-                        placeholder="0.00"
+                        placeholder="0"
                         className="mt-1"
                     />
                 </FormField>
@@ -147,9 +171,8 @@ export default function CustomerIndex({ customers, filters, statuses }) {
     const [editing, setEditing] = useState(null);
     const [deleting, setDeleting] = useState(null);
 
-    const blankForm = { name: '', phone: '', email: '', address: '', opening_balance: '', is_default: '0', status: 1 };
-    const createForm = useForm(blankForm);
-    const editForm = useForm(blankForm);
+    const createForm = useForm(createCustomerFormDefaults());
+    const editForm = useForm(editCustomerFormDefaults());
 
     useEffect(() => {
         if (flash.success) toast.success(flash.success);
@@ -167,6 +190,7 @@ export default function CustomerIndex({ customers, filters, statuses }) {
 
     function openEdit(customer) {
         editForm.setData({
+            ...editCustomerFormDefaults(),
             name: customer.name ?? '',
             phone: customer.phone,
             email: customer.email ?? '',
@@ -179,8 +203,15 @@ export default function CustomerIndex({ customers, filters, statuses }) {
 
     function handleCreate(e) {
         e.preventDefault();
+        createForm.transform((data) => ({
+            ...data,
+            opening_balance: normalizeOptionalNumeric(data.opening_balance),
+        }));
         createForm.post(route('party.customer.store'), {
-            onSuccess: () => { setCreating(false); createForm.reset(); },
+            onSuccess: () => {
+                setCreating(false);
+                createForm.reset();
+            },
         });
     }
 
@@ -218,6 +249,13 @@ export default function CustomerIndex({ customers, filters, statuses }) {
             header: 'Coin Balance',
             render: (row) => (
                 <span className="tabular-nums font-medium">{parseFloat(row.point ?? 0).toFixed(2)}</span>
+            ),
+        },
+        {
+            id: 'balance',
+            header: 'Due Balance',
+            render: (row) => (
+                <span className="tabular-nums font-medium">৳{parseFloat(row.balance ?? 0).toFixed(2)}</span>
             ),
         },
         { id: 'address', header: 'Address', render: (row) => row.address ?? '—' },

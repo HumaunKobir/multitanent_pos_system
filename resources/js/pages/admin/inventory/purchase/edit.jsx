@@ -1,6 +1,7 @@
 import { formatQty } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { useFlashToast } from '@/hooks/use-flash-toast';
+import { emptyWhenZero, normalizeOptionalNumeric } from '@/lib/form-numeric';
 import { route } from '@/lib/route';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { ArrowLeft, ArrowRightLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Save, Search, Trash2, User } from 'lucide-react';
@@ -214,7 +215,7 @@ function SupplierSearch({ suppliers, value, onChange, onCreated, error }) {
                             <Input value={modalData.address} onChange={(e) => setField('address', e.target.value)} placeholder="Address" className="mt-1" />
                         </Field>
                         <Field label="Opening Balance" error={modalErrors.opening_balance}>
-                            <Input type="number" min="0" step="0.01" value={modalData.opening_balance} onChange={(e) => setField('opening_balance', e.target.value)} placeholder="0.00" className="mt-1" />
+                            <Input type="number" min="0" step="0.01" value={modalData.opening_balance} onChange={(e) => setField('opening_balance', e.target.value)} placeholder="0" className="mt-1" />
                         </Field>
                         <div className="flex justify-end gap-3 border-t pt-4">
                             <Button type="button" variant="outline" size="sm" className="border-red-500 text-red-500 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-red-500 hover:text-white hover:shadow-md hover:shadow-red-500/30" onClick={() => setModalOpen(false)}>
@@ -380,8 +381,8 @@ export default function PurchaseEdit({
     const form = useForm({
         supplier_id: purchase.supplier_id ? String(purchase.supplier_id) : '',
         date: purchase.date ?? '',
-        discount: String(purchase.discount ?? 0),
-        vat: String(purchase.vat_percent ?? 0),
+        discount: emptyWhenZero(purchase.discount),
+        vat: emptyWhenZero(purchase.vat_percent),
         additional_payment: '',
         payment_account_id: purchase.payment_account_id ? String(purchase.payment_account_id) : '',
         comment: purchase.comment ?? '',
@@ -497,6 +498,8 @@ export default function PurchaseEdit({
         form.transform((data) => ({
             ...data,
             items: lineItems,
+            discount: normalizeOptionalNumeric(data.discount),
+            vat: normalizeOptionalNumeric(data.vat),
             paid_amount: String(totalPaid),
             payment_account_id:
                 additional > 0 || existingDirectPaid > 0 ? data.payment_account_id : '',
@@ -725,6 +728,7 @@ export default function PurchaseEdit({
                                         type="number"
                                         min="0"
                                         step="0.01"
+                                        placeholder="0"
                                         value={form.data.discount}
                                         onChange={(e) => form.setData('discount', e.target.value)}
                                         className={`${inputCls} w-28 text-right`}
@@ -737,6 +741,7 @@ export default function PurchaseEdit({
                                         type="number"
                                         min="0"
                                         step="0.01"
+                                        placeholder="0"
                                         value={form.data.vat}
                                         onChange={(e) => form.setData('vat', e.target.value)}
                                         className={`${inputCls} w-28 text-right`}

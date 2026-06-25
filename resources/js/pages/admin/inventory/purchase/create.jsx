@@ -7,6 +7,7 @@ import { useEffect, useRef, useState } from 'react';
 import { RequiredMark } from '@/components/form-field';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { useFlashToast } from '@/hooks/use-flash-toast';
+import { emptyWhenZero, normalizeOptionalNumeric } from '@/lib/form-numeric';
 import { Button } from '@/components/ui/button';
 import { dateInputRightIconClassName } from '@/components/ui/date-kit';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -214,7 +215,7 @@ function SupplierSearch({ suppliers, value, onChange, onCreated, error }) {
                             <Input value={modalData.address} onChange={(e) => setField('address', e.target.value)} placeholder="Address" className="mt-1" />
                         </Field>
                         <Field label="Opening Balance" error={modalErrors.opening_balance}>
-                            <Input type="number" min="0" step="0.01" value={modalData.opening_balance} onChange={(e) => setField('opening_balance', e.target.value)} placeholder="0.00" className="mt-1" />
+                            <Input type="number" min="0" step="0.01" value={modalData.opening_balance} onChange={(e) => setField('opening_balance', e.target.value)} placeholder="0" className="mt-1" />
                         </Field>
                         <div className="flex justify-end gap-3 border-t pt-4">
                             <Button type="button" variant="outline" size="sm" className="border-red-500 text-red-500 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-red-500 hover:text-white hover:shadow-md hover:shadow-red-500/30" onClick={() => setModalOpen(false)}>
@@ -445,9 +446,9 @@ export default function PurchaseCreate({
     const form = useForm({
         supplier_id: '',
         date: today,
-        discount: '0',
-        vat: '0',
-        paid_amount: '0',
+        discount: '',
+        vat: '',
+        paid_amount: '',
         payment_account_id: '',
         comment: '',
         distribute_to_branch_id: '',
@@ -514,7 +515,9 @@ export default function PurchaseCreate({
         form.transform((data) => ({
             ...data,
             items,
-            paid_amount: data.paid_amount === '' || data.paid_amount == null ? '0' : data.paid_amount,
+            discount: normalizeOptionalNumeric(data.discount),
+            vat: normalizeOptionalNumeric(data.vat),
+            paid_amount: normalizeOptionalNumeric(data.paid_amount),
             payment_account_id: parseFloat(data.paid_amount || 0) > 0 ? data.payment_account_id : '',
         }));
         form.post(route('inventory.purchase.store'));
@@ -744,6 +747,7 @@ export default function PurchaseCreate({
                                         type="number"
                                         min="0"
                                         step="0.01"
+                                        placeholder="0"
                                         value={form.data.discount}
                                         onChange={(e) => form.setData('discount', e.target.value)}
                                         className={`${inputCls} w-28 text-right`}
@@ -756,6 +760,7 @@ export default function PurchaseCreate({
                                         type="number"
                                         min="0"
                                         step="0.01"
+                                        placeholder="0"
                                         value={form.data.vat}
                                         onChange={(e) => form.setData('vat', e.target.value)}
                                         className={`${inputCls} w-28 text-right`}

@@ -18,6 +18,30 @@ function customerManagementUser(array $permissions = []): User
     return $user;
 }
 
+test('customer can be created with opening balance from admin form', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerManagementUser(['party.customer.create']);
+    $phone = fake()->unique()->numerify('01#########');
+
+    $this->actingAs($user)
+        ->post('/party/customer', [
+            'name' => 'Due Customer',
+            'phone' => $phone,
+            'email' => '',
+            'address' => '',
+            'opening_balance' => '1250',
+            'is_default' => '0',
+            'status' => 1,
+        ])
+        ->assertRedirect();
+
+    $customer = Customer::query()->where('phone', $phone)->first();
+
+    expect($customer)->not->toBeNull();
+    expect((float) $customer->balance)->toBe(1250.0);
+});
+
 test('customer can be created with phone only from admin form', function () {
     $this->artisan('permissions:sync');
 

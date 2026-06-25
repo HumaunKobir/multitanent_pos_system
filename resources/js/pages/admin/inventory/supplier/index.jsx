@@ -13,6 +13,7 @@ import { AdminCreateButton, AdminInlineActions } from '@/components/admin/row-ac
 import { Can } from '@/components/can';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { useCan } from '@/hooks/use-can';
+import { normalizeOptionalNumeric } from '@/lib/form-numeric';
 
 function SupplierForm({ form, onSubmit, onCancel, isEditing }) {
     return (
@@ -67,7 +68,7 @@ function SupplierForm({ form, onSubmit, onCancel, isEditing }) {
                         step="0.01"
                         value={form.data.opening_balance}
                         onChange={(e) => form.setData('opening_balance', e.target.value)}
-                        placeholder="0.00"
+                        placeholder="0"
                         className="mt-1"
                     />
                 </FormField>
@@ -128,6 +129,10 @@ export default function SupplierIndex({ suppliers, filters }) {
 
     function handleCreate(e) {
         e.preventDefault();
+        createForm.transform((data) => ({
+            ...data,
+            opening_balance: normalizeOptionalNumeric(data.opening_balance),
+        }));
         createForm.post(route('party.supplier.store'), {
             onSuccess: () => { setCreating(false); createForm.reset(); },
         });

@@ -227,7 +227,7 @@ function PaymentForm({ form, suppliers, paymentAccounts = [], payment = null, on
                         type="text"
                         readOnly
                         value={totalAmount > 0 ? totalAmount.toFixed(2) : ''}
-                        placeholder="0.00"
+                        placeholder="0"
                         className="mt-1 bg-muted"
                     />
                 </FormField>

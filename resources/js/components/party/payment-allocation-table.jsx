@@ -66,7 +66,7 @@ export function PaymentAllocationTable({
                                         step="0.01"
                                         value={amountsById[doc.id] ?? ''}
                                         onChange={(e) => onAmountChange(doc.id, e.target.value)}
-                                        placeholder="0.00"
+                                        placeholder="0"
                                         className="h-8 w-24 text-right"
                                     />
                                     <Button

@@ -22,6 +22,7 @@ import {
 } from '@/lib/sale-payment';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { customerModalDefaultsFromSearch } from '@/lib/customer-modal-defaults';
+import { emptyWhenZero, normalizeOptionalNumeric } from '@/lib/form-numeric';
 import { route } from '@/lib/route';
 import { hasRichTextContent } from '@/lib/pos-print';
 import { cn } from '@/lib/utils';
@@ -842,9 +843,9 @@ function buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAcco
             customer_id: resumedSell.customer_id ? String(resumedSell.customer_id) : '',
             date: resumedSell.date ?? today,
             discount_type: resumedSell.discount_type ?? 'flat',
-            discount_value: resumedSell.discount_value ?? '0',
+            discount_value: emptyWhenZero(resumedSell.discount_value),
             special_discount_id: resumedSell.special_discount_id ? String(resumedSell.special_discount_id) : '',
-            vat: resumedSell.vat_percent ?? '0',
+            vat: emptyWhenZero(resumedSell.vat_percent),
             paid_amount: resumedSell.paid_amount ?? '0',
             payments: buildInitialSalePayments([], paymentAccounts),
             round_off_amount: '0',
@@ -860,9 +861,9 @@ function buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAcco
         customer_id: defaultCustomer ? String(defaultCustomer.id) : '',
         date: today,
         discount_type: 'flat',
-        discount_value: '0',
+        discount_value: '',
         special_discount_id: '',
-        vat: '0',
+        vat: '',
         paid_amount: '0',
         payments: buildInitialSalePayments([], paymentAccounts),
         round_off_amount: '0',
@@ -981,7 +982,7 @@ export default function SellCreate({
 
     useEffect(() => {
         if (!promotionStacking.invoice_discount && parseFloat(form.data.discount_value || 0) > 0) {
-            form.setData('discount_value', '0');
+            form.setData('discount_value', '');
         }
     }, [promotionStacking.invoice_discount]);
 
@@ -1095,6 +1096,8 @@ export default function SellCreate({
             items: promotedItems,
             paused_sell_id: pausedSellId ?? '',
             paid_amount: String(totalPaid),
+            discount_value: normalizeOptionalNumeric(data.discount_value),
+            vat: normalizeOptionalNumeric(data.vat),
             special_discount_id: form.data.special_discount_id || '',
             round_off_amount: String(roundOffAmount),
             coins_redeemed: String(effectiveCoinsRedeemed),
@@ -1118,6 +1121,8 @@ export default function SellCreate({
                 items: promotedItems,
                 paused_sell_id: pausedSellId ?? '',
                 paid_amount: '0',
+                discount_value: normalizeOptionalNumeric(form.data.discount_value),
+                vat: normalizeOptionalNumeric(form.data.vat),
                 special_discount_id: form.data.special_discount_id || '',
             },
             {
@@ -1387,6 +1392,7 @@ export default function SellCreate({
                                             type="number"
                                             min="0"
                                             step="0.01"
+                                            placeholder="0"
                                             value={form.data.discount_value}
                                             onChange={(e) => form.setData('discount_value', e.target.value)}
                                             disabled={!promotionStacking.invoice_discount}
@@ -1399,6 +1405,7 @@ export default function SellCreate({
                                             type="number"
                                             min="0"
                                             step="0.01"
+                                            placeholder="0"
                                             value={form.data.vat}
                                             onChange={(e) => form.setData('vat', e.target.value)}
                                             className={cn(inputCls, 'text-right')}

@@ -8,6 +8,7 @@ import {
     formatDiscountLabel,
     isSpecialDiscountEligible,
 } from '@/lib/pos-discount';
+import { emptyWhenZero, normalizeOptionalNumeric } from '@/lib/form-numeric';
 import { SalePaymentLines } from '@/components/inventory/sale-payment-lines';
 import { CustomerCoinBalance } from '@/components/inventory/customer-coin-balance';
 import { SellCoinFields } from '@/components/inventory/sell-coin-fields';
@@ -503,9 +504,9 @@ export default function SellEdit({
         customer_id: sell.customer_id ? String(sell.customer_id) : '',
         date: sell.date ?? '',
         discount_type: sell.discount_type ?? 'flat',
-        discount_value: String(sell.discount_value ?? sell.discount ?? '0'),
+        discount_value: emptyWhenZero(sell.discount_value ?? sell.discount),
         special_discount_id: sell.special_discount_id ? String(sell.special_discount_id) : '',
-        vat: String(sell.vat_percent ?? '0'),
+        vat: emptyWhenZero(sell.vat_percent),
         paid_amount: String(sell.paid_amount ?? '0'),
         payments: initialPaymentState.payments,
         round_off_amount: String(sell.round_off_amount ?? '0'),
@@ -631,7 +632,7 @@ export default function SellEdit({
 
     useEffect(() => {
         if (!paymentOnlyEdit && !promotionStacking.invoice_discount && parseFloat(form.data.discount_value || 0) > 0) {
-            form.setData('discount_value', '0');
+            form.setData('discount_value', '');
         }
     }, [paymentOnlyEdit, promotionStacking.invoice_discount]);
 
@@ -732,6 +733,8 @@ export default function SellEdit({
             ...data,
             items: lineItems,
             paid_amount: String(totalPaid),
+            discount_value: normalizeOptionalNumeric(data.discount_value),
+            vat: normalizeOptionalNumeric(data.vat),
             round_off_amount: String(roundOffAmount),
             coins_redeemed: String(effectiveCoinsRedeemed),
             payments: serializedPayments.length > 0 ? serializedPayments : undefined,
@@ -1066,6 +1069,7 @@ export default function SellEdit({
                                                 type="number"
                                                 min="0"
                                                 step="0.01"
+                                                placeholder="0"
                                                 value={form.data.discount_value}
                                                 onChange={(e) => form.setData('discount_value', e.target.value)}
                                                 className={`${inputCls} w-28 text-right`}
@@ -1088,6 +1092,7 @@ export default function SellEdit({
                                             type="number"
                                             min="0"
                                             step="0.01"
+                                            placeholder="0"
                                             value={form.data.vat}
                                             onChange={(e) => form.setData('vat', e.target.value)}
                                             className={`${inputCls} w-28 text-right`}

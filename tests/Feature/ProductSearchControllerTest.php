@@ -139,6 +139,67 @@ test('purchase search only includes variations for the resolved branch', functio
         ->and(collect($match['variations'])->pluck('label'))->not->toContain('Other Blue');
 });
 
+test('purchase search returns branch stock for simple and variant products', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = ensureMainBranch();
+    $mainUser = User::factory()->create(['branch_id' => $mainBranchId]);
+    Permission::findOrCreate('inventory.purchase.create', 'web');
+    $mainUser->givePermissionTo('inventory.purchase.create');
+
+    $simpleProduct = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Purchase Stock Product '.fake()->unique()->numerify('###'),
+    ]);
+    Batch::factory()->for($simpleProduct)->withStock(15)->create(['branch_id' => $mainBranchId]);
+
+    $variantProduct = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Purchase Variant Stock Product '.fake()->unique()->numerify('###'),
+    ]);
+
+    $redVariation = ProductVariation::query()->create([
+        'product_id' => $variantProduct->id,
+        'branch_id' => $mainBranchId,
+        'sku' => 'PUR-RED-'.fake()->unique()->numerify('####'),
+        'price' => 150,
+        'purchase_price' => 100,
+        'stock' => 7,
+        'variation_data' => ['label' => 'Red'],
+    ]);
+
+    ProductVariation::query()->create([
+        'product_id' => $variantProduct->id,
+        'branch_id' => $mainBranchId,
+        'sku' => 'PUR-BLUE-'.fake()->unique()->numerify('####'),
+        'price' => 150,
+        'purchase_price' => 100,
+        'stock' => 4,
+        'variation_data' => ['label' => 'Blue'],
+    ]);
+
+    $simpleResponse = $this->actingAs($mainUser)
+        ->getJson('/api/products/for-purchase?search='.urlencode($simpleProduct->name));
+
+    $simpleResponse->assertOk();
+
+    $simpleMatch = collect($simpleResponse->json())->firstWhere('id', $simpleProduct->id);
+
+    expect($simpleMatch)->not->toBeNull()
+        ->and((float) $simpleMatch['stock'])->toBe(15.0);
+
+    $variantResponse = $this->actingAs($mainUser)
+        ->getJson('/api/products/for-purchase?search='.urlencode($variantProduct->name));
+
+    $variantResponse->assertOk();
+
+    $variantMatch = collect($variantResponse->json())->firstWhere('id', $variantProduct->id);
+    $redMatch = collect($variantMatch['variations'])->firstWhere('id', $redVariation->id);
+
+    expect($variantMatch)->not->toBeNull()
+        ->and((float) $redMatch['stock'])->toBe(7.0);
+});
+
 test('sell search can filter products by category', function () {
     $this->artisan('permissions:sync');
 

@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Traits\HasBranch;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SupplierPayment extends Model
 {
@@ -40,5 +41,10 @@ class SupplierPayment extends Model
     public function createdBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function allocations(): HasMany
+    {
+        return $this->hasMany(SupplierPaymentAllocation::class);
     }
 }

@@ -2,12 +2,14 @@
 
 use App\Http\Controllers\Account\AccountController;
 use App\Http\Controllers\Account\VoucherController;
+use App\Http\Controllers\Api\CustomerDueSalesController;
 use App\Http\Controllers\Api\CustomerSearchController;
 use App\Http\Controllers\Api\ProductCatalogOptionsController;
 use App\Http\Controllers\Api\ProductSearchController;
 use App\Http\Controllers\Api\PurchaseLookupController;
 use App\Http\Controllers\Api\SaleLookupController;
 use App\Http\Controllers\Api\SupplierController as SupplierApiController;
+use App\Http\Controllers\Api\SupplierDuePurchasesController;
 use App\Http\Controllers\BarcodeController;
 use App\Http\Controllers\BranchController;
 use App\Http\Controllers\ContactListController;
@@ -129,9 +131,9 @@ Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')
 
 Route::middleware(['auth', 'verified'])->prefix('party')->name('party.')->group(function () {
     Route::resource('supplier', SupplierController::class)->except(['create', 'edit', 'show']);
-    Route::resource('supplier-payment', SupplierPaymentController::class)->only(['index', 'store', 'destroy']);
+    Route::resource('supplier-payment', SupplierPaymentController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::resource('customer-due-collection', CustomerDueCollectionController::class)
-        ->only(['index', 'store', 'destroy'])
+        ->only(['index', 'store', 'update', 'destroy'])
         ->parameters(['customer-due-collection' => 'customerPayment']);
     Route::resource('customer-due-alert', CustomerDueAlertController::class)->except(['create', 'edit', 'show']);
     Route::resource('customer', CustomerController::class)->except(['create', 'edit', 'show']);
@@ -139,6 +141,7 @@ Route::middleware(['auth', 'verified'])->prefix('party')->name('party.')->group(
 
 Route::middleware(['auth', 'verified'])->prefix('api')->name('api.')->group(function () {
     Route::get('products/catalog-options', ProductCatalogOptionsController::class)->name('products.catalog-options');
+    Route::get('suppliers/{supplier}/due-purchases', SupplierDuePurchasesController::class)->name('suppliers.due-purchases');
     Route::get('suppliers', [SupplierApiController::class, 'index'])->name('suppliers');
     Route::post('suppliers', [SupplierApiController::class, 'store'])->name('suppliers.store');
     Route::get('products/for-purchase', [ProductSearchController::class, 'forPurchase'])->name('products.purchase');
@@ -148,6 +151,7 @@ Route::middleware(['auth', 'verified'])->prefix('api')->name('api.')->group(func
     Route::get('sales/lookup', SaleLookupController::class)->name('sales.lookup');
     Route::get('customers', [CustomerSearchController::class, 'index'])->name('customers');
     Route::post('customers', [CustomerSearchController::class, 'store'])->name('customers.store');
+    Route::get('customers/{customer}/due-sales', CustomerDueSalesController::class)->name('customers.due-sales');
     Route::get('customers/{customer}/due-alert', [CustomerSearchController::class, 'dueAlert'])->name('customers.due-alert');
     Route::get('customers/{customer}/coins', [CustomerSearchController::class, 'coins'])->name('customers.coins');
 });

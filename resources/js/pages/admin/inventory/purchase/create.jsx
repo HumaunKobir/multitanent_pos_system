@@ -341,6 +341,7 @@ function ProductSearchBox({ onAdd }) {
     function addItem(product, variation) {
         const unitPrice = variation ? parseFloat(variation.purchase_price ?? 0) : parseFloat(product.purchase_price ?? 0);
         const sellPrice = variation ? parseFloat(variation.sale_price ?? 0) : parseFloat(product.sale_price ?? 0);
+        const currentStock = variation ? parseFloat(variation.stock ?? 0) : parseFloat(product.stock ?? 0);
         onAdd({
             product_id: product.id,
             product_name: product.name,
@@ -349,6 +350,7 @@ function ProductSearchBox({ onAdd }) {
             variation_label: variation?.label ?? null,
             unit_price: unitPrice,
             sell_price: sellPrice,
+            current_stock: currentStock,
             quantity: 1,
             free_quantity: 0,
             distribute_quantity: 0,
@@ -390,7 +392,10 @@ function ProductSearchBox({ onAdd }) {
                                                 <span className="font-medium">{p.name}</span>
                                                 {p.code && <span className="ml-2 text-muted-foreground">{p.code}</span>}
                                             </span>
-                                            <span className="ml-4 shrink-0 text-muted-foreground">৳{parseFloat(p.purchase_price ?? 0).toFixed(2)}</span>
+                                            <span className="ml-4 flex shrink-0 items-center gap-3 text-muted-foreground">
+                                                <span>Stock: {parseFloat(p.stock ?? 0)}</span>
+                                                <span>৳{parseFloat(p.purchase_price ?? 0).toFixed(2)}</span>
+                                            </span>
                                         </div>
                                     ) : (
                                         <div>
@@ -410,7 +415,10 @@ function ProductSearchBox({ onAdd }) {
                                                             {v.label}
                                                         </span>
                                                     </span>
-                                                    <span className="ml-4 shrink-0 text-muted-foreground">৳{parseFloat(v.purchase_price ?? 0).toFixed(2)}</span>
+                                                    <span className="ml-4 flex shrink-0 items-center gap-3 text-muted-foreground">
+                                                        <span>Stock: {parseFloat(v.stock ?? 0)}</span>
+                                                        <span>৳{parseFloat(v.purchase_price ?? 0).toFixed(2)}</span>
+                                                    </span>
                                                 </div>
                                             ))}
                                         </div>
@@ -601,6 +609,9 @@ export default function PurchaseCreate({
                                                         <p className="font-medium">{item.product_name}</p>
                                                         {item.variation_label && (
                                                             <p className="text-muted-foreground">{item.variation_label}</p>
+                                                        )}
+                                                        {item.current_stock !== null && item.current_stock !== undefined && (
+                                                            <p className="text-[10px] text-muted-foreground">Stock: {parseFloat(item.current_stock)}</p>
                                                         )}
                                                     </td>
                                                     <td className="px-2 py-1.5">

@@ -1,8 +1,11 @@
 <?php
 
 use App\Models\Branch;
+use App\Models\Product;
+use App\Models\Purchase;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
+use App\Models\SupplierPaymentAllocation;
 use App\Models\User;
 use Spatie\Permission\Models\Permission;
 
@@ -19,6 +22,38 @@ function supplierPaymentUser(array $permissions = []): User
     return $user;
 }
 
+function supplierDuePurchase(User $user, Supplier $supplier, float $dueAmount): Purchase
+{
+    $product = Product::factory()->create(['branch_id' => $user->branch_id]);
+
+    test()->actingAs($user)
+        ->post('/inventory/purchase', [
+            'supplier_id' => $supplier->id,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '0',
+            'vat' => '0',
+            'paid_amount' => '0',
+            'comment' => null,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => (string) $dueAmount,
+                    'quantity' => '1',
+                    'free_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertRedirect();
+
+    $purchase = Purchase::query()->latest('id')->first();
+
+    expect($purchase)->not->toBeNull();
+    expect((float) $purchase->due_amount)->toBe($dueAmount);
+
+    return $purchase;
+}
+
 test('guests cannot access supplier payments', function () {
     $this->get('/party/supplier-payment')->assertRedirect(route('login'));
 });
@@ -33,38 +68,42 @@ test('user without permission cannot view supplier payments', function () {
         ->assertForbidden();
 });
 
-test('user can record supplier payment and reduce supplier due', function () {
+test('user can record supplier payment against purchases and reduce supplier due', function () {
     $this->artisan('permissions:sync');
 
     $user = supplierPaymentUser([
         'party.supplier-payment.view',
         'party.supplier-payment.create',
-        'party.supplier.create',
+        'inventory.purchase.create',
     ]);
     $cash = seedAccountingAccounts(user: $user);
 
-    $this->actingAs($user)->post('/party/supplier', [
-        'name' => 'Payable Supplier '.fake()->unique()->numerify('####'),
-        'phone' => fake()->unique()->numerify('01#########'),
-        'opening_balance' => '5000',
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
     ]);
 
-    $supplier = Supplier::query()->latest('id')->first();
+    $purchase = supplierDuePurchase($user, $supplier, 5000);
 
     $this->actingAs($user)
         ->post('/party/supplier-payment', [
             'supplier_id' => $supplier->id,
             'date' => '2026-06-04',
-            'amount' => 2000,
             'payment_account_id' => $cash->id,
             'comment' => 'Partial payment',
+            'allocations' => [
+                ['purchase_id' => $purchase->id, 'amount' => 2000],
+            ],
         ])
         ->assertRedirect()
         ->assertSessionHas('success');
 
     $supplier->refresh();
+    $purchase->refresh();
 
     expect((float) $supplier->balance)->toBe(3000.0);
+    expect((float) $purchase->paid_amount)->toBe(2000.0);
+    expect((float) $purchase->due_amount)->toBe(3000.0);
 
     $payment = SupplierPayment::query()->where('supplier_id', $supplier->id)->first();
 
@@ -72,47 +111,94 @@ test('user can record supplier payment and reduce supplier due', function () {
     expect((float) $payment->amount)->toBe(2000.0);
     expect($payment->comment)->toBe('Partial payment');
     expect($payment->created_by)->toBe($user->id);
+    expect($payment->allocations)->toHaveCount(1);
+    expect((float) $payment->allocations->first()->amount)->toBe(2000.0);
 });
 
-test('payment amount cannot exceed supplier due balance', function () {
+test('supplier payment can allocate across multiple purchases', function () {
     $this->artisan('permissions:sync');
 
     $user = supplierPaymentUser([
         'party.supplier-payment.view',
         'party.supplier-payment.create',
+        'inventory.purchase.create',
     ]);
     $cash = seedAccountingAccounts(user: $user);
 
     $supplier = Supplier::factory()->create([
         'branch_id' => $user->branch_id,
-        'balance' => 100,
+        'balance' => 0,
     ]);
+
+    $firstPurchase = supplierDuePurchase($user, $supplier, 1000);
+    $secondPurchase = supplierDuePurchase($user, $supplier, 1500);
 
     $this->actingAs($user)
         ->post('/party/supplier-payment', [
             'supplier_id' => $supplier->id,
             'date' => '2026-06-04',
-            'amount' => 500,
             'payment_account_id' => $cash->id,
+            'allocations' => [
+                ['purchase_id' => $firstPurchase->id, 'amount' => 400],
+                ['purchase_id' => $secondPurchase->id, 'amount' => 600],
+            ],
         ])
-        ->assertSessionHasErrors('amount');
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    expect((float) $supplier->fresh()->balance)->toBe(1500.0);
+    expect((float) $firstPurchase->fresh()->due_amount)->toBe(600.0);
+    expect((float) $secondPurchase->fresh()->due_amount)->toBe(900.0);
+});
+
+test('payment allocation cannot exceed purchase due amount', function () {
+    $this->artisan('permissions:sync');
+
+    $user = supplierPaymentUser([
+        'party.supplier-payment.view',
+        'party.supplier-payment.create',
+        'inventory.purchase.create',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+    ]);
+
+    $purchase = supplierDuePurchase($user, $supplier, 100);
+
+    $this->actingAs($user)
+        ->post('/party/supplier-payment', [
+            'supplier_id' => $supplier->id,
+            'date' => '2026-06-04',
+            'payment_account_id' => $cash->id,
+            'allocations' => [
+                ['purchase_id' => $purchase->id, 'amount' => 500],
+            ],
+        ])
+        ->assertSessionHasErrors('allocations.0.amount');
 
     expect((float) $supplier->fresh()->balance)->toBe(100.0);
     expect(SupplierPayment::query()->where('supplier_id', $supplier->id)->exists())->toBeFalse();
 });
 
-test('user can delete supplier payment and restore supplier due', function () {
+test('user can delete supplier payment and restore supplier and purchase due', function () {
     $this->artisan('permissions:sync');
 
     $user = supplierPaymentUser([
         'party.supplier-payment.view',
         'party.supplier-payment.delete',
+        'inventory.purchase.create',
     ]);
+    seedAccountingAccounts(user: $user);
 
     $supplier = Supplier::factory()->create([
         'branch_id' => $user->branch_id,
-        'balance' => 3000,
+        'balance' => 0,
     ]);
+
+    $purchase = supplierDuePurchase($user, $supplier, 3000);
 
     $payment = SupplierPayment::create([
         'branch_id' => $user->branch_id,
@@ -123,6 +209,13 @@ test('user can delete supplier payment and restore supplier due', function () {
         'created_by' => $user->id,
     ]);
 
+    SupplierPaymentAllocation::create([
+        'supplier_payment_id' => $payment->id,
+        'purchase_id' => $purchase->id,
+        'amount' => 2000,
+    ]);
+
+    $purchase->update(['paid_amount' => 2000, 'due_amount' => 1000]);
     $supplier->update(['balance' => 1000]);
 
     $this->actingAs($user)
@@ -132,6 +225,102 @@ test('user can delete supplier payment and restore supplier due', function () {
 
     expect(SupplierPayment::find($payment->id))->toBeNull();
     expect((float) $supplier->fresh()->balance)->toBe(3000.0);
+    expect((float) $purchase->fresh()->paid_amount)->toBe(0.0);
+    expect((float) $purchase->fresh()->due_amount)->toBe(3000.0);
+});
+
+test('user can update supplier payment allocations and supplier due', function () {
+    $this->artisan('permissions:sync');
+
+    $user = supplierPaymentUser([
+        'party.supplier-payment.view',
+        'party.supplier-payment.create',
+        'party.supplier-payment.update',
+        'inventory.purchase.create',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+    ]);
+
+    $firstPurchase = supplierDuePurchase($user, $supplier, 1000);
+    $secondPurchase = supplierDuePurchase($user, $supplier, 1500);
+
+    $this->actingAs($user)
+        ->post('/party/supplier-payment', [
+            'supplier_id' => $supplier->id,
+            'date' => '2026-06-04',
+            'payment_account_id' => $cash->id,
+            'allocations' => [
+                ['purchase_id' => $firstPurchase->id, 'amount' => 300],
+            ],
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    $payment = SupplierPayment::query()->latest('id')->first();
+
+    $this->actingAs($user)
+        ->put("/party/supplier-payment/{$payment->id}", [
+            'supplier_id' => $supplier->id,
+            'date' => '2026-06-05',
+            'payment_account_id' => $cash->id,
+            'comment' => 'Updated payment',
+            'allocations' => [
+                ['purchase_id' => $firstPurchase->id, 'amount' => 500],
+                ['purchase_id' => $secondPurchase->id, 'amount' => 400],
+            ],
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    $payment->refresh();
+
+    expect((float) $payment->amount)->toBe(900.0);
+    expect($payment->comment)->toBe('Updated payment');
+    expect((float) $supplier->fresh()->balance)->toBe(1600.0);
+    expect((float) $firstPurchase->fresh()->paid_amount)->toBe(500.0);
+    expect((float) $firstPurchase->fresh()->due_amount)->toBe(500.0);
+    expect((float) $secondPurchase->fresh()->paid_amount)->toBe(400.0);
+    expect((float) $secondPurchase->fresh()->due_amount)->toBe(1100.0);
+    expect($payment->fresh()->allocations)->toHaveCount(2);
+});
+
+test('supplier payment shows warning when payment account has insufficient balance', function () {
+    $this->artisan('permissions:sync');
+
+    $user = supplierPaymentUser([
+        'party.supplier-payment.view',
+        'party.supplier-payment.create',
+        'inventory.purchase.create',
+    ]);
+    $cash = seedAccountingAccounts(minimumBalance: 100, user: $user);
+
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+    ]);
+
+    $purchase = supplierDuePurchase($user, $supplier, 5000);
+
+    $this->actingAs($user)
+        ->from(route('party.supplier-payment.index'))
+        ->post('/party/supplier-payment', [
+            'supplier_id' => $supplier->id,
+            'date' => '2026-06-04',
+            'payment_account_id' => $cash->id,
+            'allocations' => [
+                ['purchase_id' => $purchase->id, 'amount' => 2000],
+            ],
+        ])
+        ->assertRedirect(route('party.supplier-payment.index'))
+        ->assertSessionHas('warning', 'Insufficient balance in the selected payment account.');
+
+    expect((float) $supplier->fresh()->balance)->toBe(5000.0);
+    expect((float) $purchase->fresh()->due_amount)->toBe(5000.0);
+    expect(SupplierPayment::query()->where('supplier_id', $supplier->id)->exists())->toBeFalse();
 });
 
 test('branch user cannot delete payment from another branch', function () {

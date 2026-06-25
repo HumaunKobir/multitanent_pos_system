@@ -18,19 +18,24 @@ class ProductSearchController extends Controller
         $this->authorize('inventory.purchase.create');
 
         $branchId = Auth::user()?->branch_id ?? Branch::resolveMainBranchId();
+        $mainBranchId = Branch::resolveMainBranchId();
 
         $products = Product::forPurchase()
             ->active()
-            ->with(['variations' => fn ($q) => $q
-                ->where(function ($query) use ($branchId) {
-                    if ($branchId === Branch::resolveMainBranchId()) {
-                        $query->where('branch_id', $branchId)
-                            ->orWhereNull('branch_id');
-                    } else {
-                        $query->where('branch_id', $branchId);
-                    }
-                })
-                ->select(['id', 'product_id', 'branch_id', 'sku', 'variation_data', 'purchase_price', 'price', 'stock'])])
+            ->with([
+                'variations' => fn ($q) => $q
+                    ->where(function ($query) use ($branchId, $mainBranchId) {
+                        if ($branchId === $mainBranchId) {
+                            $query->where('branch_id', $branchId)
+                                ->orWhereNull('branch_id');
+                        } else {
+                            $query->where('branch_id', $branchId);
+                        }
+                    })
+                    ->select(['id', 'product_id', 'branch_id', 'sku', 'variation_data', 'purchase_price', 'price', 'stock']),
+                'batches' => fn ($q) => $q->atBranchWarehouse($branchId)
+                    ->select(['id', 'product_id', 'branch_id', 'available']),
+            ])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('name', 'like', "%{$s}%")
                     ->orWhere('code', 'like', "%{$s}%");
@@ -46,12 +51,13 @@ class ProductSearchController extends Controller
             'sale_price' => $product->sale_price,
             'image' => $product->image,
             'has_variations' => $product->variations->isNotEmpty(),
+            'stock' => (float) $product->batches->sum('available'),
             'variations' => $product->variations->map(fn ($v) => [
                 'id' => $v->id,
                 'label' => $v->variation_data['label'] ?? $v->sku,
                 'purchase_price' => $v->purchase_price,
                 'sale_price' => $v->price,
-                'stock' => $v->stock,
+                'stock' => (float) $v->stock,
             ])->values(),
         ]));
     }

@@ -1,8 +1,7 @@
-import { useAppToast } from '@/contexts/app-toast-context';
 import { formatBdDate } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { Banknote, Coins, Plus, Search, Trash2 } from 'lucide-react';
+import { Banknote, Coins, Edit, Eye, Plus, Search, Trash2 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { AdminCreateButton } from '@/components/admin/row-actions';
@@ -15,15 +14,165 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { useCan } from '@/hooks/use-can';
+import { useFlashToast } from '@/hooks/use-flash-toast';
+import {
+    PaymentAllocationTable,
+    allocationTotal,
+    buildAllocations,
+} from '@/components/party/payment-allocation-table';
 
-function CollectionForm({ form, customers, paymentAccounts = [], onSubmit, onCancel }) {
+function CollectionSummary({ payment }) {
+    if (!payment) {
+        return null;
+    }
+
+    return (
+        <div className="space-y-4 px-5 pb-5 pt-4">
+            <div className="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                    <p className="text-muted-foreground">Voucher</p>
+                    <p className="font-mono font-medium">{payment.invoice_number}</p>
+                </div>
+                <div>
+                    <p className="text-muted-foreground">Date</p>
+                    <p>{formatBdDate(payment.date)}</p>
+                </div>
+                <div>
+                    <p className="text-muted-foreground">Customer</p>
+                    <p className="font-medium">{payment.customer?.name ?? '—'}</p>
+                </div>
+                <div>
+                    <p className="text-muted-foreground">Payment Account</p>
+                    <p>{payment.payment_account_label ?? '—'}</p>
+                </div>
+                <div>
+                    <p className="text-muted-foreground">Total Amount</p>
+                    <p className="font-medium text-emerald-700">৳{parseFloat(payment.amount ?? 0).toFixed(2)}</p>
+                </div>
+                <div>
+                    <p className="text-muted-foreground">Recorded By</p>
+                    <p>{payment.created_by?.name ?? '—'}</p>
+                </div>
+            </div>
+
+            <div>
+                <p className="mb-2 text-sm font-medium">Allocated Invoices</p>
+                <div className="overflow-hidden rounded-md border">
+                    <table className="w-full text-xs">
+                        <thead className="bg-muted/50 text-left">
+                            <tr>
+                                <th className="px-3 py-2 font-medium">Invoice</th>
+                                <th className="px-3 py-2 text-right font-medium">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {(payment.allocations ?? []).map((allocation) => (
+                                <tr key={allocation.id} className="border-t">
+                                    <td className="px-3 py-2 font-mono">{`INVS${String(allocation.sell_id).padStart(8, '0')}`}</td>
+                                    <td className="px-3 py-2 text-right">৳{parseFloat(allocation.amount).toFixed(2)}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div>
+                <p className="text-sm font-medium">Note</p>
+                <p className="mt-1 text-sm text-muted-foreground">{payment.comment || '—'}</p>
+            </div>
+        </div>
+    );
+}
+
+function CollectionForm({ form, customers, paymentAccounts = [], payment = null, onSuccess, onCancel, submitLabel }) {
+    const [dueSales, setDueSales] = useState([]);
+    const [loadingSales, setLoadingSales] = useState(false);
+    const [amountsById, setAmountsById] = useState({});
+    const isEditing = payment?.id != null;
+
     const selected = useMemo(
         () => customers.find((c) => String(c.id) === String(form.data.customer_id)),
         [customers, form.data.customer_id],
     );
 
+    const totalAmount = useMemo(() => allocationTotal(amountsById), [amountsById]);
+
+    useEffect(() => {
+        if (!form.data.customer_id) {
+            setDueSales([]);
+            setAmountsById({});
+            return;
+        }
+
+        let cancelled = false;
+        setLoadingSales(true);
+
+        const paymentId = payment?.id ? `?current_payment_id=${payment.id}` : '';
+
+        fetch(`${route('api.customers.due-sales', form.data.customer_id)}${paymentId}`, {
+            headers: { Accept: 'application/json' },
+        })
+            .then((res) => (res.ok ? res.json() : Promise.reject()))
+            .then((data) => {
+                if (!cancelled) {
+                    setDueSales(data.sales ?? []);
+                    setAmountsById(
+                        Object.fromEntries(
+                            (payment?.allocations ?? []).map((allocation) => [allocation.sell_id, String(allocation.amount)]),
+                        ),
+                    );
+                }
+            })
+            .catch(() => {
+                if (!cancelled) {
+                    setDueSales([]);
+                }
+            })
+            .finally(() => {
+                if (!cancelled) {
+                    setLoadingSales(false);
+                }
+            });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [form.data.customer_id, payment?.id]);
+
+    function handleAmountChange(sellId, value) {
+        setAmountsById((prev) => ({ ...prev, [sellId]: value }));
+    }
+
+    function handlePayFull(sellId, dueAmount) {
+        setAmountsById((prev) => ({ ...prev, [sellId]: String(dueAmount) }));
+    }
+
+    function handleSubmit(e) {
+        e.preventDefault();
+        form.transform((data) => ({
+            ...data,
+            allocations: buildAllocations('sell_id', dueSales, amountsById),
+        }));
+        const options = {
+            preserveState: true,
+            onSuccess: (page) => {
+                if (page.props.flash?.success) {
+                    onSuccess?.();
+                }
+            },
+        };
+
+        if (isEditing) {
+            form.put(route('party.customer-due-collection.update', payment.id), options);
+            return;
+        }
+
+        form.post(route('party.customer-due-collection.store'), options);
+    }
+
     return (
-        <form onSubmit={onSubmit} className="space-y-1.5 px-3 py-2">
+        <form onSubmit={handleSubmit} className="space-y-1.5 px-3 py-2">
             <FormField label="Customer" required name="customer_id" error={form.errors.customer_id}>
                 <Select
                     value={form.data.customer_id ? String(form.data.customer_id) : undefined}
@@ -59,20 +208,33 @@ function CollectionForm({ form, customers, paymentAccounts = [], onSubmit, onCan
                         aria-invalid={!!form.errors.date}
                     />
                 </FormField>
-                <FormField label="Amount" required name="amount" error={form.errors.amount}>
+                <FormField label="Total Amount" name="amount">
                     <Input
                         id="amount"
-                        type="number"
-                        min="0.01"
-                        step="0.01"
-                        value={form.data.amount}
-                        onChange={(e) => form.setData('amount', e.target.value)}
+                        type="text"
+                        readOnly
+                        value={totalAmount > 0 ? totalAmount.toFixed(2) : ''}
                         placeholder="0.00"
-                        className="mt-1"
-                        aria-invalid={!!form.errors.amount}
+                        className="mt-1 bg-muted"
                     />
                 </FormField>
             </div>
+
+            <FormField label="Allocate to Invoices" required error={form.errors.allocations}>
+                <PaymentAllocationTable
+                    documents={dueSales}
+                    idField="sell_id"
+                    amountsById={amountsById}
+                    onAmountChange={handleAmountChange}
+                    onPayFull={handlePayFull}
+                    loading={loadingSales}
+                    emptyMessage={
+                        form.data.customer_id
+                            ? 'No due invoices found for this customer.'
+                            : 'Select a customer to see due invoices.'
+                    }
+                />
+            </FormField>
 
             <FormField label="Note" name="comment" error={form.errors.comment}>
                 <Input
@@ -118,7 +280,7 @@ function CollectionForm({ form, customers, paymentAccounts = [], onSubmit, onCan
                     disabled={form.processing}
                     className="bg-emerald-600 text-white shadow-sm shadow-emerald-500/30 transition-all duration-150 hover:bg-emerald-600 hover:-translate-y-0.5 hover:shadow-md hover:shadow-emerald-500/50"
                 >
-                    {form.processing ? 'Saving…' : 'Record Collection'}
+                    {form.processing ? 'Saving…' : submitLabel}
                 </Button>
             </div>
         </form>
@@ -126,25 +288,50 @@ function CollectionForm({ form, customers, paymentAccounts = [], onSubmit, onCan
 }
 
 export default function CustomerDueCollectionIndex({ payments, customers, filters, today, paymentAccounts = [] }) {
+    useFlashToast();
     const { flash } = usePage().props;
-    const toast = useAppToast();
     const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [creating, setCreating] = useState(false);
+    const [viewing, setViewing] = useState(null);
+    const [editing, setEditing] = useState(null);
     const [deleting, setDeleting] = useState(null);
+
+    useEffect(() => {
+        if (flash?.warning) {
+            setCreating(true);
+        }
+    }, [flash?.warning]);
 
     const createForm = useForm({
         customer_id: '',
         date: today,
-        amount: '',
         payment_account_id: '',
         comment: '',
+        allocations: [],
+    });
+    const editForm = useForm({
+        customer_id: '',
+        date: today,
+        payment_account_id: '',
+        comment: '',
+        allocations: [],
     });
 
     useEffect(() => {
-        if (flash.success) toast.success(flash.success);
-        if (flash.error) toast.error(flash.error);
-    }, [flash.success, flash.error]);
+        if (!editing) {
+            return;
+        }
+
+        editForm.setData({
+            customer_id: String(editing.customer_id ?? ''),
+            date: editing.date ?? today,
+            payment_account_id: editing.payment_account_id ? String(editing.payment_account_id) : '',
+            comment: editing.comment ?? '',
+            allocations: [],
+        });
+        editForm.clearErrors();
+    }, [editing, today]);
 
     useDebouncedEffect(
         () => {
@@ -158,17 +345,6 @@ export default function CustomerDueCollectionIndex({ payments, customers, filter
         350,
         { skipFirstRun: true },
     );
-
-    function handleCreate(e) {
-        e.preventDefault();
-        createForm.post(route('party.customer-due-collection.store'), {
-            onSuccess: () => {
-                setCreating(false);
-                createForm.reset();
-                createForm.setData('date', today);
-            },
-        });
-    }
 
     function handleDelete() {
         if (!deleting) return;
@@ -202,6 +378,20 @@ export default function CustomerDueCollectionIndex({ payments, customers, filter
             header: 'Amount',
             render: (row) => <span className="font-medium text-emerald-700">৳{parseFloat(row.amount).toFixed(2)}</span>,
         },
+        {
+            id: 'invoices',
+            header: 'Invoices',
+            render: (row) => (
+                <div className="space-y-0.5">
+                    {(row.allocations ?? []).map((allocation) => (
+                        <p key={allocation.id} className="font-mono text-[11px] text-muted-foreground">
+                            {`INVS${String(allocation.sell_id).padStart(8, '0')}`}
+                            {' — '}৳{parseFloat(allocation.amount).toFixed(2)}
+                        </p>
+                    ))}
+                </div>
+            ),
+        },
         { id: 'comment', header: 'Note', render: (row) => row.comment ?? '—' },
         {
             id: 'created_by',
@@ -212,18 +402,31 @@ export default function CustomerDueCollectionIndex({ payments, customers, filter
             id: 'actions',
             header: 'Actions',
             align: 'right',
-            render: (row) =>
-                can('party.customer-due-collection.delete') ? (
-                    <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                        onClick={() => setDeleting(row)}
-                    >
-                        <Trash2 className="size-4" />
-                    </Button>
-                ) : null,
+            render: (row) => (
+                <div className="flex justify-end gap-1">
+                    {can('party.customer-due-collection.view') && (
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setViewing(row)}>
+                            <Eye className="size-4" />
+                        </Button>
+                    )}
+                    {can('party.customer-due-collection.update') && (
+                        <Button type="button" variant="ghost" size="sm" onClick={() => setEditing(row)}>
+                            <Edit className="size-4" />
+                        </Button>
+                    )}
+                    {can('party.customer-due-collection.delete') && (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                            onClick={() => setDeleting(row)}
+                        >
+                            <Trash2 className="size-4" />
+                        </Button>
+                    )}
+                </div>
+            ),
         },
     ];
 
@@ -294,7 +497,7 @@ export default function CustomerDueCollectionIndex({ payments, customers, filter
                         }
                     }}
                 >
-                    <DialogContent className="p-0 sm:max-w-lg">
+                    <DialogContent className="p-0 sm:max-w-2xl">
                         <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
                             <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
                                 <Banknote className="size-3.5 text-white" />
@@ -305,12 +508,67 @@ export default function CustomerDueCollectionIndex({ payments, customers, filter
                             form={createForm}
                             customers={customers}
                             paymentAccounts={paymentAccounts}
-                            onSubmit={handleCreate}
+                            payment={null}
+                            onSuccess={() => {
+                                setCreating(false);
+                                createForm.reset();
+                                createForm.setData('date', today);
+                            }}
                             onCancel={() => setCreating(false)}
+                            submitLabel="Record Collection"
                         />
                     </DialogContent>
                 </Dialog>
             </Can>
+
+            {can('party.customer-due-collection.view') && (
+                <Dialog open={!!viewing} onOpenChange={(open) => !open && setViewing(null)}>
+                    <DialogContent className="p-0 sm:max-w-xl">
+                        <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
+                            <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
+                                <Eye className="size-3.5 text-white" />
+                            </div>
+                            <h2 className="text-sm font-semibold text-white">Collection Details</h2>
+                        </div>
+                        <CollectionSummary payment={viewing} />
+                    </DialogContent>
+                </Dialog>
+            )}
+
+            {can('party.customer-due-collection.update') && (
+                <Dialog
+                    open={!!editing}
+                    onOpenChange={(open) => {
+                        if (!open) {
+                            setEditing(null);
+                            editForm.reset();
+                            editForm.setData('date', today);
+                        }
+                    }}
+                >
+                    <DialogContent className="p-0 sm:max-w-2xl">
+                        <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
+                            <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
+                                <Edit className="size-3.5 text-white" />
+                            </div>
+                            <h2 className="text-sm font-semibold text-white">Edit Due Collection</h2>
+                        </div>
+                        <CollectionForm
+                            form={editForm}
+                            customers={customers}
+                            paymentAccounts={paymentAccounts}
+                            payment={editing}
+                            onSuccess={() => {
+                                setEditing(null);
+                                editForm.reset();
+                                editForm.setData('date', today);
+                            }}
+                            onCancel={() => setEditing(null)}
+                            submitLabel="Update Collection"
+                        />
+                    </DialogContent>
+                </Dialog>
+            )}
 
             {can('party.customer-due-collection.delete') && (
                 <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>

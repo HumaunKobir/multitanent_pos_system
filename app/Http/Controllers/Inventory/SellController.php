@@ -843,8 +843,7 @@ class SellController extends Controller
         );
         $coinFields = $this->resolveCoinFields($data, $netBeforeCoin, $branchId, $coinBalanceOffset);
         $netBeforeRoundOff = round($netBeforeCoin - $coinFields['coin_discount_amount'], 2);
-        $paymentLines = $this->paymentLinesForRoundOff($data);
-        $roundOffAmount = $this->resolveRoundOffAmount($data, $netBeforeRoundOff, $paymentLines, $branchId);
+        $roundOffAmount = $this->resolveRoundOffAmount($data, $netBeforeRoundOff);
 
         return [
             ...$discountFields,
@@ -943,41 +942,9 @@ class SellController extends Controller
 
     /**
      * @param  array<string, mixed>  $data
-     * @return array<int, array{payment_account_id: int, amount: float}>
      */
-    private function paymentLinesForRoundOff(array $data): array
+    private function resolveRoundOffAmount(array $data, float $netBeforeRoundOff): float
     {
-        $paymentLines = $this->normalizeSalePaymentLines($data);
-
-        if ($paymentLines !== []) {
-            return $paymentLines;
-        }
-
-        $tenderedAmount = round(max(0, (float) ($data['paid_amount'] ?? 0)), 2);
-        $paymentAccountId = (int) ($data['payment_account_id'] ?? 0);
-
-        if ($tenderedAmount <= 0 || $paymentAccountId <= 0) {
-            return [];
-        }
-
-        return [
-            [
-                'payment_account_id' => $paymentAccountId,
-                'amount' => $tenderedAmount,
-            ],
-        ];
-    }
-
-    /**
-     * @param  array<string, mixed>  $data
-     * @param  array<int, array{payment_account_id: int, amount: float}>  $paymentLines
-     */
-    private function resolveRoundOffAmount(
-        array $data,
-        float $netBeforeRoundOff,
-        array $paymentLines,
-        ?int $branchId,
-    ): float {
         $roundOffAmount = round(max(0, (float) ($data['round_off_amount'] ?? 0)), 2);
 
         if ($roundOffAmount <= 0) {
@@ -992,71 +959,7 @@ class SellController extends Controller
             ]);
         }
 
-        $finalNet = round($netBeforeRoundOff - $roundOffAmount, 2);
-        $totalPaid = $this->totalPaymentAmount($paymentLines);
-
-        if (! $this->hasCashPayment($paymentLines, $branchId) && $totalPaid >= $finalNet) {
-            throw ValidationException::withMessages([
-                'round_off_amount' => 'Round off is only available when cash payment is included or the sale has due amount.',
-            ]);
-        }
-
         return $roundOffAmount;
-    }
-
-    /**
-     * @param  array<int, array{payment_account_id: int, amount: float}>  $paymentLines
-     */
-    private function totalPaymentAmount(array $paymentLines): float
-    {
-        $total = 0.0;
-
-        foreach ($paymentLines as $line) {
-            $total += max(0, (float) ($line['amount'] ?? 0));
-        }
-
-        return round($total, 2);
-    }
-
-    /**
-     * @param  array<int, array{payment_account_id: int, amount: float}>  $paymentLines
-     */
-    private function hasCashPayment(array $paymentLines, ?int $branchId): bool
-    {
-        $cashInHandId = SystemAccountService::id(SystemAccountKey::CashInHand, $branchId);
-
-        foreach ($paymentLines as $line) {
-            if (round((float) ($line['amount'] ?? 0), 2) > 0
-                && (int) $line['payment_account_id'] === $cashInHandId) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * @param  array<int, array{payment_account_id: int, amount: float}>  $paymentLines
-     */
-    private function isCashOnlyPayment(array $paymentLines, ?int $branchId): bool
-    {
-        $cashInHandId = SystemAccountService::id(SystemAccountKey::CashInHand, $branchId);
-        $activeLines = array_values(array_filter(
-            $paymentLines,
-            fn (array $line): bool => round((float) ($line['amount'] ?? 0), 2) > 0,
-        ));
-
-        if ($activeLines === []) {
-            return false;
-        }
-
-        foreach ($activeLines as $line) {
-            if ((int) $line['payment_account_id'] !== $cashInHandId) {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     /** @param  array<string, mixed>  $data */

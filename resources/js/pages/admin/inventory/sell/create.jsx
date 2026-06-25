@@ -848,7 +848,7 @@ function buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAcco
             vat: emptyWhenZero(resumedSell.vat_percent),
             paid_amount: resumedSell.paid_amount ?? '0',
             payments: buildInitialSalePayments([], paymentAccounts),
-            round_off_amount: '0',
+            round_off_amount: emptyWhenZero(resumedSell.round_off_amount),
             coins_redeemed: resumedSell.coins_redeemed ?? '0',
             comment: resumedSell.comment ?? '',
             due_given_date: '',
@@ -866,7 +866,7 @@ function buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAcco
         vat: '',
         paid_amount: '0',
         payments: buildInitialSalePayments([], paymentAccounts),
-        round_off_amount: '0',
+        round_off_amount: '',
         coins_redeemed: '0',
         comment: '',
         due_given_date: '',
@@ -1003,7 +1003,7 @@ export default function SellCreate({
 
     useEffect(() => {
         if (!hasSaleItems && parseFloat(form.data.round_off_amount || 0) > 0) {
-            form.setData('round_off_amount', '0');
+            form.setData('round_off_amount', '');
         }
     }, [hasSaleItems]);
 
@@ -1438,6 +1438,7 @@ export default function SellCreate({
                                             type="number"
                                             min="0"
                                             step="0.01"
+                                            placeholder="0"
                                             value={form.data.round_off_amount}
                                             disabled={!hasSaleItems}
                                             onChange={(e) => form.setData('round_off_amount', e.target.value)}

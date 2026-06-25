@@ -46,9 +46,12 @@ function sellCustomer(?int $branchId = null): Customer
     ]);
 }
 
-function sellProduct(float $available = 20, ?int $branchId = null): array
+function sellProduct(float $available = 20, ?int $branchId = null, ?float $salePrice = null): array
 {
-    $product = Product::factory()->create(['branch_id' => $branchId]);
+    $product = Product::factory()->create([
+        'branch_id' => $branchId,
+        ...($salePrice !== null ? ['sale_price' => $salePrice] : []),
+    ]);
     $batch = Batch::factory()->for($product)->withStock($available)->create(['branch_id' => $branchId]);
 
     return compact('product', 'batch');
@@ -1101,7 +1104,7 @@ test('cash sale can apply manual round off discount', function () {
     $user->givePermissionTo('inventory.sell.create');
 
     $cash = seedAccountingAccounts(user: $user);
-    ['product' => $product] = sellProduct(10, $user->branch_id);
+    ['product' => $product] = sellProduct(10, $user->branch_id, 500);
     $sellIdBefore = (int) (Sell::query()->max('id') ?? 0);
 
     $this->actingAs($user)
@@ -1128,7 +1131,7 @@ test('cash sale can apply manual round off discount', function () {
         ->assertRedirect()
         ->assertSessionDoesntHaveErrors();
 
-    $sell = Sell::query()->where('id', '>', $sellIdBefore)->first();
+    $sell = Sell::query()->where('id', '>', $sellIdBefore)->latest('id')->first();
     expect($sell)->not->toBeNull();
     expect((float) $sell->round_off_amount)->toBe(25.0);
     expect((float) $sell->net_amount)->toBe(475.0);
@@ -1142,7 +1145,7 @@ test('due sale can apply round off when no payment is received', function () {
     $user->givePermissionTo('inventory.sell.create');
 
     $cash = seedAccountingAccounts(user: $user);
-    ['product' => $product] = sellProduct(10, $user->branch_id);
+    ['product' => $product] = sellProduct(10, $user->branch_id, 500);
     $customer = sellCustomer($user->branch_id);
     $sellIdBefore = (int) (Sell::query()->max('id') ?? 0);
 
@@ -1170,7 +1173,7 @@ test('due sale can apply round off when no payment is received', function () {
         ->assertRedirect()
         ->assertSessionDoesntHaveErrors();
 
-    $sell = Sell::query()->where('id', '>', $sellIdBefore)->first();
+    $sell = Sell::query()->where('id', '>', $sellIdBefore)->latest('id')->first();
     expect($sell)->not->toBeNull();
     expect((float) $sell->round_off_amount)->toBe(2.0);
     expect((float) $sell->net_amount)->toBe(498.0);
@@ -1180,7 +1183,7 @@ test('due sale can apply round off when no payment is received', function () {
     expect((float) $customer->balance)->toBe(498.0);
 });
 
-test('round off is rejected when payment has no cash line', function () {
+test('non-cash sale can apply round off', function () {
     $this->artisan('permissions:sync');
 
     $user = sellUser();
@@ -1188,7 +1191,8 @@ test('round off is rejected when payment has no cash line', function () {
     $user->givePermissionTo('inventory.sell.create');
 
     $sslCommerz = SystemAccountService::resolve(SystemAccountKey::SslCommerz, $user->branch_id);
-    ['product' => $product] = sellProduct(10, $user->branch_id);
+    ['product' => $product] = sellProduct(10, $user->branch_id, 500);
+    $sellIdBefore = (int) (Sell::query()->max('id') ?? 0);
 
     $this->actingAs($user)
         ->post('/inventory/sell', [
@@ -1211,7 +1215,13 @@ test('round off is rejected when payment has no cash line', function () {
                 'quantity' => '1',
             ]],
         ])
-        ->assertSessionHasErrors('round_off_amount');
+        ->assertRedirect()
+        ->assertSessionDoesntHaveErrors();
+
+    $sell = Sell::query()->where('id', '>', $sellIdBefore)->latest('id')->first();
+    expect($sell)->not->toBeNull();
+    expect((float) $sell->round_off_amount)->toBe(25.0);
+    expect((float) $sell->net_amount)->toBe(475.0);
 });
 
 test('split cash and non-cash sale can apply round off', function () {
@@ -1223,7 +1233,7 @@ test('split cash and non-cash sale can apply round off', function () {
 
     $cash = seedAccountingAccounts(user: $user);
     $sslCommerz = SystemAccountService::resolve(SystemAccountKey::SslCommerz, $user->branch_id);
-    ['product' => $product] = sellProduct(10, $user->branch_id);
+    ['product' => $product] = sellProduct(10, $user->branch_id, 500);
     $sellIdBefore = (int) (Sell::query()->max('id') ?? 0);
 
     $this->actingAs($user)
@@ -1251,7 +1261,7 @@ test('split cash and non-cash sale can apply round off', function () {
         ->assertRedirect()
         ->assertSessionDoesntHaveErrors();
 
-    $sell = Sell::query()->where('id', '>', $sellIdBefore)->first();
+    $sell = Sell::query()->where('id', '>', $sellIdBefore)->latest('id')->first();
     expect($sell)->not->toBeNull();
     expect((float) $sell->round_off_amount)->toBe(25.0);
     expect((float) $sell->net_amount)->toBe(475.0);

@@ -509,7 +509,7 @@ export default function SellEdit({
         vat: emptyWhenZero(sell.vat_percent),
         paid_amount: String(sell.paid_amount ?? '0'),
         payments: initialPaymentState.payments,
-        round_off_amount: String(sell.round_off_amount ?? '0'),
+        round_off_amount: emptyWhenZero(sell.round_off_amount),
         coins_redeemed: String(sell.coins_redeemed ?? '0'),
         comment: sell.comment ?? '',
         due_given_date: '',
@@ -653,7 +653,7 @@ export default function SellEdit({
 
     useEffect(() => {
         if (!hasSaleItems && parseFloat(form.data.round_off_amount || 0) > 0) {
-            form.setData('round_off_amount', '0');
+            form.setData('round_off_amount', '');
         }
     }, [hasSaleItems]);
 
@@ -1109,6 +1109,7 @@ export default function SellEdit({
                                             type="number"
                                             min="0"
                                             step="0.01"
+                                            placeholder="0"
                                             value={form.data.round_off_amount}
                                             disabled={!hasSaleItems}
                                             onChange={(e) => form.setData('round_off_amount', e.target.value)}

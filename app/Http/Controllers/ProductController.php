@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Controllers\Concerns\ScopesProductStockListing;
 use App\Models\Barcode;
 use App\Models\Branch;
 use App\Models\Brand;
@@ -17,7 +18,6 @@ use App\Models\Warranty;
 use App\Services\EcommerceBranchService;
 use App\Services\ProductBranchReplicationService;
 use App\Services\ProductInitialStockService;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -30,6 +30,8 @@ use Inertia\Response;
 
 class ProductController extends Controller
 {
+    use ScopesProductStockListing;
+
     public function __construct(
         private ProductBranchReplicationService $productReplication,
         private ProductInitialStockService $initialStock,
@@ -700,27 +702,6 @@ class ProductController extends Controller
         return $rule;
     }
 
-    private function resolveProductListBranchId(Request $request): ?int
-    {
-        $userBranchId = Auth::user()?->branch_id;
-
-        if ($userBranchId !== null) {
-            return $userBranchId;
-        }
-
-        $filter = $request->input('branch_id');
-
-        if ($filter === 'all') {
-            return null;
-        }
-
-        if ($filter !== null && $filter !== '') {
-            return (int) $filter;
-        }
-
-        return Branch::resolveMainBranchId();
-    }
-
     /**
      * @param  array<string, mixed>  $data
      */
@@ -739,73 +720,6 @@ class ProductController extends Controller
         }
 
         return $data['visible'] ?? ($product?->visible ?? 'no');
-    }
-
-    private function applyProductListStockAggregates(Builder $query, ?int $listBranchId): void
-    {
-        $query
-            ->withSum([
-                'variations as variations_sum_stock' => fn ($q) => $this->scopeProductListVariationStock($q, $listBranchId),
-            ], 'stock')
-            ->withSum([
-                'batches as batches_sum_available' => fn ($q) => $this->scopeProductListBatchStock($q, $listBranchId),
-            ], 'available');
-    }
-
-    private function scopeProductListVariationStock($query, ?int $listBranchId): void
-    {
-        if ($listBranchId !== null) {
-            $query->where('branch_id', $listBranchId);
-
-            return;
-        }
-
-        $mainBranchId = Branch::resolveMainBranchId();
-
-        $query->where(function (Builder $query) use ($mainBranchId) {
-            $query->whereColumn('product_variations.branch_id', 'products.branch_id')
-                ->orWhere(function (Builder $query) use ($mainBranchId) {
-                    $query->where('products.branch_id', $mainBranchId)
-                        ->whereNull('product_variations.branch_id');
-                });
-        });
-    }
-
-    private function scopeProductListVariations($query, ?int $listBranchId): void
-    {
-        $query->select([
-            'id',
-            'product_id',
-            'sku',
-            'variation_data',
-            'price',
-            'purchase_price',
-            'stock',
-            'branch_id',
-        ]);
-
-        if ($listBranchId !== null) {
-            $query->where('branch_id', $listBranchId);
-        }
-    }
-
-    private function scopeProductListBatchStock($query, ?int $listBranchId): void
-    {
-        if ($listBranchId !== null) {
-            $query->atBranchWarehouse($listBranchId);
-
-            return;
-        }
-
-        $mainBranchId = Branch::resolveMainBranchId();
-
-        $query->where(function (Builder $query) use ($mainBranchId) {
-            $query->whereColumn('batches.branch_id', 'products.branch_id')
-                ->orWhere(function (Builder $query) use ($mainBranchId) {
-                    $query->where('products.branch_id', $mainBranchId)
-                        ->whereNull('batches.branch_id');
-                });
-        });
     }
 
     /** @return array<string, mixed> */

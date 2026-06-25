@@ -28,6 +28,7 @@ use App\Http\Controllers\Inventory\SupplierPaymentController;
 use App\Http\Controllers\OnlineCustomerController;
 use App\Http\Controllers\OnlineOrderController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\Reports\InventoryStockController;
 use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Setting\AdminProfileController;
@@ -117,6 +118,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 });
 
 Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')->group(function () {
+    Route::redirect('stock', '/report/inventory-stock');
     Route::resource('purchase', PurchaseController::class);
     Route::resource('purchase-return', PurchaseReturnController::class);
     Route::resource('damage', DamageController::class);
@@ -181,6 +183,7 @@ Route::middleware(['auth', 'verified'])->prefix('report')->name('report.')->grou
     Route::get('daily-transactions', [ReportController::class, 'dailyTransactions'])->name('daily-transactions');
     Route::get('date-wise-stock', [ReportController::class, 'dateWiseStock'])->name('date-wise-stock');
     Route::get('stock-ledger', [ReportController::class, 'stockLedger'])->name('stock-ledger');
+    Route::get('inventory-stock', InventoryStockController::class)->name('inventory-stock');
     Route::get('daily-summary', [ReportController::class, 'dailySummary'])->name('daily-summary');
     Route::get('account-ledger', [ReportController::class, 'accountLedger'])->name('account-ledger');
     Route::get('account-transactions', [ReportController::class, 'accountTransactions'])->name('account-transactions');

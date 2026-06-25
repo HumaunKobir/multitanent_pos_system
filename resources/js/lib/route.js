@@ -216,6 +216,7 @@ const routes = {
     'report.daily-transactions': '/report/daily-transactions',
     'report.date-wise-stock': '/report/date-wise-stock',
     'report.stock-ledger': '/report/stock-ledger',
+    'report.inventory-stock': '/report/inventory-stock',
     'report.daily-summary': '/report/daily-summary',
     'report.account-ledger': '/report/account-ledger',
     'report.account-transactions': '/report/account-transactions',

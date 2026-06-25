@@ -45,6 +45,7 @@ class SyncPermissions extends Command
         }
 
         $this->inheritCoinSettingsPermissions($createdNames);
+        $this->migrateRenamedPermissions();
 
         $this->newLine();
         $this->info("Sync done. {$created} created, {$existing} already existed.");
@@ -109,6 +110,36 @@ class SyncPermissions extends Command
         if ($roles->isNotEmpty()) {
             $this->newLine();
             $this->line("  <fg=cyan>INHERITED</> coin settings permissions to {$roles->count()} role(s) with POS/special discount access.");
+        }
+    }
+
+    protected function migrateRenamedPermissions(): void
+    {
+        $migrations = [
+            'inventory.stock.view' => 'report.inventory-stock.view',
+        ];
+
+        foreach ($migrations as $from => $to) {
+            $oldPermission = Permission::query()->where('name', $from)->where('guard_name', 'web')->first();
+
+            if ($oldPermission === null) {
+                continue;
+            }
+
+            $newPermission = Permission::firstOrCreate(['name' => $to, 'guard_name' => 'web']);
+
+            $roles = Role::query()->whereHas('permissions', fn ($query) => $query->where('name', $from))->get();
+
+            foreach ($roles as $role) {
+                $role->givePermissionTo($newPermission);
+                $role->revokePermissionTo($oldPermission);
+            }
+
+            $oldPermission->delete();
+
+            if ($roles->isNotEmpty()) {
+                $this->line("  <fg=cyan>MIGRATED</> {$from} → {$to} for {$roles->count()} role(s).");
+            }
         }
     }
 }

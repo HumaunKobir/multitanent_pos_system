@@ -154,6 +154,7 @@ return [
                 ['title' => 'Daily Transactions', 'href' => '/report/daily-transactions', 'permission' => 'report.daily-transactions.view'],
                 ['title' => 'Date Wise Stock', 'href' => '/report/date-wise-stock', 'permission' => 'report.date-wise-stock.view'],
                 ['title' => 'Stock Ledger', 'href' => '/report/stock-ledger', 'permission' => 'report.stock-ledger.view'],
+                ['title' => 'Inventory Stock', 'href' => '/report/inventory-stock', 'permission' => 'report.inventory-stock.view'],
                 ['title' => 'Daily Summary', 'href' => '/report/daily-summary', 'permission' => 'report.daily-summary.view'],
             ],
         ],

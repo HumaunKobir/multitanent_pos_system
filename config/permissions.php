@@ -515,6 +515,14 @@ return [
             ],
         ],
 
+        'report.inventory-stock' => [
+            'label' => 'Inventory Stock',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.inventory-stock.view' => 'View Inventory Stock',
+            ],
+        ],
+
         'report.daily-summary' => [
             'label' => 'Daily Summary',
             'group' => 'Reports',

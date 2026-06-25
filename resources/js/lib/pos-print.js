@@ -656,21 +656,17 @@ function renderPosInvoice(data) {
             ${groupedItems
                 .map((item) => {
                     const metaParts = [];
-                    if (item.promotion_label) {
-                        metaParts.push(`Promo: ${item.promotion_label}`);
-                    }
-                    if (parseFloat(item.promotion_discount ?? 0) > 0) {
-                        metaParts.push(`Promo Disc: ${formatMoneyTk(item.promotion_discount)}`);
-                    }
-                    if (parseFloat(item.line_discount ?? 0) > 0) {
-                        metaParts.push(`Disc: ${formatMoneyTk(item.line_discount)}`);
-                    }
+
+                    const originalAmount =
+                        parseFloat(item.amount ?? item.price ?? 0) +
+                        parseFloat(item.promotion_discount ?? 0) +
+                        parseFloat(item.line_discount ?? 0);
 
                     return `
                 <div class="pos-item">
                     <div class="pos-item-name">${escapeHtml(buildItemName(item))}</div>
                     <div class="pos-item-qty">${formatQty(item.quantity)}</div>
-                    <div class="pos-item-price">${formatMoneyTk(item.amount ?? item.price)}</div>
+                    <div class="pos-item-price">${formatMoneyTk(originalAmount)}</div>
                 </div>
                 ${metaParts.length ? `<div class="pos-item-meta">${escapeHtml(metaParts.join(' | '))}</div>` : ''}`;
                 })

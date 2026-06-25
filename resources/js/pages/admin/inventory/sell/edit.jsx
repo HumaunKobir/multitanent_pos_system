@@ -867,14 +867,14 @@ export default function SellEdit({
                                                     <td className="px-2 py-1.5">
                                                         {paymentOnlyEdit ? (
                                                             <span className="block px-2 py-1 text-right font-medium">
-                                                                ৳{parseFloat(item.unit_price || 0).toFixed(2)}
+                                                                ৳{parseFloat(item.original_unit_price ?? item.unit_price || 0).toFixed(2)}
                                                             </span>
                                                         ) : (
                                                             <Input
                                                                 type="number"
                                                                 min="0"
                                                                 step="0.01"
-                                                                value={item.unit_price ?? ''}
+                                                                value={((item.promotion_id ? (item.original_unit_price ?? item.unit_price) : item.unit_price) ?? '')}
                                                                 onChange={(e) => updateItem(i, 'unit_price', e.target.value)}
                                                                 disabled={!!item.promotion_id}
                                                                 className={cn(

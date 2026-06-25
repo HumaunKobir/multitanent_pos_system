@@ -658,7 +658,7 @@ function CartLineItem({ item, index, inputCls, onUpdate, onAdjust, onRemove, sta
                         type="number"
                         min="0"
                         step="0.01"
-                        value={item.unit_price ?? ''}
+                        value={(item.promotion_id ? (item.original_unit_price ?? item.unit_price) : item.unit_price) ?? ''}
                         onChange={(e) => onUpdate(index, 'unit_price', e.target.value)}
                         disabled={!!item.promotion_id}
                         className={cn(inputCls, 'h-5 px-0.5 text-right text-[11px] sm:h-6 sm:px-1 lg:h-7', item.promotion_id && 'bg-muted')}

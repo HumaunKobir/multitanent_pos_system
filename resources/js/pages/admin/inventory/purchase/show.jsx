@@ -5,6 +5,7 @@ import {
     InvoiceShowHeader,
     PartyInfoCard,
 } from '@/components/inventory/invoice-show-layout';
+import { DocumentPaymentBreakdown } from '@/components/inventory/document-payment-breakdown';
 import { route } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowLeft, Edit, HandCoins, Trash2, User } from 'lucide-react';
@@ -93,6 +94,13 @@ export default function PurchaseShow({ purchase }) {
                             address={purchase.supplier?.address}
                         />
                     }
+                />
+
+                <DocumentPaymentBreakdown
+                    directPayment={purchase.direct_payment}
+                    directPaymentLabel="Purchase Payment"
+                    partyPayments={purchase.supplier_payment_details ?? []}
+                    partyPaymentLabel="Supplier Payment"
                 />
 
                 {can('inventory.purchase.delete') && (

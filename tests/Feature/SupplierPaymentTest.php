@@ -421,3 +421,57 @@ test('purchase edit shows payment account from supplier payment allocation', fun
             ->where('purchase.supplier_payment_allocations.0.payment_account_id', $cash->id)
             ->where('purchase.supplier_payment_allocations.0.amount', 3000));
 });
+
+test('purchase show reflects supplier payment allocation with updated due and payment details', function () {
+    $this->artisan('permissions:sync');
+
+    $user = supplierPaymentUser([
+        'party.supplier-payment.create',
+        'party.supplier-payment.view',
+        'inventory.purchase.create',
+        'inventory.purchase.view',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+    ]);
+
+    $purchase = supplierDuePurchase($user, $supplier, 5000);
+
+    $this->actingAs($user)
+        ->post('/party/supplier-payment', [
+            'supplier_id' => $supplier->id,
+            'date' => '2026-06-04',
+            'payment_account_id' => $cash->id,
+            'allocations' => [
+                ['purchase_id' => $purchase->id, 'amount' => 3000],
+            ],
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    $purchase->refresh();
+
+    $this->actingAs($user)
+        ->get(route('inventory.purchase.show', $purchase))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/inventory/purchase/show')
+            ->where('purchase.paid_amount', '3000.00')
+            ->where('purchase.due_amount', '2000.00')
+            ->has('purchase.supplier_payment_details', 1)
+            ->where('purchase.supplier_payment_details.0.amount', 3000)
+            ->where('purchase.supplier_payment_details.0.payment_account_id', $cash->id));
+
+    $this->actingAs($user)
+        ->get('/party/supplier-payment')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/inventory/supplier-payment/index')
+            ->has('payments.data', 1)
+            ->where('payments.data.0.allocations.0.amount', 3000)
+            ->where('payments.data.0.allocations.0.document.paid_amount', 3000)
+            ->where('payments.data.0.allocations.0.document.due_amount', 2000));
+});

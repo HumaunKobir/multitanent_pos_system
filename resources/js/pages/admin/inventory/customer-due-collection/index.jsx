@@ -1,4 +1,5 @@
 import { formatBdDate } from '@/lib/format-bd-date';
+import { AllocationSummaryTable } from '@/components/inventory/document-payment-breakdown';
 import { route } from '@/lib/route';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { Banknote, Coins, Edit, Eye, Plus, Search, Trash2 } from 'lucide-react';
@@ -56,27 +57,11 @@ function CollectionSummary({ payment }) {
                 </div>
             </div>
 
-            <div>
-                <p className="mb-2 text-sm font-medium">Allocated Invoices</p>
-                <div className="overflow-hidden rounded-md border">
-                    <table className="w-full text-xs">
-                        <thead className="bg-muted/50 text-left">
-                            <tr>
-                                <th className="px-3 py-2 font-medium">Invoice</th>
-                                <th className="px-3 py-2 text-right font-medium">Amount</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {(payment.allocations ?? []).map((allocation) => (
-                                <tr key={allocation.id} className="border-t">
-                                    <td className="px-3 py-2 font-mono">{`INVS${String(allocation.sell_id).padStart(8, '0')}`}</td>
-                                    <td className="px-3 py-2 text-right">৳{parseFloat(allocation.amount).toFixed(2)}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            <AllocationSummaryTable
+                title="Allocated Invoices"
+                documentLabel="Invoice"
+                rows={payment.allocations ?? []}
+            />
 
             <div>
                 <p className="text-sm font-medium">Note</p>
@@ -522,7 +507,7 @@ export default function CustomerDueCollectionIndex({ payments, customers, filter
 
             {can('party.customer-due-collection.view') && (
                 <Dialog open={!!viewing} onOpenChange={(open) => !open && setViewing(null)}>
-                    <DialogContent className="p-0 sm:max-w-xl">
+                    <DialogContent className="p-0 sm:max-w-3xl">
                         <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
                             <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
                                 <Eye className="size-3.5 text-white" />

@@ -5,7 +5,7 @@ namespace App\Http\Controllers\BranchPanel;
 use App\Enums\DashboardSalesPeriod;
 use App\Http\Controllers\Controller;
 use App\Services\DashboardService;
-use App\Support\StorageUrl;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -15,18 +15,12 @@ class BranchDashboardController extends Controller
 {
     public function __construct(public DashboardService $dashboard) {}
 
-    public function __invoke(Request $request): Response
+    public function __invoke(Request $request): Response|RedirectResponse
     {
         $user = Auth::user();
 
         if (! $user?->can('dashboard.view')) {
-            return Inertia::render('branch-panel/dashboard', [
-                'today' => now()->toDateString(),
-                'branchName' => $user?->branch?->name ?? 'Branch',
-                'branchLogoUrl' => StorageUrl::public($user?->branch?->logo),
-                'sections' => null,
-                'limitedAccess' => true,
-            ]);
+            return redirect($user->defaultLandingUrl());
         }
 
         $period = DashboardSalesPeriod::tryFromInput($request->input('period'));

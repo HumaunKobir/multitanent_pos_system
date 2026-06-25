@@ -3,6 +3,7 @@ const routes = {
     search: '/search',
     'search.suggestions': '/search/suggestions',
     dashboard: '/dashboard',
+    'panel-guide': '/panel-guide',
     'admin.dashboard': '/dashboard',
     'branch-panel.dashboard': '/branch-panel',
     login: '/login',

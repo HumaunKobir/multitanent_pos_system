@@ -398,8 +398,7 @@ test('main branch admin panel user is denied pages without permission', function
 
     $this->actingAs($user)
         ->get('/dashboard')
-        ->assertOk()
-        ->assertInertia(fn ($page) => $page->where('limitedAccess', true));
+        ->assertRedirect('/inventory/purchase');
 });
 
 test('primary admin bypasses permission checks while other main branch users do not', function () {

@@ -36,7 +36,7 @@ class SupplierPaymentController extends Controller
             ->with([
                 'supplier:id,name,phone',
                 'createdBy:id,name',
-                'allocations.purchase:id,serial',
+                'allocations.purchase:id,gross_amount,discount,vat,paid_amount,due_amount',
             ])
             ->when($request->search, function ($query, string $search) {
                 $query->where(function ($q) use ($search) {
@@ -65,6 +65,7 @@ class SupplierPaymentController extends Controller
                 'payment_account_label' => $paymentAccountId !== null
                     ? $paymentAccountLabels->get($paymentAccountId)['label'] ?? null
                     : null,
+                'allocations' => $this->allocations->mapSupplierPaymentAllocationsForView($payment->allocations),
             ];
         });
 

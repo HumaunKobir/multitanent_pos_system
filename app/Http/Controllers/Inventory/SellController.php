@@ -355,8 +355,18 @@ class SellController extends Controller
             $sell->branch->logo_url = StorageUrl::public($sell->branch->logo);
         }
 
+        $paymentAccountLabels = collect($this->paymentAccounts())->keyBy('id');
+
         return Inertia::render('admin/inventory/sell/show', [
-            'sell' => $sell,
+            'sell' => [
+                ...$sell->toArray(),
+                'customer' => $sell->customer,
+                'branch' => $sell->branch,
+                'special_discount' => $sell->specialDiscount,
+                'products' => $sell->products,
+                'payments' => $sell->payments,
+                'collection_payment_details' => $this->allocations->customerCollectionDetailsForSell($sell, $paymentAccountLabels),
+            ],
         ]);
     }
 

@@ -65,6 +65,11 @@ class HandleInertiaRequests extends Middleware
                 ? app(AdminNavigation::class)->build($user)
                 : [],
             'panelType' => $user instanceof User && $user->usesBranchPanel() ? 'branch' : 'admin',
+            'hasPanelGuide' => $user instanceof User
+                && count(app(AdminNavigation::class)->build($user)) > 0,
+            'showPanelGuideButton' => $user instanceof User
+                ? $this->shouldShowPanelGuideButton($request, $user)
+                : false,
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
             'cart' => $cart,
             'cartCount' => count($cart),
@@ -133,5 +138,20 @@ class HandleInertiaRequests extends Middleware
                 'pos_change' => $request->session()->get('pos_change'),
             ],
         ];
+    }
+
+    protected function shouldShowPanelGuideButton(Request $request, User $user): bool
+    {
+        $path = trim($request->path(), '/');
+
+        if ($path === 'panel-guide') {
+            return false;
+        }
+
+        if ($user->can('dashboard.view')) {
+            return in_array($path, ['dashboard', 'branch-panel'], true);
+        }
+
+        return $path === trim($user->defaultLandingPath(), '/');
     }
 }

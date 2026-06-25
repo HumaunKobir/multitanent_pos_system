@@ -36,7 +36,8 @@ class CustomerDueCollectionController extends Controller
             ->with([
                 'customer:id,name,phone',
                 'createdBy:id,name',
-                'allocations.sell:id',
+                'allocations.sell:id,gross_amount,discount,vat,special_discount_amount,coin_discount_amount,round_off_amount,paid_amount',
+                'allocations.sell.products:id,sell_id,discount',
             ])
             ->when($request->search, function ($query, string $search) {
                 $query->where(function ($q) use ($search) {
@@ -63,6 +64,7 @@ class CustomerDueCollectionController extends Controller
                 'payment_account_label' => $paymentAccountId !== null
                     ? $paymentAccountLabels->get($paymentAccountId)['label'] ?? null
                     : null,
+                'allocations' => $this->allocations->mapCustomerPaymentAllocationsForView($payment->allocations),
             ];
         });
 

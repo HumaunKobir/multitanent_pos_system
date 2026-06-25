@@ -27,6 +27,7 @@ use App\Http\Controllers\Inventory\SupplierController;
 use App\Http\Controllers\Inventory\SupplierPaymentController;
 use App\Http\Controllers\OnlineCustomerController;
 use App\Http\Controllers\OnlineOrderController;
+use App\Http\Controllers\PanelGuideController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\Reports\InventoryStockController;
 use App\Http\Controllers\Reports\ReportController;
@@ -62,6 +63,8 @@ Route::middleware(['auth', 'verified'])->get('/admin', function () {
 
     return redirect()->route('dashboard');
 });
+
+Route::middleware(['auth', 'verified'])->get('panel-guide', PanelGuideController::class)->name('panel-guide');
 
 Route::middleware(['auth', 'verified', 'superadmin'])->group(function () {
     Route::resource('branch', BranchController::class)->except(['create', 'edit', 'show']);

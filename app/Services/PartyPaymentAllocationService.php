@@ -316,6 +316,157 @@ class PartyPaymentAllocationService
     }
 
     /**
+     * @return array{invoice_number: string, net_amount: float, paid_amount: float, due_amount: float}
+     */
+    public function purchasePaymentSummary(Purchase $purchase): array
+    {
+        return [
+            'invoice_number' => $purchase->invoice_number,
+            'net_amount' => round((float) $purchase->net_amount, 2),
+            'paid_amount' => round((float) $purchase->paid_amount, 2),
+            'due_amount' => round((float) $purchase->due_amount, 2),
+        ];
+    }
+
+    /**
+     * @return array{invoice_number: string, net_amount: float, paid_amount: float, due_amount: float}
+     */
+    public function sellPaymentSummary(Sell $sell): array
+    {
+        $sell->loadMissing('products');
+        $netAmount = round((float) $sell->net_amount, 2);
+        $paidAmount = round((float) $sell->paid_amount, 2);
+
+        return [
+            'invoice_number' => $sell->invoice_number,
+            'net_amount' => $netAmount,
+            'paid_amount' => $paidAmount,
+            'due_amount' => round(max(0, $netAmount - $paidAmount), 2),
+        ];
+    }
+
+    /**
+     * @param  Collection<int, SupplierPaymentAllocation>  $allocations
+     * @return array<int, array{id: int, purchase_id: int, amount: float, document: array{invoice_number: string, net_amount: float, paid_amount: float, due_amount: float}|null}>
+     */
+    public function mapSupplierPaymentAllocationsForView(Collection $allocations): array
+    {
+        return $allocations
+            ->map(function (SupplierPaymentAllocation $allocation) {
+                $purchase = $allocation->purchase;
+
+                return [
+                    'id' => $allocation->id,
+                    'purchase_id' => (int) $allocation->purchase_id,
+                    'amount' => round((float) $allocation->amount, 2),
+                    'document' => $purchase !== null ? $this->purchasePaymentSummary($purchase) : null,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  Collection<int, CustomerPaymentAllocation>  $allocations
+     * @return array<int, array{id: int, sell_id: int, amount: float, document: array{invoice_number: string, net_amount: float, paid_amount: float, due_amount: float}|null}>
+     */
+    public function mapCustomerPaymentAllocationsForView(Collection $allocations): array
+    {
+        return $allocations
+            ->map(function (CustomerPaymentAllocation $allocation) {
+                $sell = $allocation->sell;
+
+                return [
+                    'id' => $allocation->id,
+                    'sell_id' => (int) $allocation->sell_id,
+                    'amount' => round((float) $allocation->amount, 2),
+                    'document' => $sell !== null ? $this->sellPaymentSummary($sell) : null,
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  Collection<int, array{id: int, label: string}>|null  $paymentAccountLabels
+     * @return array<int, array{amount: float, voucher: string, date: string|null, payment_account_id: int|null, payment_account_label: string|null}>
+     */
+    public function supplierAllocationDetailsForPurchase(Purchase $purchase, ?Collection $paymentAccountLabels = null): array
+    {
+        return SupplierPaymentAllocation::query()
+            ->where('purchase_id', $purchase->id)
+            ->with('supplierPayment:id,serial,date')
+            ->orderBy('id')
+            ->get()
+            ->map(function (SupplierPaymentAllocation $allocation) use ($paymentAccountLabels) {
+                $supplierPayment = $allocation->supplierPayment;
+                $paymentAccountId = $supplierPayment !== null
+                    ? $this->accounting->paymentAccountIdFor($supplierPayment, latest: true)
+                    : null;
+
+                return [
+                    'amount' => round((float) $allocation->amount, 2),
+                    'voucher' => $supplierPayment?->invoice_number ?? '',
+                    'date' => $supplierPayment?->date?->format('Y-m-d'),
+                    'payment_account_id' => $paymentAccountId,
+                    'payment_account_label' => $this->paymentAccountLabel($paymentAccountLabels, $paymentAccountId),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  Collection<int, array{id: int, label: string}>|null  $paymentAccountLabels
+     * @return array<int, array{amount: float, voucher: string, date: string|null, payment_account_id: int|null, payment_account_label: string|null}>
+     */
+    public function customerCollectionDetailsForSell(Sell $sell, ?Collection $paymentAccountLabels = null): array
+    {
+        return CustomerPaymentAllocation::query()
+            ->where('sell_id', $sell->id)
+            ->with('customerPayment:id,serial,date')
+            ->orderBy('id')
+            ->get()
+            ->map(function (CustomerPaymentAllocation $allocation) use ($paymentAccountLabels) {
+                $customerPayment = $allocation->customerPayment;
+                $paymentAccountId = $customerPayment !== null
+                    ? $this->accounting->paymentAccountIdFor($customerPayment, latest: true)
+                    : null;
+
+                return [
+                    'amount' => round((float) $allocation->amount, 2),
+                    'voucher' => $customerPayment?->invoice_number ?? '',
+                    'date' => $customerPayment?->date?->format('Y-m-d'),
+                    'payment_account_id' => $paymentAccountId,
+                    'payment_account_label' => $this->paymentAccountLabel($paymentAccountLabels, $paymentAccountId),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  Collection<int, array{id: int, label: string}>|null  $paymentAccountLabels
+     * @return array{amount: float, payment_account_id: int|null, payment_account_label: string|null}|null
+     */
+    public function purchaseDirectPaymentForView(Purchase $purchase, ?Collection $paymentAccountLabels = null): ?array
+    {
+        $amount = $this->purchaseDirectPaidAmount($purchase);
+
+        if ($amount <= 0) {
+            return null;
+        }
+
+        $paymentAccountId = $this->accounting->paymentAccountIdFor($purchase);
+
+        return [
+            'amount' => $amount,
+            'payment_account_id' => $paymentAccountId,
+            'payment_account_label' => $this->paymentAccountLabel($paymentAccountLabels, $paymentAccountId),
+        ];
+    }
+
+    /**
      * @return array<int, array{payment_account_id: int, amount: float}>
      */
     public function supplierPaymentLinesForPurchase(Purchase $purchase): array
@@ -457,6 +608,18 @@ class PartyPaymentAllocationService
             'payment_account_id' => $paymentAccountId,
             'amount' => $sellOnlyPaid,
         ]];
+    }
+
+    /**
+     * @param  Collection<int, array{id: int, label: string}>|null  $paymentAccountLabels
+     */
+    private function paymentAccountLabel(?Collection $paymentAccountLabels, ?int $paymentAccountId): ?string
+    {
+        if ($paymentAccountId === null || $paymentAccountLabels === null) {
+            return null;
+        }
+
+        return $paymentAccountLabels->get($paymentAccountId)['label'] ?? null;
     }
 
     /**

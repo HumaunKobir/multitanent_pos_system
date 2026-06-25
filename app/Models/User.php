@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\AdminNavigation;
 use App\Traits\HasBranch;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
@@ -95,5 +96,35 @@ class User extends Authenticatable
     public function transactionLogs(): MorphMany
     {
         return $this->morphMany(Transaction::class, 'transactionable');
+    }
+
+    public function defaultLandingUrl(): string
+    {
+        $navigation = app(AdminNavigation::class)->build($this);
+
+        foreach ($navigation as $section) {
+            if (($section['single'] ?? false) && ! empty($section['href'])) {
+                if (($section['title'] ?? '') === 'Dashboard' && ! $this->can('dashboard.view')) {
+                    continue;
+                }
+
+                return $section['href'];
+            }
+
+            $firstChildHref = $section['children'][0]['href'] ?? null;
+
+            if ($firstChildHref !== null) {
+                return $firstChildHref;
+            }
+        }
+
+        return $this->usesBranchPanel()
+            ? route('branch-panel.dashboard')
+            : route('dashboard');
+    }
+
+    public function defaultLandingPath(): string
+    {
+        return parse_url($this->defaultLandingUrl(), PHP_URL_PATH) ?: '/';
     }
 }

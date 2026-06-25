@@ -384,3 +384,59 @@ test('customer due collection index includes payment account from journal', func
             ->where('payments.data.0.payment_account_id', $cash->id)
             ->where('payments.data.0.payment_account_label', fn ($label) => is_string($label) && $label !== ''));
 });
+
+test('sell show reflects customer due collection with updated due and payment details', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerDueCollectionUser([
+        'party.customer-due-collection.create',
+        'party.customer-due-collection.view',
+        'inventory.sell.create',
+        'inventory.sell.view',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+    ]);
+
+    $sell = customerDueSale($user, $customer);
+    $invoiceDue = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
+    $collectionAmount = min(2000, $invoiceDue);
+
+    $this->actingAs($user)
+        ->post('/party/customer-due-collection', [
+            'customer_id' => $customer->id,
+            'date' => '2026-06-07',
+            'payment_account_id' => $cash->id,
+            'allocations' => [
+                ['sell_id' => $sell->id, 'amount' => $collectionAmount],
+            ],
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    $sell->refresh();
+    $remainingDue = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
+
+    $this->actingAs($user)
+        ->get(route('inventory.sell.show', $sell))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/inventory/sell/show')
+            ->where('sell.paid_amount', (string) number_format($collectionAmount, 2, '.', ''))
+            ->has('sell.collection_payment_details', 1)
+            ->where('sell.collection_payment_details.0.amount', fn ($amount) => abs((float) $amount - $collectionAmount) < 0.01)
+            ->where('sell.collection_payment_details.0.payment_account_id', $cash->id));
+
+    $this->actingAs($user)
+        ->get(route('party.customer-due-collection.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/inventory/customer-due-collection/index')
+            ->has('payments.data', 1)
+            ->where('payments.data.0.allocations.0.amount', $collectionAmount)
+            ->where('payments.data.0.allocations.0.document.paid_amount', $collectionAmount)
+            ->where('payments.data.0.allocations.0.document.due_amount', fn ($due) => abs((float) $due - $remainingDue) < 0.01));
+});

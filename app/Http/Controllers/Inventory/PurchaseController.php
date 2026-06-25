@@ -250,8 +250,17 @@ class PurchaseController extends Controller
             $purchase->branch->logo_url = StorageUrl::public($purchase->branch->logo);
         }
 
+        $paymentAccountLabels = collect($this->paymentAccounts())->keyBy('id');
+
         return Inertia::render('admin/inventory/purchase/show', [
-            'purchase' => $purchase,
+            'purchase' => [
+                ...$purchase->toArray(),
+                'supplier' => $purchase->supplier,
+                'branch' => $purchase->branch,
+                'purchase_products' => $purchase->purchaseProducts,
+                'direct_payment' => $this->allocations->purchaseDirectPaymentForView($purchase, $paymentAccountLabels),
+                'supplier_payment_details' => $this->allocations->supplierAllocationDetailsForPurchase($purchase, $paymentAccountLabels),
+            ],
         ]);
     }
 

@@ -5,6 +5,7 @@ import {
     InvoiceShowHeader,
     PartyInfoCard,
 } from '@/components/inventory/invoice-show-layout';
+import { DocumentPaymentBreakdown } from '@/components/inventory/document-payment-breakdown';
 import { route } from '@/lib/route';
 import { buildSellPosPrintPayload, posPrint } from '@/lib/pos-print';
 import { computeSellDisplayGross, computeSellNetAmount } from '@/lib/pos-discount';
@@ -56,9 +57,11 @@ export default function SellShow({ sell }) {
     });
     const paid = parseFloat(sell.paid_amount ?? 0);
     const paymentLines = sell.payments ?? [];
-    const { dueAmount, changeAmount } = computeSplitSalePayment(paymentLines, net);
-    const due = dueAmount;
-    const change = changeAmount;
+    const collectionDetails = sell.collection_payment_details ?? [];
+    const posPayment = computeSplitSalePayment(paymentLines, net);
+    const due = Math.max(0, net - paid);
+    const change = posPayment.changeAmount;
+    const hasPosPayments = paymentLines.length > 0;
     const { canEdit } = resolveSellEditAccess({ netAmount: net, paidAmount: paid, dueAmount: due });
     const actionClass = headerActionClassName();
 
@@ -177,7 +180,12 @@ export default function SellShow({ sell }) {
                     }
                 />
 
-                {paymentLines.length > 0 && (
+                <DocumentPaymentBreakdown
+                    partyPayments={collectionDetails}
+                    partyPaymentLabel="Due Collection"
+                />
+
+                {hasPosPayments && (
                     <div className="mx-auto mt-3 max-w-4xl border border-blue-200 bg-white p-3 shadow-sm">
                         <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-blue-950">Payment Breakdown</h3>
                         <div className="space-y-1 text-sm">

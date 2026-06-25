@@ -5,7 +5,7 @@ import { SalesTrendChart } from '@/components/dashboard/sales-trend-chart';
 import { SellReportPanel } from '@/components/dashboard/sell-report-panel';
 import { StatTile } from '@/components/dashboard/stat-tile';
 import { MoneyCell } from '@/pages/admin/reports/_shared/report-shell';
-import { Head, usePage } from '@inertiajs/react';
+import { Head } from '@inertiajs/react';
 import { Building2, CircleDollarSign, ReceiptText, TrendingUp } from 'lucide-react';
 
 function formatCountSub(kpi) {
@@ -16,32 +16,7 @@ function formatExpenseSub(kpi) {
     return `${kpi?.count ?? 0} voucher(s)`;
 }
 
-function WelcomePage() {
-    const { auth, name: siteName } = usePage().props;
-    const userName = auth?.user?.name ?? 'User';
-    const now = new Date();
-    const hour = now.getHours();
-    const greeting = hour < 12 ? 'Good Morning' : hour < 17 ? 'Good Afternoon' : 'Good Evening';
-
-    return (
-        <div className="flex min-h-[72vh] flex-col items-center justify-center px-4">
-            <div className="w-full max-w-md overflow-hidden border border-border bg-card shadow-lg">
-                <div className="h-1.5 w-full bg-linear-to-r from-blue-950 via-blue-700 to-blue-500" />
-                <div className="px-8 py-8 text-center">
-                    <p className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{greeting}</p>
-                    <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground">Welcome, {userName}</h1>
-                    <div className="my-6 h-px w-full bg-border" />
-                    <p className="text-sm text-muted-foreground">You are logged in to {siteName ?? 'Admin Panel'}.</p>
-                    <p className="mt-3 text-sm text-muted-foreground">
-                        No dashboard access assigned yet. Use the sidebar to open modules your role allows.
-                    </p>
-                </div>
-            </div>
-        </div>
-    );
-}
-
-export default function AdminDashboard({ today, kpis, branchSales, salesTrend, collection, sellReport, limitedAccess = false }) {
+export default function AdminDashboard({ today, kpis, branchSales, salesTrend, collection, sellReport }) {
     const todaySales = kpis?.today_sales ?? {};
     const monthSales = kpis?.month_sales ?? {};
     const todayExpenses = kpis?.today_expenses ?? {};
@@ -52,10 +27,6 @@ export default function AdminDashboard({ today, kpis, branchSales, salesTrend, c
             <Head title="Dashboard" />
 
             <DashboardShell title="Admin Dashboard" subtitle="Overview across all branches" today={today}>
-                {limitedAccess ? (
-                    <WelcomePage />
-                ) : (
-                    <>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                     <StatTile
                         label="Today Sales"
@@ -157,8 +128,6 @@ export default function AdminDashboard({ today, kpis, branchSales, salesTrend, c
                         </table>
                     </div>
                 </div>
-                    </>
-                )}
             </DashboardShell>
         </>
     );

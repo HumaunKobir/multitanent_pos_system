@@ -31,7 +31,7 @@ class InventoryAccountingService
 {
     public function __construct(private InventoryCostService $costService) {}
 
-    public function postPurchase(Purchase $purchase, ?int $paymentAccountId): Transaction
+    public function postPurchase(Purchase $purchase, ?int $paymentAccountId): ?Transaction
     {
         $purchase->loadMissing('supplier:id,name');
 
@@ -43,9 +43,11 @@ class InventoryAccountingService
         $supplierName = $purchase->supplier?->name ?? 'Supplier';
         $serial = $purchase->serial ?? ('#'.$purchase->id);
 
-        $lines = [
-            $this->debitLine(SystemAccountKey::ProductInventory, $inventoryTotal, "Inventory increased — Purchase {$serial}, Supplier: {$supplierName}"),
-        ];
+        $lines = [];
+
+        if ($inventoryTotal > 0) {
+            $lines[] = $this->debitLine(SystemAccountKey::ProductInventory, $inventoryTotal, "Inventory increased — Purchase {$serial}, Supplier: {$supplierName}");
+        }
 
         if ($paidAmount > 0) {
             $lines[] = $this->creditPaymentAccount($paymentAccountId, $paidAmount, "Cash paid — Purchase {$serial}");
@@ -53,6 +55,10 @@ class InventoryAccountingService
 
         if ($dueAmount > 0) {
             $lines[] = $this->creditLine(SystemAccountKey::SupplierPayables, $dueAmount, "Supplier payable — Purchase {$serial}, {$supplierName}");
+        }
+
+        if ($lines === []) {
+            return null;
         }
 
         return $this->postJournal(

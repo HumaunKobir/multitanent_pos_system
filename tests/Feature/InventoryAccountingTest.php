@@ -88,6 +88,51 @@ test('purchase posts balanced journal with inventory and payable lines', functio
     expect((float) $supplier->balance)->toBe(550.0);
 });
 
+test('purchase with full discount creates no journal entry', function () {
+    $this->artisan('permissions:sync');
+
+    $user = accountingUser(['inventory.purchase.create']);
+    seedAccountingAccounts(branchId: $user->branch_id);
+
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+    ]);
+
+    $product = Product::factory()->create(['branch_id' => $user->branch_id]);
+
+    $this->actingAs($user)
+        ->post('/inventory/purchase', [
+            'supplier_id' => $supplier->id,
+            'date' => now()->format('Y-m-d'),
+            'discount' => '1000',
+            'vat' => '0',
+            'paid_amount' => '0',
+            'payment_account_id' => null,
+            'comment' => null,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '1000',
+                    'quantity' => '1',
+                    'free_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase.index'));
+
+    $purchase = Purchase::query()->latest('id')->first();
+    expect($purchase)->not->toBeNull();
+
+    $transaction = Transaction::query()
+        ->where('source_type', Purchase::class)
+        ->where('source_id', $purchase->id)
+        ->first();
+
+    expect($transaction)->toBeNull();
+});
+
 test('supplier payment posts payable debit and cash credit', function () {
     $this->artisan('permissions:sync');
 

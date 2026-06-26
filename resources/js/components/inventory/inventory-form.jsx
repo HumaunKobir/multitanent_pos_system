@@ -1,11 +1,8 @@
 import { route } from '@/lib/route';
-import { computeSplitSalePayment } from '@/lib/sale-payment';
 import { Link } from '@inertiajs/react';
 import { ArrowLeft, MessageSquare, Percent, Search } from 'lucide-react';
-import { useState } from 'react';
 
 import { RequiredMark } from '@/components/form-field';
-import { SalePaymentLines } from '@/components/inventory/sale-payment-lines';
 import { Button } from '@/components/ui/button';
 import { dateInputRightIconClassName } from '@/components/ui/date-kit';
 import { Input } from '@/components/ui/input';
@@ -195,14 +192,7 @@ export function SaleReturnRefundCard({
     subtotalAmount = null,
     discountAmount = 0,
     parentPaymentInfo = null,
-    maxRefundAmount = 0,
-    payments = [],
-    onPaymentsChange,
-    paymentAccounts = [],
-    errors = {},
 }) {
-    const { totalPaid } = computeSplitSalePayment(payments, maxRefundAmount);
-    const dueReduction = Math.max(0, grossAmount - totalPaid);
     const showDiscountBreakdown = subtotalAmount != null && discountAmount > 0.009;
 
     return (
@@ -228,55 +218,25 @@ export function SaleReturnRefundCard({
                 {parentPaymentInfo && (parentPaymentInfo.paid > 0.009 || parentPaymentInfo.due > 0.009) && (
                     <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] leading-relaxed text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">
                         Original sale paid ৳{parentPaymentInfo.paid.toFixed(2)}
-                        {parentPaymentInfo.due > 0.009 ? ` · due ৳${parentPaymentInfo.due.toFixed(2)}` : ''}. Refund
-                        cannot exceed the paid portion; remaining return value reduces customer due.
+                        {parentPaymentInfo.due > 0.009 ? ` · due ৳${parentPaymentInfo.due.toFixed(2)}` : ''}. Return
+                        value will reduce customer due.
                     </div>
                 )}
-                    <SalePaymentLines
-                        payments={payments}
-                        paymentAccounts={paymentAccounts}
-                        netAmount={maxRefundAmount}
-                        onChange={onPaymentsChange}
-                        errors={errors}
-                        inputClassName={inputCls}
-                        compact
-                        hideSummary
-                    />
-                ) : (
-                    <p className="text-[10px] text-muted-foreground">
-                        No cash refund — return value will reduce customer due.
-                    </p>
-                )}
-
-                {maxRefundAmount > 0.009 && (
-                    <>
-                        <div className="flex justify-between border-t border-border pt-2">
-                            <span className="text-muted-foreground">Cash Refund</span>
-                            <span className="font-semibold">৳{totalPaid.toFixed(2)}</span>
-                        </div>
-                        {dueReduction > 0.009 && (
-                            <div className="flex justify-between text-destructive">
-                                <span>Reduces Due</span>
-                                <span className="font-semibold">৳{dueReduction.toFixed(2)}</span>
-                            </div>
-                        )}
-                    </>
-                )}
-
-                {errors.paid_amount && <p className="text-xs text-destructive">{errors.paid_amount}</p>}
-                {errors.payments && <p className="text-xs text-destructive">{errors.payments}</p>}
             </div>
         </InventoryCard>
     );
 }
 
-const EDITABLE_RETURN_DISCOUNT_KEYS = ['invoice', 'special', 'roundOff', 'coin'];
+const EDITABLE_RETURN_DISCOUNT_KEYS = ['invoice', 'roundOff', 'coin'];
 
 export function SaleReturnSourceDiscounts({
     sellDiscounts,
     returnSummary,
     manualDiscounts = {},
     onManualDiscountChange,
+    specialDiscounts = [],
+    selectedSpecialDiscountId,
+    onSpecialDiscountIdChange,
 }) {
     if (!sellDiscounts) {
         return null;
@@ -313,6 +273,36 @@ export function SaleReturnSourceDiscounts({
                     const isEditable = EDITABLE_RETURN_DISCOUNT_KEYS.includes(row.key);
                     const autoVal = parseFloat(auto[row.key] || ret[row.key] || 0);
                     const retVal = parseFloat(ret[row.key] || 0);
+
+                    if (row.key === 'special') {
+                        const computedSpecial = parseFloat(ret.special || 0);
+                        return (
+                            <div key={row.key} className="grid grid-cols-3 items-center gap-2">
+                                <span className="text-muted-foreground">{row.label}</span>
+                                <span className="text-right">৳{parseFloat(row.sale || 0).toFixed(2)}</span>
+                                <div className="flex flex-col items-end gap-0.5">
+                                    <select
+                                        value={selectedSpecialDiscountId ?? ''}
+                                        onChange={(e) => onSpecialDiscountIdChange?.(e.target.value || null)}
+                                        className="h-7 w-full rounded-md border border-border/60 bg-background px-2 text-xs focus:border-primary focus:ring-[3px] focus:ring-ring/50"
+                                    >
+                                        <option value="">— None —</option>
+                                        {specialDiscounts.map((d) => (
+                                            <option key={d.id} value={String(d.id)}>
+                                                {d.name}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    {computedSpecial > 0.009 && (
+                                        <span className="text-[10px] text-muted-foreground">
+                                            ৳{computedSpecial.toFixed(2)}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    }
+
                     return (
                         <div key={row.key} className="grid grid-cols-3 items-center gap-2">
                             <span className="text-muted-foreground">{row.label}</span>

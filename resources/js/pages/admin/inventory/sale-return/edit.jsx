@@ -13,7 +13,6 @@ import {
     inputCls,
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
-import { computeSplitSalePayment, serializeSalePayments, splitPaymentValidationError } from '@/lib/sale-payment';
 import { calcSaleReturnSummary } from '@/lib/sale-return-summary';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
@@ -22,7 +21,7 @@ import { useEffect, useState } from 'react';
 
 import { Input } from '@/components/ui/input';
 
-export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
+export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], specialDiscounts = [] }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const [items, setItems] = useState(saleReturn.items ?? []);
@@ -37,26 +36,25 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
         const sd = saleReturn.sell_discounts ?? {};
         return {
             invoice: parseFloat(sd.invoice_discount || 0) > 0 ? String(parseFloat(sd.invoice_discount).toFixed(2)) : null,
-            special: parseFloat(sd.special_discount_amount || 0) > 0 ? String(parseFloat(sd.special_discount_amount).toFixed(2)) : null,
             roundOff: parseFloat(sd.round_off_amount || 0) > 0 ? String(parseFloat(sd.round_off_amount).toFixed(2)) : null,
         };
     })();
 
-    const [manualDiscounts, setManualDiscounts] = useState(initialManualDiscounts);
+    const initialSpecialDiscountId = (() => {
+        const sd = saleReturn.sell_discounts ?? {};
+        const sdId = sd.special_discount_id;
+        const inList = sdId && specialDiscounts.find((d) => String(d.id) === String(sdId));
+        return inList ? String(sdId) : null;
+    })();
 
-    const initialPayments = saleReturn.refund_payments?.length
-        ? saleReturn.refund_payments.map((p) => ({
-              payment_account_id: String(p.payment_account_id),
-              amount: String(parseFloat(p.amount || 0).toFixed(2)),
-          }))
-        : [{ payment_account_id: paymentAccounts[0] ? String(paymentAccounts[0].id) : '', amount: String(parseFloat(saleReturn.paid_amount || 0).toFixed(2)) }];
+    const [manualDiscounts, setManualDiscounts] = useState(initialManualDiscounts);
+    const [selectedSpecialDiscountId, setSelectedSpecialDiscountId] = useState(initialSpecialDiscountId);
 
     const form = useForm({
         date: saleReturn.date ?? '',
         comment: saleReturn.comment ?? '',
-        paid_amount: saleReturn.paid_amount ?? '0',
-        payment_type: String(saleReturn.payment_type ?? '0'),
-        payments: initialPayments,
+        paid_amount: '0',
+        payment_type: '5',
         items: [],
     });
 
@@ -66,7 +64,10 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
     }, [flash?.success, flash?.error]);
 
     const returnSummary = saleReturn.sell_discounts
-        ? calcSaleReturnSummary(items, saleReturn.sell_discounts, returnContext, manualDiscounts)
+        ? calcSaleReturnSummary(items, saleReturn.sell_discounts, { ...returnContext, specialDiscounts }, {
+              ...manualDiscounts,
+              specialDiscountId: selectedSpecialDiscountId,
+          })
         : null;
 
     function updateReturnQty(index, rawValue) {
@@ -80,17 +81,6 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
 
     function handleManualDiscountChange(key, value) {
         setManualDiscounts((prev) => ({ ...prev, [key]: value }));
-    }
-
-    function handlePaymentsChange(payments) {
-        const maxRefund = returnSummary?.suggestedPaid ?? 0;
-        const { totalPaid } = computeSplitSalePayment(payments, maxRefund);
-        form.setData({
-            ...form.data,
-            payments,
-            paid_amount: totalPaid.toFixed(2),
-            payment_type: totalPaid > 0 ? '0' : '5',
-        });
     }
 
     function handleSubmit(e) {
@@ -113,24 +103,13 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
             return;
         }
 
-        const paymentError = splitPaymentValidationError(form.data.payments);
-        if (paymentError) {
-            toast.error(paymentError);
-            return;
-        }
-
-        const maxRefund = returnSummary?.suggestedPaid ?? 0;
-        const { totalPaid } = computeSplitSalePayment(form.data.payments, maxRefund);
-        const serializedPayments = serializeSalePayments(form.data.payments);
-
         form.transform((data) => ({
             ...data,
-            paid_amount: String(totalPaid),
-            payment_type: totalPaid > 0 ? '0' : '5',
-            payments: serializedPayments.length > 0 ? serializedPayments : undefined,
+            paid_amount: '0',
+            payment_type: '5',
             items: returnItems,
             manual_invoice_discount: manualDiscounts.invoice != null ? String(parseFloat(manualDiscounts.invoice || 0)) : undefined,
-            manual_special_discount: manualDiscounts.special != null ? String(parseFloat(manualDiscounts.special || 0)) : undefined,
+            manual_special_discount: selectedSpecialDiscountId !== undefined ? String(parseFloat(returnSummary?.returnDiscounts.special ?? 0)) : undefined,
             manual_round_off: manualDiscounts.roundOff != null ? String(parseFloat(manualDiscounts.roundOff || 0)) : undefined,
             manual_coin_discount: manualDiscounts.coin != null && manualDiscounts.coin !== '' ? String(manualDiscounts.coin) : undefined,
         }));
@@ -220,6 +199,9 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
                             returnSummary={returnSummary}
                             manualDiscounts={manualDiscounts}
                             onManualDiscountChange={handleManualDiscountChange}
+                            specialDiscounts={specialDiscounts}
+                            selectedSpecialDiscountId={selectedSpecialDiscountId}
+                            onSpecialDiscountIdChange={setSelectedSpecialDiscountId}
                         />
                     )}
 
@@ -239,11 +221,6 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
                                     ? { paid: returnSummary.parentPaid, due: returnSummary.parentDue }
                                     : null
                             }
-                            maxRefundAmount={returnSummary?.suggestedPaid ?? 0}
-                            payments={form.data.payments}
-                            onPaymentsChange={handlePaymentsChange}
-                            paymentAccounts={paymentAccounts}
-                            errors={form.errors}
                         />
                     </div>
 

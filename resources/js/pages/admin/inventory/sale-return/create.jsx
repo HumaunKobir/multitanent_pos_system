@@ -14,7 +14,6 @@ import {
     inputCls,
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
-import { computeSplitSalePayment, serializeSalePayments, splitPaymentValidationError } from '@/lib/sale-payment';
 import { calcSaleReturnSummary } from '@/lib/sale-return-summary';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
@@ -23,7 +22,7 @@ import { useState } from 'react';
 
 import { Input } from '@/components/ui/input';
 
-export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
+export default function SaleReturnCreate({ today, paymentAccounts = [], specialDiscounts = [] }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const [source, setSource] = useState(null);
@@ -31,14 +30,14 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
     const [lookupError, setLookupError] = useState('');
     const [items, setItems] = useState([]);
     const [manualDiscounts, setManualDiscounts] = useState({});
+    const [selectedSpecialDiscountId, setSelectedSpecialDiscountId] = useState(undefined);
 
     const form = useForm({
         sell_id: '',
         date: today,
         comment: '',
         paid_amount: '0',
-        payment_type: '0',
-        payments: [{ payment_account_id: '', amount: '0' }],
+        payment_type: '5',
         items: [],
     });
 
@@ -47,11 +46,15 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
             promotions: json.promotions ?? [],
             saleDate: json.date,
             coinSettings: json.coin_settings,
+            specialDiscounts,
         };
     }
 
     const returnSummary = source?.sell_discounts
-        ? calcSaleReturnSummary(items, source.sell_discounts, returnContextFromSource(source), manualDiscounts)
+        ? calcSaleReturnSummary(items, source.sell_discounts, returnContextFromSource(source), {
+              ...manualDiscounts,
+              specialDiscountId: selectedSpecialDiscountId,
+          })
         : null;
 
     async function lookupSale() {
@@ -87,18 +90,15 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
         const sd = json.sell_discounts ?? {};
         const initialManual = {
             invoice: parseFloat(sd.invoice_discount || 0) > 0 ? String(parseFloat(sd.invoice_discount).toFixed(2)) : null,
-            special: parseFloat(sd.special_discount_amount || 0) > 0 ? String(parseFloat(sd.special_discount_amount).toFixed(2)) : null,
             roundOff: parseFloat(sd.round_off_amount || 0) > 0 ? String(parseFloat(sd.round_off_amount).toFixed(2)) : null,
         };
-        const salePayments = (json.payments ?? []).filter((p) => parseFloat(p.amount || 0) > 0.009);
-        const initialPayments =
-            salePayments.length > 0
-                ? salePayments.map((p) => ({ payment_account_id: String(p.payment_account_id), amount: '0' }))
-                : [{ payment_account_id: paymentAccounts[0] ? String(paymentAccounts[0].id) : '', amount: '0' }];
+        const saleSpecialDiscountId = sd.special_discount_id;
+        const inList = saleSpecialDiscountId && specialDiscounts.find((d) => String(d.id) === String(saleSpecialDiscountId));
         setSource(json);
         setItems(lines);
         setManualDiscounts(initialManual);
-        form.setData({ ...form.data, sell_id: String(json.id), paid_amount: '0', payment_type: '5', payments: initialPayments });
+        setSelectedSpecialDiscountId(inList ? String(saleSpecialDiscountId) : null);
+        form.setData({ ...form.data, sell_id: String(json.id), paid_amount: '0', payment_type: '5' });
     }
 
     function updateReturnQty(index, rawValue) {
@@ -112,17 +112,6 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
 
     function handleManualDiscountChange(key, value) {
         setManualDiscounts((prev) => ({ ...prev, [key]: value }));
-    }
-
-    function handlePaymentsChange(payments) {
-        const maxRefund = returnSummary?.suggestedPaid ?? 0;
-        const { totalPaid } = computeSplitSalePayment(payments, maxRefund);
-        form.setData({
-            ...form.data,
-            payments,
-            paid_amount: totalPaid.toFixed(2),
-            payment_type: totalPaid > 0 ? '0' : '5',
-        });
     }
 
     function handleSubmit(e) {
@@ -145,24 +134,13 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
             return;
         }
 
-        const paymentError = splitPaymentValidationError(form.data.payments);
-        if (paymentError) {
-            toast.error(paymentError);
-            return;
-        }
-
-        const maxRefund = returnSummary?.suggestedPaid ?? 0;
-        const { totalPaid } = computeSplitSalePayment(form.data.payments, maxRefund);
-        const serializedPayments = serializeSalePayments(form.data.payments);
-
         form.transform((data) => ({
             ...data,
-            paid_amount: String(totalPaid),
-            payment_type: totalPaid > 0 ? '0' : '5',
-            payments: serializedPayments.length > 0 ? serializedPayments : undefined,
+            paid_amount: '0',
+            payment_type: '5',
             items: returnItems,
             manual_invoice_discount: manualDiscounts.invoice != null ? String(parseFloat(manualDiscounts.invoice || 0)) : undefined,
-            manual_special_discount: manualDiscounts.special != null ? String(parseFloat(manualDiscounts.special || 0)) : undefined,
+            manual_special_discount: selectedSpecialDiscountId !== undefined ? String(parseFloat(returnSummary?.returnDiscounts.special ?? 0)) : undefined,
             manual_round_off: manualDiscounts.roundOff != null ? String(parseFloat(manualDiscounts.roundOff || 0)) : undefined,
             manual_coin_discount: manualDiscounts.coin != null && manualDiscounts.coin !== '' ? String(manualDiscounts.coin) : undefined,
         }));
@@ -261,6 +239,9 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                             returnSummary={returnSummary}
                             manualDiscounts={manualDiscounts}
                             onManualDiscountChange={handleManualDiscountChange}
+                            specialDiscounts={specialDiscounts}
+                            selectedSpecialDiscountId={selectedSpecialDiscountId}
+                            onSpecialDiscountIdChange={setSelectedSpecialDiscountId}
                         />
                     )}
 
@@ -280,11 +261,6 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                                     ? { paid: returnSummary.parentPaid, due: returnSummary.parentDue }
                                     : null
                             }
-                            maxRefundAmount={returnSummary?.suggestedPaid ?? 0}
-                            payments={form.data.payments}
-                            onPaymentsChange={handlePaymentsChange}
-                            paymentAccounts={paymentAccounts}
-                            errors={form.errors}
                         />
                     </div>
 

@@ -12,6 +12,7 @@ use App\Models\Customer;
 use App\Models\Promotion;
 use App\Models\SaleReturn;
 use App\Models\Sell;
+use App\Models\SpecialDiscount;
 use App\Services\CoinService;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
@@ -68,6 +69,7 @@ class SaleReturnController extends Controller
         return Inertia::render('admin/inventory/sale-return/create', [
             'today' => now()->format('Y-m-d'),
             'paymentAccounts' => $this->paymentAccounts(),
+            'specialDiscounts' => $this->activeSpecialDiscounts(Auth::user()?->branch_id),
         ]);
     }
 
@@ -318,6 +320,7 @@ class SaleReturnController extends Controller
         return Inertia::render('admin/inventory/sale-return/edit', [
             'today' => now()->format('Y-m-d'),
             'paymentAccounts' => $this->paymentAccounts(),
+            'specialDiscounts' => $this->activeSpecialDiscounts($parent->branch_id),
             'saleReturn' => [
                 'id' => $saleReturn->id,
                 'sell_id' => $saleReturn->sell_id,
@@ -342,6 +345,7 @@ class SaleReturnController extends Controller
                     'gross_amount' => (float) $parent->gross_amount,
                     'line_discount_total' => $parent->lineDiscountTotal(),
                     'invoice_discount' => (float) $parent->discount,
+                    'special_discount_id' => $parent->special_discount_id,
                     'special_discount_amount' => (float) $parent->special_discount_amount,
                     'promotion_discount_total' => (float) $parent->promotion_discount_total,
                     'coin_discount_amount' => (float) $parent->coin_discount_amount,
@@ -551,6 +555,26 @@ class SaleReturnController extends Controller
 
         return redirect()->route('inventory.sale-return.index')
             ->with('success', 'Sale return deleted successfully.');
+    }
+
+    /** @return array<int, array<string, mixed>> */
+    private function activeSpecialDiscounts(?int $branchId): array
+    {
+        return SpecialDiscount::query()
+            ->active()
+            ->when($branchId, fn ($q, $b) => $q->accessibleAtBranch($b))
+            ->orderBy('min_amount')
+            ->get(['id', 'name', 'min_amount', 'max_amount', 'discount_type', 'discount_value'])
+            ->map(fn (SpecialDiscount $d) => [
+                'id' => $d->id,
+                'name' => $d->name,
+                'min_amount' => (float) $d->min_amount,
+                'max_amount' => $d->max_amount !== null ? (float) $d->max_amount : null,
+                'discount_type' => $d->discount_type->value,
+                'discount_value' => (float) $d->discount_value,
+            ])
+            ->values()
+            ->all();
     }
 
     private function rollbackSaleReturn(SaleReturn $saleReturn): void

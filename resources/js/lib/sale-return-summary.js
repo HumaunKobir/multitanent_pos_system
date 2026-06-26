@@ -1,4 +1,5 @@
 import { computeCoinDiscount, maxRedeemableCoins } from '@/lib/pos-coin';
+import { computeDiscountAmount } from '@/lib/pos-discount';
 import { applyPromotionsToCart, remainingQuantityKeepsPromotion } from '@/lib/pos-promotion';
 
 function parentNetBeforeCoin(sellDiscounts) {
@@ -112,7 +113,7 @@ function coinDiscountClawback(sellDiscounts, coinSettings, returnNetBeforeCoin) 
 
 export function calcSaleReturnSummary(lines, sellDiscounts, context = {}, manualOverrides = {}) {
     const sd = sellDiscounts;
-    const { promotions = [], saleDate = null, coinSettings = null } = context;
+    const { promotions = [], saleDate = null, coinSettings = null, specialDiscounts = [] } = context;
     const parentGross = parseFloat(sd.gross_amount || 0);
     const parentLineDiscount = parseFloat(sd.line_discount_total || 0);
     const parentNetForProportion = parentGross - parentLineDiscount;
@@ -139,19 +140,29 @@ export function calcSaleReturnSummary(lines, sellDiscounts, context = {}, manual
     const autoSpecial = proportion * parseFloat(sd.special_discount_amount || 0);
     const autoRoundOff = proportion * parseFloat(sd.round_off_amount || 0);
 
-    // invoice/special/roundOff: null → auto proportional; '' or number → manual ('' treated as 0 via `|| 0` fallback)
+    // invoice/roundOff: null → auto proportional; '' or number → manual ('' treated as 0 via `|| 0` fallback)
+    // specialDiscountId: undefined → auto proportional; null → 0 (none); string id → compute from discount
     // coin: null or '' → auto clawback; number → manual
     const returnInvoiceDiscount =
         manualOverrides.invoice != null
             ? Math.min(Math.max(0, parseFloat(manualOverrides.invoice || 0)), parseFloat(sd.invoice_discount || 0))
             : autoInvoice;
-    const returnSpecialDiscount =
-        manualOverrides.special != null
+    const returnSpecialDiscount = (() => {
+        const sdId = manualOverrides.specialDiscountId;
+        if (sdId === undefined) {
+            return autoSpecial;
+        }
+        if (!sdId) {
+            return 0;
+        }
+        const disc = specialDiscounts.find((d) => String(d.id) === String(sdId));
+        return disc
             ? Math.min(
-                  Math.max(0, parseFloat(manualOverrides.special || 0)),
+                  computeDiscountAmount(disc.discount_type, disc.discount_value, returnAfterPromo),
                   parseFloat(sd.special_discount_amount || 0),
               )
-            : autoSpecial;
+            : 0;
+    })();
     const returnRoundOff =
         manualOverrides.roundOff != null
             ? Math.min(Math.max(0, parseFloat(manualOverrides.roundOff || 0)), parseFloat(sd.round_off_amount || 0))
@@ -173,10 +184,8 @@ export function calcSaleReturnSummary(lines, sellDiscounts, context = {}, manual
         coin: returnCoinDiscount,
         roundOff: returnRoundOff,
     };
-    // Auto-calculated values used as input placeholders when no manual override is set
     const autoDiscounts = {
         invoice: autoInvoice,
-        special: autoSpecial,
         roundOff: autoRoundOff,
         coin: autoCoinDiscount,
     };

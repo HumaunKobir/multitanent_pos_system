@@ -16,7 +16,7 @@ use Tests\TestCase;
 
 uses(TestCase::class);
 
-test('promotion clawback removes min qty discount when return drops below threshold', function () {
+test('promotion clawback is zero when return qty is below the promotion min qty threshold', function () {
     $branch = Branch::factory()->create();
     $user = User::factory()->create(['branch_id' => $branch->id]);
     $product = Product::factory()->create([
@@ -60,7 +60,9 @@ test('promotion clawback removes min qty discount when return drops below thresh
 
     $service = app(SaleReturnDiscountService::class);
 
-    expect($service->promotionClawback($line, 2, $sell))->toBe(30.0);
+    // Returning 2 items (< min_qty 3): the return itself doesn't meet the threshold → no clawback
+    expect($service->promotionClawback($line, 2, $sell))->toBe(0.0);
+    // Returning all 3 items (= min_qty 3): meets the threshold → full clawback
     expect($service->promotionClawback($line, 3, $sell))->toBe(30.0);
 });
 

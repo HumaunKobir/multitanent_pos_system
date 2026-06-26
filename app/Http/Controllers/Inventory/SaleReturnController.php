@@ -9,6 +9,7 @@ use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Customer;
+use App\Models\Promotion;
 use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Services\CoinService;
@@ -87,6 +88,10 @@ class SaleReturnController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'manual_invoice_discount' => ['nullable', 'numeric', 'min:0'],
+            'manual_special_discount' => ['nullable', 'numeric', 'min:0'],
+            'manual_round_off' => ['nullable', 'numeric', 'min:0'],
+            'manual_coin_discount' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $branchId = Auth::user()?->branch_id;
@@ -173,6 +178,10 @@ class SaleReturnController extends Controller
                     $grossAmount,
                     $returnLineDiscount,
                     $returnPromotionDiscount,
+                    isset($data['manual_invoice_discount']) ? (float) $data['manual_invoice_discount'] : null,
+                    isset($data['manual_special_discount']) ? (float) $data['manual_special_discount'] : null,
+                    isset($data['manual_round_off']) ? (float) $data['manual_round_off'] : null,
+                    isset($data['manual_coin_discount']) ? (float) $data['manual_coin_discount'] : null,
                 );
                 $discountAmount = $totals['discount_amount'];
                 $netReturnAmount = $totals['net_return_amount'];
@@ -261,13 +270,28 @@ class SaleReturnController extends Controller
         $returnedByLine = $this->returnedQuantities($parent->id, $saleReturn->id);
         $linesOnReturn = $saleReturn->products->keyBy('sell_product_id');
 
+        $promotionIds = $parent->products->pluck('promotion_id')->filter()->unique()->values()->all();
+        $promotionMap = $promotionIds !== []
+            ? Promotion::whereIn('id', $promotionIds)->get()->keyBy('id')
+            : collect();
+
         $items = $parent->products
-            ->map(function ($sp) use ($returnedByLine, $linesOnReturn) {
+            ->map(function ($sp) use ($returnedByLine, $linesOnReturn, $promotionMap) {
                 $maxReturn = max(0, (float) $sp->quantity - ($returnedByLine[$sp->id] ?? 0));
                 $current = $linesOnReturn->get($sp->id);
 
                 if ($maxReturn <= 0 && ! $current) {
                     return null;
+                }
+
+                $promotionDetails = null;
+                if ($sp->promotion_id && $promotionMap->has($sp->promotion_id)) {
+                    $promo = $promotionMap->get($sp->promotion_id);
+                    $promotionDetails = [
+                        'type' => $promo->type->value,
+                        'min_qty' => $promo->min_qty,
+                        'buy_qty' => $promo->buy_qty,
+                    ];
                 }
 
                 return [
@@ -282,6 +306,7 @@ class SaleReturnController extends Controller
                     'line_discount' => (float) $sp->discount,
                     'promotion_discount' => (float) $sp->promotion_discount,
                     'promotion_id' => $sp->promotion_id,
+                    'promotion_details' => $promotionDetails,
                     'sold_quantity' => (float) $sp->quantity,
                     'max_return_quantity' => (int) $maxReturn,
                     'quantity' => $current ? (string) (int) $current->quantity : '0',
@@ -354,6 +379,10 @@ class SaleReturnController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'manual_invoice_discount' => ['nullable', 'numeric', 'min:0'],
+            'manual_special_discount' => ['nullable', 'numeric', 'min:0'],
+            'manual_round_off' => ['nullable', 'numeric', 'min:0'],
+            'manual_coin_discount' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $branchId = Auth::user()?->branch_id;
@@ -447,6 +476,10 @@ class SaleReturnController extends Controller
                     $grossAmount,
                     $returnLineDiscount,
                     $returnPromotionDiscount,
+                    isset($data['manual_invoice_discount']) ? (float) $data['manual_invoice_discount'] : null,
+                    isset($data['manual_special_discount']) ? (float) $data['manual_special_discount'] : null,
+                    isset($data['manual_round_off']) ? (float) $data['manual_round_off'] : null,
+                    isset($data['manual_coin_discount']) ? (float) $data['manual_coin_discount'] : null,
                 );
                 $discountAmount = $totals['discount_amount'];
                 $netReturnAmount = $totals['net_return_amount'];

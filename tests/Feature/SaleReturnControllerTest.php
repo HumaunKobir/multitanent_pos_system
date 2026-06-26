@@ -178,7 +178,7 @@ test('due sale return stores zero refund for unpaid sale', function () {
     expect((float) $saleReturn->net_amount)->toBe(500.0);
 });
 
-test('sale return claws back promotion when return quantity drops below min qty', function () {
+test('sale return claws back promotion only when return qty meets the promotion min qty', function () {
     $user = saleReturnUser();
     seedAccountingAccounts(user: $user);
     ['product' => $product, 'batch' => $batch] = saleReturnProduct(10, $user->branch_id);
@@ -209,6 +209,51 @@ test('sale return claws back promotion when return quantity drops below min qty'
         'branch_id' => $user->branch_id,
         'sell_id' => $sell->id,
         'product_id' => $product->id,
+        'promotion_id' => $promotion->id,
+        'quantity' => 3,
+        'unit_price' => 100,
+        'original_unit_price' => 100,
+        'discount' => 0,
+        'promotion_discount' => 30,
+        'batches' => [(string) $batch->id => 3],
+    ]);
+
+    // Returning 2 items (< min_qty 3): no promotion clawback since return qty < min qty
+    $this->actingAs($user)
+        ->post('/inventory/sale-return', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            'paid_amount' => '200',
+            'payment_type' => '5',
+            'items' => [
+                ['sell_product_id' => $sellProduct->id, 'quantity' => '2'],
+            ],
+        ])
+        ->assertRedirect(route('inventory.sale-return.index'));
+
+    $partialReturn = SaleReturn::query()->latest('id')->first();
+
+    expect((float) $partialReturn->gross_amount)->toBe(200.0);
+    expect((float) $partialReturn->discount_amount)->toBe(0.0);
+    expect((float) $partialReturn->net_amount)->toBe(200.0);
+
+    // Returning all 3 items (= min_qty 3): full promotion clawback
+    $sell2 = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'customer_id' => $customer->id,
+        'gross_amount' => 300,
+        'discount' => 0,
+        'vat' => 0,
+        'paid_amount' => 300,
+        'type' => SaleType::Sale,
+    ]);
+
+    $sellProduct2 = SellProduct::query()->create([
+        'branch_id' => $user->branch_id,
+        'sell_id' => $sell2->id,
+        'product_id' => $product->id,
+        'promotion_id' => $promotion->id,
         'quantity' => 3,
         'unit_price' => 100,
         'original_unit_price' => 100,
@@ -219,21 +264,21 @@ test('sale return claws back promotion when return quantity drops below min qty'
 
     $this->actingAs($user)
         ->post('/inventory/sale-return', [
-            'sell_id' => $sell->id,
+            'sell_id' => $sell2->id,
             'date' => now()->format('Y-m-d'),
             'paid_amount' => '170',
             'payment_type' => '5',
             'items' => [
-                ['sell_product_id' => $sellProduct->id, 'quantity' => '2'],
+                ['sell_product_id' => $sellProduct2->id, 'quantity' => '3'],
             ],
         ])
         ->assertRedirect(route('inventory.sale-return.index'));
 
-    $saleReturn = SaleReturn::query()->latest('id')->first();
+    $fullReturn = SaleReturn::query()->latest('id')->first();
 
-    expect((float) $saleReturn->gross_amount)->toBe(200.0);
-    expect((float) $saleReturn->discount_amount)->toBe(30.0);
-    expect((float) $saleReturn->net_amount)->toBe(170.0);
+    expect((float) $fullReturn->gross_amount)->toBe(300.0);
+    expect((float) $fullReturn->discount_amount)->toBe(30.0);
+    expect((float) $fullReturn->net_amount)->toBe(270.0);
 });
 
 test('sale return applies coin clawback on partial quantity return', function () {

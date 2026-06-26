@@ -35,6 +35,17 @@ class SaleReturnDiscountService
             return 0.0;
         }
 
+        // For promotions with a min_qty threshold: only claw back when the return qty itself
+        // meets or exceeds the minimum. Returning fewer items than the threshold means the
+        // returned portion wasn't individually responsible for triggering the promotion discount.
+        $line->loadMissing('promotion');
+
+        if ($line->promotion !== null && $line->promotion->min_qty !== null) {
+            if ($returnQty < (float) $line->promotion->min_qty) {
+                return 0.0;
+            }
+        }
+
         return round($originalDiscount, 2);
     }
 
@@ -126,6 +137,8 @@ class SaleReturnDiscountService
      *     return_line_discount: float,
      *     return_promotion_discount: float,
      *     return_invoice_discount: float,
+     *     return_special_discount: float,
+     *     return_round_off: float,
      *     return_coin_discount: float,
      *     net_return_amount: float
      * }
@@ -135,6 +148,10 @@ class SaleReturnDiscountService
         float $returnGross,
         float $returnLineDiscount,
         float $returnPromotionDiscount,
+        ?float $manualInvoiceDiscount = null,
+        ?float $manualSpecialDiscount = null,
+        ?float $manualRoundOff = null,
+        ?float $manualCoinDiscount = null,
     ): array {
         $parentGross = (float) $parent->gross_amount;
         $parentLineDiscount = $parent->lineDiscountTotal();
@@ -143,16 +160,27 @@ class SaleReturnDiscountService
         $returnAfterPromo = $returnGross - $returnLineDiscount - $returnPromotionDiscount;
         $proportion = $parentNetForProportion > 0 ? $returnAfterPromo / $parentNetForProportion : 0;
 
-        $invoiceLevelDiscount = (float) $parent->discount
-            + (float) $parent->special_discount_amount
-            + (float) $parent->round_off_amount;
+        $returnInvoiceDiscount = $manualInvoiceDiscount !== null
+            ? round(min(max(0, $manualInvoiceDiscount), (float) $parent->discount), 2)
+            : round($proportion * (float) $parent->discount, 2);
 
-        $returnInvoiceDiscount = round($proportion * $invoiceLevelDiscount, 2);
-        $returnNetBeforeCoin = round(max(0, $returnAfterPromo - $returnInvoiceDiscount), 2);
-        $returnCoinDiscount = $this->coinDiscountClawback($parent, $returnNetBeforeCoin);
+        $returnSpecialDiscount = $manualSpecialDiscount !== null
+            ? round(min(max(0, $manualSpecialDiscount), (float) $parent->special_discount_amount), 2)
+            : round($proportion * (float) $parent->special_discount_amount, 2);
+
+        $returnRoundOff = $manualRoundOff !== null
+            ? round(min(max(0, $manualRoundOff), (float) $parent->round_off_amount), 2)
+            : round($proportion * (float) $parent->round_off_amount, 2);
+
+        $returnInvoiceLevelDiscount = $returnInvoiceDiscount + $returnSpecialDiscount + $returnRoundOff;
+        $returnNetBeforeCoin = round(max(0, $returnAfterPromo - $returnInvoiceLevelDiscount), 2);
+
+        $returnCoinDiscount = $manualCoinDiscount !== null
+            ? round(min(max(0, $manualCoinDiscount), (float) $parent->coin_discount_amount), 2)
+            : $this->coinDiscountClawback($parent, $returnNetBeforeCoin);
 
         $discountAmount = round(
-            $returnLineDiscount + $returnPromotionDiscount + $returnInvoiceDiscount + $returnCoinDiscount,
+            $returnLineDiscount + $returnPromotionDiscount + $returnInvoiceLevelDiscount + $returnCoinDiscount,
             2,
         );
         $netReturnAmount = round(max(0, $returnGross - $discountAmount), 2);
@@ -162,6 +190,8 @@ class SaleReturnDiscountService
             'return_line_discount' => $returnLineDiscount,
             'return_promotion_discount' => $returnPromotionDiscount,
             'return_invoice_discount' => $returnInvoiceDiscount,
+            'return_special_discount' => $returnSpecialDiscount,
+            'return_round_off' => $returnRoundOff,
             'return_coin_discount' => $returnCoinDiscount,
             'net_return_amount' => $netReturnAmount,
         ];

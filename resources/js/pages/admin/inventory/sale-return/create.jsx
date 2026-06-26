@@ -15,7 +15,7 @@ import {
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { computeSplitSalePayment, serializeSalePayments, splitPaymentValidationError } from '@/lib/sale-payment';
-import { buildInitialReturnPayments, calcSaleReturnSummary } from '@/lib/sale-return-summary';
+import { calcSaleReturnSummary } from '@/lib/sale-return-summary';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { CalendarDays, Package, RotateCcw } from 'lucide-react';
@@ -30,6 +30,7 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
     const [invoiceQuery, setInvoiceQuery] = useState('');
     const [lookupError, setLookupError] = useState('');
     const [items, setItems] = useState([]);
+    const [manualDiscounts, setManualDiscounts] = useState({});
 
     const form = useForm({
         sell_id: '',
@@ -41,14 +42,6 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
         items: [],
     });
 
-    const returnSummary = source?.sell_discounts
-        ? calcSaleReturnSummary(items, source.sell_discounts, {
-              promotions: source.promotions ?? [],
-              saleDate: source.date,
-              coinSettings: source.coin_settings,
-          })
-        : null;
-
     function returnContextFromSource(json) {
         return {
             promotions: json.promotions ?? [],
@@ -57,18 +50,9 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
         };
     }
 
-    function syncPaymentState(lines, sellDiscounts, payments, context) {
-        const summary = calcSaleReturnSummary(lines, sellDiscounts, context);
-        const initialPayments = buildInitialReturnPayments(payments, summary.suggestedPaid, paymentAccounts);
-        const { totalPaid } = computeSplitSalePayment(initialPayments, summary.suggestedPaid);
-
-        form.setData({
-            ...form.data,
-            paid_amount: totalPaid.toFixed(2),
-            payment_type: totalPaid > 0 ? '0' : '5',
-            payments: initialPayments,
-        });
-    }
+    const returnSummary = source?.sell_discounts
+        ? calcSaleReturnSummary(items, source.sell_discounts, returnContextFromSource(source), manualDiscounts)
+        : null;
 
     async function lookupSale() {
         setLookupError('');
@@ -96,13 +80,25 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                 line_discount: i.line_discount,
                 promotion_discount: i.promotion_discount,
                 promotion_id: i.promotion_id,
+                promotion_details: i.promotion_details ?? null,
                 unit_price: i.unit_price,
                 quantity: String(i.max_return_quantity),
             }));
+        const sd = json.sell_discounts ?? {};
+        const initialManual = {
+            invoice: parseFloat(sd.invoice_discount || 0) > 0 ? String(parseFloat(sd.invoice_discount).toFixed(2)) : null,
+            special: parseFloat(sd.special_discount_amount || 0) > 0 ? String(parseFloat(sd.special_discount_amount).toFixed(2)) : null,
+            roundOff: parseFloat(sd.round_off_amount || 0) > 0 ? String(parseFloat(sd.round_off_amount).toFixed(2)) : null,
+        };
+        const salePayments = (json.payments ?? []).filter((p) => parseFloat(p.amount || 0) > 0.009);
+        const initialPayments =
+            salePayments.length > 0
+                ? salePayments.map((p) => ({ payment_account_id: String(p.payment_account_id), amount: '0' }))
+                : [{ payment_account_id: paymentAccounts[0] ? String(paymentAccounts[0].id) : '', amount: '0' }];
         setSource(json);
         setItems(lines);
-        form.setData({ ...form.data, sell_id: String(json.id) });
-        syncPaymentState(lines, json.sell_discounts, json.payments, returnContextFromSource(json));
+        setManualDiscounts(initialManual);
+        form.setData({ ...form.data, sell_id: String(json.id), paid_amount: '0', payment_type: '5', payments: initialPayments });
     }
 
     function updateReturnQty(index, rawValue) {
@@ -112,9 +108,10 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
         });
         const nextItems = items.map((it, i) => (i === index ? { ...it, quantity: next } : it));
         setItems(nextItems);
-        if (source?.sell_discounts) {
-            syncPaymentState(nextItems, source.sell_discounts, source.payments, returnContextFromSource(source));
-        }
+    }
+
+    function handleManualDiscountChange(key, value) {
+        setManualDiscounts((prev) => ({ ...prev, [key]: value }));
     }
 
     function handlePaymentsChange(payments) {
@@ -164,6 +161,10 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
             payment_type: totalPaid > 0 ? '0' : '5',
             payments: serializedPayments.length > 0 ? serializedPayments : undefined,
             items: returnItems,
+            manual_invoice_discount: manualDiscounts.invoice != null ? String(parseFloat(manualDiscounts.invoice || 0)) : undefined,
+            manual_special_discount: manualDiscounts.special != null ? String(parseFloat(manualDiscounts.special || 0)) : undefined,
+            manual_round_off: manualDiscounts.roundOff != null ? String(parseFloat(manualDiscounts.roundOff || 0)) : undefined,
+            manual_coin_discount: manualDiscounts.coin != null && manualDiscounts.coin !== '' ? String(manualDiscounts.coin) : undefined,
         }));
         form.post(route('inventory.sale-return.store'), {
             preserveScroll: true,
@@ -258,6 +259,8 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                         <SaleReturnSourceDiscounts
                             sellDiscounts={source.sell_discounts}
                             returnSummary={returnSummary}
+                            manualDiscounts={manualDiscounts}
+                            onManualDiscountChange={handleManualDiscountChange}
                         />
                     )}
 

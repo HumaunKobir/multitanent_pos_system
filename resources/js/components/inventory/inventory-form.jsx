@@ -270,12 +270,20 @@ export function SaleReturnRefundCard({
     );
 }
 
-export function SaleReturnSourceDiscounts({ sellDiscounts, returnSummary }) {
+const EDITABLE_RETURN_DISCOUNT_KEYS = ['invoice', 'special', 'roundOff', 'coin'];
+
+export function SaleReturnSourceDiscounts({
+    sellDiscounts,
+    returnSummary,
+    manualDiscounts = {},
+    onManualDiscountChange,
+}) {
     if (!sellDiscounts) {
         return null;
     }
 
     const ret = returnSummary?.returnDiscounts ?? {};
+    const auto = returnSummary?.autoDiscounts ?? {};
     const rows = [
         { key: 'line', label: 'Line discount', sale: sellDiscounts.line_discount_total },
         { key: 'invoice', label: 'Invoice discount', sale: sellDiscounts.invoice_discount },
@@ -301,17 +309,38 @@ export function SaleReturnSourceDiscounts({ sellDiscounts, returnSummary }) {
                     <span className="text-right">On Sale</span>
                     <span className="text-right">This Return</span>
                 </div>
-                {rows.map((row) => (
-                    <div key={row.key} className="grid grid-cols-3 gap-2">
-                        <span className="text-muted-foreground">{row.label}</span>
-                        <span className="text-right">৳{parseFloat(row.sale || 0).toFixed(2)}</span>
-                        <span className="text-right font-medium text-destructive">
-                            {parseFloat(ret[row.key] || 0) > 0.009
-                                ? `-৳${parseFloat(ret[row.key]).toFixed(2)}`
-                                : '—'}
-                        </span>
-                    </div>
-                ))}
+                {rows.map((row) => {
+                    const isEditable = EDITABLE_RETURN_DISCOUNT_KEYS.includes(row.key);
+                    const autoVal = parseFloat(auto[row.key] || ret[row.key] || 0);
+                    const retVal = parseFloat(ret[row.key] || 0);
+                    return (
+                        <div key={row.key} className="grid grid-cols-3 items-center gap-2">
+                            <span className="text-muted-foreground">{row.label}</span>
+                            <span className="text-right">৳{parseFloat(row.sale || 0).toFixed(2)}</span>
+                            {isEditable ? (
+                                <div className="flex justify-end">
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        max={parseFloat(row.sale || 0)}
+                                        step="0.01"
+                                        value={
+                                            manualDiscounts[row.key] != null
+                                                ? String(manualDiscounts[row.key])
+                                                : autoVal.toFixed(2)
+                                        }
+                                        onChange={(e) => onManualDiscountChange?.(row.key, e.target.value)}
+                                        className={`${inputCls} w-24 text-right`}
+                                    />
+                                </div>
+                            ) : (
+                                <span className="text-right font-medium text-destructive">
+                                    {retVal > 0.009 ? `-৳${retVal.toFixed(2)}` : '—'}
+                                </span>
+                            )}
+                        </div>
+                    );
+                })}
             </div>
         </InventoryCard>
     );

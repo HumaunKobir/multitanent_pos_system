@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProductExchange;
+use App\Models\Promotion;
 use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Services\CoinService;
@@ -63,9 +64,24 @@ class SaleLookupController extends Controller
             ->groupBy('sell_product_id')
             ->map(fn ($lines) => $lines->sum('quantity'));
 
-        $items = $sell->products->map(function ($line) use ($returnedQtyByLine) {
+        $promotionIds = $sell->products->pluck('promotion_id')->filter()->unique()->values()->all();
+        $promotionMap = $promotionIds !== []
+            ? Promotion::whereIn('id', $promotionIds)->get()->keyBy('id')
+            : collect();
+
+        $items = $sell->products->map(function ($line) use ($returnedQtyByLine, $promotionMap) {
             $sold = (float) $line->quantity;
             $alreadyReturned = (float) ($returnedQtyByLine[$line->id] ?? 0);
+
+            $promotionDetails = null;
+            if ($line->promotion_id && $promotionMap->has($line->promotion_id)) {
+                $promo = $promotionMap->get($line->promotion_id);
+                $promotionDetails = [
+                    'type' => $promo->type->value,
+                    'min_qty' => $promo->min_qty,
+                    'buy_qty' => $promo->buy_qty,
+                ];
+            }
 
             return [
                 'sell_product_id' => $line->id,
@@ -80,6 +96,7 @@ class SaleLookupController extends Controller
                 'line_discount' => (float) $line->discount,
                 'promotion_discount' => (float) $line->promotion_discount,
                 'promotion_id' => $line->promotion_id,
+                'promotion_details' => $promotionDetails,
                 'sold_quantity' => $sold,
                 'returned_quantity' => (int) $alreadyReturned,
                 'max_return_quantity' => (int) max(0, $sold - $alreadyReturned),

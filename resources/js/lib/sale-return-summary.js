@@ -44,15 +44,28 @@ function promotionDiscountAtQuantity(item, qty, promotions, saleDate) {
 function promotionClawback(item, returnQty, promotions, saleDate) {
     const soldQty = parseFloat(item.sold_quantity || 0);
     const original = parseFloat(item.promotion_discount || 0);
+    const retQty = parseFloat(returnQty || 0);
 
-    if (original <= 0) {
+    if (original <= 0 || retQty <= 0) {
         return 0;
     }
 
-    const remaining = Math.max(0, soldQty - parseFloat(returnQty || 0));
-    const promotion = findPromotion(promotions, item.promotion_id);
+    const remaining = Math.max(0, soldQty - retQty);
 
+    // Try active promotions list first, then fall back to embedded details from the sale line.
+    // The fallback handles expired promotions that are no longer in the active list.
+    const promotion = findPromotion(promotions, item.promotion_id) ?? item.promotion_details ?? null;
+
+    // If remaining qty still qualifies for the promotion, no clawback needed.
     if (remainingQuantityKeepsPromotion(promotion, remaining)) {
+        return 0;
+    }
+
+    // For promotions with a min_qty threshold: only claw back when the return qty itself
+    // meets or exceeds the minimum. Returning fewer items than the threshold means the
+    // returned portion wasn't individually responsible for triggering the promotion discount.
+    const minQty = promotion?.min_qty != null ? parseFloat(promotion.min_qty) : null;
+    if (minQty != null && minQty > 0 && retQty < minQty) {
         return 0;
     }
 
@@ -97,7 +110,7 @@ function coinDiscountClawback(sellDiscounts, coinSettings, returnNetBeforeCoin) 
     return Math.max(0, parentCoin - remainingCoin);
 }
 
-export function calcSaleReturnSummary(lines, sellDiscounts, context = {}) {
+export function calcSaleReturnSummary(lines, sellDiscounts, context = {}, manualOverrides = {}) {
     const sd = sellDiscounts;
     const { promotions = [], saleDate = null, coinSettings = null } = context;
     const parentGross = parseFloat(sd.gross_amount || 0);
@@ -120,23 +133,56 @@ export function calcSaleReturnSummary(lines, sellDiscounts, context = {}) {
 
     const returnAfterPromo = grossAmount - returnLineDiscount - returnPromotionDiscount;
     const proportion = parentNetForProportion > 0 ? returnAfterPromo / parentNetForProportion : 0;
+
+    // Auto-calculated proportional values
+    const autoInvoice = proportion * parseFloat(sd.invoice_discount || 0);
+    const autoSpecial = proportion * parseFloat(sd.special_discount_amount || 0);
+    const autoRoundOff = proportion * parseFloat(sd.round_off_amount || 0);
+
+    // invoice/special/roundOff: null → auto proportional; '' or number → manual ('' treated as 0 via `|| 0` fallback)
+    // coin: null or '' → auto clawback; number → manual
     const returnInvoiceDiscount =
-        proportion * parseFloat(sd.invoice_discount || 0) +
-        proportion * parseFloat(sd.special_discount_amount || 0) +
-        proportion * parseFloat(sd.round_off_amount || 0);
-    const returnNetBeforeCoin = Math.max(0, returnAfterPromo - returnInvoiceDiscount);
-    const returnCoinDiscount = coinDiscountClawback(sd, coinSettings, returnNetBeforeCoin);
+        manualOverrides.invoice != null
+            ? Math.min(Math.max(0, parseFloat(manualOverrides.invoice || 0)), parseFloat(sd.invoice_discount || 0))
+            : autoInvoice;
+    const returnSpecialDiscount =
+        manualOverrides.special != null
+            ? Math.min(
+                  Math.max(0, parseFloat(manualOverrides.special || 0)),
+                  parseFloat(sd.special_discount_amount || 0),
+              )
+            : autoSpecial;
+    const returnRoundOff =
+        manualOverrides.roundOff != null
+            ? Math.min(Math.max(0, parseFloat(manualOverrides.roundOff || 0)), parseFloat(sd.round_off_amount || 0))
+            : autoRoundOff;
+
+    const returnInvoiceLevelDiscount = returnInvoiceDiscount + returnSpecialDiscount + returnRoundOff;
+    const returnNetBeforeCoin = Math.max(0, returnAfterPromo - returnInvoiceLevelDiscount);
+    const autoCoinDiscount = coinDiscountClawback(sd, coinSettings, returnNetBeforeCoin);
+    const returnCoinDiscount =
+        manualOverrides.coin != null && manualOverrides.coin !== ''
+            ? Math.min(Math.max(0, parseFloat(manualOverrides.coin || 0)), parseFloat(sd.coin_discount_amount || 0))
+            : autoCoinDiscount;
 
     const returnDiscounts = {
         line: returnLineDiscount,
         promotion: returnPromotionDiscount,
-        invoice: proportion * parseFloat(sd.invoice_discount || 0),
-        special: proportion * parseFloat(sd.special_discount_amount || 0),
+        invoice: returnInvoiceDiscount,
+        special: returnSpecialDiscount,
         coin: returnCoinDiscount,
-        roundOff: proportion * parseFloat(sd.round_off_amount || 0),
+        roundOff: returnRoundOff,
     };
+    // Auto-calculated values used as input placeholders when no manual override is set
+    const autoDiscounts = {
+        invoice: autoInvoice,
+        special: autoSpecial,
+        roundOff: autoRoundOff,
+        coin: autoCoinDiscount,
+    };
+
     const discountAmount =
-        returnLineDiscount + returnPromotionDiscount + returnInvoiceDiscount + returnCoinDiscount;
+        returnLineDiscount + returnPromotionDiscount + returnInvoiceLevelDiscount + returnCoinDiscount;
     const netAmount = Math.max(0, grossAmount - discountAmount);
 
     const parentNet = parseFloat(sd.net_amount || 0);
@@ -147,8 +193,9 @@ export function calcSaleReturnSummary(lines, sellDiscounts, context = {}) {
         grossAmount,
         returnLineDiscount,
         returnPromotionDiscount,
-        returnInvoiceDiscount,
+        returnInvoiceLevelDiscount,
         returnDiscounts,
+        autoDiscounts,
         discountAmount,
         netAmount,
         proportion,

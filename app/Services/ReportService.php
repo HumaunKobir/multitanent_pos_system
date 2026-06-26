@@ -510,6 +510,7 @@ class ReportService
             $damagesQuery,
             $vouchersQuery,
             $effectiveUserId,
+            $filterUserId,
         );
 
         $sales = $salesQuery->with(['products:id,sell_id,discount'])->get();
@@ -732,18 +733,20 @@ class ReportService
         Builder $damagesQuery,
         Builder $vouchersQuery,
         ?int $userId,
+        ?int $paymentsUserId = null,
     ): void {
-        if ($userId === null) {
-            return;
+        if ($userId !== null) {
+            $salesQuery->where('user_id', $userId);
+            $purchasesQuery->where('user_id', $userId);
+            $returnsQuery->where('user_id', $userId);
+            $damagesQuery->where('user_id', $userId);
+            $vouchersQuery->where('created_by', $userId);
         }
 
-        $salesQuery->where('user_id', $userId);
-        $purchasesQuery->where('user_id', $userId);
-        $paymentsQuery->where('created_by', $userId);
-        $collectionsQuery->where('created_by', $userId);
-        $returnsQuery->where('user_id', $userId);
-        $damagesQuery->where('user_id', $userId);
-        $vouchersQuery->where('created_by', $userId);
+        if ($paymentsUserId !== null) {
+            $paymentsQuery->where('created_by', $paymentsUserId);
+            $collectionsQuery->where('created_by', $paymentsUserId);
+        }
     }
 
     /**

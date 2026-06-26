@@ -285,6 +285,12 @@ function StaffBreakdownRow({ row }) {
                 <td className="px-4 py-2.5 font-mono tabular-nums">
                     <MoneyCell value={row.purchases?.paid} />
                 </td>
+                <td className="px-4 py-2.5 font-mono tabular-nums text-violet-700 dark:text-violet-400">
+                    <MoneyCell value={row.supplier_payments?.amount} />
+                </td>
+                <td className="px-4 py-2.5 font-mono tabular-nums text-teal-700 dark:text-teal-400">
+                    <MoneyCell value={row.customer_collections?.amount} />
+                </td>
             </tr>
             {expanded && hasDetails ? (
                 <tr key={`${rowKey}-details`} className="border-b bg-muted/10 last:border-b-0">
@@ -459,7 +465,7 @@ export default function DailySummaryReport({
                             </p>
                         </div>
                         <div className="overflow-x-auto">
-                            <table className="w-full min-w-[960px] text-sm">
+                            <table className="w-full min-w-[1200px] text-sm">
                                 <thead>
                                     <tr className="border-b bg-muted/20 text-left">
                                         <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Branch</th>
@@ -470,6 +476,8 @@ export default function DailySummaryReport({
                                         <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Purchases</th>
                                         <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Purchase gross</th>
                                         <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Purchase paid</th>
+                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Supplier paid</th>
+                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Customer collected</th>
                                     </tr>
                                 </thead>
                                 <tbody>

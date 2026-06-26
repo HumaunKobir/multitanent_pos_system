@@ -491,6 +491,45 @@ test('branch user daily summary staff breakdown only includes their own sales', 
             ->where('summary.staff_breakdown.0.sales.count', 1));
 });
 
+test('branch user daily summary shows all branch supplier payments and customer collections', function () {
+    $this->artisan('permissions:sync');
+
+    $date = '2026-06-09';
+    $branch = Branch::factory()->create();
+    $otherStaff = User::factory()->create(['branch_id' => $branch->id]);
+    $branchUser = reportUser([ReportController::PERMISSION_DAILY_SUMMARY]);
+    $branchUser->update(['branch_id' => $branch->id]);
+    $supplier = Supplier::factory()->create(['branch_id' => $branch->id]);
+    $customer = Customer::factory()->create(['branch_id' => $branch->id]);
+
+    SupplierPayment::query()->create([
+        'branch_id' => $branch->id,
+        'supplier_id' => $supplier->id,
+        'date' => $date,
+        'amount' => 400,
+        'serial' => 'INVSP-BU-A',
+        'created_by' => $otherStaff->id,
+    ]);
+
+    CustomerPayment::query()->create([
+        'branch_id' => $branch->id,
+        'customer_id' => $customer->id,
+        'date' => $date,
+        'amount' => 250,
+        'serial' => 'INVCP-BU-A',
+        'created_by' => $otherStaff->id,
+    ]);
+
+    $this->actingAs($branchUser)
+        ->get('/report/daily-summary?date='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('summary.supplier_payments.count', 1)
+            ->where('summary.supplier_payments.amount', 400)
+            ->where('summary.customer_collections.count', 1)
+            ->where('summary.customer_collections.amount', 250));
+});
+
 test('daily summary branch totals match staff breakdown including line discounts and payments', function () {
     $this->artisan('permissions:sync');
 

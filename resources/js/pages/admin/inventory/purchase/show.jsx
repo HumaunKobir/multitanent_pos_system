@@ -48,14 +48,16 @@ export default function PurchaseShow({ purchase }) {
 
             <div className="px-2 py-1">
                 <InvoiceShowHeader icon={HandCoins} title="Purchase Invoice" invoiceNumber={invoiceNumber}>
-                    <Can permission="inventory.purchase.update">
-                        <Button size="sm" asChild className={actionClass}>
-                            <Link href={route('inventory.purchase.edit', purchase.id)}>
-                                <Edit className="size-3.5" />
-                                Edit
-                            </Link>
-                        </Button>
-                    </Can>
+                    {purchase.can_edit && (
+                        <Can permission="inventory.purchase.update">
+                            <Button size="sm" asChild className={actionClass}>
+                                <Link href={route('inventory.purchase.edit', purchase.id)}>
+                                    <Edit className="size-3.5" />
+                                    Edit
+                                </Link>
+                            </Button>
+                        </Can>
+                    )}
                     <Can permission="inventory.purchase.delete">
                         <Button
                             size="sm"

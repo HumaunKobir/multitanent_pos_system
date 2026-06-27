@@ -107,7 +107,7 @@ export default function PurchaseIndex({ purchases, filters }) {
                     prefix="inventory.purchase"
                     id={row.id}
                     showRoute="inventory.purchase.show"
-                    editRoute="inventory.purchase.edit"
+                    editRoute={row.can_edit ? 'inventory.purchase.edit' : undefined}
                     onDelete={() => setDeleting(row)}
                 />
             ),

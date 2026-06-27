@@ -277,6 +277,7 @@ export default function PurchaseEdit({
     const totalPaidAmount = Math.min(netAmount, basePaidAmount + additionalPayment);
     const dueAmount = Math.max(0, netAmount - totalPaidAmount);
     const existingDirectPaid = Math.max(0, basePaidAmount - allocationTotal);
+    const productLinesLocked = Boolean(purchase.product_lines_locked);
 
     function handleAdditionalPaymentChange(value) {
         if (value === '' || value === null) {
@@ -294,6 +295,8 @@ export default function PurchaseEdit({
     }
 
     function addItem(item) {
+        if (productLinesLocked) return;
+
         const duplicate = items.find((it) => it.product_id === item.product_id && String(it.variation_id) === String(item.variation_id));
         if (duplicate) {
             setItems((prev) =>
@@ -309,14 +312,20 @@ export default function PurchaseEdit({
     }
 
     function updateItem(index, field, value) {
+        if (productLinesLocked) return;
+
         setItems((prev) => prev.map((it, i) => (i === index ? { ...it, [field]: value } : it)));
     }
 
     function removeItem(index) {
+        if (productLinesLocked) return;
+
         setItems((prev) => prev.filter((_, i) => i !== index));
     }
 
     function removeItemByKey(productId, variationId) {
+        if (productLinesLocked) return;
+
         setItems((prev) =>
             prev.filter(
                 (item) => !(item.product_id === productId && String(item.variation_id) === String(variationId ?? null)),
@@ -438,7 +447,12 @@ export default function PurchaseEdit({
                     </Card>
 
                     <Card title="Add Products" icon={Package}>
-                        <PurchaseProductSearchBox items={items} onAdd={addItem} onRemove={removeItemByKey} />
+                        {!productLinesLocked && <PurchaseProductSearchBox items={items} onAdd={addItem} onRemove={removeItemByKey} />}
+                        {productLinesLocked && (
+                            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                                Product lines are locked because this purchase is partially paid.
+                            </p>
+                        )}
                         {form.errors.items && <p className="mt-1 text-xs text-destructive">{form.errors.items}</p>}
 
                         {items.length > 0 && (
@@ -480,6 +494,7 @@ export default function PurchaseEdit({
                                                             step="0.01"
                                                             value={item.unit_price}
                                                             onChange={(e) => updateItem(i, 'unit_price', e.target.value)}
+                                                            disabled={productLinesLocked}
                                                             className={`${inputCls} w-full text-right`}
                                                         />
                                                     </td>
@@ -490,6 +505,7 @@ export default function PurchaseEdit({
                                                             step="0.01"
                                                             value={item.sell_price}
                                                             onChange={(e) => updateItem(i, 'sell_price', e.target.value)}
+                                                            disabled={productLinesLocked}
                                                             className={`${inputCls} w-full text-right`}
                                                         />
                                                     </td>
@@ -500,6 +516,7 @@ export default function PurchaseEdit({
                                                             step="1"
                                                             value={item.quantity}
                                                             onChange={(e) => updateItem(i, 'quantity', formatQty(e.target.value))}
+                                                            disabled={productLinesLocked}
                                                             className={`${inputCls} w-full text-right`}
                                                         />
                                                     </td>
@@ -510,6 +527,7 @@ export default function PurchaseEdit({
                                                             step="1"
                                                             value={item.free_quantity}
                                                             onChange={(e) => updateItem(i, 'free_quantity', formatQty(e.target.value))}
+                                                            disabled={productLinesLocked}
                                                             className={`${inputCls} w-full text-right`}
                                                         />
                                                     </td>
@@ -522,6 +540,7 @@ export default function PurchaseEdit({
                                                                 max={parseInt(item.quantity || 0, 10) + parseInt(item.free_quantity || 0, 10)}
                                                                 value={item.distribute_quantity ?? 0}
                                                                 onChange={(e) => updateItem(i, 'distribute_quantity', formatQty(e.target.value))}
+                                                                disabled={productLinesLocked}
                                                                 className={`${inputCls} w-full text-right`}
                                                             />
                                                         </td>
@@ -531,6 +550,7 @@ export default function PurchaseEdit({
                                                             type="date"
                                                             value={item.expiry_date}
                                                             onChange={(e) => updateItem(i, 'expiry_date', e.target.value)}
+                                                            disabled={productLinesLocked}
                                                             className={`${inputCls} w-full`}
                                                         />
                                                     </td>
@@ -541,6 +561,7 @@ export default function PurchaseEdit({
                                                             size="sm"
                                                             variant="ghost"
                                                             onClick={() => removeItem(i)}
+                                                            disabled={productLinesLocked}
                                                             className="h-7 text-destructive hover:text-destructive"
                                                         >
                                                             <Trash2 className="size-3.5" />

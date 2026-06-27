@@ -12,6 +12,7 @@ use App\Models\Branch;
 use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Models\Purchase;
+use App\Models\PurchaseProduct;
 use App\Models\PurchaseReturn;
 use App\Models\StockDistribution;
 use App\Models\Supplier;
@@ -52,6 +53,11 @@ class PurchaseController extends Controller
             ->latest()
             ->paginate(20)
             ->withQueryString();
+
+        $purchases->through(fn (Purchase $purchase): array => [
+            ...$purchase->toArray(),
+            'can_edit' => $this->canEditPurchase($purchase),
+        ]);
 
         return Inertia::render('admin/inventory/purchase/index', [
             'purchases' => $purchases,
@@ -260,6 +266,7 @@ class PurchaseController extends Controller
                 'purchase_products' => $purchase->purchaseProducts,
                 'direct_payment' => $this->allocations->purchaseDirectPaymentForView($purchase, $paymentAccountLabels),
                 'supplier_payment_details' => $this->allocations->supplierAllocationDetailsForPurchase($purchase, $paymentAccountLabels),
+                'can_edit' => $this->canEditPurchase($purchase),
             ],
         ]);
     }
@@ -273,6 +280,12 @@ class PurchaseController extends Controller
             return redirect()
                 ->route('inventory.purchase.show', $purchase)
                 ->with('error', 'This purchase cannot be edited because it has returns.');
+        }
+
+        if (! $this->canEditPurchase($purchase)) {
+            return redirect()
+                ->route('inventory.purchase.show', $purchase)
+                ->with('error', 'This purchase cannot be edited because it is fully paid.');
         }
 
         $purchase->load([
@@ -371,6 +384,7 @@ class PurchaseController extends Controller
                 'distribute_to_branch_id' => $existingDistribution?->to_branch_id,
                 'payment_account_id' => $paymentAccountId,
                 'supplier_payment_allocations' => $this->allocations->supplierPaymentLinesForPurchase($purchase),
+                'product_lines_locked' => $this->isPartiallyPaidPurchase($purchase),
                 'supplier' => $purchase->supplier,
                 'items' => $items,
             ],
@@ -390,6 +404,10 @@ class PurchaseController extends Controller
 
         if (PurchaseReturn::where('purchase_id', $purchase->id)->exists()) {
             return back()->with('error', 'This purchase cannot be edited because it has returns.');
+        }
+
+        if (! $this->canEditPurchase($purchase)) {
+            return back()->with('error', 'This purchase cannot be edited because it is fully paid.');
         }
 
         $data = $request->validate([
@@ -413,6 +431,14 @@ class PurchaseController extends Controller
         ]);
 
         $data['paid_amount'] = max(0, (float) ($data['paid_amount'] ?? 0));
+
+        if ($this->isPartiallyPaidPurchase($purchase) && $this->purchaseProductLinesChanged($purchase, $data['items'])) {
+            return back()
+                ->withErrors([
+                    'items' => 'Products cannot be changed because this purchase is partially paid.',
+                ])
+                ->withInput();
+        }
 
         if ($this->canDistributeFromPurchase() && ! empty($data['distribute_to_branch_id'])) {
             foreach ($data['items'] as $index => $item) {
@@ -739,6 +765,116 @@ class PurchaseController extends Controller
             $distribution->products()->delete();
             $distribution->delete();
         }
+    }
+
+    private function canEditPurchase(Purchase $purchase): bool
+    {
+        return ! $this->isFullyPaidPurchase($purchase);
+    }
+
+    private function isFullyPaidPurchase(Purchase $purchase): bool
+    {
+        $netAmount = round((float) $purchase->gross_amount + (float) $purchase->vat - (float) $purchase->discount, 2);
+        $paidAmount = round((float) $purchase->paid_amount, 2);
+
+        return $netAmount > 0 && $paidAmount + 0.01 >= $netAmount;
+    }
+
+    private function isPartiallyPaidPurchase(Purchase $purchase): bool
+    {
+        $netAmount = round((float) $purchase->gross_amount + (float) $purchase->vat - (float) $purchase->discount, 2);
+        $paidAmount = round((float) $purchase->paid_amount, 2);
+
+        return $paidAmount > 0 && $paidAmount + 0.01 < $netAmount;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $submittedItems
+     */
+    private function purchaseProductLinesChanged(Purchase $purchase, array $submittedItems): bool
+    {
+        $purchase->loadMissing('purchaseProducts');
+
+        return $this->normalizePurchaseProductLines($purchase->purchaseProducts->all()) !== $this->normalizeSubmittedPurchaseItems($submittedItems);
+    }
+
+    /**
+     * @param  array<int, PurchaseProduct>  $purchaseProducts
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizePurchaseProductLines(array $purchaseProducts): array
+    {
+        $lines = [];
+
+        foreach ($purchaseProducts as $purchaseProduct) {
+            $freeQuantity = 0.0;
+            $expiryDate = null;
+
+            foreach (($purchaseProduct->batches ?? []) as $batchId => $quantity) {
+                $batch = Batch::query()->find($batchId, ['purchase_price', 'expiry_date']);
+
+                if ($batch === null) {
+                    continue;
+                }
+
+                if ((float) $batch->purchase_price === 0.0) {
+                    $freeQuantity += (float) $quantity;
+                } elseif ($expiryDate === null && $batch->expiry_date) {
+                    $expiryDate = $batch->expiry_date->format('Y-m-d');
+                }
+            }
+
+            $lines[] = [
+                'product_id' => (int) $purchaseProduct->product_id,
+                'variation_id' => $purchaseProduct->variation_id ? (int) $purchaseProduct->variation_id : null,
+                'unit_price' => round((float) $purchaseProduct->unit_price, 2),
+                'quantity' => (int) $purchaseProduct->quantity,
+                'free_quantity' => (int) $freeQuantity,
+                'expiry_date' => $expiryDate ?? '',
+                'serial' => $purchaseProduct->serial ?? '',
+            ];
+        }
+
+        return collect($lines)->sortBy([
+            ['product_id', 'asc'],
+            ['variation_id', 'asc'],
+            ['unit_price', 'asc'],
+            ['quantity', 'asc'],
+            ['free_quantity', 'asc'],
+            ['expiry_date', 'asc'],
+            ['serial', 'asc'],
+        ])->values()->all();
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $items
+     * @return array<int, array<string, mixed>>
+     */
+    private function normalizeSubmittedPurchaseItems(array $items): array
+    {
+        $lines = collect($items)
+            ->map(fn (array $item): array => [
+                'product_id' => (int) $item['product_id'],
+                'variation_id' => ! empty($item['variation_id']) ? (int) $item['variation_id'] : null,
+                'unit_price' => round((float) $item['unit_price'], 2),
+                'quantity' => (int) $item['quantity'],
+                'free_quantity' => (int) $item['free_quantity'],
+                'expiry_date' => $item['expiry_date'] ?? '',
+                'serial' => $item['serial'] ?? '',
+            ])
+            ->sortBy([
+                ['product_id', 'asc'],
+                ['variation_id', 'asc'],
+                ['unit_price', 'asc'],
+                ['quantity', 'asc'],
+                ['free_quantity', 'asc'],
+                ['expiry_date', 'asc'],
+                ['serial', 'asc'],
+            ])
+            ->values()
+            ->all();
+
+        return $lines;
     }
 
     private function canDistributeFromPurchase(): bool

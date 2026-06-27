@@ -12,6 +12,7 @@ import {
     ProductNameWithCode,
     inputCls,
     paymentModeToType,
+    roundCurrency,
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
@@ -45,10 +46,15 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
         if (flash?.error) toast.error(flash.error);
     }, [flash?.success, flash?.error]);
 
-    const grossAmount = items.reduce(
+    const subtotalAmount = items.reduce(
         (s, it) => s + parseFloat(it.quantity || 0) * parseFloat(it.unit_price || 0),
         0,
     );
+    const purchaseGross = parseFloat(source?.gross_amount || 0);
+    const returnRatio = purchaseGross > 0 ? subtotalAmount / purchaseGross : 0;
+    const discountAmount = roundCurrency(returnRatio * parseFloat(source?.discount || 0));
+    const vatAmount = roundCurrency(returnRatio * parseFloat(source?.vat || 0));
+    const grossAmount = subtotalAmount + vatAmount - discountAmount;
 
     async function lookupPurchase() {
         setLookupError('');
@@ -214,6 +220,9 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
                         <PaymentSummaryCard
                             Icon={HandCoins}
                             grossAmount={grossAmount}
+                            subtotalAmount={subtotalAmount}
+                            discountAmount={discountAmount}
+                            vatAmount={vatAmount}
                             paidAmount={form.data.paid_amount}
                             onPaidAmountChange={(v) => form.setData('paid_amount', v)}
                             paymentMode={paymentMode}

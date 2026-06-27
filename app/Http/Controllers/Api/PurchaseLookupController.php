@@ -72,6 +72,9 @@ class PurchaseLookupController extends Controller
             'supplier' => $purchase->supplier,
             'date' => optional($purchase->date)->format('Y-m-d'),
             'payment_type' => $purchase->payment_type?->value,
+            'gross_amount' => (float) $purchase->gross_amount,
+            'discount' => (float) $purchase->discount,
+            'vat' => (float) $purchase->vat,
             'items' => $items,
         ]);
     }

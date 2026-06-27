@@ -12,6 +12,10 @@ import { Label } from '@/components/ui/label';
 
 export const inputCls = 'h-7 rounded-md border-border/60 text-xs px-2 focus:border-primary';
 
+export function roundCurrency(value) {
+    return Math.round((Number(value) || 0) * 100) / 100;
+}
+
 export function InventoryCard({ title, icon: Icon, children }) {
     return (
         <div className="rounded-lg border bg-card shadow-sm">
@@ -110,13 +114,14 @@ export function PaymentSummaryCard({
     showDue = true,
     subtotalAmount = null,
     discountAmount = 0,
+    vatAmount = 0,
     parentPaymentInfo = null,
     paidLabel = 'Paid Amount',
 }) {
     const paid = parseFloat(paidAmount || 0);
     const due = Math.max(0, grossAmount - paid);
     const isParty = paymentMode === 'party';
-    const showDiscountBreakdown = subtotalAmount != null && discountAmount > 0.009;
+    const showDiscountBreakdown = subtotalAmount != null && (discountAmount > 0.009 || vatAmount > 0.009);
 
     return (
         <InventoryCard title="Summary & Payment" icon={Icon}>
@@ -127,10 +132,18 @@ export function PaymentSummaryCard({
                             <span className="text-muted-foreground">Gross Amount</span>
                             <span>৳{subtotalAmount.toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between text-destructive">
-                            <span>Discount</span>
-                            <span>-৳{discountAmount.toFixed(2)}</span>
-                        </div>
+                        {discountAmount > 0.009 && (
+                            <div className="flex justify-between text-destructive">
+                                <span>Discount</span>
+                                <span>-৳{discountAmount.toFixed(2)}</span>
+                            </div>
+                        )}
+                        {vatAmount > 0.009 && (
+                            <div className="flex justify-between text-emerald-600">
+                                <span>VAT</span>
+                                <span>+৳{vatAmount.toFixed(2)}</span>
+                            </div>
+                        )}
                     </>
                 )}
                 <div className="flex justify-between">

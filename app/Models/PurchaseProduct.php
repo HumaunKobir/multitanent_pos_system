@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class PurchaseProduct extends Model
 {
+    use HasFactory;
+
     protected $fillable = [
         'branch_id', 'purchase_id', 'product_id', 'variation_id',
         'quantity', 'unit_price', 'serial', 'batches',

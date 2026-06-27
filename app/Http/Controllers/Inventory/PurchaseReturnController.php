@@ -130,7 +130,9 @@ class PurchaseReturnController extends Controller
                     throw new \RuntimeException('At least one line with return quantity greater than zero is required.');
                 }
 
-                $paidAmount = min((float) $data['paid_amount'], $grossAmount);
+                $adjustments = $this->purchaseReturnAdjustments($parent, $grossAmount);
+                $netAmount = $adjustments['net'];
+                $paidAmount = min((float) $data['paid_amount'], $netAmount);
                 $paymentType = PurchaseReceivedPayment::from((int) $data['payment_type']);
 
                 $purchaseReturn = PurchaseReturn::create([
@@ -140,8 +142,10 @@ class PurchaseReturnController extends Controller
                     'supplier_id' => $parent->supplier_id,
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
+                    'discount' => $adjustments['discount'],
+                    'vat' => $adjustments['vat'],
                     'paid_amount' => $paidAmount,
-                    'due_amount' => max(0, $grossAmount - $paidAmount),
+                    'due_amount' => max(0, $netAmount - $paidAmount),
                     'payment_type' => $paymentType,
                     'comment' => $data['comment'] ?? null,
                     'serial' => 'INVPR'.str_pad((string) (PurchaseReturn::max('id') + 1), 8, '0', STR_PAD_LEFT),
@@ -152,7 +156,7 @@ class PurchaseReturnController extends Controller
                 }
 
                 if ($parent->supplier_id && $paymentType === PurchaseReceivedPayment::Supplier_Account) {
-                    Supplier::whereKey($parent->supplier_id)->decrement('balance', $grossAmount);
+                    Supplier::whereKey($parent->supplier_id)->decrement('balance', $netAmount);
                 }
             });
         } catch (\Throwable $e) {
@@ -236,6 +240,12 @@ class PurchaseReturnController extends Controller
                 'comment' => $purchaseReturn->comment,
                 'paid_amount' => (string) $purchaseReturn->paid_amount,
                 'payment_type' => $purchaseReturn->payment_type?->value,
+                'gross_amount' => (float) $purchaseReturn->gross_amount,
+                'discount' => (float) $purchaseReturn->discount,
+                'vat' => (float) $purchaseReturn->vat,
+                'purchase_gross_amount' => (float) $parent->gross_amount,
+                'purchase_discount' => (float) $parent->discount,
+                'purchase_vat' => (float) $parent->vat,
                 'items' => $items,
             ],
         ]);
@@ -320,14 +330,18 @@ class PurchaseReturnController extends Controller
                     throw new \RuntimeException('At least one line with return quantity greater than zero is required.');
                 }
 
-                $paidAmount = min((float) $data['paid_amount'], $grossAmount);
+                $adjustments = $this->purchaseReturnAdjustments($parent, $grossAmount);
+                $netAmount = $adjustments['net'];
+                $paidAmount = min((float) $data['paid_amount'], $netAmount);
                 $paymentType = PurchaseReceivedPayment::from((int) $data['payment_type']);
 
                 $purchaseReturn->update([
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
+                    'discount' => $adjustments['discount'],
+                    'vat' => $adjustments['vat'],
                     'paid_amount' => $paidAmount,
-                    'due_amount' => max(0, $grossAmount - $paidAmount),
+                    'due_amount' => max(0, $netAmount - $paidAmount),
                     'payment_type' => $paymentType,
                     'comment' => $data['comment'] ?? null,
                 ]);
@@ -337,7 +351,7 @@ class PurchaseReturnController extends Controller
                 }
 
                 if ($parent->supplier_id && $paymentType === PurchaseReceivedPayment::Supplier_Account) {
-                    Supplier::whereKey($parent->supplier_id)->decrement('balance', $grossAmount);
+                    Supplier::whereKey($parent->supplier_id)->decrement('balance', $netAmount);
                 }
             });
         } catch (\Throwable $e) {
@@ -396,8 +410,25 @@ class PurchaseReturnController extends Controller
 
         if ($purchaseReturn->supplier_id
             && $purchaseReturn->payment_type === PurchaseReceivedPayment::Supplier_Account) {
-            Supplier::whereKey($purchaseReturn->supplier_id)->increment('balance', (float) $purchaseReturn->gross_amount);
+            Supplier::whereKey($purchaseReturn->supplier_id)->increment('balance', (float) $purchaseReturn->net_amount);
         }
+    }
+
+    /**
+     * @return array{discount: float, vat: float, net: float}
+     */
+    private function purchaseReturnAdjustments(Purchase $parent, float $grossAmount): array
+    {
+        $parentGross = (float) $parent->gross_amount;
+        $ratio = $parentGross > 0 ? $grossAmount / $parentGross : 0;
+        $discount = round($ratio * (float) $parent->discount, 2);
+        $vat = round($ratio * (float) $parent->vat, 2);
+
+        return [
+            'discount' => $discount,
+            'vat' => $vat,
+            'net' => $grossAmount + $vat - $discount,
+        ];
     }
 
     /** @return array<int, float> */

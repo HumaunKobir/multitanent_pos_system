@@ -2,6 +2,10 @@
  * Prevent mouse wheel from incrementing/decrementing focused number inputs.
  */
 export function preventNumberInputScroll() {
+    if (typeof document === 'undefined') {
+        return;
+    }
+
     document.addEventListener(
         'wheel',
         (event) => {

@@ -4,6 +4,7 @@ export default function PurchaseReturnShow({ purchaseReturn }) {
     const gross = parseFloat(purchaseReturn.gross_amount || 0);
     const discount = parseFloat(purchaseReturn.discount || 0);
     const vat = parseFloat(purchaseReturn.vat || 0);
+    const vatPercent = parseFloat(purchaseReturn.vat_percent || 0);
     const net = parseFloat(purchaseReturn.net_amount || 0);
     const paid = parseFloat(purchaseReturn.paid_amount || 0);
     const due = parseFloat(purchaseReturn.due_amount || 0);
@@ -26,7 +27,11 @@ export default function PurchaseReturnShow({ purchaseReturn }) {
                     <div className="flex flex-wrap gap-x-3 text-muted-foreground">
                         <span>Gross ৳{gross.toFixed(2)}</span>
                         {discount > 0.009 && <span>Discount -৳{discount.toFixed(2)}</span>}
-                        {vat > 0.009 && <span>VAT +৳{vat.toFixed(2)}</span>}
+                        {vat > 0.009 && (
+                            <span>
+                                VAT {vatPercent > 0.009 ? `(${vatPercent.toFixed(2)}%)` : ''} +৳{vat.toFixed(2)}
+                            </span>
+                        )}
                         <span>Net ৳{net.toFixed(2)}</span>
                         <span>Paid ৳{paid.toFixed(2)}</span>
                         <span>Due ৳{due.toFixed(2)}</span>

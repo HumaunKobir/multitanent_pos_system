@@ -37,6 +37,7 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
         date: today,
         comment: '',
         paid_amount: '0',
+        discount: '0',
         payment_type: '5',
         items: [],
     });
@@ -50,10 +51,9 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
         (s, it) => s + parseFloat(it.quantity || 0) * parseFloat(it.unit_price || 0),
         0,
     );
-    const purchaseGross = parseFloat(source?.gross_amount || 0);
-    const returnRatio = purchaseGross > 0 ? subtotalAmount / purchaseGross : 0;
-    const discountAmount = roundCurrency(returnRatio * parseFloat(source?.discount || 0));
-    const vatAmount = roundCurrency(returnRatio * parseFloat(source?.vat || 0));
+    const discountAmount = parseFloat(form.data.discount || 0);
+    const vatPercent = parseFloat(source?.vat_percent || 0);
+    const vatAmount = roundCurrency(subtotalAmount * vatPercent / 100);
     const grossAmount = subtotalAmount + vatAmount - discountAmount;
 
     async function lookupPurchase() {
@@ -79,7 +79,7 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
                 quantity: String(i.max_return_quantity),
             }));
         setItems(lines);
-        form.setData({ ...form.data, purchase_id: String(json.id) });
+        form.setData({ ...form.data, purchase_id: String(json.id), discount: String(json.discount ?? 0) });
     }
 
     function updateItem(index, field, value) {
@@ -119,6 +119,7 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
 
         form.transform((data) => ({
             ...data,
+            discount: String(parseFloat(data.discount || 0) || 0),
             payment_type: paymentModeToType(paymentMode),
             items: returnItems,
         }));
@@ -221,8 +222,11 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
                             Icon={HandCoins}
                             grossAmount={grossAmount}
                             subtotalAmount={subtotalAmount}
-                            discountAmount={discountAmount}
+                            discountAmount={form.data.discount}
                             vatAmount={vatAmount}
+                            vatPercent={vatPercent}
+                            onDiscountAmountChange={(v) => form.setData('discount', v)}
+                            discountError={form.errors.discount}
                             paidAmount={form.data.paid_amount}
                             onPaidAmountChange={(v) => form.setData('paid_amount', v)}
                             paymentMode={paymentMode}

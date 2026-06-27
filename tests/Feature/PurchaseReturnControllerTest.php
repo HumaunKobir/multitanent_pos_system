@@ -81,7 +81,8 @@ test('purchase lookup includes discount and vat fields', function () {
         ->assertSuccessful()
         ->assertJsonPath('gross_amount', 1000)
         ->assertJsonPath('discount', 100)
-        ->assertJsonPath('vat', 50);
+        ->assertJsonPath('vat', 50)
+        ->assertJsonPath('vat_percent', 5);
 });
 
 test('purchase return stores proportional discount and vat and caps paid at net', function () {

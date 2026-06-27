@@ -11,6 +11,7 @@ use App\Models\Purchase;
 use App\Models\PurchaseProduct;
 use App\Models\PurchaseReturn;
 use App\Models\Supplier;
+use App\Services\InventoryAccountingService;
 use App\Services\InventoryStockService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -24,7 +25,10 @@ class PurchaseReturnController extends Controller
     use AuthorizesBranchUserRecords;
     use ProvidesPaymentAccounts;
 
-    public function __construct(private InventoryStockService $stock) {}
+    public function __construct(
+        private InventoryStockService $stock,
+        private InventoryAccountingService $accounting,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -65,6 +69,7 @@ class PurchaseReturnController extends Controller
             'date' => ['required', 'date'],
             'comment' => ['nullable', 'string'],
             'paid_amount' => ['required', 'numeric', 'min:0'],
+            'discount' => ['nullable', 'numeric', 'min:0'],
             'payment_type' => ['required', 'integer'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.purchase_product_id' => ['required', 'exists:purchase_products,id'],
@@ -130,7 +135,7 @@ class PurchaseReturnController extends Controller
                     throw new \RuntimeException('At least one line with return quantity greater than zero is required.');
                 }
 
-                $adjustments = $this->purchaseReturnAdjustments($parent, $grossAmount);
+                $adjustments = $this->purchaseReturnAdjustments($parent, $grossAmount, (float) ($data['discount'] ?? $parent->discount));
                 $netAmount = $adjustments['net'];
                 $paidAmount = min((float) $data['paid_amount'], $netAmount);
                 $paymentType = PurchaseReceivedPayment::from((int) $data['payment_type']);
@@ -158,6 +163,8 @@ class PurchaseReturnController extends Controller
                 if ($parent->supplier_id && $paymentType === PurchaseReceivedPayment::Supplier_Account) {
                     Supplier::whereKey($parent->supplier_id)->decrement('balance', $netAmount);
                 }
+
+                $this->accounting->postPurchaseReturn($purchaseReturn->fresh(['supplier']));
             });
         } catch (\Throwable $e) {
             return back()
@@ -246,6 +253,9 @@ class PurchaseReturnController extends Controller
                 'purchase_gross_amount' => (float) $parent->gross_amount,
                 'purchase_discount' => (float) $parent->discount,
                 'purchase_vat' => (float) $parent->vat,
+                'purchase_vat_percent' => (float) $parent->gross_amount > 0
+                    ? ((float) $parent->vat / (float) $parent->gross_amount) * 100
+                    : 0,
                 'items' => $items,
             ],
         ]);
@@ -260,6 +270,7 @@ class PurchaseReturnController extends Controller
             'date' => ['required', 'date'],
             'comment' => ['nullable', 'string'],
             'paid_amount' => ['required', 'numeric', 'min:0'],
+            'discount' => ['nullable', 'numeric', 'min:0'],
             'payment_type' => ['required', 'integer'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.purchase_product_id' => ['required', 'exists:purchase_products,id'],
@@ -272,6 +283,7 @@ class PurchaseReturnController extends Controller
             DB::transaction(function () use ($purchaseReturn, $data, $branchId) {
                 $purchaseReturn->load(['products', 'purchase.supplier']);
 
+                $this->accounting->reverseFor($purchaseReturn);
                 $this->rollbackPurchaseReturn($purchaseReturn);
                 $purchaseReturn->products()->delete();
 
@@ -330,7 +342,7 @@ class PurchaseReturnController extends Controller
                     throw new \RuntimeException('At least one line with return quantity greater than zero is required.');
                 }
 
-                $adjustments = $this->purchaseReturnAdjustments($parent, $grossAmount);
+                $adjustments = $this->purchaseReturnAdjustments($parent, $grossAmount, (float) ($data['discount'] ?? $parent->discount));
                 $netAmount = $adjustments['net'];
                 $paidAmount = min((float) $data['paid_amount'], $netAmount);
                 $paymentType = PurchaseReceivedPayment::from((int) $data['payment_type']);
@@ -353,6 +365,8 @@ class PurchaseReturnController extends Controller
                 if ($parent->supplier_id && $paymentType === PurchaseReceivedPayment::Supplier_Account) {
                     Supplier::whereKey($parent->supplier_id)->decrement('balance', $netAmount);
                 }
+
+                $this->accounting->postPurchaseReturn($purchaseReturn->fresh(['supplier']));
             });
         } catch (\Throwable $e) {
             return back()
@@ -377,6 +391,7 @@ class PurchaseReturnController extends Controller
 
         try {
             DB::transaction(function () use ($purchaseReturn) {
+                $this->accounting->reverseFor($purchaseReturn);
                 $this->rollbackPurchaseReturn($purchaseReturn);
                 $purchaseReturn->products()->delete();
                 $purchaseReturn->delete();
@@ -415,19 +430,22 @@ class PurchaseReturnController extends Controller
     }
 
     /**
-     * @return array{discount: float, vat: float, net: float}
+     * @return array{discount: float, vat: float, net: float, vat_percent: float}
      */
-    private function purchaseReturnAdjustments(Purchase $parent, float $grossAmount): array
+    private function purchaseReturnAdjustments(Purchase $parent, float $grossAmount, float $discount): array
     {
         $parentGross = (float) $parent->gross_amount;
-        $ratio = $parentGross > 0 ? $grossAmount / $parentGross : 0;
-        $discount = round($ratio * (float) $parent->discount, 2);
-        $vat = round($ratio * (float) $parent->vat, 2);
+        $discount = $parentGross > 0
+            ? round(max(0, $discount) * $grossAmount / $parentGross, 2)
+            : round(max(0, $discount), 2);
+        $vatPercent = $parentGross > 0 ? ((float) $parent->vat / $parentGross) * 100 : 0;
+        $vat = round($grossAmount * $vatPercent / 100, 2);
 
         return [
             'discount' => $discount,
             'vat' => $vat,
             'net' => $grossAmount + $vat - $discount,
+            'vat_percent' => $vatPercent,
         ];
     }
 

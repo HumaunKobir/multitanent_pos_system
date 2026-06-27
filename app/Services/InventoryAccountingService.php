@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\AccountType;
 use App\Enums\CommonStatus;
+use App\Enums\PurchaseReceivedPayment;
 use App\Enums\ReceivedPaymentMethod;
 use App\Enums\SystemAccountKey;
 use App\Models\Branch;
@@ -16,6 +17,7 @@ use App\Models\OnlineOrder;
 use App\Models\ProductExchange;
 use App\Models\ProductInitialStock;
 use App\Models\Purchase;
+use App\Models\PurchaseReturn;
 use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\StockDistribution;
@@ -67,6 +69,47 @@ class InventoryAccountingService
             $purchase->date->format('Y-m-d'),
             "Purchase {$serial}",
             $lines,
+        );
+    }
+
+    public function postPurchaseReturn(PurchaseReturn $purchaseReturn): ?Transaction
+    {
+        $purchaseReturn->loadMissing('supplier:id,name');
+
+        $returnBase = round(max(0, (float) $purchaseReturn->gross_amount - (float) $purchaseReturn->discount), 2);
+        $vatAmount = round((float) $purchaseReturn->vat, 2);
+        $returnNet = round((float) $purchaseReturn->net_amount, 2);
+        $serial = $purchaseReturn->serial ?? $purchaseReturn->invoice_number;
+        $supplierName = $purchaseReturn->supplier?->name ?? 'Supplier';
+        $branchId = $purchaseReturn->branch_id;
+
+        $lines = [];
+
+        if ($purchaseReturn->payment_type === PurchaseReceivedPayment::Cash && $returnNet > 0) {
+            $lines[] = $this->debitLine(SystemAccountKey::CashInHand, $returnNet, "Cash received — Purchase Return {$serial}", $branchId);
+        } elseif ($returnNet > 0) {
+            $lines[] = $this->debitLine(SystemAccountKey::SupplierPayables, $returnNet, "Supplier payable reduced — Purchase Return {$serial}, {$supplierName}", $branchId);
+        }
+
+        if ($returnBase > 0) {
+            $lines[] = $this->creditLine(SystemAccountKey::ProductInventory, $returnBase, "Inventory reduced — Purchase Return {$serial}", $branchId);
+        }
+
+        if ($vatAmount > 0) {
+            $lines[] = $this->creditLine(SystemAccountKey::OutputVat, $vatAmount, "VAT reversed — Purchase Return {$serial}", $branchId);
+        }
+
+        if ($lines === []) {
+            return null;
+        }
+
+        return $this->postJournal(
+            PurchaseReturn::class,
+            $purchaseReturn->id,
+            $purchaseReturn->date->format('Y-m-d'),
+            "Purchase Return {$serial}",
+            $lines,
+            validateBalance: false,
         );
     }
 

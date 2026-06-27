@@ -14,7 +14,7 @@ class PurchaseReturn extends Model
     use HasBranchUser;
     use HasFactory;
 
-    protected $appends = ['invoice_number', 'net_amount'];
+    protected $appends = ['invoice_number', 'net_amount', 'vat_percent'];
 
     protected $fillable = [
         'branch_id',
@@ -50,6 +50,13 @@ class PurchaseReturn extends Model
     public function getNetAmountAttribute(): float
     {
         return (float) $this->gross_amount + (float) $this->vat - (float) $this->discount;
+    }
+
+    public function getVatPercentAttribute(): float
+    {
+        $gross = (float) $this->gross_amount;
+
+        return $gross > 0 ? ((float) $this->vat / $gross) * 100 : 0;
     }
 
     public function purchase(): BelongsTo

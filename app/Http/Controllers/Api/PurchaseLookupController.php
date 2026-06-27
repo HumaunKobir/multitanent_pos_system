@@ -65,6 +65,10 @@ class PurchaseLookupController extends Controller
             ];
         })->values();
 
+        $vatPercent = (float) $purchase->gross_amount > 0
+            ? ((float) $purchase->vat / (float) $purchase->gross_amount) * 100
+            : 0;
+
         return response()->json([
             'id' => $purchase->id,
             'invoice_number' => $purchase->invoice_number,
@@ -75,6 +79,7 @@ class PurchaseLookupController extends Controller
             'gross_amount' => (float) $purchase->gross_amount,
             'discount' => (float) $purchase->discount,
             'vat' => (float) $purchase->vat,
+            'vat_percent' => $vatPercent,
             'items' => $items,
         ]);
     }

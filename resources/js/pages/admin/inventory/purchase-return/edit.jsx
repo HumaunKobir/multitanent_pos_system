@@ -32,6 +32,7 @@ export default function PurchaseReturnEdit({ purchaseReturn, paymentAccounts = [
         date: purchaseReturn.date ?? '',
         comment: purchaseReturn.comment ?? '',
         paid_amount: purchaseReturn.paid_amount ?? '0',
+        discount: String(purchaseReturn.discount ?? '0'),
         payment_type: String(purchaseReturn.payment_type ?? '5'),
         items: [],
     });
@@ -45,10 +46,9 @@ export default function PurchaseReturnEdit({ purchaseReturn, paymentAccounts = [
         (s, it) => s + parseFloat(it.quantity || 0) * parseFloat(it.unit_price || 0),
         0,
     );
-    const purchaseGross = parseFloat(purchaseReturn?.purchase_gross_amount || 0);
-    const returnRatio = purchaseGross > 0 ? subtotalAmount / purchaseGross : 0;
-    const discountAmount = roundCurrency(returnRatio * parseFloat(purchaseReturn?.purchase_discount || 0));
-    const vatAmount = roundCurrency(returnRatio * parseFloat(purchaseReturn?.purchase_vat || 0));
+    const discountAmount = parseFloat(form.data.discount || 0);
+    const vatPercent = parseFloat(purchaseReturn?.purchase_vat_percent || 0);
+    const vatAmount = roundCurrency(subtotalAmount * vatPercent / 100);
     const grossAmount = subtotalAmount + vatAmount - discountAmount;
 
     function updateReturnQty(index, rawValue) {
@@ -84,6 +84,7 @@ export default function PurchaseReturnEdit({ purchaseReturn, paymentAccounts = [
 
         form.transform((data) => ({
             ...data,
+            discount: String(parseFloat(data.discount || 0) || 0),
             payment_type: paymentModeToType(paymentMode),
             items: returnItems,
         }));
@@ -177,8 +178,11 @@ export default function PurchaseReturnEdit({ purchaseReturn, paymentAccounts = [
                             Icon={HandCoins}
                             grossAmount={grossAmount}
                             subtotalAmount={subtotalAmount}
-                            discountAmount={discountAmount}
+                            discountAmount={form.data.discount}
                             vatAmount={vatAmount}
+                            vatPercent={vatPercent}
+                            onDiscountAmountChange={(v) => form.setData('discount', v)}
+                            discountError={form.errors.discount}
                             paidAmount={form.data.paid_amount}
                             onPaidAmountChange={(v) => form.setData('paid_amount', v)}
                             paymentMode={paymentMode}

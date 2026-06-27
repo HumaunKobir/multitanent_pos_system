@@ -115,6 +115,9 @@ export function PaymentSummaryCard({
     subtotalAmount = null,
     discountAmount = 0,
     vatAmount = 0,
+    vatPercent = 0,
+    onDiscountAmountChange = null,
+    discountError = null,
     parentPaymentInfo = null,
     paidLabel = 'Paid Amount',
 }) {
@@ -132,15 +135,30 @@ export function PaymentSummaryCard({
                             <span className="text-muted-foreground">Gross Amount</span>
                             <span>৳{subtotalAmount.toFixed(2)}</span>
                         </div>
-                        {discountAmount > 0.009 && (
+                        {onDiscountAmountChange ? (
+                            <div>
+                                <div className="flex items-center justify-between gap-4">
+                                    <Label className="text-xs text-muted-foreground">Discount</Label>
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={discountAmount}
+                                        onChange={(e) => onDiscountAmountChange(e.target.value)}
+                                        className={`${inputCls} w-28 text-right`}
+                                    />
+                                </div>
+                                {discountError && <p className="mt-1 text-xs text-destructive">{discountError}</p>}
+                            </div>
+                        ) : discountAmount > 0.009 ? (
                             <div className="flex justify-between text-destructive">
                                 <span>Discount</span>
                                 <span>-৳{discountAmount.toFixed(2)}</span>
                             </div>
-                        )}
+                        ) : null}
                         {vatAmount > 0.009 && (
                             <div className="flex justify-between text-emerald-600">
-                                <span>VAT</span>
+                                <span>VAT {vatPercent > 0.009 ? `(${vatPercent.toFixed(2)}%)` : ''}</span>
                                 <span>+৳{vatAmount.toFixed(2)}</span>
                             </div>
                         )}

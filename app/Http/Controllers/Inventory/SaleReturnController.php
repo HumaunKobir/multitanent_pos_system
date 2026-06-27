@@ -12,8 +12,6 @@ use App\Models\Customer;
 use App\Models\Promotion;
 use App\Models\SaleReturn;
 use App\Models\Sell;
-use App\Models\SpecialDiscount;
-use App\Services\CoinService;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
 use App\Services\InventoryStockService;
@@ -39,7 +37,6 @@ class SaleReturnController extends Controller
         private InventoryCostService $costService,
         private SaleReturnDiscountService $returnDiscounts,
         private PromotionService $promotionService,
-        private CoinService $coinService,
     ) {}
 
     public function index(Request $request): Response
@@ -69,7 +66,6 @@ class SaleReturnController extends Controller
         return Inertia::render('admin/inventory/sale-return/create', [
             'today' => now()->format('Y-m-d'),
             'paymentAccounts' => $this->paymentAccounts(),
-            'specialDiscounts' => $this->activeSpecialDiscounts(Auth::user()?->branch_id),
         ]);
     }
 
@@ -91,9 +87,8 @@ class SaleReturnController extends Controller
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'manual_invoice_discount' => ['nullable', 'numeric', 'min:0'],
-            'manual_special_discount' => ['nullable', 'numeric', 'min:0'],
             'manual_round_off' => ['nullable', 'numeric', 'min:0'],
-            'manual_coin_discount' => ['nullable', 'numeric', 'min:0'],
+            'manual_vat_percent' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $branchId = Auth::user()?->branch_id;
@@ -181,11 +176,12 @@ class SaleReturnController extends Controller
                     $returnLineDiscount,
                     $returnPromotionDiscount,
                     isset($data['manual_invoice_discount']) ? (float) $data['manual_invoice_discount'] : null,
-                    isset($data['manual_special_discount']) ? (float) $data['manual_special_discount'] : null,
                     isset($data['manual_round_off']) ? (float) $data['manual_round_off'] : null,
-                    isset($data['manual_coin_discount']) ? (float) $data['manual_coin_discount'] : null,
+                    isset($data['manual_vat_percent']) ? (float) $data['manual_vat_percent'] : null,
                 );
                 $discountAmount = $totals['discount_amount'];
+                $vatPercent = $totals['vat_percent'];
+                $vatAmount = $totals['vat_amount'];
                 $netReturnAmount = $totals['net_return_amount'];
                 $refund = $this->resolveReturnRefund($data, $request, $netReturnAmount);
                 $paidAmount = $refund['paid_amount'];
@@ -200,6 +196,8 @@ class SaleReturnController extends Controller
                     'customer_id' => $parent->customer_id,
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
+                    'vat_amount' => $vatAmount,
+                    'vat_percent' => $vatPercent,
                     'discount_amount' => $discountAmount,
                     'paid_amount' => $paidAmount,
                     'payment_type' => $paymentType,
@@ -320,7 +318,6 @@ class SaleReturnController extends Controller
         return Inertia::render('admin/inventory/sale-return/edit', [
             'today' => now()->format('Y-m-d'),
             'paymentAccounts' => $this->paymentAccounts(),
-            'specialDiscounts' => $this->activeSpecialDiscounts($parent->branch_id),
             'saleReturn' => [
                 'id' => $saleReturn->id,
                 'sell_id' => $saleReturn->sell_id,
@@ -328,6 +325,7 @@ class SaleReturnController extends Controller
                 'customer_name' => $saleReturn->customer?->name,
                 'date' => optional($saleReturn->date)->format('Y-m-d'),
                 'comment' => $saleReturn->comment,
+                'vat_percent' => (float) $saleReturn->vat_percent,
                 'paid_amount' => (string) $saleReturn->paid_amount,
                 'payment_type' => $saleReturn->payment_type?->value,
                 'payment_account_id' => $saleReturn->payment_account_id
@@ -343,19 +341,14 @@ class SaleReturnController extends Controller
                 'items' => $items,
                 'sell_discounts' => [
                     'gross_amount' => (float) $parent->gross_amount,
+                    'vat' => (float) $parent->vat,
                     'line_discount_total' => $parent->lineDiscountTotal(),
                     'invoice_discount' => (float) $parent->discount,
-                    'special_discount_id' => $parent->special_discount_id,
-                    'special_discount_amount' => (float) $parent->special_discount_amount,
-                    'promotion_discount_total' => (float) $parent->promotion_discount_total,
-                    'coin_discount_amount' => (float) $parent->coin_discount_amount,
                     'round_off_amount' => (float) $parent->round_off_amount,
                     'net_amount' => (float) $parent->net_amount,
                     'paid_amount' => (float) $parent->paid_amount,
-                    'coins_redeemed' => (float) $parent->coins_redeemed,
                 ],
                 'sale_date' => optional($parent->date)->format('Y-m-d'),
-                'coin_settings' => $this->coinService->settingsPayloadForBranch($parent->branch_id),
                 'promotions' => $this->promotionService->activeForBranch($parent->branch_id),
                 'payments' => $parent->payments
                     ->map(fn ($payment) => [
@@ -384,9 +377,8 @@ class SaleReturnController extends Controller
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'manual_invoice_discount' => ['nullable', 'numeric', 'min:0'],
-            'manual_special_discount' => ['nullable', 'numeric', 'min:0'],
             'manual_round_off' => ['nullable', 'numeric', 'min:0'],
-            'manual_coin_discount' => ['nullable', 'numeric', 'min:0'],
+            'manual_vat_percent' => ['nullable', 'numeric', 'min:0'],
         ]);
 
         $branchId = Auth::user()?->branch_id;
@@ -481,11 +473,12 @@ class SaleReturnController extends Controller
                     $returnLineDiscount,
                     $returnPromotionDiscount,
                     isset($data['manual_invoice_discount']) ? (float) $data['manual_invoice_discount'] : null,
-                    isset($data['manual_special_discount']) ? (float) $data['manual_special_discount'] : null,
                     isset($data['manual_round_off']) ? (float) $data['manual_round_off'] : null,
-                    isset($data['manual_coin_discount']) ? (float) $data['manual_coin_discount'] : null,
+                    isset($data['manual_vat_percent']) ? (float) $data['manual_vat_percent'] : null,
                 );
                 $discountAmount = $totals['discount_amount'];
+                $vatPercent = $totals['vat_percent'];
+                $vatAmount = $totals['vat_amount'];
                 $netReturnAmount = $totals['net_return_amount'];
                 $refund = $this->resolveReturnRefund($data, $request, $netReturnAmount);
                 $paidAmount = $refund['paid_amount'];
@@ -496,6 +489,8 @@ class SaleReturnController extends Controller
                 $saleReturn->update([
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
+                    'vat_amount' => $vatAmount,
+                    'vat_percent' => $vatPercent,
                     'discount_amount' => $discountAmount,
                     'paid_amount' => $paidAmount,
                     'payment_type' => $paymentType,
@@ -555,26 +550,6 @@ class SaleReturnController extends Controller
 
         return redirect()->route('inventory.sale-return.index')
             ->with('success', 'Sale return deleted successfully.');
-    }
-
-    /** @return array<int, array<string, mixed>> */
-    private function activeSpecialDiscounts(?int $branchId): array
-    {
-        return SpecialDiscount::query()
-            ->active()
-            ->when($branchId, fn ($q, $b) => $q->accessibleAtBranch($b))
-            ->orderBy('min_amount')
-            ->get(['id', 'name', 'min_amount', 'max_amount', 'discount_type', 'discount_value'])
-            ->map(fn (SpecialDiscount $d) => [
-                'id' => $d->id,
-                'name' => $d->name,
-                'min_amount' => (float) $d->min_amount,
-                'max_amount' => $d->max_amount !== null ? (float) $d->max_amount : null,
-                'discount_type' => $d->discount_type->value,
-                'discount_value' => (float) $d->discount_value,
-            ])
-            ->values()
-            ->all();
     }
 
     private function rollbackSaleReturn(SaleReturn $saleReturn): void

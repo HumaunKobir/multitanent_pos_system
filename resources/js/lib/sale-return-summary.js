@@ -1,19 +1,4 @@
-import { computeCoinDiscount, maxRedeemableCoins } from '@/lib/pos-coin';
-import { computeDiscountAmount } from '@/lib/pos-discount';
 import { applyPromotionsToCart, remainingQuantityKeepsPromotion } from '@/lib/pos-promotion';
-
-function parentNetBeforeCoin(sellDiscounts) {
-    const sd = sellDiscounts;
-
-    return (
-        parseFloat(sd.gross_amount || 0) +
-        parseFloat(sd.vat || 0) -
-        parseFloat(sd.invoice_discount || 0) -
-        parseFloat(sd.special_discount_amount || 0) -
-        parseFloat(sd.round_off_amount || 0) -
-        parseFloat(sd.line_discount_total || 0)
-    );
-}
 
 function findPromotion(promotions, promotionId) {
     if (promotionId === null || promotionId === undefined || promotionId === '') {
@@ -77,43 +62,19 @@ function promotionClawback(item, returnQty, promotions, saleDate) {
     return original;
 }
 
-function coinDiscountForPortion(sellDiscounts, coinSettings, netBeforeCoin, parentNetBeforeCoin) {
-    if (netBeforeCoin <= 0.009 || parentNetBeforeCoin <= 0.009) {
+export function derivedVatPercent(sellDiscounts) {
+    const parentVat = parseFloat(sellDiscounts?.vat || 0);
+    const parentNet = parseFloat(sellDiscounts?.net_amount || 0);
+    const parentBase = Math.max(0, parentNet - parentVat);
+    if (parentBase <= 0 || parentVat <= 0) {
         return 0;
     }
-
-    const parentCoin = parseFloat(sellDiscounts.coin_discount_amount || 0);
-    const parentCoins = parseFloat(sellDiscounts.coins_redeemed || 0);
-    const proportion = netBeforeCoin / parentNetBeforeCoin;
-    const coinsForPortion = parentCoins * proportion;
-
-    if (!coinSettings?.enabled || parentCoin <= 0.009) {
-        return parentCoin * proportion;
-    }
-
-    const maxRedeemable = maxRedeemableCoins(parentCoins, coinSettings, netBeforeCoin);
-    const allowedCoins = Math.min(coinsForPortion, maxRedeemable);
-
-    return computeCoinDiscount(allowedCoins, coinSettings, netBeforeCoin);
-}
-
-function coinDiscountClawback(sellDiscounts, coinSettings, returnNetBeforeCoin) {
-    const parentCoin = parseFloat(sellDiscounts.coin_discount_amount || 0);
-
-    if (parentCoin <= 0.009) {
-        return 0;
-    }
-
-    const parentNet = parentNetBeforeCoin(sellDiscounts);
-    const remainingNet = Math.max(0, parentNet - returnNetBeforeCoin);
-    const remainingCoin = coinDiscountForPortion(sellDiscounts, coinSettings, remainingNet, parentNet);
-
-    return Math.max(0, parentCoin - remainingCoin);
+    return Math.round((parentVat / parentBase) * 10000) / 100;
 }
 
 export function calcSaleReturnSummary(lines, sellDiscounts, context = {}, manualOverrides = {}) {
     const sd = sellDiscounts;
-    const { promotions = [], saleDate = null, coinSettings = null, specialDiscounts = [] } = context;
+    const { promotions = [], saleDate = null } = context;
     const parentGross = parseFloat(sd.gross_amount || 0);
     const parentLineDiscount = parseFloat(sd.line_discount_total || 0);
     const parentNetForProportion = parentGross - parentLineDiscount;
@@ -135,64 +96,39 @@ export function calcSaleReturnSummary(lines, sellDiscounts, context = {}, manual
     const returnAfterPromo = grossAmount - returnLineDiscount - returnPromotionDiscount;
     const proportion = parentNetForProportion > 0 ? returnAfterPromo / parentNetForProportion : 0;
 
-    // Auto-calculated proportional values
     const autoInvoice = proportion * parseFloat(sd.invoice_discount || 0);
-    const autoSpecial = proportion * parseFloat(sd.special_discount_amount || 0);
     const autoRoundOff = proportion * parseFloat(sd.round_off_amount || 0);
 
     // invoice/roundOff: null → auto proportional; '' or number → manual ('' treated as 0 via `|| 0` fallback)
-    // specialDiscountId: undefined → auto proportional; null → 0 (none); string id → compute from discount
-    // coin: null or '' → auto clawback; number → manual
     const returnInvoiceDiscount =
         manualOverrides.invoice != null
             ? Math.min(Math.max(0, parseFloat(manualOverrides.invoice || 0)), parseFloat(sd.invoice_discount || 0))
             : autoInvoice;
-    const returnSpecialDiscount = (() => {
-        const sdId = manualOverrides.specialDiscountId;
-        if (sdId === undefined) {
-            return autoSpecial;
-        }
-        if (!sdId) {
-            return 0;
-        }
-        const disc = specialDiscounts.find((d) => String(d.id) === String(sdId));
-        return disc
-            ? Math.min(
-                  computeDiscountAmount(disc.discount_type, disc.discount_value, returnAfterPromo),
-                  parseFloat(sd.special_discount_amount || 0),
-              )
-            : 0;
-    })();
     const returnRoundOff =
         manualOverrides.roundOff != null
             ? Math.min(Math.max(0, parseFloat(manualOverrides.roundOff || 0)), parseFloat(sd.round_off_amount || 0))
             : autoRoundOff;
 
-    const returnInvoiceLevelDiscount = returnInvoiceDiscount + returnSpecialDiscount + returnRoundOff;
-    const returnNetBeforeCoin = Math.max(0, returnAfterPromo - returnInvoiceLevelDiscount);
-    const autoCoinDiscount = coinDiscountClawback(sd, coinSettings, returnNetBeforeCoin);
-    const returnCoinDiscount =
-        manualOverrides.coin != null && manualOverrides.coin !== ''
-            ? Math.min(Math.max(0, parseFloat(manualOverrides.coin || 0)), parseFloat(sd.coin_discount_amount || 0))
-            : autoCoinDiscount;
+    const returnInvoiceLevelDiscount = returnInvoiceDiscount + returnRoundOff;
 
     const returnDiscounts = {
         line: returnLineDiscount,
         promotion: returnPromotionDiscount,
         invoice: returnInvoiceDiscount,
-        special: returnSpecialDiscount,
-        coin: returnCoinDiscount,
         roundOff: returnRoundOff,
     };
     const autoDiscounts = {
         invoice: autoInvoice,
         roundOff: autoRoundOff,
-        coin: autoCoinDiscount,
     };
 
-    const discountAmount =
-        returnLineDiscount + returnPromotionDiscount + returnInvoiceLevelDiscount + returnCoinDiscount;
-    const netAmount = Math.max(0, grossAmount - discountAmount);
+    const discountAmount = returnLineDiscount + returnPromotionDiscount + returnInvoiceLevelDiscount;
+    const returnBase = Math.max(0, grossAmount - discountAmount);
+
+    const vatPercent = Math.max(0, parseFloat(manualOverrides.vatPercent || 0));
+    const returnVat = vatPercent > 0 ? Math.round(returnBase * (vatPercent / 100) * 100) / 100 : 0;
+
+    const netAmount = Math.max(0, returnBase + returnVat);
 
     const parentNet = parseFloat(sd.net_amount || 0);
     const parentPaid = parseFloat(sd.paid_amount || 0);
@@ -206,6 +142,8 @@ export function calcSaleReturnSummary(lines, sellDiscounts, context = {}, manual
         returnDiscounts,
         autoDiscounts,
         discountAmount,
+        returnBase,
+        returnVat,
         netAmount,
         proportion,
         parentNet,

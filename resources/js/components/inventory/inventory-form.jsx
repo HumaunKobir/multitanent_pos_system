@@ -226,13 +226,16 @@ export function SaleReturnRefundCard({
     grossAmount,
     subtotalAmount = null,
     discountAmount = 0,
+    vatAmount = 0,
+    vatPercent = '',
+    onVatPercentChange,
     parentPaymentInfo = null,
     payments = [],
     paymentAccounts = [],
     onPaymentsChange,
     errors = {},
 }) {
-    const showDiscountBreakdown = subtotalAmount != null && discountAmount > 0.009;
+    const showDiscountBreakdown = subtotalAmount != null;
 
     return (
         <InventoryCard title="Summary & Payment" icon={Icon}>
@@ -243,10 +246,40 @@ export function SaleReturnRefundCard({
                             <span className="text-muted-foreground">Gross Amount</span>
                             <span>৳{subtotalAmount.toFixed(2)}</span>
                         </div>
-                        <div className="flex justify-between text-destructive">
-                            <span>Discount</span>
-                            <span>-৳{discountAmount.toFixed(2)}</span>
-                        </div>
+                        {discountAmount > 0.009 && (
+                            <div className="flex justify-between text-destructive">
+                                <span>Discount</span>
+                                <span>-৳{discountAmount.toFixed(2)}</span>
+                            </div>
+                        )}
+                        {onVatPercentChange != null && (
+                            <div className="flex items-center justify-between gap-2">
+                                <label className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                                    <Percent className="size-3" />
+                                    VAT %
+                                </label>
+                                <div className="flex items-center gap-1">
+                                    <Input
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={vatPercent}
+                                        onChange={(e) => onVatPercentChange(e.target.value)}
+                                        placeholder="0"
+                                        className={`${inputCls} w-20 text-right`}
+                                    />
+                                    {vatAmount > 0.009 && (
+                                        <span className="text-blue-600 dark:text-blue-400">+৳{vatAmount.toFixed(2)}</span>
+                                    )}
+                                </div>
+                            </div>
+                        )}
+                        {onVatPercentChange == null && vatAmount > 0.009 && (
+                            <div className="flex justify-between text-blue-600 dark:text-blue-400">
+                                <span>VAT</span>
+                                <span>+৳{vatAmount.toFixed(2)}</span>
+                            </div>
+                        )}
                     </>
                 )}
                 <div className="flex justify-between">
@@ -280,7 +313,7 @@ export function SaleReturnRefundCard({
     );
 }
 
-const EDITABLE_RETURN_DISCOUNT_KEYS = ['invoice', 'roundOff', 'coin'];
+const EDITABLE_RETURN_DISCOUNT_KEYS = ['invoice', 'roundOff'];
 
 function EditableDiscountInput({ saleMax, initialValue, onManualChange, className }) {
     const inputRef = useRef(null);
@@ -311,9 +344,6 @@ export function SaleReturnSourceDiscounts({
     returnSummary,
     manualDiscounts = {},
     onManualDiscountChange,
-    specialDiscounts = [],
-    selectedSpecialDiscountId,
-    onSpecialDiscountIdChange,
 }) {
     if (!sellDiscounts) {
         return null;
@@ -322,15 +352,7 @@ export function SaleReturnSourceDiscounts({
     const ret = returnSummary?.returnDiscounts ?? {};
     const auto = returnSummary?.autoDiscounts ?? {};
     const rows = [
-        { key: 'line', label: 'Line discount', sale: sellDiscounts.line_discount_total },
         { key: 'invoice', label: 'Invoice discount', sale: sellDiscounts.invoice_discount },
-        { key: 'special', label: 'Special discount', sale: sellDiscounts.special_discount_amount },
-        {
-            key: 'promotion',
-            label: 'Promotion discount',
-            sale: sellDiscounts.promotion_discount_total,
-        },
-        { key: 'coin', label: 'Coin discount', sale: sellDiscounts.coin_discount_amount },
         { key: 'roundOff', label: 'Round off', sale: sellDiscounts.round_off_amount },
     ].filter((row) => parseFloat(row.sale || 0) > 0.009 || parseFloat(ret[row.key] || 0) > 0.009);
 
@@ -347,62 +369,25 @@ export function SaleReturnSourceDiscounts({
                     <span className="text-right">This Return</span>
                 </div>
                 {rows.map((row) => {
-                    const isEditable = EDITABLE_RETURN_DISCOUNT_KEYS.includes(row.key);
                     const autoVal = parseFloat(auto[row.key] || ret[row.key] || 0);
-                    const retVal = parseFloat(ret[row.key] || 0);
-
-                    if (row.key === 'special') {
-                        const computedSpecial = parseFloat(ret.special || 0);
-                        return (
-                            <div key={row.key} className="grid grid-cols-3 items-center gap-2">
-                                <span className="text-muted-foreground">{row.label}</span>
-                                <span className="text-right">৳{parseFloat(row.sale || 0).toFixed(2)}</span>
-                                <div className="flex flex-col items-end gap-0.5">
-                                    <select
-                                        value={selectedSpecialDiscountId ?? ''}
-                                        onChange={(e) => onSpecialDiscountIdChange?.(e.target.value || null)}
-                                        className="h-7 w-full rounded-md border border-border/60 bg-background px-2 text-xs focus:border-primary focus:ring-[3px] focus:ring-ring/50"
-                                    >
-                                        <option value="">— None —</option>
-                                        {specialDiscounts.map((d) => (
-                                            <option key={d.id} value={String(d.id)}>
-                                                {d.name}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    {computedSpecial > 0.009 && (
-                                        <span className="text-xs font-medium text-muted-foreground">
-                                            ৳{computedSpecial.toFixed(2)}
-                                        </span>
-                                    )}
-                                </div>
-                            </div>
-                        );
-                    }
 
                     return (
                         <div key={row.key} className="grid grid-cols-3 items-center gap-2">
                             <span className="text-muted-foreground">{row.label}</span>
                             <span className="text-right">৳{parseFloat(row.sale || 0).toFixed(2)}</span>
-                            {isEditable ? (
-                                <div className="flex justify-end">
-                                    <EditableDiscountInput
-                                        key={`${row.key}-${parseFloat(row.sale || 0)}`}
-                                        saleMax={row.sale}
-                                        initialValue={
-                                            manualDiscounts[row.key] != null
-                                                ? String(manualDiscounts[row.key])
-                                                : autoVal.toFixed(2)
-                                        }
-                                        onManualChange={(val) => onManualDiscountChange?.(row.key, val)}
-                                        className={`${inputCls} w-24 text-right`}
-                                    />
-                                </div>
-                            ) : (
-                                <span className="text-right font-medium text-destructive">
-                                    {retVal > 0.009 ? `-৳${retVal.toFixed(2)}` : '—'}
-                                </span>
-                            )}
+                            <div className="flex justify-end">
+                                <EditableDiscountInput
+                                    key={`${row.key}-${parseFloat(row.sale || 0)}`}
+                                    saleMax={row.sale}
+                                    initialValue={
+                                        manualDiscounts[row.key] != null
+                                            ? String(manualDiscounts[row.key])
+                                            : autoVal.toFixed(2)
+                                    }
+                                    onManualChange={(val) => onManualDiscountChange?.(row.key, val)}
+                                    className={`${inputCls} w-24 text-right`}
+                                />
+                            </div>
                         </div>
                     );
                 })}

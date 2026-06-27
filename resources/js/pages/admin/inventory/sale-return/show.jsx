@@ -19,6 +19,9 @@ export default function SaleReturnShow({ saleReturn }) {
                     {parseFloat(saleReturn.gross_amount).toFixed(2)}
                     {parseFloat(saleReturn.discount_amount ?? 0) > 0
                         ? ` · Discount ৳${parseFloat(saleReturn.discount_amount).toFixed(2)}`
+                        : ''}
+                    {parseFloat(saleReturn.vat_amount ?? 0) > 0
+                        ? ` · VAT ৳${parseFloat(saleReturn.vat_amount).toFixed(2)}`
                         : ''}{' '}
                     · Net ৳{parseFloat(saleReturn.net_amount ?? saleReturn.gross_amount).toFixed(2)} · Refund ৳
                     {parseFloat(saleReturn.paid_amount).toFixed(2)}

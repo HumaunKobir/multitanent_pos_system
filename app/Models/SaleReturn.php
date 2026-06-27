@@ -21,6 +21,8 @@ class SaleReturn extends Model
         'customer_id',
         'date',
         'gross_amount',
+        'vat_amount',
+        'vat_percent',
         'discount_amount',
         'paid_amount',
         'payment_type',
@@ -31,6 +33,8 @@ class SaleReturn extends Model
     protected $casts = [
         'date' => 'date',
         'gross_amount' => 'decimal:2',
+        'vat_amount' => 'decimal:2',
+        'vat_percent' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'paid_amount' => 'decimal:2',
         'payment_type' => ReceivedPaymentMethod::class,
@@ -38,7 +42,7 @@ class SaleReturn extends Model
 
     public function getNetAmountAttribute(): float
     {
-        return round(max(0, (float) $this->gross_amount - (float) $this->discount_amount), 2);
+        return round(max(0, (float) $this->gross_amount + (float) $this->vat_amount - (float) $this->discount_amount), 2);
     }
 
     public function getInvoiceNumberAttribute(): string

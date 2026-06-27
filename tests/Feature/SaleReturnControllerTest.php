@@ -4,7 +4,6 @@ use App\Enums\PromotionScope;
 use App\Enums\SaleType;
 use App\Models\Batch;
 use App\Models\Branch;
-use App\Models\CoinSettings;
 use App\Models\Customer;
 use App\Models\Product;
 use App\Models\Promotion;
@@ -93,8 +92,6 @@ test('partial paid sale return stores proportional discount and caps refund', fu
         'customer_id' => $customer->id,
         'gross_amount' => 1000,
         'discount' => 50,
-        'special_discount_amount' => 100,
-        'coin_discount_amount' => 25,
         'round_off_amount' => 10,
         'vat' => 0,
         'paid_amount' => 300,
@@ -126,10 +123,11 @@ test('partial paid sale return stores proportional discount and caps refund', fu
 
     $saleReturn = SaleReturn::query()->latest('id')->first();
 
+    // discount_amount = line(30) + invoice(50) + round_off(10) = 90
     expect($saleReturn)->not->toBeNull();
     expect((float) $saleReturn->gross_amount)->toBe(1000.0);
-    expect((float) $saleReturn->discount_amount)->toBe(215.0);
-    expect((float) $saleReturn->net_amount)->toBe(785.0);
+    expect((float) $saleReturn->discount_amount)->toBe(90.0);
+    expect((float) $saleReturn->net_amount)->toBe(910.0);
     expect((float) $saleReturn->paid_amount)->toBe(300.0);
 });
 
@@ -281,26 +279,13 @@ test('sale return claws back promotion only when return qty meets the promotion 
     expect((float) $fullReturn->net_amount)->toBe(270.0);
 });
 
-test('sale return applies coin clawback on partial quantity return', function () {
+test('sale return net amount equals gross when sale had no invoice-level discounts', function () {
     $user = saleReturnUser();
     $branch = Branch::factory()->create();
     seedAccountingAccounts(user: $user, branchId: $branch->id);
     ['product' => $product, 'batch' => $batch] = saleReturnProduct(10, $branch->id);
 
-    CoinSettings::query()->create([
-        'branch_id' => $branch->id,
-        'enabled' => true,
-        'earn_spend_amount' => 100,
-        'earn_coins' => 1,
-        'coin_value' => 1,
-        'min_redeem_coins' => 0,
-        'max_redeem_percent' => 10,
-    ]);
-
-    $customer = Customer::factory()->create([
-        'branch_id' => $branch->id,
-        'point' => 500,
-    ]);
+    $customer = Customer::factory()->create(['branch_id' => $branch->id]);
 
     $sell = Sell::factory()->create([
         'branch_id' => $branch->id,
@@ -309,9 +294,7 @@ test('sale return applies coin clawback on partial quantity return', function ()
         'gross_amount' => 1000,
         'discount' => 0,
         'vat' => 0,
-        'coin_discount_amount' => 100,
-        'coins_redeemed' => 100,
-        'paid_amount' => 900,
+        'paid_amount' => 1000,
         'type' => SaleType::Sale,
     ]);
 
@@ -330,7 +313,7 @@ test('sale return applies coin clawback on partial quantity return', function ()
         ->post('/inventory/sale-return', [
             'sell_id' => $sell->id,
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '450',
+            'paid_amount' => '500',
             'payment_type' => '5',
             'items' => [
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
@@ -341,6 +324,6 @@ test('sale return applies coin clawback on partial quantity return', function ()
     $saleReturn = SaleReturn::query()->latest('id')->first();
 
     expect((float) $saleReturn->gross_amount)->toBe(500.0);
-    expect((float) $saleReturn->discount_amount)->toBe(50.0);
-    expect((float) $saleReturn->net_amount)->toBe(450.0);
+    expect((float) $saleReturn->discount_amount)->toBe(0.0);
+    expect((float) $saleReturn->net_amount)->toBe(500.0);
 });

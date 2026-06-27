@@ -192,19 +192,11 @@ class InventoryAccountingService
 
     public function postSaleReturn(SaleReturn $saleReturn, array $paymentLines, float $returnCost): Transaction
     {
-        $saleReturn->loadMissing([
-            'customer:id,name',
-            'sell:id,gross_amount,discount,special_discount_amount,coin_discount_amount,round_off_amount,vat',
-            'sell.products:id,sell_id,discount',
-        ]);
+        $saleReturn->loadMissing(['customer:id,name']);
 
         $returnNet = round((float) $saleReturn->net_amount, 2);
         $paidAmount = round((float) $saleReturn->paid_amount, 2);
-        $parent = $saleReturn->sell;
-        $parentNet = $parent ? (float) $parent->net_amount : $returnNet;
-        $parentVat = $parent ? (float) $parent->vat : 0.0;
-        $vatRatio = $parentNet > 0 ? $parentVat / $parentNet : 0.0;
-        $returnVat = round($returnNet * $vatRatio, 2);
+        $returnVat = round((float) $saleReturn->vat_amount, 2);
         $returnBase = round($returnNet - $returnVat, 2);
 
         $invoice = $saleReturn->invoice_number;

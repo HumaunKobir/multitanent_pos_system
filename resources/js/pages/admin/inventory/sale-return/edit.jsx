@@ -13,7 +13,7 @@ import {
     inputCls,
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
-import { calcSaleReturnSummary } from '@/lib/sale-return-summary';
+import { calcSaleReturnSummary, derivedVatPercent } from '@/lib/sale-return-summary';
 import { buildInitialSalePayments, computeSplitSalePayment, serializeSalePayments, splitPaymentValidationError } from '@/lib/sale-payment';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
@@ -22,7 +22,7 @@ import { useEffect, useState } from 'react';
 
 import { Input } from '@/components/ui/input';
 
-export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], specialDiscounts = [] }) {
+export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const [items, setItems] = useState(saleReturn.items ?? []);
@@ -31,7 +31,6 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], speci
     const returnContext = {
         promotions: saleReturn.promotions ?? [],
         saleDate: saleReturn.sale_date,
-        coinSettings: saleReturn.coin_settings,
     };
 
     const initialManualDiscounts = (() => {
@@ -42,15 +41,14 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], speci
         };
     })();
 
-    const initialSpecialDiscountId = (() => {
-        const sd = saleReturn.sell_discounts ?? {};
-        const sdId = sd.special_discount_id;
-        const inList = sdId && specialDiscounts.find((d) => String(d.id) === String(sdId));
-        return inList ? String(sdId) : null;
-    })();
-
     const [manualDiscounts, setManualDiscounts] = useState(initialManualDiscounts);
-    const [selectedSpecialDiscountId, setSelectedSpecialDiscountId] = useState(initialSpecialDiscountId);
+    const [vatPercent, setVatPercent] = useState(() => {
+        if (saleReturn.vat_percent > 0) {
+            return String(parseFloat(saleReturn.vat_percent));
+        }
+        const derived = derivedVatPercent(saleReturn.sell_discounts);
+        return derived > 0 ? String(derived) : '';
+    });
 
     const form = useForm({
         date: saleReturn.date ?? '',
@@ -66,9 +64,9 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], speci
     }, [flash?.success, flash?.error]);
 
     const returnSummary = saleReturn.sell_discounts
-        ? calcSaleReturnSummary(items, saleReturn.sell_discounts, { ...returnContext, specialDiscounts }, {
+        ? calcSaleReturnSummary(items, saleReturn.sell_discounts, returnContext, {
               ...manualDiscounts,
-              specialDiscountId: selectedSpecialDiscountId,
+              vatPercent: parseFloat(vatPercent || 0),
           })
         : null;
 
@@ -123,9 +121,8 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], speci
             items: returnItems,
             payments: serializedPayments.length > 0 ? serializedPayments : undefined,
             manual_invoice_discount: manualDiscounts.invoice != null ? String(parseFloat(manualDiscounts.invoice || 0)) : undefined,
-            manual_special_discount: selectedSpecialDiscountId !== undefined ? String(parseFloat(returnSummary?.returnDiscounts.special ?? 0)) : undefined,
             manual_round_off: manualDiscounts.roundOff != null ? String(parseFloat(manualDiscounts.roundOff || 0)) : undefined,
-            manual_coin_discount: manualDiscounts.coin != null && manualDiscounts.coin !== '' ? String(manualDiscounts.coin) : undefined,
+            manual_vat_percent: vatPercent !== '' ? String(parseFloat(vatPercent || 0)) : undefined,
         }));
         form.put(route('inventory.sale-return.update', saleReturn.id), {
             preserveScroll: true,
@@ -213,9 +210,6 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], speci
                             returnSummary={returnSummary}
                             manualDiscounts={manualDiscounts}
                             onManualDiscountChange={handleManualDiscountChange}
-                            specialDiscounts={specialDiscounts}
-                            selectedSpecialDiscountId={selectedSpecialDiscountId}
-                            onSpecialDiscountIdChange={setSelectedSpecialDiscountId}
                         />
                     )}
 
@@ -230,6 +224,9 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], speci
                             grossAmount={returnSummary?.netAmount ?? 0}
                             subtotalAmount={returnSummary?.grossAmount ?? null}
                             discountAmount={returnSummary?.discountAmount ?? 0}
+                            vatAmount={returnSummary?.returnVat ?? 0}
+                            vatPercent={vatPercent}
+                            onVatPercentChange={setVatPercent}
                             parentPaymentInfo={
                                 returnSummary
                                     ? { paid: returnSummary.parentPaid, due: returnSummary.parentDue }

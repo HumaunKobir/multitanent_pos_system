@@ -120,6 +120,7 @@ export function PaymentSummaryCard({
     discountError = null,
     parentPaymentInfo = null,
     paidLabel = 'Paid Amount',
+    paidReadOnly = false,
 }) {
     const paid = parseFloat(paidAmount || 0);
     const due = Math.max(0, grossAmount - paid);
@@ -203,7 +204,8 @@ export function PaymentSummaryCard({
                         step="0.01"
                         value={paidAmount}
                         onChange={(e) => onPaidAmountChange(e.target.value)}
-                        className={`${inputCls} w-28 text-right`}
+                        readOnly={paidReadOnly}
+                        className={`${inputCls} w-28 text-right ${paidReadOnly ? 'bg-muted/50' : ''}`}
                     />
                 </div>
                 {paidError && <p className="text-xs text-destructive">{paidError}</p>}

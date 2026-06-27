@@ -14,7 +14,7 @@ use App\Services\InventoryAccountingService;
 use App\Services\SystemAccountService;
 use Spatie\Permission\Models\Permission;
 
-function productExchangeUser(array $permissions = ['inventory.product-exchange.create']): User
+function productExchangeUser(array $permissions = ['inventory.product-exchange.create', 'inventory.sell.create']): User
 {
     $user = User::factory()->create();
 
@@ -191,7 +191,7 @@ test('product exchange auto applies matching special discount when id is omitted
     expect((float) $exchange->price_difference)->toBe(300.0);
 });
 
-test('sale with manual invoice discount cannot be exchanged', function () {
+test('sale with manual invoice discount can be exchanged', function () {
     $this->artisan('permissions:sync');
 
     $user = productExchangeUser();
@@ -254,15 +254,16 @@ test('sale with manual invoice discount cannot be exchanged', function () {
                 ],
             ],
         ])
-        ->assertSessionHasErrors('items');
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect();
 
-    expect(ProductExchange::query()->where('sell_id', $sell->id)->exists())->toBeFalse();
+    expect(ProductExchange::query()->where('sell_id', $sell->id)->exists())->toBeTrue();
 });
 
 test('sales lookup exposes manual discount flag separately from special discount', function () {
     $this->artisan('permissions:sync');
 
-    $user = productExchangeUser(['inventory.product-exchange.create']);
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.sell.create']);
     $cash = seedAccountingAccounts(user: $user);
     seedExchangeAccountingBalances($user);
     $product = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 500]);

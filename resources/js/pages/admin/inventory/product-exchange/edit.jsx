@@ -71,21 +71,25 @@ export default function ProductExchangeEdit({ exchange, paymentAccounts = [], sp
         form.setData('special_discount_id', match ? String(match.id) : '');
     }, [grossAmount, specialDiscounts]);
 
-    function applyReplacement(product, variation) {
+    // The cash that changes hands is fully determined by the price difference:
+    // the customer pays a positive difference, the store refunds a negative one.
+    useEffect(() => {
+        form.setData('paid_amount', String(Math.max(0, priceDifference)));
+    }, [priceDifference]);
+
+    function applyReplacement(product) {
         if (replaceIndex === null) return;
         setItems((prev) =>
             prev.map((it, i) =>
                 i === replaceIndex
                     ? {
                           ...it,
-                          new_product_id: product.id,
-                          new_product_name: product.name,
-                          new_product_code: product.code,
-                          new_variation_id: variation?.id ?? null,
-                          new_variation_label: variation?.label ?? variation?.variation_data?.label ?? null,
-                          new_unit_price: String(
-                              variation ? (variation.price ?? variation.sale_price) : product.sale_price,
-                          ),
+                          new_product_id: product.product_id,
+                          new_product_name: product.product_name,
+                          new_product_code: product.product_code,
+                          new_variation_id: product.variation_id ?? null,
+                          new_variation_label: product.variation_label ?? null,
+                          new_unit_price: String(product.unit_price ?? 0),
                       }
                     : it,
             ),
@@ -295,8 +299,10 @@ export default function ProductExchangeEdit({ exchange, paymentAccounts = [], sp
                         <PaymentSummaryCard
                             Icon={ArrowLeftRight}
                             grossAmount={Math.abs(priceDifference)}
-                            paidAmount={form.data.paid_amount}
-                            onPaidAmountChange={(v) => form.setData('paid_amount', v)}
+                            paidAmount={String(Math.abs(priceDifference))}
+                            onPaidAmountChange={() => {}}
+                            paidReadOnly
+                            paidLabel={priceDifference < 0 ? 'Refund to Customer' : 'Customer Pays'}
                             paymentMode={paymentMode}
                             onPaymentModeChange={setPaymentMode}
                             paymentAccounts={paymentAccounts}

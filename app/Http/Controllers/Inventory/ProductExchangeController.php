@@ -89,7 +89,7 @@ class ProductExchangeController extends Controller
         $branchId = Auth::user()?->branch_id;
         $paymentType = ReceivedPaymentMethod::from((int) $data['payment_type']);
         $paymentAccountId = $paymentType === ReceivedPaymentMethod::Cash
-            ? $this->resolvePaymentAccountId($request, (float) $data['paid_amount'])
+            ? $this->requirePaymentAccountId($request)
             : null;
 
         try {
@@ -100,10 +100,6 @@ class ProductExchangeController extends Controller
                     ->with(['products'])
                     ->lockForUpdate()
                     ->findOrFail($data['sell_id']);
-
-                if ($parent->hasManualDiscount()) {
-                    throw new \RuntimeException('Sales with a manual discount cannot be exchanged.');
-                }
 
                 if (ProductExchange::where('sell_id', $parent->id)->exists()) {
                     throw new \RuntimeException('This sale has already been exchanged.');
@@ -197,7 +193,7 @@ class ProductExchangeController extends Controller
                     'gross_amount' => $grossAmount,
                     'special_discount_id' => $specialResolved['id'] ?? null,
                     'special_discount_amount' => $specialResolved['amount'] ?? 0.0,
-                    'paid_amount' => (float) $data['paid_amount'],
+                    'paid_amount' => max(0.0, $priceDifference),
                     'price_difference' => $priceDifference,
                     'payment_type' => $paymentType,
                     'comment' => $data['comment'] ?? null,
@@ -218,6 +214,12 @@ class ProductExchangeController extends Controller
                 $this->accounting->postExchange($exchange->fresh(['customer', 'sell', 'products']), $paymentAccountId);
             });
         } catch (\Throwable $e) {
+            \Log::error('Product exchange create failed', [
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+                'file' => $e->getFile().':'.$e->getLine(),
+            ]);
+
             return back()
                 ->withErrors([
                     'items' => $e instanceof \RuntimeException
@@ -266,7 +268,7 @@ class ProductExchangeController extends Controller
 
         $parent = $productExchange->sell;
 
-        if (! $parent || $parent->hasManualDiscount()) {
+        if (! $parent) {
             abort(403, 'This exchange cannot be edited.');
         }
 
@@ -328,7 +330,7 @@ class ProductExchangeController extends Controller
         $branchId = Auth::user()?->branch_id;
         $paymentType = ReceivedPaymentMethod::from((int) $data['payment_type']);
         $paymentAccountId = $paymentType === ReceivedPaymentMethod::Cash
-            ? $this->resolvePaymentAccountId($request, (float) $data['paid_amount'])
+            ? $this->requirePaymentAccountId($request)
             : null;
 
         try {
@@ -345,10 +347,6 @@ class ProductExchangeController extends Controller
                     ->with(['products'])
                     ->lockForUpdate()
                     ->findOrFail($productExchange->sell_id);
-
-                if ($parent->hasManualDiscount()) {
-                    throw new \RuntimeException('Sales with a manual discount cannot be exchanged.');
-                }
 
                 $grossAmount = 0.0;
                 $oldTotal = 0.0;
@@ -438,7 +436,7 @@ class ProductExchangeController extends Controller
                     'gross_amount' => $grossAmount,
                     'special_discount_id' => $specialResolved['id'] ?? null,
                     'special_discount_amount' => $specialResolved['amount'] ?? 0.0,
-                    'paid_amount' => (float) $data['paid_amount'],
+                    'paid_amount' => max(0.0, $priceDifference),
                     'price_difference' => $priceDifference,
                     'payment_type' => $paymentType,
                     'comment' => $data['comment'] ?? null,

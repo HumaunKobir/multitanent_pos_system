@@ -604,7 +604,6 @@ class InventoryAccountingService
             $lines[] = $this->creditLine(SystemAccountKey::ProductInventory, $amounts['new_cost'], "Inventory reduced — Exchange {$invoice}");
         }
 
-        $paidAmount = round((float) $amounts['paid_amount'], 2);
         $priceDifference = round((float) $amounts['price_difference'], 2);
 
         if ($exchange->payment_type === ReceivedPaymentMethod::Customer_Account) {
@@ -614,14 +613,10 @@ class InventoryAccountingService
                 $lines[] = $this->creditLine(SystemAccountKey::CustomerReceivables, abs($priceDifference), "Receivable reduced — Exchange {$invoice}, {$customerName}");
             }
         } else {
-            if ($paidAmount > 0) {
-                $lines[] = $this->debitPaymentAccount($paymentAccountId, $paidAmount, "Cash received — Exchange {$invoice}");
-            }
-
-            $refund = round(max(0, -$priceDifference), 2);
-
-            if ($refund > 0) {
-                $lines[] = $this->creditPaymentAccount($paymentAccountId, $refund, "Cash refunded — Exchange {$invoice}");
+            if ($priceDifference > 0) {
+                $lines[] = $this->debitPaymentAccount($paymentAccountId, $priceDifference, "Cash received — Exchange {$invoice}");
+            } elseif ($priceDifference < 0) {
+                $lines[] = $this->creditPaymentAccount($paymentAccountId, abs($priceDifference), "Cash refunded — Exchange {$invoice}");
             }
         }
 

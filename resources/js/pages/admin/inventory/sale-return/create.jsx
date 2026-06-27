@@ -15,10 +15,11 @@ import {
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { calcSaleReturnSummary } from '@/lib/sale-return-summary';
+import { buildInitialSalePayments, computeSplitSalePayment, serializeSalePayments, splitPaymentValidationError } from '@/lib/sale-payment';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { CalendarDays, Package, RotateCcw } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { Input } from '@/components/ui/input';
 
@@ -31,6 +32,12 @@ export default function SaleReturnCreate({ today, paymentAccounts = [], specialD
     const [items, setItems] = useState([]);
     const [manualDiscounts, setManualDiscounts] = useState({});
     const [selectedSpecialDiscountId, setSelectedSpecialDiscountId] = useState(undefined);
+    const [payments, setPayments] = useState(() => buildInitialSalePayments([], paymentAccounts));
+
+    useEffect(() => {
+        if (flash?.success) toast.success(flash.success);
+        if (flash?.error) toast.error(flash.error);
+    }, [flash?.success, flash?.error]);
 
     const form = useForm({
         sell_id: '',
@@ -114,6 +121,9 @@ export default function SaleReturnCreate({ today, paymentAccounts = [], specialD
         setManualDiscounts((prev) => ({ ...prev, [key]: value }));
     }
 
+    const returnNetAmount = returnSummary?.netAmount ?? 0;
+    const { totalPaid } = computeSplitSalePayment(payments, returnNetAmount);
+
     function handleSubmit(e) {
         e.preventDefault();
 
@@ -134,11 +144,20 @@ export default function SaleReturnCreate({ today, paymentAccounts = [], specialD
             return;
         }
 
+        const paymentError = splitPaymentValidationError(payments);
+        if (paymentError) {
+            toast.error(paymentError);
+            return;
+        }
+
+        const serializedPayments = serializeSalePayments(payments);
+
         form.transform((data) => ({
             ...data,
-            paid_amount: '0',
+            paid_amount: String(totalPaid),
             payment_type: '5',
             items: returnItems,
+            payments: serializedPayments.length > 0 ? serializedPayments : undefined,
             manual_invoice_discount: manualDiscounts.invoice != null ? String(parseFloat(manualDiscounts.invoice || 0)) : undefined,
             manual_special_discount: selectedSpecialDiscountId !== undefined ? String(parseFloat(returnSummary?.returnDiscounts.special ?? 0)) : undefined,
             manual_round_off: manualDiscounts.roundOff != null ? String(parseFloat(manualDiscounts.roundOff || 0)) : undefined,
@@ -235,6 +254,7 @@ export default function SaleReturnCreate({ today, paymentAccounts = [], specialD
 
                     {source?.sell_discounts && (
                         <SaleReturnSourceDiscounts
+                            key={source.id}
                             sellDiscounts={source.sell_discounts}
                             returnSummary={returnSummary}
                             manualDiscounts={manualDiscounts}
@@ -261,6 +281,10 @@ export default function SaleReturnCreate({ today, paymentAccounts = [], specialD
                                     ? { paid: returnSummary.parentPaid, due: returnSummary.parentDue }
                                     : null
                             }
+                            payments={payments}
+                            paymentAccounts={paymentAccounts}
+                            onPaymentsChange={setPayments}
+                            errors={form.errors}
                         />
                     </div>
 

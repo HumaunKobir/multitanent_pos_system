@@ -1,6 +1,8 @@
+import { SalePaymentLines } from '@/components/inventory/sale-payment-lines';
 import { route } from '@/lib/route';
 import { Link } from '@inertiajs/react';
 import { ArrowLeft, MessageSquare, Percent, Search } from 'lucide-react';
+import { useRef } from 'react';
 
 import { RequiredMark } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
@@ -192,6 +194,10 @@ export function SaleReturnRefundCard({
     subtotalAmount = null,
     discountAmount = 0,
     parentPaymentInfo = null,
+    payments = [],
+    paymentAccounts = [],
+    onPaymentsChange,
+    errors = {},
 }) {
     const showDiscountBreakdown = subtotalAmount != null && discountAmount > 0.009;
 
@@ -222,12 +228,50 @@ export function SaleReturnRefundCard({
                         value will reduce customer due.
                     </div>
                 )}
+
+                {onPaymentsChange && (
+                    <div className="border-t border-border pt-3">
+                        <SalePaymentLines
+                            payments={payments}
+                            paymentAccounts={paymentAccounts}
+                            netAmount={grossAmount}
+                            onChange={onPaymentsChange}
+                            errors={errors}
+                            inputClassName={inputCls}
+                            dueLabel="Due Refund"
+                        />
+                    </div>
+                )}
             </div>
         </InventoryCard>
     );
 }
 
 const EDITABLE_RETURN_DISCOUNT_KEYS = ['invoice', 'roundOff', 'coin'];
+
+function EditableDiscountInput({ saleMax, initialValue, onManualChange, className }) {
+    const inputRef = useRef(null);
+
+    return (
+        <Input
+            ref={inputRef}
+            type="number"
+            min="0"
+            max={parseFloat(saleMax || 0)}
+            step="0.01"
+            defaultValue={initialValue}
+            onChange={(e) => onManualChange?.(e.target.value)}
+            onBlur={(e) => {
+                const max = parseFloat(saleMax || 0);
+                const clamped = Math.min(Math.max(0, parseFloat(e.target.value || 0)), max);
+                const clampedStr = clamped.toFixed(2);
+                if (inputRef.current) inputRef.current.value = clampedStr;
+                onManualChange?.(clampedStr);
+            }}
+            className={className}
+        />
+    );
+}
 
 export function SaleReturnSourceDiscounts({
     sellDiscounts,
@@ -294,7 +338,7 @@ export function SaleReturnSourceDiscounts({
                                         ))}
                                     </select>
                                     {computedSpecial > 0.009 && (
-                                        <span className="text-[10px] text-muted-foreground">
+                                        <span className="text-xs font-medium text-muted-foreground">
                                             ৳{computedSpecial.toFixed(2)}
                                         </span>
                                     )}
@@ -309,17 +353,15 @@ export function SaleReturnSourceDiscounts({
                             <span className="text-right">৳{parseFloat(row.sale || 0).toFixed(2)}</span>
                             {isEditable ? (
                                 <div className="flex justify-end">
-                                    <Input
-                                        type="number"
-                                        min="0"
-                                        max={parseFloat(row.sale || 0)}
-                                        step="0.01"
-                                        value={
+                                    <EditableDiscountInput
+                                        key={`${row.key}-${parseFloat(row.sale || 0)}`}
+                                        saleMax={row.sale}
+                                        initialValue={
                                             manualDiscounts[row.key] != null
                                                 ? String(manualDiscounts[row.key])
                                                 : autoVal.toFixed(2)
                                         }
-                                        onChange={(e) => onManualDiscountChange?.(row.key, e.target.value)}
+                                        onManualChange={(val) => onManualDiscountChange?.(row.key, val)}
                                         className={`${inputCls} w-24 text-right`}
                                     />
                                 </div>

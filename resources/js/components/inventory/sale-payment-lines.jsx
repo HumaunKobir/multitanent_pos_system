@@ -110,6 +110,7 @@ export function SalePaymentLines({
     inputClassName,
     compact = false,
     hideSummary = false,
+    dueLabel = 'Due',
 }) {
     const paymentSummary =
         collectionPayments.length > 0
@@ -197,12 +198,12 @@ export function SalePaymentLines({
             {!hideSummary && (
                 <div className="space-y-1 border border-blue-100 bg-blue-50/50 px-2 py-1.5 text-[11px]">
                     <div className="flex items-center justify-between gap-2">
-                        <span className="text-muted-foreground">Total Paid</span>
+                        <span className="text-muted-foreground">Total Refund Amount</span>
                         <span className="font-medium tabular-nums">৳{totalPaid.toFixed(2)}</span>
                     </div>
                     {dueAmount > 0 && (
                         <div className="flex items-center justify-between gap-2 text-red-700">
-                            <span>Due</span>
+                            <span>{dueLabel}</span>
                             <span className="font-medium tabular-nums">৳{dueAmount.toFixed(2)}</span>
                         </div>
                     )}

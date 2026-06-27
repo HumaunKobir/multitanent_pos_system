@@ -14,6 +14,7 @@ import {
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { calcSaleReturnSummary } from '@/lib/sale-return-summary';
+import { buildInitialSalePayments, computeSplitSalePayment, serializeSalePayments, splitPaymentValidationError } from '@/lib/sale-payment';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { CalendarDays, Package, RotateCcw } from 'lucide-react';
@@ -25,6 +26,7 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], speci
     const { flash } = usePage().props;
     const toast = useAppToast();
     const [items, setItems] = useState(saleReturn.items ?? []);
+    const [payments, setPayments] = useState(() => buildInitialSalePayments(saleReturn.refund_payments ?? [], []));
 
     const returnContext = {
         promotions: saleReturn.promotions ?? [],
@@ -83,6 +85,9 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], speci
         setManualDiscounts((prev) => ({ ...prev, [key]: value }));
     }
 
+    const returnNetAmount = returnSummary?.netAmount ?? 0;
+    const { totalPaid } = computeSplitSalePayment(payments, returnNetAmount);
+
     function handleSubmit(e) {
         e.preventDefault();
 
@@ -103,11 +108,20 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], speci
             return;
         }
 
+        const paymentError = splitPaymentValidationError(payments);
+        if (paymentError) {
+            toast.error(paymentError);
+            return;
+        }
+
+        const serializedPayments = serializeSalePayments(payments);
+
         form.transform((data) => ({
             ...data,
-            paid_amount: '0',
+            paid_amount: String(totalPaid),
             payment_type: '5',
             items: returnItems,
+            payments: serializedPayments.length > 0 ? serializedPayments : undefined,
             manual_invoice_discount: manualDiscounts.invoice != null ? String(parseFloat(manualDiscounts.invoice || 0)) : undefined,
             manual_special_discount: selectedSpecialDiscountId !== undefined ? String(parseFloat(returnSummary?.returnDiscounts.special ?? 0)) : undefined,
             manual_round_off: manualDiscounts.roundOff != null ? String(parseFloat(manualDiscounts.roundOff || 0)) : undefined,
@@ -221,6 +235,10 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], speci
                                     ? { paid: returnSummary.parentPaid, due: returnSummary.parentDue }
                                     : null
                             }
+                            payments={payments}
+                            paymentAccounts={paymentAccounts}
+                            onPaymentsChange={setPayments}
+                            errors={form.errors}
                         />
                     </div>
 

@@ -172,8 +172,15 @@ test('super admin can distribute stock to operating branch', function () {
     expect($distribution->status)->toBe(StockDistributionStatus::Received);
     expect($distribution->received_by_user_id)->not->toBeNull();
 
+    $destinationProduct = Product::query()
+        ->where('branch_id', $targetBranch->id)
+        ->where('name', $product->name)
+        ->first();
+
+    expect($destinationProduct)->not->toBeNull('product should be created for destination branch');
+
     $destinationBatch = Batch::query()
-        ->where('product_id', $product->id)
+        ->where('product_id', $destinationProduct->id)
         ->where('branch_id', $targetBranch->id)
         ->first();
 
@@ -407,8 +414,15 @@ test('main branch user can distribute legacy null branch warehouse stock', funct
         ->post("/inventory/stock-distribution/{$distribution->id}/receive")
         ->assertRedirect(route('inventory.stock-distribution.received'));
 
+    $destinationProduct = Product::query()
+        ->where('branch_id', $targetBranch->id)
+        ->where('name', $product->name)
+        ->first();
+
+    expect($destinationProduct)->not->toBeNull('product should be created for destination branch');
+
     $destinationBatch = Batch::query()
-        ->where('product_id', $product->id)
+        ->where('product_id', $destinationProduct->id)
         ->where('branch_id', $targetBranch->id)
         ->first();
 
@@ -1134,8 +1148,15 @@ test('branch can partially receive selected distribution lines', function () {
     expect($lines->first()->received_at)->not->toBeNull();
     expect($lines->last()->received_at)->toBeNull();
 
+    $branchProductA = Product::query()
+        ->where('branch_id', $targetBranch->id)
+        ->where('name', $productA->name)
+        ->first();
+
+    expect($branchProductA)->not->toBeNull('product A should be created for destination branch');
+
     expect(Batch::query()
-        ->where('product_id', $productA->id)
+        ->where('product_id', $branchProductA->id)
         ->where('branch_id', $targetBranch->id)
         ->exists())->toBeTrue();
     expect(Batch::query()
@@ -1150,4 +1171,253 @@ test('branch can partially receive selected distribution lines', function () {
     $distribution->refresh();
     expect($distribution->status)->toBe(StockDistributionStatus::Received);
     expect($distribution->products()->whereNull('received_at')->count())->toBe(0);
+});
+
+test('receiving distribution auto-creates product for branch when no sibling exists', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = Branch::resolveMainBranchId();
+    $user = superAdminUser(['inventory.stock-distribution.create']);
+    $targetBranch = Branch::factory()->create();
+    $groupId = (string) Str::uuid();
+
+    $mainProduct = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'product_group_id' => $groupId,
+        'name' => 'Auto Replicate Product '.fake()->unique()->numerify('###'),
+        'purchase_price' => 100,
+        'sale_price' => 150,
+    ]);
+
+    Batch::factory()->for($mainProduct)->withStock(20)->create([
+        'branch_id' => $mainBranchId,
+        'purchase_price' => 100,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/stock-distribution', [
+            'to_branch_id' => $targetBranch->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => null,
+            'items' => [
+                ['product_id' => $mainProduct->id, 'variation_id' => null, 'quantity' => '5'],
+            ],
+        ])
+        ->assertRedirect();
+
+    $distribution = StockDistribution::query()->latest('id')->first();
+
+    expect(Product::query()->where('product_group_id', $groupId)->where('branch_id', $targetBranch->id)->exists())
+        ->toBeFalse('branch product should not exist before receive');
+
+    $this->actingAs(branchReceiverUser($targetBranch->id))
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
+
+    $branchProduct = Product::query()
+        ->where('product_group_id', $groupId)
+        ->where('branch_id', $targetBranch->id)
+        ->first();
+
+    expect($branchProduct)->not->toBeNull('product should be auto-created for destination branch');
+    expect($branchProduct->name)->toBe($mainProduct->name);
+
+    $destinationBatch = Batch::query()
+        ->where('product_id', $branchProduct->id)
+        ->where('branch_id', $targetBranch->id)
+        ->first();
+
+    expect($destinationBatch)->not->toBeNull();
+    expect((float) $destinationBatch->available)->toBe(5.0);
+});
+
+test('receiving distribution auto-creates product for branch when variation has no sibling', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = Branch::resolveMainBranchId();
+    $user = superAdminUser(['inventory.stock-distribution.create']);
+    $targetBranch = Branch::factory()->create();
+    $groupId = (string) Str::uuid();
+
+    $mainProduct = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'product_group_id' => $groupId,
+        'name' => 'Auto Replicate Variant Product '.fake()->unique()->numerify('###'),
+        'purchase_price' => 200,
+        'sale_price' => 250,
+    ]);
+
+    $variation = ProductVariation::query()->create([
+        'product_id' => $mainProduct->id,
+        'branch_id' => $mainBranchId,
+        'sku' => 'SKU-AUTOREPL-'.fake()->unique()->numerify('####'),
+        'price' => 250,
+        'purchase_price' => 200,
+        'stock' => 10,
+        'variation_data' => ['label' => 'Red-L'],
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/stock-distribution', [
+            'to_branch_id' => $targetBranch->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => null,
+            'items' => [
+                ['product_id' => $mainProduct->id, 'variation_id' => $variation->id, 'quantity' => '3'],
+            ],
+        ])
+        ->assertRedirect();
+
+    $distribution = StockDistribution::query()->latest('id')->first();
+
+    expect(Product::query()->where('product_group_id', $groupId)->where('branch_id', $targetBranch->id)->exists())
+        ->toBeFalse('branch product should not exist before receive');
+
+    $this->actingAs(branchReceiverUser($targetBranch->id))
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
+
+    $branchProduct = Product::query()
+        ->where('product_group_id', $groupId)
+        ->where('branch_id', $targetBranch->id)
+        ->first();
+
+    expect($branchProduct)->not->toBeNull('product should be auto-created for destination branch');
+
+    $branchVariation = ProductVariation::query()
+        ->where('product_id', $branchProduct->id)
+        ->where('branch_id', $targetBranch->id)
+        ->where('sku', $variation->sku)
+        ->first();
+
+    expect($branchVariation)->not->toBeNull('variation should be created for destination branch');
+    expect((float) $branchVariation->stock)->toBe(3.0);
+});
+
+test('receiving distribution auto-creates product for branch when source product has no group', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = Branch::resolveMainBranchId();
+    $user = superAdminUser(['inventory.stock-distribution.create']);
+    $targetBranch = Branch::factory()->create();
+
+    $mainProduct = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'product_group_id' => null,
+        'name' => 'Standalone Group Product '.fake()->unique()->numerify('###'),
+        'purchase_price' => 100,
+        'sale_price' => 150,
+    ]);
+
+    Batch::factory()->for($mainProduct)->withStock(20)->create([
+        'branch_id' => $mainBranchId,
+        'purchase_price' => 100,
+    ]);
+
+    expect($mainProduct->product_group_id)->toBeNull();
+
+    $this->actingAs($user)
+        ->post('/inventory/stock-distribution', [
+            'to_branch_id' => $targetBranch->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => null,
+            'items' => [
+                ['product_id' => $mainProduct->id, 'variation_id' => null, 'quantity' => '5'],
+            ],
+        ])
+        ->assertRedirect();
+
+    $distribution = StockDistribution::query()->latest('id')->first();
+
+    $this->actingAs(branchReceiverUser($targetBranch->id))
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
+
+    $mainProduct->refresh();
+
+    expect($mainProduct->product_group_id)->not->toBeNull('source product should be assigned a group when replicated');
+
+    $branchProduct = Product::query()
+        ->where('product_group_id', $mainProduct->product_group_id)
+        ->where('branch_id', $targetBranch->id)
+        ->first();
+
+    expect($branchProduct)->not->toBeNull('product should be auto-created for destination branch');
+    expect($branchProduct->name)->toBe($mainProduct->name);
+
+    $destinationBatch = Batch::query()
+        ->where('product_id', $branchProduct->id)
+        ->where('branch_id', $targetBranch->id)
+        ->first();
+
+    expect($destinationBatch)->not->toBeNull();
+    expect((float) $destinationBatch->available)->toBe(5.0);
+});
+
+test('receiving distribution auto-creates variant product for branch when source has no group', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = Branch::resolveMainBranchId();
+    $user = superAdminUser(['inventory.stock-distribution.create']);
+    $targetBranch = Branch::factory()->create();
+
+    $mainProduct = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'product_group_id' => null,
+        'name' => 'Standalone Variant Product '.fake()->unique()->numerify('###'),
+        'purchase_price' => 200,
+        'sale_price' => 250,
+    ]);
+
+    $variation = ProductVariation::query()->create([
+        'product_id' => $mainProduct->id,
+        'branch_id' => $mainBranchId,
+        'sku' => 'SKU-STANDVAR-'.fake()->unique()->numerify('####'),
+        'price' => 250,
+        'purchase_price' => 200,
+        'stock' => 10,
+        'variation_data' => ['label' => 'Red-L', 'Color' => 'Red', 'Size' => 'L'],
+    ]);
+
+    expect($mainProduct->product_group_id)->toBeNull();
+
+    $this->actingAs($user)
+        ->post('/inventory/stock-distribution', [
+            'to_branch_id' => $targetBranch->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => null,
+            'items' => [
+                ['product_id' => $mainProduct->id, 'variation_id' => $variation->id, 'quantity' => '3'],
+            ],
+        ])
+        ->assertRedirect();
+
+    $distribution = StockDistribution::query()->latest('id')->first();
+
+    $this->actingAs(branchReceiverUser($targetBranch->id))
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
+
+    $mainProduct->refresh();
+
+    expect($mainProduct->product_group_id)->not->toBeNull('source product should be assigned a group when replicated');
+
+    $branchProduct = Product::query()
+        ->where('product_group_id', $mainProduct->product_group_id)
+        ->where('branch_id', $targetBranch->id)
+        ->first();
+
+    expect($branchProduct)->not->toBeNull('product should be auto-created for destination branch');
+    expect($branchProduct->name)->toBe($mainProduct->name);
+
+    $branchVariation = ProductVariation::query()
+        ->where('product_id', $branchProduct->id)
+        ->where('branch_id', $targetBranch->id)
+        ->where('sku', $variation->sku)
+        ->first();
+
+    expect($branchVariation)->not->toBeNull('variation should be created for destination branch');
+    expect((float) $branchVariation->stock)->toBe(3.0);
+    expect($branchVariation->variation_data['Color'])->toBe('Red');
+    expect($branchVariation->variation_data['Size'])->toBe('L');
 });

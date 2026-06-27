@@ -12,7 +12,10 @@ use App\Models\StockDistributionProduct;
 
 class StockDistributionService
 {
-    public function __construct(private InventoryStockService $stock) {}
+    public function __construct(
+        private InventoryStockService $stock,
+        private ProductBranchReplicationService $replication,
+    ) {}
 
     /**
      * @param  array<string, mixed>  $data
@@ -425,10 +428,53 @@ class StockDistributionService
             return $destinationProduct;
         }
 
-        if ($sourceProduct->product_group_id === null) {
-            return $sourceProduct;
-        }
+        return $this->autoReplicateToDestination($sourceProduct, $toBranchId);
+    }
 
-        throw new \RuntimeException('No product catalog entry exists for the destination branch.');
+    private function autoReplicateToDestination(Product $sourceProduct, int $toBranchId): Product
+    {
+        $sourceProduct->loadMissing(['photos', 'variations']);
+
+        $data = [
+            'name' => $sourceProduct->name,
+            'slug' => $sourceProduct->slug,
+            'code' => $sourceProduct->code,
+            'category_id' => $sourceProduct->category_id,
+            'brand_id' => $sourceProduct->brand_id,
+            'unit_id' => $sourceProduct->unit_id,
+            'warranty_id' => $sourceProduct->warranty_id,
+            'colors' => $sourceProduct->colors ?? [],
+            'sizes' => $sourceProduct->sizes ?? [],
+            'purchase_price' => (float) $sourceProduct->purchase_price,
+            'sale_price' => (float) $sourceProduct->sale_price,
+            'discount_price' => (float) ($sourceProduct->discount_price ?? 0),
+            'tags' => $sourceProduct->tags ?? [],
+            'image' => $sourceProduct->image,
+            'youtube_link' => $sourceProduct->youtube_link,
+            'description' => $sourceProduct->description,
+            'delivery_info' => $sourceProduct->delivery_info,
+            'visible' => $sourceProduct->visible ?? 'no',
+            'status' => $sourceProduct->status ?? 1,
+        ];
+
+        // Build combinations with stock = 0 so receiveVariation handles stock via its own increment.
+        $combinations = $sourceProduct->variations->map(fn (ProductVariation $variation): array => [
+            'variant' => $variation->variation_data['label'] ?? '',
+            'variation_data' => $variation->variation_data,
+            'sale_price' => $variation->price,
+            'purchase_price' => $variation->purchase_price,
+            'sku' => $variation->sku,
+            'stock' => 0,
+        ])->all();
+
+        return $this->replication->copyToBranch(
+            $sourceProduct,
+            $toBranchId,
+            $data,
+            $combinations,
+            (float) $sourceProduct->purchase_price,
+            (float) $sourceProduct->sale_price,
+            0,
+        );
     }
 }

@@ -26,6 +26,7 @@ class ProductExchange extends Model
         'paid_amount',
         'price_difference',
         'payment_type',
+        'payment_account_id',
         'comment',
     ];
 

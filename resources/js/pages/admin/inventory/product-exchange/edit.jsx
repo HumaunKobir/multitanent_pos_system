@@ -29,7 +29,13 @@ export default function ProductExchangeEdit({ exchange, paymentAccounts = [], sp
     const { flash } = usePage().props;
     const toast = useAppToast();
     const [items, setItems] = useState(exchange.items ?? []);
-    const [paymentMode, setPaymentMode] = useState(paymentTypeToMode(exchange.payment_type));
+    const [paymentMode, setPaymentMode] = useState(() => {
+        const mode = paymentTypeToMode(exchange.payment_type, exchange.payment_account_id);
+        if (mode === 'cash-0' && paymentAccounts.length > 0) {
+            return `cash-${paymentAccounts[0].id}`;
+        }
+        return mode;
+    });
     const [replaceIndex, setReplaceIndex] = useState(null);
     const [matchedSpecialDiscount, setMatchedSpecialDiscount] = useState(null);
 

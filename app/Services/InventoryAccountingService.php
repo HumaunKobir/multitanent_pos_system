@@ -626,6 +626,7 @@ class InventoryAccountingService
             $exchange->date->format('Y-m-d'),
             "Product Exchange {$invoice}",
             $lines,
+            false,
         );
     }
 

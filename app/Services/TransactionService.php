@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\AccountType;
 use App\Models\ChartOfAccount;
 use App\Models\Ledger;
 use App\Models\Transaction;
@@ -170,6 +171,14 @@ class TransactionService
         $decrease = $line['decrease'] ?? false;
 
         if (! $decrease) {
+            return;
+        }
+
+        // P&L accounts (Income, Expenses) are contra accounts that can freely
+        // start at zero and accumulate entries in either direction. Only
+        // balance-sheet accounts (Asset, Liability) need an insufficient-balance guard.
+        $account = ChartOfAccount::find((int) $line['account_id']);
+        if ($account && in_array($account->type, [AccountType::Income, AccountType::Expenses])) {
             return;
         }
 
@@ -437,7 +446,7 @@ class TransactionService
             ->current_balance;
 
         if ($balance < $amount) {
-            throw new \Exception($message);
+            throw new \RuntimeException($message);
         }
     }
 

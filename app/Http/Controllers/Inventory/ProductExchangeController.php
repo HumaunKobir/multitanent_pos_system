@@ -196,6 +196,7 @@ class ProductExchangeController extends Controller
                     'paid_amount' => max(0.0, $priceDifference),
                     'price_difference' => $priceDifference,
                     'payment_type' => $paymentType,
+                    'payment_account_id' => $paymentAccountId,
                     'comment' => $data['comment'] ?? null,
                 ]);
 
@@ -302,6 +303,7 @@ class ProductExchangeController extends Controller
                 'comment' => $productExchange->comment,
                 'paid_amount' => (string) $productExchange->paid_amount,
                 'payment_type' => $productExchange->payment_type?->value,
+                'payment_account_id' => $productExchange->payment_account_id,
                 'items' => $items,
             ],
         ]);
@@ -439,6 +441,7 @@ class ProductExchangeController extends Controller
                     'paid_amount' => max(0.0, $priceDifference),
                     'price_difference' => $priceDifference,
                     'payment_type' => $paymentType,
+                    'payment_account_id' => $paymentAccountId,
                     'comment' => $data['comment'] ?? null,
                 ]);
 

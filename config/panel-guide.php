@@ -117,7 +117,7 @@ return [
             'title' => 'Coin Settings',
             'summary' => 'Set how customers earn and use loyalty coins on purchases.',
             'steps' => [
-                'Open Coin Settings from Sales or Settings.',
+                'Open Coin Settings from Sales.',
                 'Set how many coins customers earn per amount spent.',
                 'Set how many coins equal one taka discount.',
                 'Save. Coins apply on future sales for registered customers.',
@@ -426,7 +426,7 @@ return [
             'title' => 'POS Terms & Conditions',
             'summary' => 'Set terms printed on sale invoices from your branch.',
             'steps' => [
-                'Go to Settings → POS Terms & Conditions.',
+                'Go to Sales → POS Terms & Conditions.',
                 'Type the terms customers see on receipts.',
                 'Save. New sales show these terms on print.',
             ],

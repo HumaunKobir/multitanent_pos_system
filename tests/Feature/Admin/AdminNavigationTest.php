@@ -5,6 +5,7 @@ use App\Models\User;
 use App\Services\EcommerceBranchService;
 use App\Support\AdminNavigation;
 use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 
 test('guests receive empty admin navigation', function () {
@@ -97,6 +98,42 @@ test('branch profile appears last for branch users', function () {
 
     expect($titles)->toContain('Branch Profile')
         ->and(end($titles))->toBe('Branch Profile');
+});
+
+test('branch users see coin settings only under sales not settings', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    Permission::findOrCreate('setting.coin-settings.view', 'web');
+    Permission::findOrCreate('inventory.sell.view', 'web');
+    $user->givePermissionTo(['setting.coin-settings.view', 'inventory.sell.view']);
+
+    $navigation = app(AdminNavigation::class)->build($user);
+
+    $salesChildren = collect($navigation)->firstWhere('title', 'Sales')['children'] ?? [];
+    $settingsChildren = collect($navigation)->firstWhere('title', 'Settings')['children'] ?? [];
+
+    expect(collect($salesChildren)->pluck('title')->all())->toContain('Coin Settings')
+        ->and(collect($settingsChildren)->pluck('title')->all())->not->toContain('Coin Settings');
+});
+
+test('branch users see pos terms only under sales not settings', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    Permission::findOrCreate('setting.pos-terms.view', 'web');
+    Permission::findOrCreate('inventory.sell.view', 'web');
+    $user->givePermissionTo(['setting.pos-terms.view', 'inventory.sell.view']);
+
+    $navigation = app(AdminNavigation::class)->build($user);
+
+    $salesChildren = collect($navigation)->firstWhere('title', 'Sales')['children'] ?? [];
+    $settingsChildren = collect($navigation)->firstWhere('title', 'Settings')['children'] ?? [];
+
+    expect(collect($salesChildren)->pluck('title')->all())->toContain('POS Terms & Conditions')
+        ->and(collect($settingsChildren)->pluck('title')->all())->not->toContain('POS Terms & Conditions');
 });
 
 test('authenticated admin dashboard shares navigation', function () {

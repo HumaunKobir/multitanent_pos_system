@@ -185,6 +185,17 @@ class SaleReturnController extends Controller
                 $vatPercent = $totals['vat_percent'];
                 $vatAmount = $totals['vat_amount'];
                 $netReturnAmount = $totals['net_return_amount'];
+
+                if ($netReturnAmount > $totals['max_net_return_amount'] + 0.01) {
+                    throw ValidationException::withMessages([
+                        'items' => sprintf(
+                            'Sale return total (৳%s) cannot exceed the sale value (৳%s). Increase the discount or reduce the VAT.',
+                            number_format($netReturnAmount, 2),
+                            number_format($totals['max_net_return_amount'], 2),
+                        ),
+                    ]);
+                }
+
                 $refund = $this->resolveReturnRefund($data, $request, $netReturnAmount);
                 $paidAmount = $refund['paid_amount'];
                 $paymentType = $refund['payment_type'];
@@ -252,12 +263,67 @@ class SaleReturnController extends Controller
         $saleReturn->load([
             'customer',
             'sell',
+            'branch',
             'products.product',
             'products.variation',
+            'payments.paymentAccount:id,code,name',
         ]);
+
+        $parent = Sell::query()
+            ->ownBranchUser()
+            ->sale()
+            ->with('products')
+            ->find($saleReturn->sell_id);
+
+        $returnLineDiscount = 0.0;
+        $returnPromotionDiscount = 0.0;
+
+        if ($parent) {
+            foreach ($saleReturn->products as $line) {
+                $sellProduct = $parent->products->firstWhere('id', $line->sell_product_id);
+
+                if (! $sellProduct) {
+                    continue;
+                }
+
+                $soldQty = (float) $sellProduct->quantity;
+                $returnQty = (float) $line->quantity;
+
+                if ($soldQty > 0) {
+                    $returnLineDiscount += (float) $sellProduct->discount * ($returnQty / $soldQty);
+                    $returnPromotionDiscount += $this->returnDiscounts->promotionClawback($sellProduct, $returnQty, $parent);
+                }
+            }
+        }
+
+        $returnLineDiscount = round($returnLineDiscount, 2);
+        $returnPromotionDiscount = round($returnPromotionDiscount, 2);
+        $roundOff = round((float) ($saleReturn->round_off_amount ?? 0), 2);
+        $invoiceDiscount = round(
+            max(0, (float) $saleReturn->discount_amount - $returnLineDiscount - $returnPromotionDiscount - $roundOff),
+            2,
+        );
+        $net = (float) $saleReturn->net_amount;
+        $refund = (float) $saleReturn->paid_amount;
 
         return Inertia::render('admin/inventory/sale-return/show', [
             'saleReturn' => $saleReturn,
+            'totals' => [
+                'gross' => (float) $saleReturn->gross_amount,
+                'line_discount' => $returnLineDiscount,
+                'promotion_discount' => $returnPromotionDiscount,
+                'invoice_discount' => $invoiceDiscount,
+                'invoice_discount_type' => $saleReturn->invoice_discount_type,
+                'invoice_discount_value' => $saleReturn->invoice_discount_value !== null
+                    ? (float) $saleReturn->invoice_discount_value
+                    : null,
+                'round_off' => $roundOff,
+                'vat' => (float) $saleReturn->vat_amount,
+                'vat_percent' => (float) $saleReturn->vat_percent,
+                'net' => $net,
+                'refund' => $refund,
+                'due_refund' => round(max(0, $net - $refund), 2),
+            ],
         ]);
     }
 
@@ -496,6 +562,17 @@ class SaleReturnController extends Controller
                 $vatPercent = $totals['vat_percent'];
                 $vatAmount = $totals['vat_amount'];
                 $netReturnAmount = $totals['net_return_amount'];
+
+                if ($netReturnAmount > $totals['max_net_return_amount'] + 0.01) {
+                    throw ValidationException::withMessages([
+                        'items' => sprintf(
+                            'Sale return total (৳%s) cannot exceed the sale value (৳%s). Increase the discount or reduce the VAT.',
+                            number_format($netReturnAmount, 2),
+                            number_format($totals['max_net_return_amount'], 2),
+                        ),
+                    ]);
+                }
+
                 $refund = $this->resolveReturnRefund($data, $request, $netReturnAmount);
                 $paidAmount = $refund['paid_amount'];
                 $paymentType = $refund['payment_type'];

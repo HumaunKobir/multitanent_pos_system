@@ -138,6 +138,13 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
             return;
         }
 
+        if (returnSummary?.exceedsSale) {
+            toast.error(
+                `Return total ৳${returnSummary.netAmount.toFixed(2)} cannot exceed the sale value ৳${returnSummary.maxNetAmount.toFixed(2)}. Increase the discount or reduce the VAT.`,
+            );
+            return;
+        }
+
         const paymentError = splitPaymentValidationError(payments);
         if (paymentError) {
             toast.error(paymentError);
@@ -280,6 +287,8 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                             paymentAccounts={paymentAccounts}
                             onPaymentsChange={setPayments}
                             errors={form.errors}
+                            exceedsSale={returnSummary?.exceedsSale ?? false}
+                            maxAmount={returnSummary?.maxNetAmount ?? null}
                         />
                     </div>
 

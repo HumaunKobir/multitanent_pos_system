@@ -132,6 +132,19 @@ test('clearing invoice discount and round off yields zero discount', function ()
     expect($totals['net_return_amount'])->toBe(1000.0);
 });
 
+test('max net return amount caps at the proportional sale net', function () {
+    $service = app(SaleReturnDiscountService::class);
+    // Sale: gross 2000, discount 100, vat 100 → net 2000.
+    $parent = saleReturnParentSell(['gross_amount' => 2000, 'discount' => 100, 'vat' => 100]);
+
+    // Inflated return: low discount (10) + 5% VAT pushes the net above the sale value.
+    $totals = $service->calculate($parent, 2000, 0, 0, 'flat', 0, 10, 5);
+
+    expect($totals['net_return_amount'])->toBe(2090.0);
+    expect($totals['max_net_return_amount'])->toBe(2000.0);
+    expect($totals['net_return_amount'] > $totals['max_net_return_amount'])->toBeTrue();
+});
+
 test('promotion clawback is zero when remaining quantity still meets min qty', function () {
     $branch = Branch::factory()->create();
     $user = User::factory()->create(['branch_id' => $branch->id]);

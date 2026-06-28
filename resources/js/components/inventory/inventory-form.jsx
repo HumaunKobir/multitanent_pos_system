@@ -233,6 +233,8 @@ export function SaleReturnRefundCard({
     paymentAccounts = [],
     onPaymentsChange,
     errors = {},
+    exceedsSale = false,
+    maxAmount = null,
 }) {
     const showDiscountBreakdown = subtotalAmount != null;
 
@@ -285,6 +287,13 @@ export function SaleReturnRefundCard({
                     <span className="text-muted-foreground">Total Amount</span>
                     <span className="font-semibold">৳{grossAmount.toFixed(2)}</span>
                 </div>
+
+                {exceedsSale && maxAmount != null && (
+                    <div className="rounded-md border border-destructive/40 bg-destructive/10 px-2.5 py-2 text-[10px] leading-relaxed text-destructive">
+                        Return total exceeds the sale value (max ৳{maxAmount.toFixed(2)}). Increase the discount or
+                        reduce the VAT before saving.
+                    </div>
+                )}
 
                 {parentPaymentInfo && (parentPaymentInfo.paid > 0.009 || parentPaymentInfo.due > 0.009) && (
                     <div className="rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[10px] leading-relaxed text-amber-900 dark:border-amber-800/60 dark:bg-amber-950/40 dark:text-amber-100">

@@ -55,6 +55,11 @@ class SaleReturn extends Model
         return 'INVSR'.str_pad((string) $this->id, 8, '0', STR_PAD_LEFT);
     }
 
+    public function branch(): BelongsTo
+    {
+        return $this->belongsTo(Branch::class);
+    }
+
     public function sell(): BelongsTo
     {
         return $this->belongsTo(Sell::class);

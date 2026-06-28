@@ -166,6 +166,18 @@ export function calcSaleReturnSummary(lines, sellDiscounts, context = {}, manual
     const parentPaid = parseFloat(sd.paid_amount || 0);
     const parentDue = Math.max(0, parentNet - parentPaid);
 
+    // A return can never be worth more than the matching share of the original sale. Mirror the
+    // components a return reverses (gross + vat − line − invoice − round off) so sales with
+    // special/coin discounts — which the return model does not apply — are not falsely blocked.
+    const parentReturnableNet =
+        parentGross +
+        parseFloat(sd.vat || 0) -
+        parseFloat(sd.invoice_discount || 0) -
+        parseFloat(sd.round_off_amount || 0) -
+        parentLineDiscount;
+    const maxNetAmount = Math.max(0, proportion * parentReturnableNet);
+    const exceedsSale = netAmount > maxNetAmount + 0.01;
+
     return {
         grossAmount,
         returnLineDiscount,
@@ -177,6 +189,8 @@ export function calcSaleReturnSummary(lines, sellDiscounts, context = {}, manual
         returnBase,
         returnVat,
         netAmount,
+        maxNetAmount,
+        exceedsSale,
         proportion,
         parentNet,
         parentPaid,

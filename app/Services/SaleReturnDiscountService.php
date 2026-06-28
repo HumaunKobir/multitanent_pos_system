@@ -123,7 +123,8 @@ class SaleReturnDiscountService
      *     return_round_off: float,
      *     vat_percent: float,
      *     vat_amount: float,
-     *     net_return_amount: float
+     *     net_return_amount: float,
+     *     max_net_return_amount: float
      * }
      */
     public function calculate(
@@ -170,6 +171,17 @@ class SaleReturnDiscountService
         $returnBase = round(max(0, $returnGross - $discountAmount), 2);
         $netReturnAmount = round($returnBase + $returnVat, 2);
 
+        // A return can never be worth more than the matching share of the original sale. The cap
+        // mirrors the components a return actually reverses (gross + vat − line − invoice − round
+        // off), excluding special/coin discounts the return model does not apply, so legitimate
+        // returns are never falsely blocked.
+        $parentReturnableNet = $parentGross
+            + (float) $parent->vat
+            - (float) $parent->discount
+            - (float) $parent->round_off_amount
+            - $parentLineDiscount;
+        $maxNetReturnAmount = round(max(0, $proportion * $parentReturnableNet), 2);
+
         return [
             'discount_amount' => $discountAmount,
             'return_line_discount' => $returnLineDiscount,
@@ -179,6 +191,7 @@ class SaleReturnDiscountService
             'vat_percent' => $vatPercent,
             'vat_amount' => $returnVat,
             'net_return_amount' => $netReturnAmount,
+            'max_net_return_amount' => $maxNetReturnAmount,
         ];
     }
 }

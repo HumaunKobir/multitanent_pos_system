@@ -968,7 +968,11 @@ export default function ProductForm({
                                 onChange={(e) => form.setData('code', e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
                                 placeholder="Leave empty for auto code"
+                                maxLength={8}
                             />
+                            <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
+                                Max 8 characters — keeps the barcode short and scannable. Leave empty to auto-generate a numeric barcode.
+                            </p>
                         </Field>
                     </div>
                 </Card>

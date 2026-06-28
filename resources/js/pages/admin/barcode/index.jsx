@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { AdminPagination } from '@/components/admin/pagination';
 import { BarcodeBars } from '@/components/barcode/barcode-bars';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
+import { getLabelName } from '@/lib/barcode-label';
 import { route } from '@/lib/route';
 
 function parseSerialRange(input) {
@@ -228,7 +229,7 @@ export default function BarcodeIndex({ barcodes, filters, branches = {}, mainBra
             header: 'Product / Variant',
             render: (row) => (
                 <div>
-                    <p className="font-medium">{row.product?.name ?? row.name}</p>
+                    <p className="font-medium">{getLabelName(row)}</p>
                     {row.variation && (
                         <p className="text-xs text-muted-foreground">{row.variation.variation_data?.label}</p>
                     )}

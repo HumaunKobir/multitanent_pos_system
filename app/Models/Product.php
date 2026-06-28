@@ -273,26 +273,21 @@ class Product extends Model
 
         static::creating(function (Product $product) {
             if (blank(trim((string) ($product->code ?? '')))) {
-                $product->code = filled($product->slug)
-                    ? $product->slug
-                    : static::generateUniqueCode();
+                $product->code = static::generateUniqueBarcodeNumber();
             }
         });
     }
 
-    public static function generateUniqueCode(): string
+    /**
+     * Generate a unique 7–8 digit numeric barcode.
+     *
+     * Numeric codes keep the printed Code 128 barcode short so the bars stay
+     * wide enough for scanners to read reliably.
+     */
+    public static function generateUniqueBarcodeNumber(): string
     {
-        $prefix = 'PRD-';
-
-        $maxNumber = static::query()
-            ->where('code', 'like', $prefix.'%')
-            ->pluck('code')
-            ->map(fn (string $code): int => (int) Str::after($code, $prefix))
-            ->max() ?? 0;
-
         do {
-            $maxNumber++;
-            $code = $prefix.$maxNumber;
+            $code = (string) random_int(1_000_000, 99_999_999);
         } while (static::where('code', $code)->exists());
 
         return $code;

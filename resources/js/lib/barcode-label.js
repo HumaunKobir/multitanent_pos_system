@@ -150,7 +150,11 @@ export function formatLabelPrice(price) {
 }
 
 export function getLabelName(row) {
-    return row?.product?.name ?? row?.name ?? 'Product Name';
+    const rawName = row?.product?.name ?? row?.name ?? 'Product Name';
+
+    // Show only the part before a "/" — the slash and anything after it
+    // is omitted from the printed/listed label.
+    return rawName.split('/')[0].trim();
 }
 
 export function getLabelTitle(row) {

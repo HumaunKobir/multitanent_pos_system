@@ -164,7 +164,7 @@ class ProductController extends Controller
             'size_ids' => ['nullable', 'array'],
             'size_ids.*' => [Rule::exists('sizes', 'id')],
             'name' => ['required', 'string', 'max:255', 'unique:products,name'],
-            'code' => ['nullable', 'string', 'max:100', 'unique:products,code'],
+            'code' => ['nullable', 'string', 'max:8', 'unique:products,code'],
             'purchase_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'sale_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric'],

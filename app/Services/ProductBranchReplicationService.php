@@ -52,7 +52,7 @@ class ProductBranchReplicationService
         $baseSlug = filled($data['slug'] ?? null)
             ? (string) $data['slug']
             : Product::generateUniqueSlug((string) $data['name']);
-        $autoCodeBase = $baseSlug;
+        $autoCodeBase = $manualCode ?? Product::generateUniqueBarcodeNumber();
         $created = [];
 
         foreach ($branchIds as $branchId) {
@@ -231,7 +231,7 @@ class ProductBranchReplicationService
         $baseSlug = filled($data['slug'] ?? null)
             ? (string) $data['slug']
             : Product::generateUniqueSlug((string) $data['name']);
-        $autoCodeBase = $baseSlug;
+        $autoCodeBase = $manualCode ?? Product::generateUniqueBarcodeNumber();
 
         $branchData = $this->mapBranchCatalogFields($data, $branchId);
         $branchData['branch_id'] = $branchId;

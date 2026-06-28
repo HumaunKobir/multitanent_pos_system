@@ -57,7 +57,7 @@ test('product without manual code gets auto-generated code and barcode', functio
     $product = Product::query()->where('name', $payload['name'])->first();
 
     expect($product)->not->toBeNull()
-        ->and($product->code)->toBe($product->slug);
+        ->and($product->code)->toMatch('/^\d{7,8}$/');
 
     expect(
         Barcode::query()
@@ -217,7 +217,7 @@ test('all branches product creates isolated copy for each active branch', functi
     )->toBeTrue();
 });
 
-test('all branches product auto-generated barcode uses slug base across branches', function () {
+test('all branches product auto-generated barcode uses numeric base across branches', function () {
     $admin = productStoreAdmin();
 
     Branch::query()->firstOrCreate(
@@ -226,7 +226,7 @@ test('all branches product auto-generated barcode uses slug base across branches
     );
 
     $operatingBranch = Branch::factory()->create();
-    $productName = 'Slug Barcode Product '.fake()->unique()->numerify('######');
+    $productName = 'Numeric Barcode Product '.fake()->unique()->numerify('######');
 
     $payload = validProductPayload([
         'branch_id' => null,
@@ -245,12 +245,12 @@ test('all branches product auto-generated barcode uses slug base across branches
 
     expect($mainCopy)->not->toBeNull()
         ->and($branchCopy)->not->toBeNull()
-        ->and($mainCopy->code)->toBe($mainCopy->slug)
-        ->and($branchCopy->code)->toBe($mainCopy->slug.'-B'.$operatingBranch->id)
+        ->and($mainCopy->code)->toMatch('/^\d{7,8}$/')
+        ->and($branchCopy->code)->toBe($mainCopy->code.'-B'.$operatingBranch->id)
         ->and($branchCopy->slug)->toBe($mainCopy->slug.'-b'.$operatingBranch->id);
 
     expect(
-        Barcode::query()->where('product_id', $mainCopy->id)->where('code', $mainCopy->slug)->exists(),
+        Barcode::query()->where('product_id', $mainCopy->id)->where('code', $mainCopy->code)->exists(),
     )->toBeTrue();
 
     expect(

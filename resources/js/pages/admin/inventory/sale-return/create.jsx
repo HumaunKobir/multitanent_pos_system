@@ -14,7 +14,7 @@ import {
     inputCls,
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
-import { calcSaleReturnSummary, derivedVatPercent } from '@/lib/sale-return-summary';
+import { buildInitialReturnDiscounts, calcSaleReturnSummary, derivedVatPercent } from '@/lib/sale-return-summary';
 import { buildInitialSalePayments, computeSplitSalePayment, serializeSalePayments, splitPaymentValidationError } from '@/lib/sale-payment';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
@@ -93,10 +93,7 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                 quantity: String(i.max_return_quantity),
             }));
         const sd = json.sell_discounts ?? {};
-        const initialManual = {
-            invoice: parseFloat(sd.invoice_discount || 0) > 0 ? String(parseFloat(sd.invoice_discount).toFixed(2)) : null,
-            roundOff: parseFloat(sd.round_off_amount || 0) > 0 ? String(parseFloat(sd.round_off_amount).toFixed(2)) : null,
-        };
+        const initialManual = buildInitialReturnDiscounts(sd);
         setSource(json);
         setItems(lines);
         setManualDiscounts(initialManual);
@@ -155,9 +152,10 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
             payment_type: '5',
             items: returnItems,
             payments: serializedPayments.length > 0 ? serializedPayments : undefined,
-            manual_invoice_discount: manualDiscounts.invoice != null ? String(parseFloat(manualDiscounts.invoice || 0)) : undefined,
-            manual_round_off: manualDiscounts.roundOff != null ? String(parseFloat(manualDiscounts.roundOff || 0)) : undefined,
-            manual_vat_percent: vatPercent !== '' ? String(parseFloat(vatPercent || 0)) : undefined,
+            manual_invoice_discount_type: manualDiscounts.invoiceType || 'flat',
+            manual_invoice_discount_value: String(parseFloat(manualDiscounts.invoice || 0)),
+            manual_round_off: String(parseFloat(manualDiscounts.roundOff || 0)),
+            manual_vat_percent: String(parseFloat(vatPercent || 0)),
         }));
         form.post(route('inventory.sale-return.store'), {
             preserveScroll: true,
@@ -255,6 +253,8 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                             returnSummary={returnSummary}
                             manualDiscounts={manualDiscounts}
                             onManualDiscountChange={handleManualDiscountChange}
+                            vatPercent={vatPercent}
+                            onVatPercentChange={setVatPercent}
                         />
                     )}
 
@@ -270,8 +270,7 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                             subtotalAmount={returnSummary?.grossAmount ?? null}
                             discountAmount={returnSummary?.discountAmount ?? 0}
                             vatAmount={returnSummary?.returnVat ?? 0}
-                            vatPercent={vatPercent}
-                            onVatPercentChange={source ? setVatPercent : undefined}
+                            vatPercent={parseFloat(vatPercent || 0)}
                             parentPaymentInfo={
                                 returnSummary
                                     ? { paid: returnSummary.parentPaid, due: returnSummary.parentDue }

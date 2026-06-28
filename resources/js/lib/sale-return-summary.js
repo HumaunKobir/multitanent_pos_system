@@ -1,3 +1,4 @@
+import { computeDiscountAmount } from '@/lib/pos-discount';
 import { applyPromotionsToCart, remainingQuantityKeepsPromotion } from '@/lib/pos-promotion';
 
 function findPromotion(promotions, promotionId) {
@@ -63,13 +64,38 @@ function promotionClawback(item, returnQty, promotions, saleDate) {
 }
 
 export function derivedVatPercent(sellDiscounts) {
+    // The parent sale charges VAT on its taxable base (gross − line discounts), before the
+    // invoice discount and round off. Derive the rate from that same base so the return matches.
     const parentVat = parseFloat(sellDiscounts?.vat || 0);
-    const parentNet = parseFloat(sellDiscounts?.net_amount || 0);
-    const parentBase = Math.max(0, parentNet - parentVat);
+    const parentGross = parseFloat(sellDiscounts?.gross_amount || 0);
+    const parentLineDiscount = parseFloat(sellDiscounts?.line_discount_total || 0);
+    const parentBase = Math.max(0, parentGross - parentLineDiscount);
     if (parentBase <= 0 || parentVat <= 0) {
         return 0;
     }
     return Math.round((parentVat / parentBase) * 10000) / 100;
+}
+
+/**
+ * Default editable return discounts seeded from the source sale: invoice discount keeps the
+ * sale's type (flat/percent) and raw value, round off keeps the sale amount. Returns null
+ * values when the sale had none so the inputs render empty and the user can add their own.
+ *
+ * @param {object} sellDiscounts
+ * @returns {{ invoiceType: string, invoice: string|null, roundOff: string|null }}
+ */
+export function buildInitialReturnDiscounts(sellDiscounts = {}) {
+    const sd = sellDiscounts ?? {};
+    const invoiceType = sd.invoice_discount_type || 'flat';
+    const rawValue = parseFloat(sd.invoice_discount_value ?? 0);
+    const invoiceValue = rawValue > 0 ? rawValue : parseFloat(sd.invoice_discount || 0);
+    const roundOff = parseFloat(sd.round_off_amount || 0);
+
+    return {
+        invoiceType,
+        invoice: invoiceValue > 0 ? String(invoiceValue) : null,
+        roundOff: roundOff > 0 ? String(roundOff.toFixed(2)) : null,
+    };
 }
 
 export function calcSaleReturnSummary(lines, sellDiscounts, context = {}, manualOverrides = {}) {
@@ -93,8 +119,10 @@ export function calcSaleReturnSummary(lines, sellDiscounts, context = {}, manual
         0,
     );
 
-    const returnAfterPromo = grossAmount - returnLineDiscount - returnPromotionDiscount;
-    const proportion = parentNetForProportion > 0 ? returnAfterPromo / parentNetForProportion : 0;
+    // Taxable base mirrors the parent sale: gross − line − promotion discounts, before the
+    // invoice discount and round off. VAT and percent invoice discounts are charged on this.
+    const taxableBase = Math.max(0, grossAmount - returnLineDiscount - returnPromotionDiscount);
+    const proportion = parentNetForProportion > 0 ? taxableBase / parentNetForProportion : 0;
 
     const autoInvoice = proportion * parseFloat(sd.invoice_discount || 0);
     const autoRoundOff = proportion * parseFloat(sd.round_off_amount || 0);
@@ -102,12 +130,16 @@ export function calcSaleReturnSummary(lines, sellDiscounts, context = {}, manual
     // invoice/roundOff: null → auto proportional; '' or number → manual ('' treated as 0 via `|| 0` fallback)
     const returnInvoiceDiscount =
         manualOverrides.invoice != null
-            ? Math.min(Math.max(0, parseFloat(manualOverrides.invoice || 0)), parseFloat(sd.invoice_discount || 0))
+            ? Math.min(
+                  computeDiscountAmount(manualOverrides.invoiceType || 'flat', manualOverrides.invoice, taxableBase),
+                  taxableBase,
+              )
             : autoInvoice;
+    const roundOffCap = Math.max(0, taxableBase - returnInvoiceDiscount);
     const returnRoundOff =
         manualOverrides.roundOff != null
-            ? Math.min(Math.max(0, parseFloat(manualOverrides.roundOff || 0)), parseFloat(sd.round_off_amount || 0))
-            : autoRoundOff;
+            ? Math.min(Math.max(0, parseFloat(manualOverrides.roundOff || 0)), roundOffCap)
+            : Math.min(autoRoundOff, roundOffCap);
 
     const returnInvoiceLevelDiscount = returnInvoiceDiscount + returnRoundOff;
 
@@ -126,7 +158,7 @@ export function calcSaleReturnSummary(lines, sellDiscounts, context = {}, manual
     const returnBase = Math.max(0, grossAmount - discountAmount);
 
     const vatPercent = Math.max(0, parseFloat(manualOverrides.vatPercent || 0));
-    const returnVat = vatPercent > 0 ? Math.round(returnBase * (vatPercent / 100) * 100) / 100 : 0;
+    const returnVat = vatPercent > 0 ? Math.round(taxableBase * (vatPercent / 100) * 100) / 100 : 0;
 
     const netAmount = Math.max(0, returnBase + returnVat);
 

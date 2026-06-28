@@ -97,6 +97,24 @@ class SaleReturnDiscountService
     }
 
     /**
+     * Compute a flat or percent discount amount against a base, clamped to the base.
+     */
+    private function computeDiscountAmount(string $type, float $value, float $base): float
+    {
+        if ($value <= 0 || $base <= 0) {
+            return 0.0;
+        }
+
+        $amount = $type === 'percent' ? ($base * $value) / 100 : $value;
+
+        return min($amount, $base);
+    }
+
+    /**
+     * Invoice discount, round off and VAT mirror how the parent sale builds its totals:
+     * VAT is charged on the taxable base (gross − line − promotion discounts), BEFORE the
+     * invoice discount and round off are applied — never on the fully discounted base.
+     *
      * @return array{
      *     discount_amount: float,
      *     return_line_discount: float,
@@ -113,7 +131,8 @@ class SaleReturnDiscountService
         float $returnGross,
         float $returnLineDiscount,
         float $returnPromotionDiscount,
-        ?float $manualInvoiceDiscount = null,
+        ?string $manualInvoiceDiscountType = null,
+        ?float $manualInvoiceDiscountValue = null,
         ?float $manualRoundOff = null,
         ?float $manualVatPercent = null,
     ): array {
@@ -121,26 +140,34 @@ class SaleReturnDiscountService
         $parentLineDiscount = $parent->lineDiscountTotal();
         $parentNetForProportion = $parentGross - $parentLineDiscount;
 
-        $returnAfterPromo = $returnGross - $returnLineDiscount - $returnPromotionDiscount;
-        $proportion = $parentNetForProportion > 0 ? $returnAfterPromo / $parentNetForProportion : 0;
+        $taxableBase = round(max(0, $returnGross - $returnLineDiscount - $returnPromotionDiscount), 2);
+        $proportion = $parentNetForProportion > 0 ? $taxableBase / $parentNetForProportion : 0;
 
-        $returnInvoiceDiscount = $manualInvoiceDiscount !== null
-            ? round(min(max(0, $manualInvoiceDiscount), (float) $parent->discount), 2)
+        $returnInvoiceDiscount = $manualInvoiceDiscountValue !== null
+            ? round(min(
+                $this->computeDiscountAmount(
+                    $manualInvoiceDiscountType ?? 'flat',
+                    max(0, $manualInvoiceDiscountValue),
+                    $taxableBase,
+                ),
+                $taxableBase,
+            ), 2)
             : round($proportion * (float) $parent->discount, 2);
 
+        $roundOffCap = max(0, $taxableBase - $returnInvoiceDiscount);
         $returnRoundOff = $manualRoundOff !== null
-            ? round(min(max(0, $manualRoundOff), (float) $parent->round_off_amount), 2)
-            : round($proportion * (float) $parent->round_off_amount, 2);
+            ? round(min(max(0, $manualRoundOff), $roundOffCap), 2)
+            : round(min($proportion * (float) $parent->round_off_amount, $roundOffCap), 2);
 
         $discountAmount = round(
             $returnLineDiscount + $returnPromotionDiscount + $returnInvoiceDiscount + $returnRoundOff,
             2,
         );
-        $returnBase = round(max(0, $returnGross - $discountAmount), 2);
 
         $vatPercent = max(0, $manualVatPercent ?? 0);
-        $returnVat = $vatPercent > 0 ? round($returnBase * ($vatPercent / 100), 2) : 0.0;
+        $returnVat = $vatPercent > 0 ? round($taxableBase * ($vatPercent / 100), 2) : 0.0;
 
+        $returnBase = round(max(0, $returnGross - $discountAmount), 2);
         $netReturnAmount = round($returnBase + $returnVat, 2);
 
         return [

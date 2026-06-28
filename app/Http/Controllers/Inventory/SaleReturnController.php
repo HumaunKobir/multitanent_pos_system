@@ -86,7 +86,8 @@ class SaleReturnController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
-            'manual_invoice_discount' => ['nullable', 'numeric', 'min:0'],
+            'manual_invoice_discount_type' => ['nullable', 'in:flat,percent'],
+            'manual_invoice_discount_value' => ['nullable', 'numeric', 'min:0'],
             'manual_round_off' => ['nullable', 'numeric', 'min:0'],
             'manual_vat_percent' => ['nullable', 'numeric', 'min:0'],
         ]);
@@ -175,7 +176,8 @@ class SaleReturnController extends Controller
                     $grossAmount,
                     $returnLineDiscount,
                     $returnPromotionDiscount,
-                    isset($data['manual_invoice_discount']) ? (float) $data['manual_invoice_discount'] : null,
+                    $data['manual_invoice_discount_type'] ?? null,
+                    isset($data['manual_invoice_discount_value']) ? (float) $data['manual_invoice_discount_value'] : null,
                     isset($data['manual_round_off']) ? (float) $data['manual_round_off'] : null,
                     isset($data['manual_vat_percent']) ? (float) $data['manual_vat_percent'] : null,
                 );
@@ -344,6 +346,8 @@ class SaleReturnController extends Controller
                     'vat' => (float) $parent->vat,
                     'line_discount_total' => $parent->lineDiscountTotal(),
                     'invoice_discount' => (float) $parent->discount,
+                    'invoice_discount_type' => $parent->discount_type?->value ?? 'flat',
+                    'invoice_discount_value' => (float) $parent->discount_value,
                     'round_off_amount' => (float) $parent->round_off_amount,
                     'net_amount' => (float) $parent->net_amount,
                     'paid_amount' => (float) $parent->paid_amount,
@@ -376,7 +380,8 @@ class SaleReturnController extends Controller
             'items' => ['required', 'array', 'min:1'],
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
-            'manual_invoice_discount' => ['nullable', 'numeric', 'min:0'],
+            'manual_invoice_discount_type' => ['nullable', 'in:flat,percent'],
+            'manual_invoice_discount_value' => ['nullable', 'numeric', 'min:0'],
             'manual_round_off' => ['nullable', 'numeric', 'min:0'],
             'manual_vat_percent' => ['nullable', 'numeric', 'min:0'],
         ]);
@@ -472,7 +477,8 @@ class SaleReturnController extends Controller
                     $grossAmount,
                     $returnLineDiscount,
                     $returnPromotionDiscount,
-                    isset($data['manual_invoice_discount']) ? (float) $data['manual_invoice_discount'] : null,
+                    $data['manual_invoice_discount_type'] ?? null,
+                    isset($data['manual_invoice_discount_value']) ? (float) $data['manual_invoice_discount_value'] : null,
                     isset($data['manual_round_off']) ? (float) $data['manual_round_off'] : null,
                     isset($data['manual_vat_percent']) ? (float) $data['manual_vat_percent'] : null,
                 );

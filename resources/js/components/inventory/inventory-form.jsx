@@ -2,7 +2,6 @@ import { SalePaymentLines } from '@/components/inventory/sale-payment-lines';
 import { route } from '@/lib/route';
 import { Link } from '@inertiajs/react';
 import { ArrowLeft, MessageSquare, Percent, Search } from 'lucide-react';
-import { useRef } from 'react';
 
 import { RequiredMark } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
@@ -276,7 +275,7 @@ export function SaleReturnRefundCard({
                         )}
                         {onVatPercentChange == null && vatAmount > 0.009 && (
                             <div className="flex justify-between text-blue-600 dark:text-blue-400">
-                                <span>VAT</span>
+                                <span>VAT {parseFloat(vatPercent || 0) > 0.009 ? `(${parseFloat(vatPercent).toFixed(2)}%)` : ''}</span>
                                 <span>+৳{vatAmount.toFixed(2)}</span>
                             </div>
                         )}
@@ -313,84 +312,106 @@ export function SaleReturnRefundCard({
     );
 }
 
-const EDITABLE_RETURN_DISCOUNT_KEYS = ['invoice', 'roundOff'];
+const returnDiscountSelectCls =
+    'h-7 rounded-md border border-border/60 bg-background px-1.5 text-xs shadow-xs outline-none focus:border-primary focus:ring-[3px] focus:ring-ring/50';
 
-function EditableDiscountInput({ saleMax, initialValue, onManualChange, className }) {
-    const inputRef = useRef(null);
-
-    return (
-        <Input
-            ref={inputRef}
-            type="number"
-            min="0"
-            max={parseFloat(saleMax || 0)}
-            step="0.01"
-            defaultValue={initialValue}
-            onChange={(e) => onManualChange?.(e.target.value)}
-            onBlur={(e) => {
-                const max = parseFloat(saleMax || 0);
-                const clamped = Math.min(Math.max(0, parseFloat(e.target.value || 0)), max);
-                const clampedStr = clamped.toFixed(2);
-                if (inputRef.current) inputRef.current.value = clampedStr;
-                onManualChange?.(clampedStr);
-            }}
-            className={className}
-        />
-    );
-}
-
+/**
+ * Discounts & VAT for a sale return. Invoice discount supports flat (৳) or percent (%) types,
+ * round off is a flat amount, and VAT is a percentage charged on the taxable base. All three
+ * default to the source sale's values and can be edited, changed, or cleared (deleted → 0).
+ * VAT is intentionally rendered after round off.
+ */
 export function SaleReturnSourceDiscounts({
     sellDiscounts,
     returnSummary,
     manualDiscounts = {},
     onManualDiscountChange,
+    vatPercent = '',
+    onVatPercentChange,
 }) {
     if (!sellDiscounts) {
         return null;
     }
 
     const ret = returnSummary?.returnDiscounts ?? {};
-    const auto = returnSummary?.autoDiscounts ?? {};
-    const rows = [
-        { key: 'invoice', label: 'Invoice discount', sale: sellDiscounts.invoice_discount },
-        { key: 'roundOff', label: 'Round off', sale: sellDiscounts.round_off_amount },
-    ].filter((row) => parseFloat(row.sale || 0) > 0.009 || parseFloat(ret[row.key] || 0) > 0.009);
-
-    if (rows.length === 0) {
-        return null;
-    }
+    const invoiceType = manualDiscounts.invoiceType || 'flat';
+    const returnVat = returnSummary?.returnVat ?? 0;
+    const computedInvoice = parseFloat(ret.invoice || 0);
 
     return (
-        <InventoryCard title="Discounts" icon={Percent}>
-            <div className="space-y-2 text-xs">
-                <div className="grid grid-cols-3 gap-2 border-b border-border pb-2 font-medium text-muted-foreground">
-                    <span>Type</span>
-                    <span className="text-right">On Sale</span>
-                    <span className="text-right">This Return</span>
+        <InventoryCard title="Discounts & VAT" icon={Percent}>
+            <div className="space-y-3 text-xs">
+                <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                    <div className="flex flex-col">
+                        <span className="text-muted-foreground">Invoice discount</span>
+                        <span className="text-[10px] text-muted-foreground">
+                            On sale: ৳{parseFloat(sellDiscounts.invoice_discount || 0).toFixed(2)}
+                            {invoiceType === 'percent' && computedInvoice > 0.009
+                                ? ` · = ৳${computedInvoice.toFixed(2)}`
+                                : ''}
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <select
+                            value={invoiceType}
+                            onChange={(e) => onManualDiscountChange?.('invoiceType', e.target.value)}
+                            className={returnDiscountSelectCls}
+                        >
+                            <option value="flat">৳</option>
+                            <option value="percent">%</option>
+                        </select>
+                        <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={manualDiscounts.invoice ?? ''}
+                            onChange={(e) => onManualDiscountChange?.('invoice', e.target.value)}
+                            placeholder="0"
+                            className={`${inputCls} w-24 text-right`}
+                        />
+                    </div>
                 </div>
-                {rows.map((row) => {
-                    const autoVal = parseFloat(auto[row.key] || ret[row.key] || 0);
 
-                    return (
-                        <div key={row.key} className="grid grid-cols-3 items-center gap-2">
-                            <span className="text-muted-foreground">{row.label}</span>
-                            <span className="text-right">৳{parseFloat(row.sale || 0).toFixed(2)}</span>
-                            <div className="flex justify-end">
-                                <EditableDiscountInput
-                                    key={`${row.key}-${parseFloat(row.sale || 0)}`}
-                                    saleMax={row.sale}
-                                    initialValue={
-                                        manualDiscounts[row.key] != null
-                                            ? String(manualDiscounts[row.key])
-                                            : autoVal.toFixed(2)
-                                    }
-                                    onManualChange={(val) => onManualDiscountChange?.(row.key, val)}
-                                    className={`${inputCls} w-24 text-right`}
-                                />
-                            </div>
+                <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                    <div className="flex flex-col">
+                        <span className="text-muted-foreground">Round off</span>
+                        <span className="text-[10px] text-muted-foreground">
+                            On sale: ৳{parseFloat(sellDiscounts.round_off_amount || 0).toFixed(2)}
+                        </span>
+                    </div>
+                    <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={manualDiscounts.roundOff ?? ''}
+                        onChange={(e) => onManualDiscountChange?.('roundOff', e.target.value)}
+                        placeholder="0"
+                        className={`${inputCls} w-24 text-right`}
+                    />
+                </div>
+
+                {onVatPercentChange != null && (
+                    <div className="grid grid-cols-[1fr_auto] items-center gap-2 border-t border-border pt-3">
+                        <div className="flex flex-col">
+                            <span className="flex items-center gap-1 text-blue-600 dark:text-blue-400">
+                                <Percent className="size-3" />
+                                VAT %
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                                {returnVat > 0.009 ? `= ৳${returnVat.toFixed(2)}` : 'Charged on taxable amount'}
+                            </span>
                         </div>
-                    );
-                })}
+                        <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={vatPercent}
+                            onChange={(e) => onVatPercentChange(e.target.value)}
+                            placeholder="0"
+                            className={`${inputCls} w-24 text-right`}
+                        />
+                    </div>
+                )}
             </div>
         </InventoryCard>
     );

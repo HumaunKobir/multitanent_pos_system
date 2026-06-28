@@ -119,6 +119,8 @@ class SaleLookupController extends Controller
                 'vat' => (float) $sell->vat,
                 'line_discount_total' => $sell->lineDiscountTotal(),
                 'invoice_discount' => (float) $sell->discount,
+                'invoice_discount_type' => $sell->discount_type?->value ?? 'flat',
+                'invoice_discount_value' => (float) $sell->discount_value,
                 'special_discount_id' => $sell->special_discount_id,
                 'special_discount_amount' => (float) $sell->special_discount_amount,
                 'promotion_discount_total' => (float) $sell->promotion_discount_total,

@@ -15,6 +15,7 @@ return new class extends Migration
             $table->date('date')->index();
             $table->string('transaction_reference')->nullable();
             $table->foreignId('party_id')->nullable()->constrained('parties')->nullOnDelete();
+            $table->string('party_type')->nullable();
             $table->foreignId('from_account_id')->nullable()->constrained('chart_of_accounts')->nullOnDelete();
             $table->foreignId('to_account_id')->nullable()->constrained('chart_of_accounts')->nullOnDelete();
             $table->foreignId('payment_account_id')->nullable()->constrained('chart_of_accounts')->nullOnDelete();

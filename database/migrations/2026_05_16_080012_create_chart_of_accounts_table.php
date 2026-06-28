@@ -14,6 +14,7 @@ return new class extends Migration
             $table->nullableMorphs('source');
             $table->foreignId('parent_id')->nullable()->constrained('chart_of_accounts')->nullOnDelete();
             $table->string('code');
+            $table->string('account_number')->nullable();
             $table->string('name');
             $table->unsignedTinyInteger('type')->index();
             $table->decimal('current_balance', 15, 2)->default(0);

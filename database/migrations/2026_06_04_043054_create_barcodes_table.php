@@ -18,7 +18,6 @@ return new class extends Migration
             $table->foreignId('product_variation_id')->nullable()->constrained()->nullOnDelete();
             $table->string('code');
             $table->string('name');
-            $table->unsignedInteger('quantity')->default(1);
             $table->timestamps();
         });
     }

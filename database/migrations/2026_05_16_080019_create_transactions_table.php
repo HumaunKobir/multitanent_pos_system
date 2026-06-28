@@ -16,6 +16,8 @@ return new class extends Migration
             $table->decimal('amount', 15, 2);
             $table->foreignId('debit_account_id')->nullable()->constrained('chart_of_accounts');
             $table->foreignId('credit_account_id')->nullable()->constrained('chart_of_accounts');
+             $table->boolean('debit_decrease')->default(false);
+            $table->boolean('credit_decrease')->default(false);
             $table->string('description')->nullable();
             $table->timestamp('approved_at')->nullable();
             $table->softDeletes();

@@ -16,6 +16,7 @@ return new class extends Migration
             $table->unsignedBigInteger('branch_id')->nullable();
             $table->uuid('catalog_group_id')->nullable();
             $table->string('name');
+            $table->string('slug')->nullable();
             $table->string('image')->nullable();
             $table->tinyInteger('status')->default(1);
             $table->timestamps();

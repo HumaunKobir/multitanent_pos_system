@@ -161,6 +161,48 @@ test('purchase return on supplier account decreases supplier balance by net amou
     expect((float) $supplier->balance)->toBe(475.0); // 950 - 475
 });
 
+test('purchase return with partial cash refund only reduces supplier balance by the due portion', function () {
+    $user = purchaseReturnUser();
+    ['product' => $product, 'batch' => $batch] = purchaseReturnProduct(10, $user->branch_id);
+    $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id, 'balance' => 950]);
+
+    $purchase = purchaseReturnPurchase($user, $supplier, [
+        'gross' => 1000,
+        'discount' => 100,
+        'vat' => 50,
+        'paid' => 950,
+    ]);
+
+    $purchaseProduct = PurchaseProduct::factory()
+        ->forPurchase($purchase)
+        ->forProduct($product)
+        ->withBatch($batch->id, 10)
+        ->create();
+
+    $this->actingAs($user)
+        ->post(route('inventory.purchase-return.store'), [
+            'purchase_id' => $purchase->id,
+            'date' => now()->format('Y-m-d'),
+            'paid_amount' => '200',
+            'payment_type' => (string) PurchaseReceivedPayment::Cash->value,
+            'items' => [
+                ['purchase_product_id' => $purchaseProduct->id, 'quantity' => '5'],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase-return.index'));
+
+    $purchaseReturn = PurchaseReturn::query()->latest('id')->first();
+
+    expect((float) $purchaseReturn->net_amount)->toBe(475.0);
+    expect((float) $purchaseReturn->paid_amount)->toBe(200.0);
+    expect((float) $purchaseReturn->due_amount)->toBe(275.0);
+
+    $supplier->refresh();
+
+    // Only the unpaid (due) portion is settled against the supplier account.
+    expect((float) $supplier->balance)->toBe(675.0); // 950 - 275
+});
+
 test('purchase return update recalculates discount and vat', function () {
     $user = purchaseReturnUser();
     ['product' => $product, 'batch' => $batch] = purchaseReturnProduct(10, $user->branch_id);

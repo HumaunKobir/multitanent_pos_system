@@ -10,6 +10,7 @@ import {
     PaymentSummaryCard,
     ProductNameWithCode,
     inputCls,
+    paymentModeToAccountId,
     paymentModeToType,
     paymentTypeToMode,
     roundCurrency,
@@ -26,7 +27,9 @@ export default function PurchaseReturnEdit({ purchaseReturn, paymentAccounts = [
     const { flash } = usePage().props;
     const toast = useAppToast();
     const [items, setItems] = useState(purchaseReturn.items ?? []);
-    const [paymentMode, setPaymentMode] = useState(paymentTypeToMode(purchaseReturn.payment_type));
+    const [paymentMode, setPaymentMode] = useState(
+        paymentTypeToMode(purchaseReturn.payment_type, purchaseReturn.payment_account_id),
+    );
 
     const form = useForm({
         date: purchaseReturn.date ?? '',
@@ -34,6 +37,7 @@ export default function PurchaseReturnEdit({ purchaseReturn, paymentAccounts = [
         paid_amount: purchaseReturn.paid_amount ?? '0',
         discount: String(purchaseReturn.discount ?? '0'),
         payment_type: String(purchaseReturn.payment_type ?? '5'),
+        payment_account_id: purchaseReturn.payment_account_id ?? null,
         items: [],
     });
 
@@ -86,6 +90,7 @@ export default function PurchaseReturnEdit({ purchaseReturn, paymentAccounts = [
             ...data,
             discount: String(parseFloat(data.discount || 0) || 0),
             payment_type: paymentModeToType(paymentMode),
+            payment_account_id: paymentModeToAccountId(paymentMode),
             items: returnItems,
         }));
         form.put(route('inventory.purchase-return.update', purchaseReturn.id), {

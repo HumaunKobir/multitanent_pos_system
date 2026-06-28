@@ -4,7 +4,6 @@ namespace App\Services;
 
 use App\Enums\AccountType;
 use App\Enums\CommonStatus;
-use App\Enums\PurchaseReceivedPayment;
 use App\Enums\ReceivedPaymentMethod;
 use App\Enums\SystemAccountKey;
 use App\Models\Branch;
@@ -72,23 +71,33 @@ class InventoryAccountingService
         );
     }
 
-    public function postPurchaseReturn(PurchaseReturn $purchaseReturn): ?Transaction
+    public function postPurchaseReturn(PurchaseReturn $purchaseReturn, ?int $paymentAccountId = null): ?Transaction
     {
         $purchaseReturn->loadMissing('supplier:id,name');
 
         $returnBase = round(max(0, (float) $purchaseReturn->gross_amount - (float) $purchaseReturn->discount), 2);
         $vatAmount = round((float) $purchaseReturn->vat, 2);
         $returnNet = round((float) $purchaseReturn->net_amount, 2);
+        $paidAmount = round(min(max(0, (float) $purchaseReturn->paid_amount), $returnNet), 2);
+        $dueAmount = round(max(0, $returnNet - $paidAmount), 2);
         $serial = $purchaseReturn->serial ?? $purchaseReturn->invoice_number;
         $supplierName = $purchaseReturn->supplier?->name ?? 'Supplier';
         $branchId = $purchaseReturn->branch_id;
 
         $lines = [];
 
-        if ($purchaseReturn->payment_type === PurchaseReceivedPayment::Cash && $returnNet > 0) {
-            $lines[] = $this->debitLine(SystemAccountKey::CashInHand, $returnNet, "Cash received — Purchase Return {$serial}", $branchId);
-        } elseif ($returnNet > 0) {
-            $lines[] = $this->debitLine(SystemAccountKey::SupplierPayables, $returnNet, "Supplier payable reduced — Purchase Return {$serial}, {$supplierName}", $branchId);
+        // Portion the supplier refunded in cash/bank now.
+        if ($paidAmount > 0) {
+            if ($paymentAccountId !== null) {
+                $lines[] = $this->debitPaymentAccount($paymentAccountId, $paidAmount, "Cash received — Purchase Return {$serial}");
+            } else {
+                $lines[] = $this->debitLine(SystemAccountKey::CashInHand, $paidAmount, "Cash received — Purchase Return {$serial}", $branchId);
+            }
+        }
+
+        // Remaining value settled against the supplier's running account.
+        if ($dueAmount > 0) {
+            $lines[] = $this->debitLine(SystemAccountKey::SupplierPayables, $dueAmount, "Supplier payable reduced — Purchase Return {$serial}, {$supplierName}", $branchId);
         }
 
         if ($returnBase > 0) {

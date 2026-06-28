@@ -28,6 +28,7 @@ class PurchaseReturn extends Model
         'paid_amount',
         'due_amount',
         'payment_type',
+        'payment_account_id',
         'serial',
         'comment',
     ];

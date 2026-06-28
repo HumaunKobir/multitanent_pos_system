@@ -11,6 +11,7 @@ import {
     PaymentSummaryCard,
     ProductNameWithCode,
     inputCls,
+    paymentModeToAccountId,
     paymentModeToType,
     roundCurrency,
 } from '@/components/inventory/inventory-form';
@@ -39,6 +40,7 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
         paid_amount: '0',
         discount: '0',
         payment_type: '5',
+        payment_account_id: null,
         items: [],
     });
 
@@ -121,6 +123,7 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
             ...data,
             discount: String(parseFloat(data.discount || 0) || 0),
             payment_type: paymentModeToType(paymentMode),
+            payment_account_id: paymentModeToAccountId(paymentMode),
             items: returnItems,
         }));
         form.post(route('inventory.purchase-return.store'), {

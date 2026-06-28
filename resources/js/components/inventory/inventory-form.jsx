@@ -337,6 +337,7 @@ export function SaleReturnSourceDiscounts({
     const invoiceType = manualDiscounts.invoiceType || 'flat';
     const returnVat = returnSummary?.returnVat ?? 0;
     const computedInvoice = parseFloat(ret.invoice || 0);
+    const computedRoundOff = parseFloat(ret.roundOff || 0);
 
     return (
         <InventoryCard title="Discounts & VAT" icon={Percent}>
@@ -345,10 +346,7 @@ export function SaleReturnSourceDiscounts({
                     <div className="flex flex-col">
                         <span className="text-muted-foreground">Invoice discount</span>
                         <span className="text-[10px] text-muted-foreground">
-                            On sale: ৳{parseFloat(sellDiscounts.invoice_discount || 0).toFixed(2)}
-                            {invoiceType === 'percent' && computedInvoice > 0.009
-                                ? ` · = ৳${computedInvoice.toFixed(2)}`
-                                : ''}
+                            Return: ৳{computedInvoice.toFixed(2)}
                         </span>
                     </div>
                     <div className="flex items-center gap-1">
@@ -376,7 +374,7 @@ export function SaleReturnSourceDiscounts({
                     <div className="flex flex-col">
                         <span className="text-muted-foreground">Round off</span>
                         <span className="text-[10px] text-muted-foreground">
-                            On sale: ৳{parseFloat(sellDiscounts.round_off_amount || 0).toFixed(2)}
+                            Return: ৳{computedRoundOff.toFixed(2)}
                         </span>
                     </div>
                     <Input
@@ -398,7 +396,7 @@ export function SaleReturnSourceDiscounts({
                                 VAT %
                             </span>
                             <span className="text-[10px] text-muted-foreground">
-                                {returnVat > 0.009 ? `= ৳${returnVat.toFixed(2)}` : 'Charged on taxable amount'}
+                                Return: ৳{returnVat.toFixed(2)}
                             </span>
                         </div>
                         <Input

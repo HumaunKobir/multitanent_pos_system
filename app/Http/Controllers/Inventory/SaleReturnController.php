@@ -191,6 +191,8 @@ class SaleReturnController extends Controller
                 $paymentAccountId = $refund['payment_account_id'];
                 $paymentLines = $refund['payment_lines'];
 
+                $breakdown = $this->returnDiscountBreakdown($data, $totals);
+
                 $saleReturn = SaleReturn::create([
                     'branch_id' => $branchId,
                     'user_id' => $this->currentUserId(),
@@ -201,6 +203,9 @@ class SaleReturnController extends Controller
                     'vat_amount' => $vatAmount,
                     'vat_percent' => $vatPercent,
                     'discount_amount' => $discountAmount,
+                    'invoice_discount_type' => $breakdown['invoice_discount_type'],
+                    'invoice_discount_value' => $breakdown['invoice_discount_value'],
+                    'round_off_amount' => $breakdown['round_off_amount'],
                     'paid_amount' => $paidAmount,
                     'payment_type' => $paymentType,
                     'payment_account_id' => $paymentAccountId,
@@ -317,6 +322,8 @@ class SaleReturnController extends Controller
             ->filter()
             ->values();
 
+        $breakdown = $this->resolveEditBreakdown($saleReturn, $parent);
+
         return Inertia::render('admin/inventory/sale-return/edit', [
             'today' => now()->format('Y-m-d'),
             'paymentAccounts' => $this->paymentAccounts(),
@@ -328,6 +335,9 @@ class SaleReturnController extends Controller
                 'date' => optional($saleReturn->date)->format('Y-m-d'),
                 'comment' => $saleReturn->comment,
                 'vat_percent' => (float) $saleReturn->vat_percent,
+                'invoice_discount_type' => $breakdown['invoice_discount_type'],
+                'invoice_discount_value' => $breakdown['invoice_discount_value'],
+                'saved_round_off_amount' => $breakdown['round_off_amount'],
                 'paid_amount' => (string) $saleReturn->paid_amount,
                 'payment_type' => $saleReturn->payment_type?->value,
                 'payment_account_id' => $saleReturn->payment_account_id
@@ -492,12 +502,17 @@ class SaleReturnController extends Controller
                 $paymentAccountId = $refund['payment_account_id'];
                 $paymentLines = $refund['payment_lines'];
 
+                $breakdown = $this->returnDiscountBreakdown($data, $totals);
+
                 $saleReturn->update([
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
                     'vat_amount' => $vatAmount,
                     'vat_percent' => $vatPercent,
                     'discount_amount' => $discountAmount,
+                    'invoice_discount_type' => $breakdown['invoice_discount_type'],
+                    'invoice_discount_value' => $breakdown['invoice_discount_value'],
+                    'round_off_amount' => $breakdown['round_off_amount'],
                     'paid_amount' => $paidAmount,
                     'payment_type' => $paymentType,
                     'payment_account_id' => $paymentAccountId,
@@ -578,6 +593,75 @@ class SaleReturnController extends Controller
             && (float) $saleReturn->paid_amount > 0) {
             Customer::whereKey($saleReturn->customer_id)->decrement('balance', (float) $saleReturn->paid_amount);
         }
+    }
+
+    /**
+     * Resolve the invoice discount and round off values to persist so the edit screen can
+     * restore exactly what was entered. Falls back to the computed amounts (as a flat value)
+     * when manual inputs are absent, e.g. for non-UI callers.
+     *
+     * @param  array<string, mixed>  $data
+     * @param  array{return_invoice_discount: float, return_round_off: float}  $totals
+     * @return array{invoice_discount_type: string, invoice_discount_value: float, round_off_amount: float}
+     */
+    private function returnDiscountBreakdown(array $data, array $totals): array
+    {
+        return [
+            'invoice_discount_type' => $data['manual_invoice_discount_type'] ?? 'flat',
+            'invoice_discount_value' => isset($data['manual_invoice_discount_value'])
+                ? (float) $data['manual_invoice_discount_value']
+                : (float) $totals['return_invoice_discount'],
+            'round_off_amount' => isset($data['manual_round_off'])
+                ? (float) $data['manual_round_off']
+                : (float) $totals['return_round_off'],
+        ];
+    }
+
+    /**
+     * Resolve the invoice discount / round off values to pre-fill the edit screen. Always sourced
+     * from the sale return itself — never the parent sale. Returns saved values when present;
+     * for legacy returns (saved before the breakdown was persisted) it reconstructs the editable
+     * invoice-level discount from the return's own stored total, keeping the figures consistent
+     * with what is recorded in the sale_returns table.
+     *
+     * @return array{invoice_discount_type: string, invoice_discount_value: float, round_off_amount: float}
+     */
+    private function resolveEditBreakdown(SaleReturn $saleReturn, Sell $parent): array
+    {
+        if ($saleReturn->invoice_discount_value !== null || $saleReturn->round_off_amount !== null) {
+            return [
+                'invoice_discount_type' => $saleReturn->invoice_discount_type ?? 'flat',
+                'invoice_discount_value' => (float) $saleReturn->invoice_discount_value,
+                'round_off_amount' => (float) $saleReturn->round_off_amount,
+            ];
+        }
+
+        $returnLineDiscount = 0.0;
+        $returnPromotionDiscount = 0.0;
+
+        foreach ($saleReturn->products as $line) {
+            $sellProduct = $parent->products->firstWhere('id', $line->sell_product_id);
+
+            if (! $sellProduct) {
+                continue;
+            }
+
+            $soldQty = (float) $sellProduct->quantity;
+            $returnQty = (float) $line->quantity;
+
+            if ($soldQty > 0) {
+                $returnLineDiscount += (float) $sellProduct->discount * ($returnQty / $soldQty);
+                $returnPromotionDiscount += $this->returnDiscounts->promotionClawback($sellProduct, $returnQty, $parent);
+            }
+        }
+
+        $invoiceLevel = max(0, (float) $saleReturn->discount_amount - $returnLineDiscount - $returnPromotionDiscount);
+
+        return [
+            'invoice_discount_type' => 'flat',
+            'invoice_discount_value' => round($invoiceLevel, 2),
+            'round_off_amount' => 0.0,
+        ];
     }
 
     /** @return array<int, float> */

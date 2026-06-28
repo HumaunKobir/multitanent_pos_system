@@ -24,6 +24,9 @@ class SaleReturn extends Model
         'vat_amount',
         'vat_percent',
         'discount_amount',
+        'invoice_discount_type',
+        'invoice_discount_value',
+        'round_off_amount',
         'paid_amount',
         'payment_type',
         'payment_account_id',
@@ -36,6 +39,8 @@ class SaleReturn extends Model
         'vat_amount' => 'decimal:2',
         'vat_percent' => 'decimal:2',
         'discount_amount' => 'decimal:2',
+        'invoice_discount_value' => 'decimal:2',
+        'round_off_amount' => 'decimal:2',
         'paid_amount' => 'decimal:2',
         'payment_type' => ReceivedPaymentMethod::class,
     ];

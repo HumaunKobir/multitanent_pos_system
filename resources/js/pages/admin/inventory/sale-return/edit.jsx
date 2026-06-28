@@ -13,7 +13,7 @@ import {
     inputCls,
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
-import { buildInitialReturnDiscounts, calcSaleReturnSummary, derivedVatPercent } from '@/lib/sale-return-summary';
+import { calcSaleReturnSummary } from '@/lib/sale-return-summary';
 import { buildInitialSalePayments, computeSplitSalePayment, serializeSalePayments, splitPaymentValidationError } from '@/lib/sale-payment';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
@@ -33,16 +33,21 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
         saleDate: saleReturn.sale_date,
     };
 
-    const [manualDiscounts, setManualDiscounts] = useState(() =>
-        buildInitialReturnDiscounts(saleReturn.sell_discounts ?? {}),
-    );
-    const [vatPercent, setVatPercent] = useState(() => {
-        if (saleReturn.vat_percent > 0) {
-            return String(parseFloat(saleReturn.vat_percent));
-        }
-        const derived = derivedVatPercent(saleReturn.sell_discounts);
-        return derived > 0 ? String(derived) : '';
+    // Seed from this return's own saved values (the controller reconstructs them for legacy returns),
+    // never from the parent sale. Empty strings keep a field as an explicit manual 0.
+    const [manualDiscounts, setManualDiscounts] = useState(() => {
+        const savedInvoice = parseFloat(saleReturn.invoice_discount_value || 0);
+        const savedRoundOff = parseFloat(saleReturn.saved_round_off_amount || 0);
+
+        return {
+            invoiceType: saleReturn.invoice_discount_type || 'flat',
+            invoice: savedInvoice > 0 ? String(savedInvoice) : '',
+            roundOff: savedRoundOff > 0 ? String(savedRoundOff.toFixed(2)) : '',
+        };
     });
+    const [vatPercent, setVatPercent] = useState(
+        parseFloat(saleReturn.vat_percent || 0) > 0 ? String(parseFloat(saleReturn.vat_percent)) : '',
+    );
 
     const form = useForm({
         date: saleReturn.date ?? '',

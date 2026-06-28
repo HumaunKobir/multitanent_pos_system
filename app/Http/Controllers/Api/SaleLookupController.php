@@ -114,6 +114,7 @@ class SaleLookupController extends Controller
             'customer' => $sell->customer,
             'date' => optional($sell->date)->format('Y-m-d'),
             'has_discount' => $sell->hasAnyDiscount(),
+            'has_manual_discount' => $sell->hasManualDiscount(),
             'sell_discounts' => [
                 'gross_amount' => (float) $sell->gross_amount,
                 'vat' => (float) $sell->vat,

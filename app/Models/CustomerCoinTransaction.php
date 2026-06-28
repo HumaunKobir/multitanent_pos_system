@@ -15,6 +15,7 @@ class CustomerCoinTransaction extends Model
         'customer_id',
         'branch_id',
         'sell_id',
+        'product_exchange_id',
         'type',
         'coins',
         'balance_after',
@@ -39,5 +40,10 @@ class CustomerCoinTransaction extends Model
     public function sell(): BelongsTo
     {
         return $this->belongsTo(Sell::class);
+    }
+
+    public function productExchange(): BelongsTo
+    {
+        return $this->belongsTo(ProductExchange::class);
     }
 }

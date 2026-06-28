@@ -424,6 +424,62 @@ export function SaleReturnSourceDiscounts({
     );
 }
 
+/**
+ * Read-only informational summary of discounts that exist on the source sale but are
+ * NOT implemented in the exchange (promotion, special, coin). Shown so the user knows
+ * the sale had them without carrying them over to the exchange totals.
+ */
+export function SaleSourceDiscountsInfo({ sellDiscounts }) {
+    if (!sellDiscounts) {
+        return null;
+    }
+
+    const promotionDiscount = parseFloat(sellDiscounts.promotion_discount_total || 0);
+    const specialDiscount = parseFloat(sellDiscounts.special_discount_amount || 0);
+    const coinDiscount = parseFloat(sellDiscounts.coin_discount_amount || 0);
+    const lineDiscount = parseFloat(sellDiscounts.line_discount_total || 0);
+
+    const hasAny =
+        promotionDiscount > 0 ||
+        specialDiscount > 0 ||
+        coinDiscount > 0 ||
+        lineDiscount > 0;
+
+    if (!hasAny) {
+        return null;
+    }
+
+    return (
+        <div className="mt-3 rounded-md border border-amber-300/60 bg-amber-50 p-2 text-xs text-amber-900 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-200">
+            <p className="mb-1 font-semibold">
+                Source sale discounts (not applied to this exchange):
+            </p>
+            <div className="flex flex-wrap gap-x-4 gap-y-0.5">
+                {lineDiscount > 0 && (
+                    <span>
+                        Line discount: ৳{lineDiscount.toFixed(2)}
+                    </span>
+                )}
+                {promotionDiscount > 0 && (
+                    <span>
+                        Promotion discount: ৳{promotionDiscount.toFixed(2)}
+                    </span>
+                )}
+                {specialDiscount > 0 && (
+                    <span>
+                        Special discount: ৳{specialDiscount.toFixed(2)}
+                    </span>
+                )}
+                {coinDiscount > 0 && (
+                    <span>
+                        Coin discount: ৳{coinDiscount.toFixed(2)}
+                    </span>
+                )}
+            </div>
+        </div>
+    );
+}
+
 export function paymentModeToType(paymentMode) {
     return paymentMode === 'party' ? '5' : '0';
 }

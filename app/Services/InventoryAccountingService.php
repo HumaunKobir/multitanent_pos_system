@@ -644,6 +644,9 @@ class InventoryAccountingService
      *   new_vat: float,
      *   old_cost: float,
      *   new_cost: float,
+     *   invoice_discount: float,
+     *   special_discount: float,
+     *   round_off: float,
      *   paid_amount: float,
      *   price_difference: float
      * }
@@ -676,8 +679,15 @@ class InventoryAccountingService
         }
 
         [$oldBase, $oldVat] = $this->splitVat($oldGross, $vatRatio);
-        $newGrossNet = max(0, $newGross - (float) $exchange->special_discount_amount);
-        [$newBase, $newVat] = $this->splitVat($newGrossNet, $vatRatio);
+
+        $invoiceDiscount = (float) $exchange->discount;
+        $specialDiscount = (float) $exchange->special_discount_amount;
+        $roundOff = (float) $exchange->round_off_amount;
+        $exchangeVat = (float) $exchange->vat;
+
+        $newNet = max(0, (float) $exchange->net_amount);
+        $newVat = $exchangeVat > 0 ? $exchangeVat : round($newNet * $vatRatio, 2);
+        $newBase = round(max(0, $newNet - $newVat), 2);
 
         return [
             'old_base' => $oldBase,
@@ -686,6 +696,9 @@ class InventoryAccountingService
             'new_vat' => $newVat,
             'old_cost' => round($oldCost, 2),
             'new_cost' => round($newCost, 2),
+            'invoice_discount' => $invoiceDiscount,
+            'special_discount' => $specialDiscount,
+            'round_off' => $roundOff,
             'paid_amount' => (float) $exchange->paid_amount,
             'price_difference' => (float) $exchange->price_difference,
         ];

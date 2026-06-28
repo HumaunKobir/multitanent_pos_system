@@ -6,6 +6,7 @@ use App\Enums\CoinTransactionType;
 use App\Models\CoinSettings;
 use App\Models\Customer;
 use App\Models\CustomerCoinTransaction;
+use App\Models\ProductExchange;
 use App\Models\Sell;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -243,6 +244,106 @@ class CoinService
         }
 
         $this->reverseSellCoinSnapshot($sell);
+    }
+
+    /**
+     * Apply coin redeem/earn transactions for a product exchange, mirroring applyToSale.
+     *
+     * @param  array{coins_redeemed: float, coin_discount_amount: float, coins_earned: float, effective_paid?: float}  $coinResult
+     */
+    public function applyToExchange(ProductExchange $exchange, Customer $customer, array $coinResult): void
+    {
+        $coinsRedeemed = (float) ($coinResult['coins_redeemed'] ?? 0);
+        $coinsEarned = (float) ($coinResult['coins_earned'] ?? 0);
+
+        if ($coinsRedeemed <= 0 && $coinsEarned <= 0) {
+            return;
+        }
+
+        $customer = Customer::query()->lockForUpdate()->findOrFail($customer->id);
+        $balance = (float) $customer->point;
+
+        if ($coinsRedeemed > 0) {
+            $balance = round($balance - $coinsRedeemed, 2);
+
+            CustomerCoinTransaction::create([
+                'customer_id' => $customer->id,
+                'branch_id' => $exchange->branch_id,
+                'product_exchange_id' => $exchange->id,
+                'type' => CoinTransactionType::Redeem,
+                'coins' => -$coinsRedeemed,
+                'balance_after' => $balance,
+                'meta' => [
+                    'coin_discount_amount' => (float) ($coinResult['coin_discount_amount'] ?? 0),
+                ],
+            ]);
+        }
+
+        if ($coinsEarned > 0) {
+            $balance = round($balance + $coinsEarned, 2);
+
+            CustomerCoinTransaction::create([
+                'customer_id' => $customer->id,
+                'branch_id' => $exchange->branch_id,
+                'product_exchange_id' => $exchange->id,
+                'type' => CoinTransactionType::Earn,
+                'coins' => $coinsEarned,
+                'balance_after' => $balance,
+                'meta' => [
+                    'effective_paid' => (float) ($coinResult['effective_paid'] ?? 0),
+                ],
+            ]);
+        }
+
+        $customer->update(['point' => $balance]);
+    }
+
+    public function reverseForExchange(ProductExchange $exchange): void
+    {
+        if ($exchange->customer_id === null) {
+            return;
+        }
+
+        $transactions = CustomerCoinTransaction::query()
+            ->where('product_exchange_id', $exchange->id)
+            ->whereIn('type', [CoinTransactionType::Redeem, CoinTransactionType::Earn])
+            ->orderBy('id')
+            ->get();
+
+        if ($transactions->isEmpty()) {
+            return;
+        }
+
+        $customerId = $transactions->first()->customer_id ?? $exchange->customer_id;
+        $customer = Customer::query()->lockForUpdate()->find($customerId);
+
+        if ($customer === null) {
+            return;
+        }
+
+        $balance = (float) $customer->point;
+
+        foreach ($transactions as $transaction) {
+            $balance = round($balance - (float) $transaction->coins, 2);
+
+            $reverseType = $transaction->type === CoinTransactionType::Redeem
+                ? CoinTransactionType::ReverseRedeem
+                : CoinTransactionType::ReverseEarn;
+
+            CustomerCoinTransaction::create([
+                'customer_id' => $customer->id,
+                'branch_id' => $transaction->branch_id,
+                'product_exchange_id' => $exchange->id,
+                'type' => $reverseType,
+                'coins' => -(float) $transaction->coins,
+                'balance_after' => $balance,
+                'meta' => [
+                    'reversed_transaction_id' => $transaction->id,
+                ],
+            ]);
+        }
+
+        $customer->update(['point' => max(0, $balance)]);
     }
 
     /**

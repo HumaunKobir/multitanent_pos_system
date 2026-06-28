@@ -20,6 +20,11 @@ class ProductExchangeProduct extends Model
         'new_variation_id',
         'new_quantity',
         'new_unit_price',
+        'new_promotion_id',
+        'new_original_unit_price',
+        'new_free_quantity',
+        'new_promotion_discount',
+        'new_promotion_meta',
         'new_batches',
     ];
 
@@ -29,6 +34,10 @@ class ProductExchangeProduct extends Model
         'old_batches' => 'array',
         'new_quantity' => 'decimal:2',
         'new_unit_price' => 'decimal:2',
+        'new_original_unit_price' => 'decimal:2',
+        'new_free_quantity' => 'decimal:2',
+        'new_promotion_discount' => 'decimal:2',
+        'new_promotion_meta' => 'array',
         'new_batches' => 'array',
     ];
 
@@ -55,5 +64,10 @@ class ProductExchangeProduct extends Model
     public function newVariation(): BelongsTo
     {
         return $this->belongsTo(ProductVariation::class, 'new_variation_id');
+    }
+
+    public function newPromotion(): BelongsTo
+    {
+        return $this->belongsTo(Promotion::class, 'new_promotion_id');
     }
 }

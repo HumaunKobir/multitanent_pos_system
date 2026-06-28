@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\DiscountType;
 use App\Enums\ReceivedPaymentMethod;
 use App\Traits\HasBranchUser;
 use Illuminate\Database\Eloquent\Model;
@@ -23,6 +24,16 @@ class ProductExchange extends Model
         'gross_amount',
         'special_discount_id',
         'special_discount_amount',
+        'promotion_discount_total',
+        'discount',
+        'discount_type',
+        'discount_value',
+        'vat',
+        'round_off_amount',
+        'coins_redeemed',
+        'coin_discount_amount',
+        'coins_earned',
+        'net_amount',
         'paid_amount',
         'price_difference',
         'payment_type',
@@ -34,6 +45,16 @@ class ProductExchange extends Model
         'date' => 'date',
         'gross_amount' => 'decimal:2',
         'special_discount_amount' => 'decimal:2',
+        'promotion_discount_total' => 'decimal:2',
+        'discount' => 'decimal:2',
+        'discount_type' => DiscountType::class,
+        'discount_value' => 'decimal:2',
+        'vat' => 'decimal:2',
+        'round_off_amount' => 'decimal:2',
+        'coins_redeemed' => 'decimal:2',
+        'coin_discount_amount' => 'decimal:2',
+        'coins_earned' => 'decimal:2',
+        'net_amount' => 'decimal:2',
         'paid_amount' => 'decimal:2',
         'price_difference' => 'decimal:2',
         'payment_type' => ReceivedPaymentMethod::class,
@@ -61,7 +82,12 @@ class ProductExchange extends Model
 
     public function getNetNewAmountAttribute(): float
     {
-        return (float) $this->gross_amount - (float) $this->special_discount_amount;
+        return (float) $this->gross_amount
+            + (float) $this->vat
+            - (float) $this->discount
+            - (float) $this->special_discount_amount
+            - (float) $this->coin_discount_amount
+            - (float) $this->round_off_amount;
     }
 
     public function products(): HasMany

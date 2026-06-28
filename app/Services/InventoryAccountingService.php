@@ -265,6 +265,11 @@ class InventoryAccountingService
             $saleReturn->date->format('Y-m-d'),
             "Sale Return {$invoice}",
             $lines,
+            // A sale return legitimately credits cash (refund out) and Customer Receivables
+            // (store credit / reduced due), which can drive those balances down or negative.
+            // Mirror postSale / postPurchaseReturn / postExchange and skip the decrease guard,
+            // otherwise a low receivable or cash balance rolls back the entire return.
+            validateBalance: false,
         );
     }
 

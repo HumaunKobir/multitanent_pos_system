@@ -48,7 +48,7 @@ export default function SaleReturnIndex({ returns = { data: [] }, filters = {} }
         { id: 'invoice', header: 'Invoice', render: (row) => <span className="font-mono text-xs font-semibold text-primary">{row.invoice_number ?? `INVSR${String(row.id).padStart(8, '0')}`}</span> },
         { id: 'date', header: 'Date', render: (row) => formatBdDate(row.date) },
         { id: 'customer', header: 'Customer', render: (row) => row.customer?.name ?? '—' },
-        { id: 'total', header: 'Amount', render: (row) => `৳${parseFloat(row.gross_amount ?? 0).toFixed(2)}` },
+        { id: 'total', header: 'Amount', render: (row) => `৳${parseFloat(row.net_amount ?? row.gross_amount ?? 0).toFixed(2)}` },
         {
             id: 'actions',
             header: 'Actions',

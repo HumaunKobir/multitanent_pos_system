@@ -1,0 +1,394 @@
+import { computeDiscountAmount, findSpecialDiscountById, isSpecialDiscountEligible } from '@/lib/pos-discount';
+import { applyPromotionsToCart, remainingQuantityKeepsPromotion } from '@/lib/pos-promotion';
+import { computeCoinDiscount, maxRedeemableCoins, resolveEffectiveCoinsRedeemed } from '@/lib/pos-coin';
+import { derivedVatPercent } from '@/lib/sale-return-summary';
+
+function findPromotion(promotions, promotionId) {
+    if (promotionId === null || promotionId === undefined || promotionId === '') {
+        return null;
+    }
+
+    return promotions.find((promotion) => Number(promotion.id) === Number(promotionId)) ?? null;
+}
+
+function promotionDiscountAtQuantity(item, qty, promotions, saleDate) {
+    if (qty <= 0) {
+        return 0;
+    }
+
+    const cartItem = {
+        product_id: item.product_id ?? item.new_product_id,
+        variation_id: item.variation_id ?? item.new_variation_id,
+        category_id: item.category_id,
+        brand_id: item.brand_id,
+        quantity: qty,
+        unit_price: parseFloat(item.unit_price ?? item.new_unit_price ?? 0),
+        original_unit_price: parseFloat(item.unit_price ?? item.new_unit_price ?? 0),
+    };
+    const result = applyPromotionsToCart([cartItem], promotions, saleDate);
+
+    return parseFloat(result.items[0]?.promotion_discount || 0);
+}
+
+function resolveLinePromo(item, sellLine, promotions, saleDate) {
+    const newProductId = Number(item.new_product_id);
+    const oldProductId = Number(sellLine?.product_id ?? item.old_product_id ?? 0);
+    const newVariationId = item.new_variation_id ? Number(item.new_variation_id) : null;
+    const oldVariationId = sellLine?.variation_id ? Number(sellLine.variation_id) : null;
+    const isSameProduct =
+        newProductId === oldProductId && (newVariationId ?? 0) === (oldVariationId ?? 0);
+    const qty = parseFloat(item.quantity || 0);
+    const catalogPrice = parseFloat(item.new_unit_price || 0);
+
+    if (!newProductId || qty <= 0) {
+        return null;
+    }
+
+    if (isSameProduct && parseFloat(sellLine?.promotion_discount || item.promotion_discount || 0) > 0) {
+        const promotion =
+            findPromotion(promotions, sellLine?.promotion_id ?? item.promotion_id) ??
+            item.promotion_details ??
+            null;
+
+        if (remainingQuantityKeepsPromotion(promotion, qty)) {
+            const cartItem = {
+                product_id: newProductId,
+                variation_id: newVariationId,
+                category_id: item.category_id,
+                brand_id: item.brand_id,
+                quantity: qty,
+                unit_price: catalogPrice,
+                original_unit_price: catalogPrice,
+            };
+            const result = applyPromotionsToCart([cartItem], promotions, saleDate);
+
+            return result.items[0] ?? null;
+        }
+
+        return {
+            product_id: newProductId,
+            unit_price: catalogPrice,
+            promotion_discount: 0,
+            promotion_id: null,
+            promotion_label: null,
+            free_quantity: 0,
+        };
+    }
+
+    if (isSameProduct) {
+        return {
+            product_id: newProductId,
+            unit_price: catalogPrice,
+            promotion_discount: 0,
+            promotion_id: null,
+            promotion_label: null,
+            free_quantity: 0,
+        };
+    }
+
+    const cartItem = {
+        product_id: newProductId,
+        variation_id: newVariationId,
+        category_id: item.category_id,
+        brand_id: item.brand_id,
+        quantity: qty,
+        unit_price: catalogPrice,
+        original_unit_price: catalogPrice,
+    };
+    const result = applyPromotionsToCart([cartItem], promotions, saleDate);
+
+    return result.items[0] ?? null;
+}
+
+function resolveLineDiscount(item, sellLine) {
+    const newProductId = Number(item.new_product_id);
+    const oldProductId = Number(sellLine?.product_id ?? item.old_product_id ?? 0);
+    const newVariationId = item.new_variation_id ? Number(item.new_variation_id) : null;
+    const oldVariationId = sellLine?.variation_id ? Number(sellLine.variation_id) : null;
+
+    if (newProductId !== oldProductId || (newVariationId ?? 0) !== (oldVariationId ?? 0)) {
+        return 0;
+    }
+
+    const soldQty = parseFloat(sellLine?.sold_quantity ?? sellLine?.quantity ?? item.sold_quantity ?? 0);
+    const exchangeQty = parseFloat(item.quantity || 0);
+
+    if (soldQty <= 0 || exchangeQty <= 0) {
+        return 0;
+    }
+
+    const originalDiscount = parseFloat(sellLine?.line_discount ?? item.line_discount ?? 0);
+    const proportion = Math.min(1, exchangeQty / soldQty);
+
+    return originalDiscount * proportion;
+}
+
+function previewExchangeItem(item) {
+    const qty = parseFloat(item.quantity || 0);
+
+    if (qty <= 0) {
+        return null;
+    }
+
+    if (item.new_product_id) {
+        return { item, isPreview: false };
+    }
+
+    const unitPrice = parseFloat(item.new_unit_price || item.old_unit_price || 0);
+
+    if (unitPrice <= 0) {
+        return null;
+    }
+
+    return {
+        item: {
+            ...item,
+            new_product_id: item.old_product_id,
+            new_variation_id: item.old_variation_id ?? item.new_variation_id ?? null,
+            new_unit_price: String(unitPrice),
+        },
+        isPreview: true,
+    };
+}
+
+export function resolveExchangeSettlement(netNew, oldTotal, grossAmount) {
+    const net = parseFloat(netNew || 0);
+    const old = parseFloat(oldTotal || 0);
+    const gross = parseFloat(grossAmount || 0);
+
+    if (net > old + 0.009) {
+        return net - old;
+    }
+
+    if (net < old - 0.009) {
+        if (Math.abs(gross - old) < 0.01) {
+            return net;
+        }
+
+        return old - net;
+    }
+
+    return 0;
+}
+
+export function resolveSignedExchangeSettlement(netNew, oldTotal, grossAmount) {
+    const settlement = resolveExchangeSettlement(netNew, oldTotal, grossAmount);
+    const net = parseFloat(netNew || 0);
+    const old = parseFloat(oldTotal || 0);
+
+    if (net > old + 0.009) {
+        return settlement;
+    }
+
+    if (net < old - 0.009) {
+        return -settlement;
+    }
+
+    return 0;
+}
+
+export function resolveOldNetTotal(sellDiscounts, oldTotal) {
+    const parentGross = parseFloat(sellDiscounts?.gross_amount || 0);
+    const parentNet = parseFloat(sellDiscounts?.net_amount || 0);
+    const old = parseFloat(oldTotal || 0);
+
+    if (parentGross <= 0) {
+        return old;
+    }
+
+    return (old / parentGross) * parentNet;
+}
+
+export function resolveCustomerAccountEffect(netNew, oldTotal, oldNet, grossAmount) {
+    const net = parseFloat(netNew || 0);
+    const old = parseFloat(oldTotal || 0);
+    const oldNetValue = parseFloat(oldNet || 0);
+    const gross = parseFloat(grossAmount || 0);
+
+    if (net > old + 0.009) {
+        return net - old;
+    }
+
+    if (net < old - 0.009) {
+        if (Math.abs(gross - old) < 0.01) {
+            return net - oldNetValue;
+        }
+
+        return -(old - net);
+    }
+
+    return 0;
+}
+
+export function buildInitialExchangeDiscounts(sellDiscounts = {}) {
+    const sd = sellDiscounts ?? {};
+    const invoiceType = sd.invoice_discount_type || 'flat';
+    const rawValue = parseFloat(sd.invoice_discount_value ?? 0);
+    const invoiceValue = rawValue > 0 ? rawValue : parseFloat(sd.invoice_discount || 0);
+    const roundOff = parseFloat(sd.round_off_amount || 0);
+
+    return {
+        invoiceType,
+        invoice: invoiceValue > 0 ? String(invoiceValue) : '',
+        specialDiscountId: sd.special_discount_id ? String(sd.special_discount_id) : '',
+        roundOff: roundOff > 0 ? String(roundOff.toFixed(2)) : '',
+        coinsRedeemed: parseFloat(sd.coins_redeemed || 0) > 0 ? String(sd.coins_redeemed) : '',
+    };
+}
+
+export function calcProductExchangeSummary({
+    items = [],
+    sellDiscounts = null,
+    sourceItems = [],
+    promotions = [],
+    saleDate = null,
+    manualDiscounts = {},
+    specialDiscounts = [],
+    coinSettings = null,
+    coinBalanceOffset = 0,
+    customerBalance = 0,
+}) {
+    if (!sellDiscounts) {
+        return null;
+    }
+
+    const sourceMap = Object.fromEntries(
+        (sourceItems ?? []).map((line) => [Number(line.sell_product_id), line]),
+    );
+
+    let grossAmount = 0;
+    let lineDiscountTotal = 0;
+    let promotionDiscountTotal = 0;
+    const promoLines = {};
+
+    items.forEach((item) => {
+        const resolved = previewExchangeItem(item);
+
+        if (!resolved) {
+            return;
+        }
+
+        const { item: workingItem, isPreview } = resolved;
+        const sellLine = sourceMap[Number(item.sell_product_id)] ?? item;
+
+        if (isPreview) {
+            const catalogPrice = parseFloat(workingItem.new_unit_price || 0);
+            const qty = parseFloat(workingItem.quantity || 0);
+            const lineGross = qty * catalogPrice;
+            const lineDiscount = Math.min(resolveLineDiscount(workingItem, sellLine), lineGross);
+
+            grossAmount += lineGross;
+            lineDiscountTotal += lineDiscount;
+
+            return;
+        }
+
+        const promoLine = resolveLinePromo(workingItem, sellLine, promotions, saleDate);
+        promoLines[Number(item.sell_product_id)] = promoLine;
+
+        const catalogPrice = parseFloat(workingItem.new_unit_price || 0);
+        const effectivePrice = promoLine
+            ? Math.min(catalogPrice, parseFloat(promoLine.unit_price || 0))
+            : catalogPrice;
+        const qty = parseFloat(workingItem.quantity || 0);
+        const lineGross = qty * effectivePrice;
+        const lineDiscount = Math.min(resolveLineDiscount(workingItem, sellLine), lineGross);
+
+        grossAmount += lineGross;
+        lineDiscountTotal += lineDiscount;
+        promotionDiscountTotal += parseFloat(promoLine?.promotion_discount || 0);
+    });
+
+    const taxableBase = Math.max(0, grossAmount - lineDiscountTotal);
+    const invoiceType = manualDiscounts.invoiceType || 'flat';
+    const invoiceDiscountAmount = computeDiscountAmount(
+        invoiceType,
+        manualDiscounts.invoice || 0,
+        taxableBase,
+    );
+
+    const specialDiscount = findSpecialDiscountById(
+        specialDiscounts,
+        manualDiscounts.specialDiscountId,
+    );
+    const specialDiscountAmount =
+        specialDiscount && isSpecialDiscountEligible(specialDiscount, taxableBase)
+            ? computeDiscountAmount(
+                  specialDiscount.discount_type,
+                  specialDiscount.discount_value,
+                  taxableBase,
+              )
+            : 0;
+
+    const vatPercent = derivedVatPercent(sellDiscounts);
+    const vatAmount = vatPercent > 0 ? Math.round(taxableBase * (vatPercent / 100) * 100) / 100 : 0;
+
+    const netBeforeCoin = Math.max(
+        0,
+        grossAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount - lineDiscountTotal,
+    );
+
+    const effectiveBalance = Math.max(0, parseFloat(customerBalance || 0) + parseFloat(coinBalanceOffset || 0));
+    const maxRedeemable = coinSettings?.enabled
+        ? maxRedeemableCoins(effectiveBalance, coinSettings, netBeforeCoin)
+        : 0;
+    const coinsRedeemed = resolveEffectiveCoinsRedeemed(
+        manualDiscounts.coinsRedeemed ?? '',
+        maxRedeemable,
+        false,
+    );
+    const coinDiscountAmount = coinSettings?.enabled
+        ? computeCoinDiscount(coinsRedeemed, coinSettings, netBeforeCoin)
+        : 0;
+
+    const netBeforeRoundOff = Math.max(0, netBeforeCoin - coinDiscountAmount);
+    const roundOffAmount = Math.min(
+        Math.max(0, parseFloat(manualDiscounts.roundOff || 0)),
+        netBeforeRoundOff,
+    );
+    const netNewAmount = Math.max(0, netBeforeRoundOff - roundOffAmount);
+
+    const oldTotal = items.reduce(
+        (sum, item) =>
+            sum + parseFloat(item.quantity || 0) * parseFloat(item.old_unit_price || 0),
+        0,
+    );
+    const oldNetTotal = resolveOldNetTotal(sellDiscounts, oldTotal);
+    const grossPriceDifference = grossAmount - oldTotal;
+    const newDiscountTotal = Math.max(0, grossAmount + vatAmount - netNewAmount);
+    const priceDifference = grossPriceDifference;
+    const settlementAmount = resolveExchangeSettlement(netNewAmount, oldTotal, grossAmount);
+    const signedSettlement = resolveSignedExchangeSettlement(netNewAmount, oldTotal, grossAmount);
+    const customerAccountEffect = resolveCustomerAccountEffect(
+        netNewAmount,
+        oldTotal,
+        oldNetTotal,
+        grossAmount,
+    );
+
+    return {
+        grossAmount,
+        lineDiscountTotal,
+        promotionDiscountTotal,
+        taxableBase,
+        invoiceDiscountAmount,
+        specialDiscountAmount,
+        vatPercent,
+        vatAmount,
+        netBeforeCoin,
+        coinsRedeemed,
+        maxRedeemable,
+        coinDiscountAmount,
+        roundOffAmount,
+        netNewAmount,
+        oldTotal,
+        oldNetTotal,
+        grossPriceDifference,
+        newDiscountTotal,
+        priceDifference,
+        settlementAmount,
+        signedSettlement,
+        customerAccountEffect,
+        promoLines,
+    };
+}

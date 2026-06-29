@@ -1,9 +1,8 @@
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeftRight, CalendarDays, Package } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
     clampQuantityInput,
-    formatQty,
     CommentCard,
     DateField,
     InventoryCard,
@@ -12,6 +11,7 @@ import {
     InvoiceLookupField,
     LineItemsTable,
     PaymentSummaryCard,
+    ProductExchangeDiscountsCard,
     ProductNameWithCode,
     inputCls,
     paymentModeToType,
@@ -21,16 +21,20 @@ import { ProductSearchBox } from '@/components/inventory/product-search-box';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAppToast } from '@/contexts/app-toast-context';
-import { computeDiscountAmount } from '@/lib/pos-discount';
-import { applyPromotionsToCart } from '@/lib/pos-promotion';
+import { useCustomerCoinInfo } from '@/hooks/use-customer-coin-info';
+import {
+    buildInitialExchangeDiscounts,
+    calcProductExchangeSummary,
+} from '@/lib/product-exchange-summary';
 import { route } from '@/lib/route';
 
 export default function ProductExchangeCreate({
     today,
     paymentAccounts = [],
     promotions = [],
+    specialDiscounts = [],
 }) {
-    const { flash } = usePage().props;
+    const { flash, walkInCustomerId } = usePage().props;
     const toast = useAppToast();
     const [source, setSource] = useState(null);
     const [invoiceQuery, setInvoiceQuery] = useState('');
@@ -38,14 +42,54 @@ export default function ProductExchangeCreate({
     const [items, setItems] = useState([]);
     const [paymentMode, setPaymentMode] = useState('party');
     const [replaceIndex, setReplaceIndex] = useState(null);
+    const [manualDiscounts, setManualDiscounts] = useState({});
+    const prevSettlementRef = useRef(0);
 
     const form = useForm({
         sell_id: '',
         date: today,
         comment: '',
         payment_type: '5',
+        paid_amount: '0',
         items: [],
     });
+
+    const { coinInfo, loading: coinInfoLoading } = useCustomerCoinInfo({
+        customerId: source?.customer_id,
+        walkInCustomerId,
+        coinSettings: source?.coin_settings,
+    });
+
+    const coinBalanceOffset = source?.sell_discounts
+        ? (parseFloat(source.sell_discounts.coins_redeemed || 0) || 0) -
+          (parseFloat(source.sell_discounts.coins_earned || 0) || 0)
+        : 0;
+
+    const summary = useMemo(
+        () =>
+            calcProductExchangeSummary({
+                items,
+                sellDiscounts: source?.sell_discounts,
+                sourceItems: source?.items,
+                promotions,
+                saleDate: form.data.date,
+                manualDiscounts,
+                specialDiscounts,
+                coinSettings: source?.coin_settings,
+                coinBalanceOffset,
+                customerBalance: coinInfo?.balance ?? 0,
+            }),
+        [
+            items,
+            source,
+            promotions,
+            form.data.date,
+            manualDiscounts,
+            specialDiscounts,
+            coinBalanceOffset,
+            coinInfo?.balance,
+        ],
+    );
 
     useEffect(() => {
         if (flash?.success) {
@@ -57,100 +101,67 @@ export default function ProductExchangeCreate({
         }
     }, [flash?.success, flash?.error]);
 
-    const sellDiscounts = source?.sell_discounts ?? null;
-
-    // Apply promotions on the new products (client-side preview; server re-resolves authoritatively).
-    const promoResult = useMemo(() => {
-        const promoItems = items
-            .filter((it) => it.new_product_id)
-            .map((it) => ({
-                product_id: Number(it.new_product_id),
-                variation_id: it.new_variation_id ? Number(it.new_variation_id) : null,
-                category_id: null,
-                brand_id: null,
-                quantity: parseFloat(it.quantity || 0),
-                unit_price: parseFloat(it.new_unit_price || 0),
-                original_unit_price: parseFloat(it.new_unit_price || 0),
-                discount: 0,
-            }));
-
-        if (promoItems.length === 0) {
-            return { items: [], promotion_discount_total: 0 };
-        }
-
-        return applyPromotionsToCart(promoItems, promotions, form.data.date);
-    }, [items, promotions, form.data.date]);
-
-    const promoLineMap = useMemo(() => {
-        const map = {};
-        promoResult.items.forEach((it) => {
-            map[Number(it.product_id)] = it;
-        });
-        return map;
-    }, [promoResult]);
-
-    // Gross is computed from the promotion-adjusted unit prices, mirroring the sale.
-    const grossAmount = items.reduce((s, it) => {
-        if (!it.new_product_id) {
-            return s;
-        }
-        const promoLine = promoLineMap[Number(it.new_product_id)];
-        const catalogPrice = parseFloat(it.new_unit_price || 0);
-        const effectivePrice = promoLine
-            ? Math.min(catalogPrice, parseFloat(promoLine.unit_price || 0))
-            : catalogPrice;
-        return s + parseFloat(it.quantity || 0) * effectivePrice;
-    }, 0);
-
-    const oldTotal = items.reduce(
-        (s, it) =>
-            s +
-            parseFloat(it.quantity || 0) * parseFloat(it.old_unit_price || 0),
-        0,
-    );
-
-    const promotionDiscountTotal = parseFloat(promoResult.promotion_discount_total || 0);
-
-    // Mirror the sale's discount rates on the new gross (no manual inputs).
-    const invoiceDiscountType = sellDiscounts?.invoice_discount_type ?? 'flat';
-    const invoiceDiscountValue = parseFloat(sellDiscounts?.invoice_discount_value || 0);
-    const invoiceDiscountAmount = sellDiscounts
-        ? computeDiscountAmount(invoiceDiscountType, invoiceDiscountValue, grossAmount)
-        : 0;
-
-    const specialDiscountAmount = sellDiscounts
-        ? parseFloat(sellDiscounts.special_discount_amount || 0) > 0
-            ? Math.min(
-                  parseFloat(sellDiscounts.special_discount_amount || 0),
-                  grossAmount,
-              )
-            : 0
-        : 0;
-
-    const vatPercent = sellDiscounts && parseFloat(sellDiscounts.gross_amount || 0) > 0
-        ? (parseFloat(sellDiscounts.vat || 0) / parseFloat(sellDiscounts.gross_amount)) * 100
-        : 0;
-    const vatAmount = grossAmount * (vatPercent / 100);
-
-    const coinsRedeemed = sellDiscounts ? parseFloat(sellDiscounts.coins_redeemed || 0) : 0;
-    const coinSettings = source?.coin_settings ?? null;
-    const coinValue = parseFloat(coinSettings?.coin_value || 0);
-    const coinDiscountAmount =
-        coinsRedeemed > 0 && coinSettings?.enabled
-            ? Math.min(coinsRedeemed * coinValue, Math.max(0, grossAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount))
-            : 0;
-
-    const netBeforeRoundOff = Math.max(0, grossAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount - coinDiscountAmount);
-    const saleRoundOff = parseFloat(sellDiscounts?.round_off_amount || 0);
-    const roundOffAmount = Math.min(saleRoundOff, netBeforeRoundOff);
-
-    const netNewAmount = Math.max(0, netBeforeRoundOff - roundOffAmount);
-    const priceDifference = netNewAmount - oldTotal;
-
-    // The cash that changes hands is fully determined by the price difference.
     useEffect(() => {
-        form.setData('paid_amount', String(Math.max(0, priceDifference)));
-    }, [priceDifference]);
+        if (!summary) {
+            return;
+        }
+
+        const settlement = summary.settlementAmount;
+
+        if (paymentMode === 'party') {
+            form.setData('paid_amount', '0');
+
+            return;
+        }
+
+        const currentPaid = parseFloat(form.data.paid_amount || 0);
+
+        if (currentPaid === 0 || currentPaid === prevSettlementRef.current) {
+            form.setData(
+                'paid_amount',
+                settlement > 0 ? settlement.toFixed(2) : '0',
+            );
+        }
+
+        prevSettlementRef.current = settlement;
+    }, [summary?.settlementAmount, paymentMode]);
+
+    function handlePaymentModeChange(mode) {
+        setPaymentMode(mode);
+
+        if (mode === 'party') {
+            form.setData('paid_amount', '0');
+
+            return;
+        }
+
+        const settlement = summary?.settlementAmount ?? 0;
+        form.setData(
+            'paid_amount',
+            settlement > 0 ? settlement.toFixed(2) : '0',
+        );
+        prevSettlementRef.current = settlement;
+    }
+
+    useEffect(() => {
+        if (!summary || paymentMode === 'party') {
+            return;
+        }
+
+        const maxRedeem = summary.maxRedeemable;
+        const current = parseFloat(manualDiscounts.coinsRedeemed || 0);
+
+        if (current > maxRedeem) {
+            setManualDiscounts((prev) => ({
+                ...prev,
+                coinsRedeemed: maxRedeem > 0 ? String(maxRedeem) : '',
+            }));
+        }
+    }, [summary?.maxRedeemable, paymentMode]);
+
+    function handleManualDiscountChange(field, value) {
+        setManualDiscounts((prev) => ({ ...prev, [field]: value }));
+    }
 
     async function lookupSale() {
         setLookupError('');
@@ -173,12 +184,21 @@ export default function ProductExchangeCreate({
         }
 
         setSource(json);
+        setManualDiscounts(buildInitialExchangeDiscounts(json.sell_discounts));
         setItems(
             json.items.map((i) => ({
                 sell_product_id: i.sell_product_id,
+                product_id: i.product_id,
+                old_product_id: i.product_id,
                 old_product_name: i.product_name,
                 old_product_code: i.product_code,
                 old_unit_price: i.unit_price,
+                line_discount: i.line_discount,
+                promotion_id: i.promotion_id,
+                promotion_details: i.promotion_details,
+                promotion_discount: i.promotion_discount,
+                category_id: i.category_id,
+                brand_id: i.brand_id,
                 quantity: String(i.sold_quantity),
                 sold_quantity: i.sold_quantity,
                 new_product_id: '',
@@ -187,7 +207,7 @@ export default function ProductExchangeCreate({
                 new_unit_price: String(i.sell_price),
             })),
         );
-        form.setData({ ...form.data, sell_id: String(json.id) });
+        form.setData({ ...form.data, sell_id: String(json.id), paid_amount: '0' });
     }
 
     function applyReplacement(product) {
@@ -206,6 +226,8 @@ export default function ProductExchangeCreate({
                           new_variation_id: product.variation_id ?? null,
                           new_variation_label: product.variation_label ?? null,
                           new_unit_price: String(product.unit_price ?? 0),
+                          category_id: product.category_id ?? it.category_id,
+                          brand_id: product.brand_id ?? it.brand_id,
                       }
                     : it,
             ),
@@ -272,6 +294,12 @@ export default function ProductExchangeCreate({
             ...data,
             payment_type: paymentModeToType(paymentMode),
             payment_account_id: paymentModeToAccountId(paymentMode),
+            paid_amount: paymentMode === 'party' ? '0' : data.paid_amount,
+            discount_type: manualDiscounts.invoiceType || 'flat',
+            discount_value: String(parseFloat(manualDiscounts.invoice || 0)),
+            special_discount_id: manualDiscounts.specialDiscountId || null,
+            round_off_amount: String(parseFloat(manualDiscounts.roundOff || 0)),
+            coins_redeemed: String(summary?.coinsRedeemed ?? 0),
             items: exchangeItems,
         }));
         form.post(route('inventory.product-exchange.store'), {
@@ -285,6 +313,13 @@ export default function ProductExchangeCreate({
             },
         });
     }
+
+    const priceDifference = summary?.priceDifference ?? 0;
+    const settlementAmount = summary?.settlementAmount ?? 0;
+    const isRefund = (summary?.signedSettlement ?? priceDifference) < 0;
+    const isParty = paymentMode === 'party';
+    const settlementLineLabel = isRefund ? 'Refund to Customer' : 'Customer Pays';
+    const dueLabel = isRefund ? 'Remaining Refund' : 'Due Amount';
 
     return (
         <>
@@ -366,10 +401,21 @@ export default function ProductExchangeCreate({
                                 ]}
                             >
                                 {items.map((item, i) => {
-                                    const promoLine = item.new_product_id ? promoLineMap[Number(item.new_product_id)] : null;
-                                    const promoDiscount = promoLine ? parseFloat(promoLine.promotion_discount || 0) : 0;
+                                    const promoLine =
+                                        summary?.promoLines?.[
+                                            Number(item.sell_product_id)
+                                        ];
+                                    const promoDiscount = promoLine
+                                        ? parseFloat(
+                                              promoLine.promotion_discount || 0,
+                                          )
+                                        : 0;
+
                                     return (
-                                        <tr key={i} className="hover:bg-muted/20">
+                                        <tr
+                                            key={i}
+                                            className="hover:bg-muted/20"
+                                        >
                                             <td className="px-3 py-2">
                                                 <ProductNameWithCode
                                                     name={item.old_product_name}
@@ -379,8 +425,12 @@ export default function ProductExchangeCreate({
                                             <td className="px-3 py-2">
                                                 {item.new_product_name ? (
                                                     <ProductNameWithCode
-                                                        name={item.new_product_name}
-                                                        code={item.new_product_code}
+                                                        name={
+                                                            item.new_product_name
+                                                        }
+                                                        code={
+                                                            item.new_product_code
+                                                        }
                                                         className="text-primary [&_p]:text-primary"
                                                     />
                                                 ) : (
@@ -442,8 +492,13 @@ export default function ProductExchangeCreate({
                                             <td className="px-2 py-2 text-right text-xs">
                                                 {promoDiscount > 0 && (
                                                     <span className="text-purple-700 dark:text-purple-400">
-                                                        -৳{promoDiscount.toFixed(2)}
-                                                        {promoLine?.promotion_label ? ` (${promoLine.promotion_label})` : ''}
+                                                        -৳
+                                                        {promoDiscount.toFixed(
+                                                            2,
+                                                        )}
+                                                        {promoLine?.promotion_label
+                                                            ? ` (${promoLine.promotion_label})`
+                                                            : ''}
                                                     </span>
                                                 )}
                                             </td>
@@ -465,55 +520,19 @@ export default function ProductExchangeCreate({
                                 })}
                             </LineItemsTable>
 
-                            {sellDiscounts && (
-                                <div className="mt-3 rounded-md border border-blue-200 bg-blue-50 p-2 text-xs text-blue-900 dark:border-blue-500/30 dark:bg-blue-950/30 dark:text-blue-200">
-                                    <p className="mb-1 font-semibold">
-                                        Discounts applied from sale (read-only):
-                                    </p>
-                                    <div className="flex flex-wrap gap-x-4 gap-y-0.5">
-                                        {invoiceDiscountAmount > 0 && (
-                                            <span>
-                                                Invoice discount ({invoiceDiscountType === 'percent' ? `${invoiceDiscountValue}%` : `৳${invoiceDiscountValue}`}): -৳{invoiceDiscountAmount.toFixed(2)}
-                                            </span>
-                                        )}
-                                        {specialDiscountAmount > 0 && (
-                                            <span>
-                                                Special discount: -৳{specialDiscountAmount.toFixed(2)}
-                                            </span>
-                                        )}
-                                        {vatAmount > 0 && (
-                                            <span>
-                                                VAT ({vatPercent.toFixed(2)}%): +৳{vatAmount.toFixed(2)}
-                                            </span>
-                                        )}
-                                        {coinDiscountAmount > 0 && (
-                                            <span>
-                                                Coin discount ({coinsRedeemed} coins): -৳{coinDiscountAmount.toFixed(2)}
-                                            </span>
-                                        )}
-                                        {roundOffAmount > 0 && (
-                                            <span>
-                                                Round off: -৳{roundOffAmount.toFixed(2)}
-                                            </span>
-                                        )}
-                                        {promotionDiscountTotal > 0 && (
-                                            <span className="text-purple-700 dark:text-purple-400">
-                                                Promotion discount (new products): -৳{promotionDiscountTotal.toFixed(2)}
-                                            </span>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
                             <div className="mt-3 flex flex-col items-end gap-1 text-xs">
                                 <span>
-                                    New gross: <strong>৳{grossAmount.toFixed(2)}</strong>
+                                    New gross:{' '}
+                                    <strong>
+                                        ৳
+                                        {(summary?.grossAmount ?? 0).toFixed(2)}
+                                    </strong>
                                 </span>
                                 <span>
-                                    Old total: <strong>৳{oldTotal.toFixed(2)}</strong>
-                                </span>
-                                <span>
-                                    Net new: <strong>৳{netNewAmount.toFixed(2)}</strong>
+                                    Old total:{' '}
+                                    <strong>
+                                        ৳{(summary?.oldTotal ?? 0).toFixed(2)}
+                                    </strong>
                                 </span>
                                 <span>
                                     Price difference:{' '}
@@ -521,14 +540,51 @@ export default function ProductExchangeCreate({
                                         className={
                                             priceDifference >= 0
                                                 ? 'text-primary'
-                                                : 'text-destructive'
+                                                : priceDifference < 0
+                                                  ? 'text-destructive'
+                                                  : ''
                                         }
                                     >
                                         ৳{priceDifference.toFixed(2)}
                                     </strong>
                                 </span>
+                                {(summary?.newDiscountTotal ?? 0) > 0.009 && (
+                                    <span className="text-destructive">
+                                        Discounts:{' '}
+                                        <strong>
+                                            -৳
+                                            {summary.newDiscountTotal.toFixed(
+                                                2,
+                                            )}
+                                        </strong>
+                                    </span>
+                                )}
+                                <span>
+                                    Net new:{' '}
+                                    <strong>
+                                        ৳
+                                        {(summary?.netNewAmount ?? 0).toFixed(
+                                            2,
+                                        )}
+                                    </strong>
+                                </span>
                             </div>
                         </InventoryCard>
+                    )}
+
+                    {summary && (
+                        <ProductExchangeDiscountsCard
+                            summary={summary}
+                            manualDiscounts={manualDiscounts}
+                            onManualDiscountChange={handleManualDiscountChange}
+                            specialDiscounts={specialDiscounts}
+                            coinSettings={source?.coin_settings}
+                            coinInfo={coinInfo}
+                            coinInfoLoading={coinInfoLoading}
+                            customerId={source?.customer_id}
+                            walkInCustomerId={walkInCustomerId}
+                            coinBalanceOffset={coinBalanceOffset}
+                        />
                     )}
 
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -539,21 +595,23 @@ export default function ProductExchangeCreate({
                         />
                         <PaymentSummaryCard
                             Icon={ArrowLeftRight}
-                            grossAmount={Math.abs(priceDifference)}
-                            paidAmount={String(Math.abs(priceDifference))}
-                            onPaidAmountChange={() => {}}
-                            paidReadOnly
-                            paidLabel={
-                                priceDifference < 0
-                                    ? 'Refund to Customer'
-                                    : 'Customer Pays'
+                            grossAmount={settlementAmount}
+                            paidAmount={form.data.paid_amount}
+                            onPaidAmountChange={(v) =>
+                                form.setData('paid_amount', v)
                             }
+                            paidReadOnly={false}
+                            paidLabel={settlementLineLabel}
+                            settlementLineLabel={settlementLineLabel}
+                            showPaidAmount={!isParty}
+                            dueLabel={dueLabel}
                             paymentMode={paymentMode}
-                            onPaymentModeChange={setPaymentMode}
+                            onPaymentModeChange={handlePaymentModeChange}
                             paymentAccounts={paymentAccounts}
                             partyLabel="Customer Account"
+                            partyPaidHint="The full exchange difference settles on the customer account. No cash or bank entry is posted."
                             paidError={form.errors.paid_amount}
-                            showDue={false}
+                            showDue={!isParty && settlementAmount > 0}
                         />
                     </div>
 

@@ -12,9 +12,10 @@ import { Edit, Eye, Trash2 } from 'lucide-react';
  * @param {number|string} id - Resource id for route params
  * @param {string} [showRoute] - Named route for view (Eye)
  * @param {string} [editRoute] - Named route for edit
+ * @param {boolean} [canEdit=true] - When false, hides the edit button
  * @param {() => void} [onDelete] - Called when delete clicked
  */
-export function AdminRowActions({ prefix, id, showRoute, editRoute, onDelete }) {
+export function AdminRowActions({ prefix, id, showRoute, editRoute, canEdit = true, onDelete }) {
     const { can } = useCan();
 
     return (
@@ -26,7 +27,7 @@ export function AdminRowActions({ prefix, id, showRoute, editRoute, onDelete }) 
                     </Link>
                 </Button>
             )}
-            {editRoute && can(`${prefix}.update`) && (
+            {editRoute && canEdit && can(`${prefix}.update`) && (
                 <Button size="sm" variant="outline" asChild>
                     <Link href={route(editRoute, id)}>
                         <Edit className="size-3.5" />

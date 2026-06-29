@@ -35,6 +35,7 @@ class ProductExchange extends Model
         'coins_earned',
         'net_amount',
         'paid_amount',
+        'due_amount',
         'price_difference',
         'payment_type',
         'payment_account_id',
@@ -56,6 +57,7 @@ class ProductExchange extends Model
         'coins_earned' => 'decimal:2',
         'net_amount' => 'decimal:2',
         'paid_amount' => 'decimal:2',
+        'due_amount' => 'decimal:2',
         'price_difference' => 'decimal:2',
         'payment_type' => ReceivedPaymentMethod::class,
     ];
@@ -93,5 +95,68 @@ class ProductExchange extends Model
     public function products(): HasMany
     {
         return $this->hasMany(ProductExchangeProduct::class);
+    }
+
+    public function settlementAmount(): float
+    {
+        return round(max(
+            abs((float) $this->price_difference),
+            (float) $this->paid_amount + max(0, (float) $this->due_amount),
+        ), 2);
+    }
+
+    public function dueAmount(): float
+    {
+        if ($this->due_amount !== null) {
+            return round(max(0, (float) $this->due_amount), 2);
+        }
+
+        return round(max(0, $this->settlementAmount() - (float) $this->paid_amount), 2);
+    }
+
+    public function isPartiallyPaid(): bool
+    {
+        return (float) $this->paid_amount > 0 && $this->dueAmount() > 0;
+    }
+
+    public function isFullyPaid(): bool
+    {
+        return $this->dueAmount() <= 0 && $this->settlementAmount() > 0;
+    }
+
+    public function isEditable(): bool
+    {
+        if ($this->payment_type === ReceivedPaymentMethod::Customer_Account && $this->settlementAmount() > 0) {
+            return false;
+        }
+
+        return ! $this->isPartiallyPaid() && ! $this->isFullyPaid();
+    }
+
+    public function isPaymentOnlyEditable(): bool
+    {
+        return $this->isPartiallyPaid();
+    }
+
+    public function canAccessEdit(): bool
+    {
+        return $this->isEditable() || $this->isPaymentOnlyEditable();
+    }
+
+    public function paymentStatusLabel(): string
+    {
+        if ($this->settlementAmount() <= 0) {
+            return 'settled';
+        }
+
+        if ($this->isFullyPaid()) {
+            return 'fully_paid';
+        }
+
+        if ($this->isPartiallyPaid()) {
+            return 'partially_paid';
+        }
+
+        return 'unpaid';
     }
 }

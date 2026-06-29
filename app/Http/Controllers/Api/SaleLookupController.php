@@ -130,6 +130,7 @@ class SaleLookupController extends Controller
                 'net_amount' => (float) $sell->net_amount,
                 'paid_amount' => (float) $sell->paid_amount,
                 'coins_redeemed' => (float) $sell->coins_redeemed,
+                'coins_earned' => (float) $sell->coins_earned,
             ],
             'coin_settings' => $this->coinService->settingsPayloadForBranch($sell->branch_id),
             'promotions' => $this->promotionService->activeForBranch($sell->branch_id),

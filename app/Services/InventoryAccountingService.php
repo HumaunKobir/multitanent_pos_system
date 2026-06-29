@@ -611,6 +611,8 @@ class InventoryAccountingService
         }
 
         $priceDifference = round((float) $amounts['price_difference'], 2);
+        $paidAmount = round(max(0, (float) $exchange->paid_amount), 2);
+        $dueAmount = round(max(0, (float) ($exchange->due_amount ?? 0)), 2);
 
         if ($exchange->payment_type === ReceivedPaymentMethod::Customer_Account) {
             if ($priceDifference > 0) {
@@ -618,11 +620,33 @@ class InventoryAccountingService
             } elseif ($priceDifference < 0) {
                 $lines[] = $this->creditLine(SystemAccountKey::CustomerReceivables, abs($priceDifference), "Receivable reduced — Exchange {$invoice}, {$customerName}");
             }
-        } else {
-            if ($priceDifference > 0) {
+        } elseif ($priceDifference > 0) {
+            if ($paidAmount > 0) {
+                $lines[] = $this->debitPaymentAccount($paymentAccountId, $paidAmount, "Cash received — Exchange {$invoice}");
+            }
+
+            if ($dueAmount > 0) {
+                $lines[] = $this->debitLine(SystemAccountKey::CustomerReceivables, $dueAmount, "Receivable — Exchange {$invoice}, {$customerName}");
+            }
+
+            if ($paidAmount <= 0 && $dueAmount <= 0) {
                 $lines[] = $this->debitPaymentAccount($paymentAccountId, $priceDifference, "Cash received — Exchange {$invoice}");
-            } elseif ($priceDifference < 0) {
-                $lines[] = $this->creditPaymentAccount($paymentAccountId, abs($priceDifference), "Cash refunded — Exchange {$invoice}");
+            }
+        } elseif ($priceDifference < 0) {
+            $journalRefund = abs($priceDifference);
+
+            if ($paidAmount > 0) {
+                $cashRefund = round(min($paidAmount, $journalRefund), 2);
+                $lines[] = $this->creditPaymentAccount($paymentAccountId, $cashRefund, "Cash refunded — Exchange {$invoice}");
+                $journalRefund = round($journalRefund - $cashRefund, 2);
+            }
+
+            if ($journalRefund > 0) {
+                if ($dueAmount > 0 || $paidAmount <= 0) {
+                    $lines[] = $this->creditLine(SystemAccountKey::CustomerReceivables, $journalRefund, "Receivable reduced — Exchange {$invoice}, {$customerName}");
+                } else {
+                    $lines[] = $this->creditPaymentAccount($paymentAccountId, $journalRefund, "Cash refunded — Exchange {$invoice}");
+                }
             }
         }
 

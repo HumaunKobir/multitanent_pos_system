@@ -16,6 +16,7 @@ export default function DocShow({
     invoice,
     backRoute,
     editRoute,
+    canEdit = true,
     destroyRoute,
     updatePermission,
     deletePermission,
@@ -29,7 +30,7 @@ export default function DocShow({
     const toast = useAppToast();
     const { can } = useCan();
     const [deleting, setDeleting] = useState(false);
-    const showEdit = editRoute && (!updatePermission || can(updatePermission));
+    const showEdit = canEdit && editRoute && (!updatePermission || can(updatePermission));
     const showDelete = destroyRoute && (!deletePermission || can(deletePermission));
     const actionClass = headerActionClassName();
 

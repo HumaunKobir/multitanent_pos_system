@@ -1,4 +1,5 @@
 import { SalePaymentLines } from '@/components/inventory/sale-payment-lines';
+import { SellCoinFields } from '@/components/inventory/sell-coin-fields';
 import { route } from '@/lib/route';
 import { Link } from '@inertiajs/react';
 import { ArrowLeft, MessageSquare, Percent, Search } from 'lucide-react';
@@ -121,10 +122,14 @@ export function PaymentSummaryCard({
     paidLabel = 'Paid Amount',
     paidReadOnly = false,
     partyPaidHint = 'The full return amount settles on the supplier account. No cash or bank entry is posted.',
+    settlementLineLabel = null,
+    dueLabel = 'Due Amount',
+    showPaidAmount = true,
 }) {
     const isParty = paymentMode === 'party';
     const paid = isParty ? 0 : parseFloat(paidAmount || 0);
     const due = Math.max(0, grossAmount - paid);
+    const showSettlementLine = settlementLineLabel && grossAmount > 0.009;
     const showDiscountBreakdown = subtotalAmount != null && (discountAmount > 0.009 || vatAmount > 0.009);
 
     function handlePaymentModeChange(mode) {
@@ -178,6 +183,13 @@ export function PaymentSummaryCard({
                     <span className="font-semibold">৳{grossAmount.toFixed(2)}</span>
                 </div>
 
+                {showSettlementLine && (
+                    <div className="flex justify-between border-t border-border pt-2">
+                        <span className="text-muted-foreground">{settlementLineLabel}</span>
+                        <span className="font-semibold">৳{grossAmount.toFixed(2)}</span>
+                    </div>
+                )}
+
                 {parentPaymentInfo && (parentPaymentInfo.paid > 0.009 || parentPaymentInfo.due > 0.009) && (
                     <p className="text-[10px] leading-relaxed text-muted-foreground">
                         Original sale paid ৳{parentPaymentInfo.paid.toFixed(2)}
@@ -208,23 +220,27 @@ export function PaymentSummaryCard({
                     )}
                 </InventoryField>
 
-                <div className="flex items-center justify-between gap-4">
-                    <Label className="text-xs text-muted-foreground">{paidLabel}</Label>
-                    <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={isParty ? '0' : paidAmount}
-                        onChange={(e) => onPaidAmountChange(e.target.value)}
-                        readOnly={paidReadOnly || isParty}
-                        className={`${inputCls} w-28 text-right ${paidReadOnly || isParty ? 'bg-muted/50' : ''}`}
-                    />
-                </div>
-                {paidError && <p className="text-xs text-destructive">{paidError}</p>}
+                {showPaidAmount && (
+                    <>
+                        <div className="flex items-center justify-between gap-4">
+                            <Label className="text-xs text-muted-foreground">{paidLabel}</Label>
+                            <Input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={paidAmount}
+                                onChange={(e) => onPaidAmountChange(e.target.value)}
+                                readOnly={paidReadOnly || isParty}
+                                className={`${inputCls} w-28 text-right ${paidReadOnly || isParty ? 'bg-muted/50' : ''}`}
+                            />
+                        </div>
+                        {paidError && <p className="text-xs text-destructive">{paidError}</p>}
+                    </>
+                )}
 
                 {showDue && (
                     <div className="flex justify-between border-t border-border pt-2">
-                        <span className="font-semibold text-destructive">Due Amount</span>
+                        <span className="font-semibold text-destructive">{dueLabel}</span>
                         <span className="font-bold text-destructive">৳{due.toFixed(2)}</span>
                     </div>
                 )}
@@ -432,6 +448,138 @@ export function SaleReturnSourceDiscounts({
                         />
                     </div>
                 )}
+            </div>
+        </InventoryCard>
+    );
+}
+
+/**
+ * Editable discount controls for product exchange (invoice, special, round off, coins).
+ */
+export function ProductExchangeDiscountsCard({
+    summary,
+    manualDiscounts = {},
+    onManualDiscountChange,
+    specialDiscounts = [],
+    coinSettings = null,
+    coinInfo = null,
+    coinInfoLoading = false,
+    customerId = null,
+    walkInCustomerId = null,
+    coinBalanceOffset = 0,
+}) {
+    if (!summary) {
+        return null;
+    }
+
+    const invoiceType = manualDiscounts.invoiceType || 'flat';
+
+    return (
+        <InventoryCard title="Discounts & Payment Adjustments" icon={Percent}>
+            <div className="space-y-3 text-xs">
+                <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                    <div className="flex flex-col">
+                        <span className="text-muted-foreground">Invoice discount</span>
+                        <span className="text-[10px] text-muted-foreground">
+                            Applied: -৳{summary.invoiceDiscountAmount.toFixed(2)}
+                        </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                        <select
+                            value={invoiceType}
+                            onChange={(e) => onManualDiscountChange?.('invoiceType', e.target.value)}
+                            className={returnDiscountSelectCls}
+                        >
+                            <option value="flat">৳</option>
+                            <option value="percent">%</option>
+                        </select>
+                        <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={manualDiscounts.invoice ?? ''}
+                            onChange={(e) => onManualDiscountChange?.('invoice', e.target.value)}
+                            placeholder="0"
+                            className={`${inputCls} w-24 text-right`}
+                        />
+                    </div>
+                </div>
+
+                {specialDiscounts.length > 0 && (
+                    <div className="grid grid-cols-[1fr_auto] items-center gap-2">
+                        <div className="flex flex-col">
+                            <span className="text-muted-foreground">Special discount</span>
+                            <span className="text-[10px] text-muted-foreground">
+                                Applied: -৳{summary.specialDiscountAmount.toFixed(2)}
+                            </span>
+                        </div>
+                        <select
+                            value={manualDiscounts.specialDiscountId ?? ''}
+                            onChange={(e) => onManualDiscountChange?.('specialDiscountId', e.target.value)}
+                            className={`${returnDiscountSelectCls} min-w-36`}
+                        >
+                            <option value="">None</option>
+                            {specialDiscounts.map((discount) => (
+                                <option key={discount.id} value={discount.id}>
+                                    {discount.name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                )}
+
+                {summary.promotionDiscountTotal > 0 && (
+                    <div className="flex justify-between text-purple-700 dark:text-purple-400">
+                        <span>Promotion discount (auto)</span>
+                        <span>-৳{summary.promotionDiscountTotal.toFixed(2)}</span>
+                    </div>
+                )}
+
+                {summary.lineDiscountTotal > 0 && (
+                    <div className="flex justify-between">
+                        <span className="text-muted-foreground">Line discount (same product)</span>
+                        <span>-৳{summary.lineDiscountTotal.toFixed(2)}</span>
+                    </div>
+                )}
+
+                {summary.vatAmount > 0 && (
+                    <div className="flex justify-between text-emerald-600">
+                        <span>VAT ({summary.vatPercent.toFixed(2)}%)</span>
+                        <span>+৳{summary.vatAmount.toFixed(2)}</span>
+                    </div>
+                )}
+
+                <SellCoinFields
+                    customerId={customerId}
+                    walkInCustomerId={walkInCustomerId}
+                    coinSettings={coinSettings}
+                    coinInfo={coinInfo}
+                    coinInfoLoading={coinInfoLoading}
+                    coinsRedeemed={manualDiscounts.coinsRedeemed ?? ''}
+                    onCoinsRedeemedChange={(value) => onManualDiscountChange?.('coinsRedeemed', value)}
+                    netBeforeCoin={summary.netBeforeCoin}
+                    earnBase={summary.netNewAmount}
+                    balanceOffset={coinBalanceOffset}
+                    inputClassName={inputCls}
+                />
+
+                <div className="grid grid-cols-[1fr_auto] items-center gap-2 border-t border-border pt-3">
+                    <div className="flex flex-col">
+                        <span className="text-muted-foreground">Round off</span>
+                        <span className="text-[10px] text-muted-foreground">
+                            Applied: -৳{summary.roundOffAmount.toFixed(2)}
+                        </span>
+                    </div>
+                    <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={manualDiscounts.roundOff ?? ''}
+                        onChange={(e) => onManualDiscountChange?.('roundOff', e.target.value)}
+                        placeholder="0"
+                        className={`${inputCls} w-24 text-right`}
+                    />
+                </div>
             </div>
         </InventoryCard>
     );

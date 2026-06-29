@@ -13,6 +13,13 @@ import { AdminCreateLink, AdminRowActions } from '@/components/admin/row-actions
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { useCan } from '@/hooks/use-can';
 
+const PAYMENT_STATUS_LABELS = {
+    unpaid: 'Unpaid',
+    partially_paid: 'Partially Paid',
+    fully_paid: 'Fully Paid',
+    settled: 'Settled',
+};
+
 export default function ProductExchangeIndex({ exchanges = { data: [] }, filters = {} }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
@@ -48,7 +55,40 @@ export default function ProductExchangeIndex({ exchanges = { data: [] }, filters
         { id: 'invoice', header: 'Invoice', render: (row) => <span className="font-mono text-xs font-semibold text-primary">{row.invoice_number ?? `INVX${String(row.id).padStart(8, '0')}`}</span> },
         { id: 'date', header: 'Date', render: (row) => formatBdDate(row.date) },
         { id: 'customer', header: 'Customer', render: (row) => row.customer?.name ?? '—' },
-        { id: 'diff', header: 'Price Diff', render: (row) => `৳${parseFloat(row.price_difference ?? 0).toFixed(2)}` },
+        {
+            id: 'settlement',
+            header: 'Settlement',
+            render: (row) => `৳${parseFloat(row.settlement_amount ?? 0).toFixed(2)}`,
+        },
+        {
+            id: 'paid',
+            header: 'Paid',
+            render: (row) => (
+                <span className="text-green-700 dark:text-green-400">
+                    ৳{parseFloat(row.paid_amount ?? 0).toFixed(2)}
+                </span>
+            ),
+        },
+        {
+            id: 'due',
+            header: 'Due',
+            render: (row) => (
+                <span
+                    className={
+                        parseFloat(row.due_amount ?? 0) > 0
+                            ? 'font-semibold text-destructive'
+                            : 'font-semibold text-green-700 dark:text-green-400'
+                    }
+                >
+                    ৳{parseFloat(row.due_amount ?? 0).toFixed(2)}
+                </span>
+            ),
+        },
+        {
+            id: 'payment',
+            header: 'Status',
+            render: (row) => PAYMENT_STATUS_LABELS[row.payment_status] ?? '—',
+        },
         {
             id: 'actions',
             header: 'Actions',
@@ -59,6 +99,7 @@ export default function ProductExchangeIndex({ exchanges = { data: [] }, filters
                     id={row.id}
                     showRoute="inventory.product-exchange.show"
                     editRoute="inventory.product-exchange.edit"
+                    canEdit={row.can_access_edit !== false}
                     onDelete={() => setDeleting(row)}
                 />
             ),

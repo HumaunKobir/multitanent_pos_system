@@ -70,7 +70,13 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
         });
         const json = await res.json();
         if (!res.ok) {
-            setLookupError(json.message ?? 'Sale not found.');
+            const message = json.message ?? 'Sale not found.';
+            setLookupError(message);
+            setSource(null);
+            setItems([]);
+            if (res.status === 422) {
+                toast.warning(message);
+            }
             return;
         }
         const lines = json.items

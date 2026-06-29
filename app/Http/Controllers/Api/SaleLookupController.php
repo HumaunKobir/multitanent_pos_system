@@ -56,6 +56,10 @@ class SaleLookupController extends Controller
             return response()->json(['message' => 'This sale has already been exchanged.'], 422);
         }
 
+        if (SaleReturn::where('sell_id', $sell->id)->exists()) {
+            return response()->json(['message' => 'This sale has already been returned.'], 422);
+        }
+
         $returnedQtyByLine = SaleReturn::query()
             ->where('sell_id', $sell->id)
             ->with('products')

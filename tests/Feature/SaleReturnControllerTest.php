@@ -42,6 +42,95 @@ function saleReturnProduct(float $available = 20, ?int $branchId = null): array
     return compact('product', 'batch');
 }
 
+test('sale lookup rejects sale that already has a return', function () {
+    $user = saleReturnUser();
+    ['product' => $product, 'batch' => $batch] = saleReturnProduct(10, $user->branch_id);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'gross_amount' => 500,
+        'vat' => 0,
+        'paid_amount' => 500,
+        'type' => SaleType::Sale,
+    ]);
+
+    SellProduct::query()->create([
+        'branch_id' => $user->branch_id,
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'quantity' => 1,
+        'unit_price' => 500,
+        'batches' => [(string) $batch->id => 1],
+    ]);
+
+    SaleReturn::query()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'sell_id' => $sell->id,
+        'date' => now(),
+        'gross_amount' => 500,
+        'vat_amount' => 0,
+        'discount_amount' => 0,
+        'paid_amount' => 500,
+        'payment_type' => 5,
+    ]);
+
+    $this->actingAs($user)
+        ->getJson('/api/sales/lookup?invoice='.$sell->invoice_number)
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'This sale has already been returned.');
+});
+
+test('cannot create second return for the same sale', function () {
+    $user = saleReturnUser();
+    seedAccountingAccounts(user: $user);
+    ['product' => $product, 'batch' => $batch] = saleReturnProduct(10, $user->branch_id);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'gross_amount' => 1000,
+        'discount' => 0,
+        'vat' => 0,
+        'paid_amount' => 1000,
+        'type' => SaleType::Sale,
+    ]);
+
+    $sellProduct = SellProduct::query()->create([
+        'branch_id' => $user->branch_id,
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'quantity' => 2,
+        'unit_price' => 500,
+        'batches' => [(string) $batch->id => 2],
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sale-return', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            'paid_amount' => '500',
+            'payment_type' => '5',
+            'items' => [
+                ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
+            ],
+        ])
+        ->assertRedirect(route('inventory.sale-return.index'));
+
+    $this->actingAs($user)
+        ->post('/inventory/sale-return', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            'paid_amount' => '500',
+            'payment_type' => '5',
+            'items' => [
+                ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
+            ],
+        ])
+        ->assertSessionHasErrors('sell_id');
+});
+
 test('sale lookup includes payment and discount fields for returns', function () {
     $user = saleReturnUser();
     ['product' => $product, 'batch' => $batch] = saleReturnProduct(10, $user->branch_id);

@@ -103,6 +103,12 @@ class SaleReturnController extends Controller
                     ->lockForUpdate()
                     ->findOrFail($data['sell_id']);
 
+                if (SaleReturn::where('sell_id', $parent->id)->exists()) {
+                    throw ValidationException::withMessages([
+                        'sell_id' => 'This sale has already been returned.',
+                    ]);
+                }
+
                 $returnedByLine = $this->returnedQuantities($parent->id);
                 $grossAmount = 0.0;
                 $returnLineDiscount = 0.0;

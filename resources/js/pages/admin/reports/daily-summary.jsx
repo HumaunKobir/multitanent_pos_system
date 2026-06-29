@@ -247,12 +247,17 @@ function KpiTile({ label, value, sub, className }) {
     );
 }
 
-function TransactionItems({ title, items = [], type, accentClass }) {
+function TransactionItems({
+    title,
+    items = [],
+    showRoute,
+    accentClass,
+    amountLabel = 'Gross',
+    showPaid = true,
+}) {
     if (!items.length) {
         return null;
     }
-
-    const showRoute = type === 'sale' ? 'inventory.sell.show' : 'inventory.purchase.show';
 
     return (
         <div className="min-w-0">
@@ -260,7 +265,7 @@ function TransactionItems({ title, items = [], type, accentClass }) {
             <div className="space-y-1">
                 {items.map((item) => (
                     <div
-                        key={`${type}-${item.id}`}
+                        key={`${showRoute}-${item.id}`}
                         className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-black/10 bg-white/70 px-2.5 py-1.5 text-xs dark:border-white/10 dark:bg-slate-950/40"
                     >
                         <Link
@@ -271,12 +276,14 @@ function TransactionItems({ title, items = [], type, accentClass }) {
                         </Link>
                         <div className="flex flex-wrap items-center gap-3 font-mono tabular-nums">
                             <span>
-                                Gross <MoneyCell value={item.gross} />
+                                {amountLabel} <MoneyCell value={item.gross} />
                             </span>
-                            <span>
-                                Paid <MoneyCell value={item.paid} />
-                            </span>
-                            {(item.due ?? 0) > 0 ? (
+                            {showPaid ? (
+                                <span>
+                                    Paid <MoneyCell value={item.paid} />
+                                </span>
+                            ) : null}
+                            {showPaid && (item.due ?? 0) > 0 ? (
                                 <span className="text-amber-700 dark:text-amber-400">
                                     Due <MoneyCell value={item.due} />
                                 </span>
@@ -313,8 +320,18 @@ function AmountCell({ amount, accentClass, borderClass = '' }) {
 function StaffBreakdownRow({ row }) {
     const [expanded, setExpanded] = useState(true);
     const salesItems = row.sales_items ?? [];
+    const saleReturnItems = row.sale_returns_items ?? [];
+    const exchangeItems = row.product_exchanges_items ?? [];
     const purchaseItems = row.purchases_items ?? [];
-    const hasDetails = salesItems.length > 0 || purchaseItems.length > 0;
+    const purchaseReturnItems = row.purchase_returns_items ?? [];
+    const damageItems = row.damages_items ?? [];
+    const hasDetails =
+        salesItems.length > 0
+        || saleReturnItems.length > 0
+        || exchangeItems.length > 0
+        || purchaseItems.length > 0
+        || purchaseReturnItems.length > 0
+        || damageItems.length > 0;
     const rowKey = `${row.branch_id}-${row.user_id}`;
 
     return (
@@ -369,14 +386,40 @@ function StaffBreakdownRow({ row }) {
                             <TransactionItems
                                 title="Sales invoices"
                                 items={salesItems}
-                                type="sale"
+                                showRoute="inventory.sell.show"
                                 accentClass="text-emerald-700 dark:text-emerald-300"
+                            />
+                            <TransactionItems
+                                title="Sale returns"
+                                items={saleReturnItems}
+                                showRoute="inventory.sale-return.show"
+                                accentClass="text-amber-700 dark:text-amber-300"
+                            />
+                            <TransactionItems
+                                title="Product exchanges"
+                                items={exchangeItems}
+                                showRoute="inventory.product-exchange.show"
+                                accentClass="text-fuchsia-700 dark:text-fuchsia-300"
                             />
                             <TransactionItems
                                 title="Purchase orders"
                                 items={purchaseItems}
-                                type="purchase"
+                                showRoute="inventory.purchase.show"
                                 accentClass="text-blue-700 dark:text-blue-300"
+                            />
+                            <TransactionItems
+                                title="Purchase returns"
+                                items={purchaseReturnItems}
+                                showRoute="inventory.purchase-return.show"
+                                accentClass="text-orange-700 dark:text-orange-300"
+                            />
+                            <TransactionItems
+                                title="Damage records"
+                                items={damageItems}
+                                showRoute="inventory.damage.show"
+                                accentClass="text-red-700 dark:text-red-300"
+                                amountLabel="Amount"
+                                showPaid={false}
                             />
                         </div>
                     </td>

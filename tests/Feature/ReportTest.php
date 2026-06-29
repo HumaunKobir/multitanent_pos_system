@@ -696,6 +696,7 @@ test('daily summary applies all sell discount types and sale return net amount',
         'discount_amount' => 45,
         'paid_amount' => 200,
     ]);
+    $saleReturn = SaleReturn::query()->where('sell_id', $sell->id)->firstOrFail();
 
     $supplier = Supplier::factory()->create(['branch_id' => $branch->id]);
     $purchase = Purchase::factory()->create([
@@ -717,6 +718,7 @@ test('daily summary applies all sell discount types and sale return net amount',
         'paid_amount' => 400,
         'due_amount' => 80,
     ]);
+    $purchaseReturn = PurchaseReturn::query()->where('purchase_id', $purchase->id)->firstOrFail();
 
     ProductExchange::query()->create([
         'branch_id' => $branch->id,
@@ -729,6 +731,7 @@ test('daily summary applies all sell discount types and sale return net amount',
         'paid_amount' => 25,
         'price_difference' => 25,
     ]);
+    $productExchange = ProductExchange::query()->where('sell_id', $sell->id)->firstOrFail();
 
     $damageBatch = Batch::factory()->for($product)->withStock(10)->create([
         'branch_id' => $branch->id,
@@ -774,7 +777,21 @@ test('daily summary applies all sell discount types and sale return net amount',
             ->where('summary.staff_breakdown.0.purchase_returns.count', 1)
             ->where('summary.staff_breakdown.0.purchase_returns.amount', 480)
             ->where('summary.staff_breakdown.0.damages.count', 1)
-            ->where('summary.staff_breakdown.0.damages.amount', 100));
+            ->where('summary.staff_breakdown.0.damages.amount', 100)
+            ->has('summary.staff_breakdown.0.sales_items', 1)
+            ->where('summary.staff_breakdown.0.sales_items.0.id', $sell->id)
+            ->has('summary.staff_breakdown.0.sale_returns_items', 1)
+            ->where('summary.staff_breakdown.0.sale_returns_items.0.id', $saleReturn->id)
+            ->where('summary.staff_breakdown.0.sale_returns_items.0.gross', 255)
+            ->has('summary.staff_breakdown.0.product_exchanges_items', 1)
+            ->where('summary.staff_breakdown.0.product_exchanges_items.0.id', $productExchange->id)
+            ->where('summary.staff_breakdown.0.product_exchanges_items.0.gross', 175)
+            ->has('summary.staff_breakdown.0.purchase_returns_items', 1)
+            ->where('summary.staff_breakdown.0.purchase_returns_items.0.id', $purchaseReturn->id)
+            ->where('summary.staff_breakdown.0.purchase_returns_items.0.gross', 480)
+            ->has('summary.staff_breakdown.0.damages_items', 1)
+            ->where('summary.staff_breakdown.0.damages_items.0.id', $damage->id)
+            ->where('summary.staff_breakdown.0.damages_items.0.gross', 100));
 });
 
 test('branch user customer ledger options exclude other branches', function () {

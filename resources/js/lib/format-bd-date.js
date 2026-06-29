@@ -3,47 +3,58 @@
  */
 export const BD_TIMEZONE = 'Asia/Dhaka';
 
+const BD_DATE_FORMATTER = new Intl.DateTimeFormat('en-GB', {
+    timeZone: BD_TIMEZONE,
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+});
+
+function formatDateInBdTimezone(date) {
+    const dateParts = BD_DATE_FORMATTER.formatToParts(date);
+    const day = dateParts.find((p) => p.type === 'day')?.value;
+    const month = dateParts.find((p) => p.type === 'month')?.value;
+    const year = dateParts.find((p) => p.type === 'year')?.value;
+
+    return day && month && year ? `${day} ${month}, ${year}` : BD_DATE_FORMATTER.format(date);
+}
+
 export function formatBdDate(date) {
     if (!date) {
         return '—';
     }
 
-    let normalized = date;
-    if (typeof date !== 'string') {
-        if (date instanceof Date) {
-            normalized = date.toISOString().slice(0, 10);
-        } else {
-            normalized = String(date);
+    if (typeof date === 'string') {
+        const trimmed = date.trim();
+
+        if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+            const [y, m, d] = trimmed.split('-').map((p) => Number(p));
+
+            if (!y || !m || !d) {
+                return trimmed;
+            }
+
+            return formatDateInBdTimezone(new Date(Date.UTC(y, m - 1, d)));
         }
+
+        const parsed = new Date(trimmed);
+
+        if (!Number.isNaN(parsed.getTime())) {
+            return formatDateInBdTimezone(parsed);
+        }
+
+        return trimmed;
     }
 
-    if (normalized.includes('T')) {
-        normalized = normalized.slice(0, 10);
+    if (date instanceof Date) {
+        if (Number.isNaN(date.getTime())) {
+            return '—';
+        }
+
+        return formatDateInBdTimezone(date);
     }
 
-    const parts = normalized.split('-');
-    if (parts.length !== 3) {
-        return normalized;
-    }
-
-    const [y, m, d] = parts.map((p) => Number(p));
-    if (!y || !m || !d) {
-        return normalized;
-    }
-
-    const utcMidnight = new Date(Date.UTC(y, m - 1, d));
-    const dtf = new Intl.DateTimeFormat('en-GB', {
-        timeZone: 'Asia/Dhaka',
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-    });
-    const dateParts = dtf.formatToParts(utcMidnight);
-    const day = dateParts.find((p) => p.type === 'day')?.value;
-    const month = dateParts.find((p) => p.type === 'month')?.value;
-    const year = dateParts.find((p) => p.type === 'year')?.value;
-
-    return day && month && year ? `${day} ${month}, ${year}` : dtf.format(utcMidnight);
+    return String(date);
 }
 
 /**

@@ -767,10 +767,30 @@ class ReportService
                         ->values()
                         ->map(fn (Sell $sell) => $this->mapSellBreakdownItem($sell))
                         ->all(),
+                    'sale_returns_items' => $saleReturns
+                        ->sortBy('id')
+                        ->values()
+                        ->map(fn (SaleReturn $return) => $this->mapSaleReturnBreakdownItem($return))
+                        ->all(),
+                    'product_exchanges_items' => $exchanges
+                        ->sortBy('id')
+                        ->values()
+                        ->map(fn (ProductExchange $exchange) => $this->mapProductExchangeBreakdownItem($exchange))
+                        ->all(),
                     'purchases_items' => $purchases
                         ->sortBy('id')
                         ->values()
                         ->map(fn (Purchase $purchase) => $this->mapPurchaseBreakdownItem($purchase))
+                        ->all(),
+                    'purchase_returns_items' => $purchaseReturns
+                        ->sortBy('id')
+                        ->values()
+                        ->map(fn (PurchaseReturn $return) => $this->mapPurchaseReturnBreakdownItem($return))
+                        ->all(),
+                    'damages_items' => $damages
+                        ->sortBy('id')
+                        ->values()
+                        ->map(fn (Damage $damage) => $this->mapDamageBreakdownItem($damage))
                         ->all(),
                 ];
             })
@@ -856,6 +876,73 @@ class ReportService
             'gross' => round($gross, 2),
             'paid' => round($paid, 2),
             'due' => round(max(0, $gross - $paid), 2),
+        ];
+    }
+
+    /**
+     * @return array{id: int, reference: string, gross: float, paid: float, due: float}
+     */
+    private function mapSaleReturnBreakdownItem(SaleReturn $return): array
+    {
+        $gross = $return->net_amount;
+        $paid = (float) $return->paid_amount;
+
+        return [
+            'id' => $return->id,
+            'reference' => $return->invoice_number,
+            'gross' => round($gross, 2),
+            'paid' => round($paid, 2),
+            'due' => round(max(0, $gross - $paid), 2),
+        ];
+    }
+
+    /**
+     * @return array{id: int, reference: string, gross: float, paid: float, due: float}
+     */
+    private function mapProductExchangeBreakdownItem(ProductExchange $exchange): array
+    {
+        $gross = (float) $exchange->net_amount;
+        $paid = (float) $exchange->paid_amount;
+
+        return [
+            'id' => $exchange->id,
+            'reference' => $exchange->invoice_number,
+            'gross' => round($gross, 2),
+            'paid' => round($paid, 2),
+            'due' => round(max(0, $gross - $paid), 2),
+        ];
+    }
+
+    /**
+     * @return array{id: int, reference: string, gross: float, paid: float, due: float}
+     */
+    private function mapPurchaseReturnBreakdownItem(PurchaseReturn $return): array
+    {
+        $gross = $return->net_amount;
+        $paid = (float) $return->paid_amount;
+
+        return [
+            'id' => $return->id,
+            'reference' => $return->invoice_number,
+            'gross' => round($gross, 2),
+            'paid' => round($paid, 2),
+            'due' => round((float) $return->due_amount, 2),
+        ];
+    }
+
+    /**
+     * @return array{id: int, reference: string, gross: float, paid: float, due: float}
+     */
+    private function mapDamageBreakdownItem(Damage $damage): array
+    {
+        $amount = $this->costService->costForDamage($damage);
+
+        return [
+            'id' => $damage->id,
+            'reference' => $damage->invoice_number,
+            'gross' => round($amount, 2),
+            'paid' => 0,
+            'due' => 0,
         ];
     }
 

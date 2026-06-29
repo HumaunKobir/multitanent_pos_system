@@ -10,6 +10,7 @@ use App\Models\Batch;
 use App\Models\Purchase;
 use App\Models\PurchaseProduct;
 use App\Models\PurchaseReturn;
+use App\Models\StockDistribution;
 use App\Models\Supplier;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryStockService;
@@ -87,6 +88,8 @@ class PurchaseReturnController extends Controller
                     ->with(['purchaseProducts', 'supplier'])
                     ->lockForUpdate()
                     ->findOrFail($data['purchase_id']);
+
+                $this->assertNotHeldByBranch($parent->id);
 
                 $returnedQtyByLine = $this->returnedQuantities($parent->id);
                 $grossAmount = 0.0;
@@ -302,6 +305,8 @@ class PurchaseReturnController extends Controller
                     ->lockForUpdate()
                     ->findOrFail($purchaseReturn->purchase_id);
 
+                $this->assertNotHeldByBranch($parent->id);
+
                 $returnedQtyByLine = $this->returnedQuantities($parent->id, $purchaseReturn->id);
                 $grossAmount = 0.0;
                 $lines = [];
@@ -415,6 +420,23 @@ class PurchaseReturnController extends Controller
 
         return redirect()->route('inventory.purchase-return.index')
             ->with('success', 'Purchase return deleted successfully.');
+    }
+
+    /**
+     * Prevent returning a purchase whose distributed stock is still held at a branch.
+     * The branch must first return the stock to the main warehouse.
+     */
+    private function assertNotHeldByBranch(int $purchaseId): void
+    {
+        $branches = StockDistribution::branchesHoldingReceivedStockForPurchase($purchaseId);
+
+        if ($branches !== []) {
+            throw new \RuntimeException(
+                'This purchase cannot be returned yet. Its stock was received by '
+                .implode(', ', $branches)
+                .'. That branch must return the stock to the main warehouse first.'
+            );
+        }
     }
 
     private function rollbackPurchaseReturn(PurchaseReturn $purchaseReturn): void

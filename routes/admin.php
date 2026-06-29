@@ -131,6 +131,8 @@ Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')
     Route::resource('product-exchange', ProductExchangeController::class);
     Route::get('stock-distribution/received', [StockDistributionController::class, 'receivedIndex'])->name('stock-distribution.received');
     Route::post('stock-distribution/{stock_distribution}/receive', [StockDistributionController::class, 'receive'])->name('stock-distribution.receive');
+    Route::post('stock-distribution/{stock_distribution}/send-return', [StockDistributionController::class, 'sendReturn'])->name('stock-distribution.send-return');
+    Route::post('stock-distribution/{stock_distribution}/receive-return', [StockDistributionController::class, 'receiveReturn'])->name('stock-distribution.receive-return');
     Route::resource('stock-distribution', StockDistributionController::class);
 });
 

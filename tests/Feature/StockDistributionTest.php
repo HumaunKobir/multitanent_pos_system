@@ -5,6 +5,7 @@ use App\Enums\StockDistributionStatus;
 use App\Enums\SystemAccountKey;
 use App\Models\Batch;
 use App\Models\Branch;
+use App\Models\ChartOfAccount;
 use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\ProductInOutLog;
@@ -376,6 +377,311 @@ test('main branch user can update and delete a distribution', function () {
         ->where('branch_id', Branch::resolveMainBranchId())
         ->first();
     expect((float) $mainBatch->available)->toBe(20.0);
+});
+
+test('branch sends received stock to main and admin receives it', function () {
+    $this->artisan('permissions:sync');
+
+    $admin = superAdminUser([
+        'inventory.stock-distribution.create',
+        'inventory.stock-distribution.update',
+    ]);
+    $targetBranch = Branch::factory()->create();
+
+    $product = Product::factory()->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'name' => 'Two Step Return '.fake()->unique()->numerify('###'),
+    ]);
+    $mainBatch = Batch::factory()->for($product)->withStock(20)->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'purchase_price' => 100,
+    ]);
+
+    $this->actingAs($admin)
+        ->post('/inventory/stock-distribution', [
+            'to_branch_id' => $targetBranch->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Two step return test',
+            'items' => [
+                ['product_id' => $product->id, 'variation_id' => null, 'quantity' => '8'],
+            ],
+        ])
+        ->assertRedirect();
+
+    $distribution = StockDistribution::query()->latest('id')->first();
+    $receiver = branchReceiverUser($targetBranch->id);
+
+    $this->actingAs($receiver)
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
+
+    $mainBatch->refresh();
+    expect((float) $mainBatch->available)->toBe(12.0);
+
+    $branchProduct = Product::query()
+        ->where('branch_id', $targetBranch->id)
+        ->where('name', $product->name)
+        ->firstOrFail();
+    $branchStock = fn (): float => (float) Batch::query()
+        ->where('product_id', $branchProduct->id)
+        ->where('branch_id', $targetBranch->id)
+        ->sum('available');
+    expect($branchStock())->toBe(8.0);
+
+    // Step 1 — branch sends the stock back: leaves the branch, main NOT yet restored.
+    $this->actingAs($receiver)
+        ->post("/inventory/stock-distribution/{$distribution->id}/send-return")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
+
+    $distribution->refresh();
+    expect($distribution->status)->toBe(StockDistributionStatus::ReturnPending);
+    expect($distribution->return_sent_at)->not->toBeNull();
+    expect($branchStock())->toBe(0.0);
+    $mainBatch->refresh();
+    expect((float) $mainBatch->available)->toBe(12.0);
+
+    // Step 2 — admin receives the return: main warehouse stock restored.
+    $this->actingAs($admin)
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive-return")
+        ->assertRedirect(route('inventory.stock-distribution.index'));
+
+    $distribution->refresh();
+    expect($distribution->status)->toBe(StockDistributionStatus::Returned);
+    expect($distribution->return_received_at)->not->toBeNull();
+    $mainBatch->refresh();
+    expect((float) $mainBatch->available)->toBe(20.0);
+    expect($branchStock())->toBe(0.0);
+});
+
+test('stock distribution index exposes return status labels', function () {
+    $this->artisan('permissions:sync');
+    $this->withoutVite();
+
+    $mainBranchId = Branch::resolveMainBranchId();
+    $admin = superAdminUser(['inventory.stock-distribution.view']);
+    $targetBranch = Branch::factory()->create();
+
+    $returnPending = StockDistribution::query()->create([
+        'branch_id' => $mainBranchId,
+        'from_branch_id' => $mainBranchId,
+        'to_branch_id' => $targetBranch->id,
+        'date' => now(),
+        'status' => StockDistributionStatus::ReturnPending,
+        'comment' => 'Return pending list status '.fake()->unique()->numerify('###'),
+    ]);
+
+    $returned = StockDistribution::query()->create([
+        'branch_id' => $mainBranchId,
+        'from_branch_id' => $mainBranchId,
+        'to_branch_id' => $targetBranch->id,
+        'date' => now(),
+        'status' => StockDistributionStatus::Returned,
+        'comment' => 'Returned list status '.fake()->unique()->numerify('###'),
+    ]);
+
+    $props = $this->actingAs($admin)
+        ->get('/inventory/stock-distribution')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/stock-distribution/index')
+            ->has('distributions.data'))
+        ->original
+        ->getData()['page']['props'];
+
+    $rows = collect($props['distributions']['data']);
+
+    expect($rows->firstWhere('id', $returnPending->id)['status_label'])->toBe('Return Pending');
+    expect($rows->firstWhere('id', $returned->id)['status_label'])->toBe('Returned');
+});
+
+test('two-step return reverses all distribution accounting only at admin receive', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = Branch::resolveMainBranchId();
+    $admin = superAdminUser([
+        'inventory.stock-distribution.create',
+        'inventory.stock-distribution.update',
+    ]);
+    $targetBranch = Branch::factory()->create();
+
+    seedAccountingAccounts(branchId: $mainBranchId);
+    seedAccountingAccounts(branchId: $targetBranch->id);
+
+    $product = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Acct Reverse '.fake()->unique()->numerify('###'),
+    ]);
+    Batch::factory()->for($product)->withStock(10)->create([
+        'branch_id' => $mainBranchId,
+        'purchase_price' => 100,
+    ]);
+
+    $mainInventoryId = SystemAccountService::id(SystemAccountKey::ProductInventory, $mainBranchId);
+    $branchInventoryId = SystemAccountService::id(SystemAccountKey::ProductInventory, $targetBranch->id);
+    $mainReceivableId = SystemAccountService::id(SystemAccountKey::IntercompanyReceivable, $mainBranchId);
+    $branchPayableId = SystemAccountService::id(SystemAccountKey::IntercompanyPayable, $targetBranch->id);
+
+    $balance = fn (int $id): float => (float) ChartOfAccount::query()->whereKey($id)->value('current_balance');
+
+    $mainInvBefore = $balance($mainInventoryId);
+    $branchInvBefore = $balance($branchInventoryId);
+    $mainRecvBefore = $balance($mainReceivableId);
+    $branchPayBefore = $balance($branchPayableId);
+
+    $this->actingAs($admin)
+        ->post('/inventory/stock-distribution', [
+            'to_branch_id' => $targetBranch->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Accounting reversal test',
+            'items' => [
+                ['product_id' => $product->id, 'variation_id' => null, 'quantity' => '5'],
+            ],
+        ])
+        ->assertRedirect();
+
+    $distribution = StockDistribution::query()->latest('id')->first();
+    $lineIds = $distribution->products->pluck('id');
+    $receiver = branchReceiverUser($targetBranch->id);
+
+    $this->actingAs($receiver)
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
+
+    // After receive: per-line intercompany journals exist and balances moved by cost (5 * 100).
+    expect(Transaction::query()
+        ->where('source_type', StockDistributionProduct::class)
+        ->whereIn('source_id', $lineIds)
+        ->exists())->toBeTrue();
+
+    expect($balance($branchInventoryId))->toBe($branchInvBefore + 500.0);
+    expect($balance($mainInventoryId))->toBe($mainInvBefore - 500.0);
+    expect($balance($mainReceivableId))->toBe($mainRecvBefore + 500.0);
+    expect($balance($branchPayableId))->toBe($branchPayBefore + 500.0);
+
+    // Step 1 — branch sends: NO accounting change yet (books stay balanced in place).
+    $this->actingAs($receiver)
+        ->post("/inventory/stock-distribution/{$distribution->id}/send-return")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
+
+    expect(Transaction::query()
+        ->where('source_type', StockDistributionProduct::class)
+        ->whereIn('source_id', $lineIds)
+        ->exists())->toBeTrue();
+    expect($balance($branchInventoryId))->toBe($branchInvBefore + 500.0);
+    expect($balance($mainInventoryId))->toBe($mainInvBefore - 500.0);
+    expect($balance($mainReceivableId))->toBe($mainRecvBefore + 500.0);
+    expect($balance($branchPayableId))->toBe($branchPayBefore + 500.0);
+
+    // Step 2 — admin receives: every posted journal reverses and all balances restore.
+    $this->actingAs($admin)
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive-return")
+        ->assertRedirect(route('inventory.stock-distribution.index'));
+
+    expect(Transaction::query()
+        ->where('source_type', StockDistributionProduct::class)
+        ->whereIn('source_id', $lineIds)
+        ->exists())->toBeFalse();
+
+    expect($balance($mainInventoryId))->toBe($mainInvBefore);
+    expect($balance($branchInventoryId))->toBe($branchInvBefore);
+    expect($balance($mainReceivableId))->toBe($mainRecvBefore);
+    expect($balance($branchPayableId))->toBe($branchPayBefore);
+});
+
+test('branch cannot send a return when the stock was already sold', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = Branch::resolveMainBranchId();
+    $admin = superAdminUser(['inventory.stock-distribution.create']);
+    $targetBranch = Branch::factory()->create();
+
+    seedAccountingAccounts(branchId: $mainBranchId);
+    seedAccountingAccounts(branchId: $targetBranch->id);
+
+    $product = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Sold Then Return '.fake()->unique()->numerify('###'),
+    ]);
+    Batch::factory()->for($product)->withStock(10)->create([
+        'branch_id' => $mainBranchId,
+        'purchase_price' => 100,
+    ]);
+
+    $this->actingAs($admin)
+        ->post('/inventory/stock-distribution', [
+            'to_branch_id' => $targetBranch->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Sold then return test',
+            'items' => [
+                ['product_id' => $product->id, 'variation_id' => null, 'quantity' => '5'],
+            ],
+        ])
+        ->assertRedirect();
+
+    $distribution = StockDistribution::query()->latest('id')->first();
+    $receiver = branchReceiverUser($targetBranch->id);
+
+    $this->actingAs($receiver)
+        ->post("/inventory/stock-distribution/{$distribution->id}/receive")
+        ->assertRedirect(route('inventory.stock-distribution.received'));
+
+    // Simulate the branch selling the received stock by draining its batch.
+    $branchProduct = Product::query()
+        ->where('branch_id', $targetBranch->id)
+        ->where('name', $product->name)
+        ->firstOrFail();
+    Batch::query()
+        ->where('product_id', $branchProduct->id)
+        ->where('branch_id', $targetBranch->id)
+        ->update(['available' => 0]);
+
+    $this->actingAs($receiver)
+        ->post("/inventory/stock-distribution/{$distribution->id}/send-return")
+        ->assertSessionHas('error');
+
+    // Status and accounting remain intact (atomic rollback).
+    $distribution->refresh();
+    expect($distribution->status)->toBe(StockDistributionStatus::Received);
+    expect(Transaction::query()
+        ->where('source_type', StockDistributionProduct::class)
+        ->whereIn('source_id', $distribution->products->pluck('id'))
+        ->exists())->toBeTrue();
+});
+
+test('branch cannot send a pending distribution to main', function () {
+    $this->artisan('permissions:sync');
+
+    $user = superAdminUser(['inventory.stock-distribution.create']);
+    $targetBranch = Branch::factory()->create();
+
+    $product = Product::factory()->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'name' => 'Pending Return '.fake()->unique()->numerify('###'),
+    ]);
+    Batch::factory()->for($product)->withStock(20)->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'purchase_price' => 100,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/stock-distribution', [
+            'to_branch_id' => $targetBranch->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Pending return test',
+            'items' => [
+                ['product_id' => $product->id, 'variation_id' => null, 'quantity' => '4'],
+            ],
+        ])
+        ->assertRedirect();
+
+    $distribution = StockDistribution::query()->latest('id')->first();
+
+    $this->actingAs(branchReceiverUser($targetBranch->id))
+        ->post("/inventory/stock-distribution/{$distribution->id}/send-return")
+        ->assertStatus(422);
+
+    $distribution->refresh();
+    expect($distribution->status)->toBe(StockDistributionStatus::Pending);
 });
 
 test('main branch user can distribute legacy null branch warehouse stock', function () {

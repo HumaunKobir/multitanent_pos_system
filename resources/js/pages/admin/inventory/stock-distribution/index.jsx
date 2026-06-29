@@ -13,6 +13,27 @@ import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, Di
 import { Input } from '@/components/ui/input';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { useCan } from '@/hooks/use-can';
+import { cn } from '@/lib/utils';
+
+function distributionStatusBadgeClassName(status, statusLabel) {
+    if (status === 2 || statusLabel === 'Received') {
+        return 'border-transparent bg-emerald-600 text-white hover:bg-emerald-600';
+    }
+
+    if (status === 3 || statusLabel === 'Partially Received') {
+        return 'border-transparent bg-amber-500 text-white hover:bg-amber-500';
+    }
+
+    if (status === 4 || statusLabel === 'Return Pending') {
+        return 'border-transparent bg-orange-600 text-white hover:bg-orange-600';
+    }
+
+    if (status === 5 || statusLabel === 'Returned') {
+        return 'border-transparent bg-slate-600 text-white hover:bg-slate-600';
+    }
+
+    return 'border-transparent bg-secondary text-secondary-foreground hover:bg-secondary';
+}
 
 export default function StockDistributionIndex({
     distributions = { data: [] },
@@ -82,17 +103,24 @@ export default function StockDistributionIndex({
             id: 'status',
             header: 'Status',
             render: (row) => {
-                const isReceived = row.status === 2 || row.status_label === 'Received';
-                const isPartial = row.status === 3 || row.status_label === 'Partially Received';
-                const isPending = row.status === 1 || row.status_label === 'Pending';
+                const statusLabel = row.status_label ?? 'Pending';
+                const isReceived = row.status === 2 || statusLabel === 'Received';
+                const isReturnPending = row.status === 4 || statusLabel === 'Return Pending';
+                const isReturned = row.status === 5 || statusLabel === 'Returned';
 
                 return (
                     <div className="space-y-0.5">
-                        <Badge variant={isReceived ? 'default' : isPartial ? 'outline' : 'secondary'}>
-                            {row.status_label ?? (isReceived ? 'Received' : isPartial ? 'Partially Received' : 'Pending')}
+                        <Badge className={cn(distributionStatusBadgeClassName(row.status, statusLabel))}>
+                            {statusLabel}
                         </Badge>
                         {isReceived && row.received_by?.name && (
                             <p className="text-[10px] text-muted-foreground">by {row.received_by.name}</p>
+                        )}
+                        {isReturnPending && row.return_sent_by?.name && (
+                            <p className="text-[10px] text-muted-foreground">sent by {row.return_sent_by.name}</p>
+                        )}
+                        {isReturned && row.return_received_by?.name && (
+                            <p className="text-[10px] text-muted-foreground">by {row.return_received_by.name}</p>
                         )}
                     </div>
                 );

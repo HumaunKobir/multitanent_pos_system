@@ -9,7 +9,7 @@ import {
 } from '@/components/inventory/invoice-show-layout';
 import { route } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { ArrowLeft, ArrowRightLeft, Building2, Check, Edit, Trash2, Warehouse } from 'lucide-react';
+import { ArrowLeft, ArrowRightLeft, Building2, Check, Edit, Trash2, Undo2, Warehouse } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
 import { Can } from '@/components/can';
@@ -29,14 +29,30 @@ function statusHeaderBadgeClassName(status, statusLabel) {
         return 'border-transparent bg-amber-500 text-white';
     }
 
+    if (status === 4 || statusLabel === 'Return Pending') {
+        return 'border-transparent bg-orange-600 text-white';
+    }
+
+    if (status === 5 || statusLabel === 'Returned') {
+        return 'border-transparent bg-slate-600 text-white';
+    }
+
     return 'border-white/30 bg-white/10 text-white';
 }
 
-export default function StockDistributionShow({ distribution, canManage = false, canReceive = false }) {
+export default function StockDistributionShow({
+    distribution,
+    canManage = false,
+    canReceive = false,
+    canSendReturn = false,
+    canReceiveReturn = false,
+}) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const { can } = useCan();
     const [deleting, setDeleting] = useState(false);
+    const [sendingReturn, setSendingReturn] = useState(false);
+    const [receivingReturn, setReceivingReturn] = useState(false);
     const [selectedLineIds, setSelectedLineIds] = useState([]);
 
     const pendingLines = useMemo(
@@ -83,6 +99,18 @@ export default function StockDistributionShow({ distribution, canManage = false,
     function handleDelete() {
         router.delete(route('inventory.stock-distribution.destroy', distribution.id), {
             onSuccess: () => setDeleting(false),
+        });
+    }
+
+    function handleSendReturn() {
+        router.post(route('inventory.stock-distribution.send-return', distribution.id), {}, {
+            onSuccess: () => setSendingReturn(false),
+        });
+    }
+
+    function handleReceiveReturn() {
+        router.post(route('inventory.stock-distribution.receive-return', distribution.id), {}, {
+            onSuccess: () => setReceivingReturn(false),
         });
     }
 
@@ -137,6 +165,26 @@ export default function StockDistributionShow({ distribution, canManage = false,
                                 Receive All
                             </Button>
                         </>
+                    )}
+                    {canSendReturn && (
+                        <Button
+                            size="sm"
+                            onClick={() => setSendingReturn(true)}
+                            className="border border-orange-400/50 bg-orange-600/90 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-orange-600 hover:shadow-md"
+                        >
+                            <Undo2 className="size-3.5" />
+                            Send to Main
+                        </Button>
+                    )}
+                    {canReceiveReturn && (
+                        <Button
+                            size="sm"
+                            onClick={() => setReceivingReturn(true)}
+                            className="border border-emerald-400/50 bg-emerald-600/90 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-emerald-600 hover:shadow-md"
+                        >
+                            <Check className="size-3.5" />
+                            Receive Return
+                        </Button>
                     )}
                     {canEditOrDelete && (
                         <Can permission="inventory.stock-distribution.update">
@@ -218,6 +266,56 @@ export default function StockDistributionShow({ distribution, canManage = false,
                         </div>
                     }
                 />
+
+                {canSendReturn && (
+                    <Dialog open={sendingReturn} onOpenChange={setSendingReturn}>
+                        <DialogContent className="max-w-sm">
+                            <DialogHeader>
+                                <DialogTitle>Send stock back to main warehouse?</DialogTitle>
+                                <DialogDescription>
+                                    This removes the received stock from your branch and sends it to the main warehouse
+                                    for admin receipt. The main warehouse stock and accounting update once the admin
+                                    receives it. It will fail if any of the items have already been sold or used here.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter className="mt-4 gap-2">
+                                <DialogClose asChild>
+                                    <Button type="button" variant="outline" size="sm">
+                                        Cancel
+                                    </Button>
+                                </DialogClose>
+                                <Button type="button" size="sm" onClick={handleSendReturn}>
+                                    Send to Main
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                )}
+
+                {canReceiveReturn && (
+                    <Dialog open={receivingReturn} onOpenChange={setReceivingReturn}>
+                        <DialogContent className="max-w-sm">
+                            <DialogHeader>
+                                <DialogTitle>Receive returned stock?</DialogTitle>
+                                <DialogDescription>
+                                    This adds the returned stock back into the main warehouse and reverses the
+                                    distribution accounting (main inventory, branch inventory and the intercompany
+                                    accounts). This completes the return.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <DialogFooter className="mt-4 gap-2">
+                                <DialogClose asChild>
+                                    <Button type="button" variant="outline" size="sm">
+                                        Cancel
+                                    </Button>
+                                </DialogClose>
+                                <Button type="button" size="sm" onClick={handleReceiveReturn}>
+                                    Receive Return
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
+                )}
 
                 {canEditOrDelete && can('inventory.stock-distribution.delete') && (
                     <Dialog open={deleting} onOpenChange={setDeleting}>

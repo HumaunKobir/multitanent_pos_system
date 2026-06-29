@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\Enums\StockDistributionStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\StockDistribution;
@@ -32,7 +33,12 @@ class StockDistributionController extends Controller
         $user = Auth::user();
 
         $distributions = $this->distributionQueryForUser($user)
-            ->with(['toBranch:id,name', 'receivedBy:id,name'])
+            ->with([
+                'toBranch:id,name',
+                'receivedBy:id,name',
+                'returnSentBy:id,name',
+                'returnReceivedBy:id,name',
+            ])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('serial', 'like', "%{$s}%")
                     ->orWhere('comment', 'like', "%{$s}%")
@@ -59,7 +65,12 @@ class StockDistributionController extends Controller
 
         $distributions = StockDistribution::query()
             ->where('to_branch_id', $user?->branch_id)
-            ->with(['fromBranch:id,name', 'receivedBy:id,name'])
+            ->with([
+                'fromBranch:id,name',
+                'receivedBy:id,name',
+                'returnSentBy:id,name',
+                'returnReceivedBy:id,name',
+            ])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('serial', 'like', "%{$s}%")
                     ->orWhere('comment', 'like', "%{$s}%");
@@ -132,6 +143,8 @@ class StockDistributionController extends Controller
             'toBranch:id,name',
             'fromBranch:id,name',
             'receivedBy:id,name',
+            'returnSentBy:id,name',
+            'returnReceivedBy:id,name',
             'purchase:id,serial',
         ]);
 
@@ -142,7 +155,87 @@ class StockDistributionController extends Controller
             'distribution' => $formatted,
             'canManage' => $this->canManageDistributions($user),
             'canReceive' => $this->canReceiveDistribution($user, $stockDistribution),
+            'canSendReturn' => $this->canSendReturnToMain($user, $stockDistribution),
+            'canReceiveReturn' => $this->canReceiveReturn($user, $stockDistribution),
         ]);
+    }
+
+    public function sendReturn(StockDistribution $stockDistribution): RedirectResponse
+    {
+        $this->authorize('inventory.stock-distribution.receive');
+        $this->authorizeBranchReceiverOnly();
+        $this->authorizeDistributionAccess($stockDistribution);
+
+        abort_unless(
+            (int) $stockDistribution->to_branch_id === (int) Auth::user()?->branch_id,
+            403,
+        );
+
+        abort_unless(
+            $stockDistribution->isReceived(),
+            422,
+            'Only fully received distributions can be returned to the main warehouse.',
+        );
+
+        $stockDistribution->load(['products']);
+
+        try {
+            DB::transaction(function () use ($stockDistribution) {
+                foreach ($stockDistribution->products as $line) {
+                    $this->distribution->withdrawReceivedLineFromBranch($line, (int) $stockDistribution->to_branch_id);
+                }
+
+                $stockDistribution->update([
+                    'status' => StockDistributionStatus::ReturnPending,
+                    'return_sent_at' => now(),
+                    'return_sent_by_user_id' => Auth::id(),
+                ]);
+            });
+        } catch (\Throwable $e) {
+            return back()->with('error', $e instanceof \RuntimeException
+                ? $e->getMessage()
+                : 'Unable to send stock to the main warehouse.');
+        }
+
+        return redirect()->route('inventory.stock-distribution.received')
+            ->with('success', 'Stock sent to the main warehouse. Awaiting admin receipt.');
+    }
+
+    public function receiveReturn(StockDistribution $stockDistribution): RedirectResponse
+    {
+        $this->authorize('inventory.stock-distribution.update');
+        $this->authorizeMainBranchManager();
+
+        abort_unless(
+            $stockDistribution->isReturnPending(),
+            422,
+            'This distribution is not awaiting a return receipt.',
+        );
+
+        $stockDistribution->load(['products']);
+
+        try {
+            DB::transaction(function () use ($stockDistribution) {
+                $this->accounting->reverseStockDistributionLines($stockDistribution);
+
+                foreach ($stockDistribution->products as $line) {
+                    $this->distribution->restoreReturnedLineToMain($line);
+                }
+
+                $stockDistribution->update([
+                    'status' => StockDistributionStatus::Returned,
+                    'return_received_at' => now(),
+                    'return_received_by_user_id' => Auth::id(),
+                ]);
+            });
+        } catch (\Throwable $e) {
+            return back()->with('error', $e instanceof \RuntimeException
+                ? $e->getMessage()
+                : 'Unable to receive the returned stock.');
+        }
+
+        return redirect()->route('inventory.stock-distribution.index')
+            ->with('success', 'Returned stock received into the main warehouse.');
     }
 
     public function receive(Request $request, StockDistribution $stockDistribution): RedirectResponse
@@ -364,6 +457,10 @@ class StockDistributionController extends Controller
             'status_label' => $stockDistribution->status?->label(),
             'received_at' => optional($stockDistribution->received_at)?->toIso8601String(),
             'received_by' => $stockDistribution->receivedBy,
+            'return_sent_at' => optional($stockDistribution->return_sent_at)?->toIso8601String(),
+            'return_sent_by' => $stockDistribution->returnSentBy,
+            'return_received_at' => optional($stockDistribution->return_received_at)?->toIso8601String(),
+            'return_received_by' => $stockDistribution->returnReceivedBy,
             'received_count' => $receivedCount,
             'pending_count' => $pendingCount,
             'total_count' => $products->count(),
@@ -430,6 +527,23 @@ class StockDistributionController extends Controller
             && $distribution->isReceivable()
             && $distribution->hasPendingLines()
             && (int) $distribution->to_branch_id === (int) $user->branch_id;
+    }
+
+    private function canSendReturnToMain($user, StockDistribution $distribution): bool
+    {
+        return $user !== null
+            && $user->usesBranchPanel()
+            && $user->can('inventory.stock-distribution.receive')
+            && $distribution->isReceived()
+            && (int) $distribution->to_branch_id === (int) $user->branch_id;
+    }
+
+    private function canReceiveReturn($user, StockDistribution $distribution): bool
+    {
+        return $user !== null
+            && $user->usesAdminPanel()
+            && $user->can('inventory.stock-distribution.update')
+            && $distribution->isReturnPending();
     }
 
     private function authorizeMainBranchManager(): void

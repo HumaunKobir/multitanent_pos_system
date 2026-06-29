@@ -11,6 +11,8 @@ enum StockDistributionStatus: int
     case Pending = 1;
     case Received = 2;
     case PartiallyReceived = 3;
+    case ReturnPending = 4;
+    case Returned = 5;
 
     public function label(): string
     {
@@ -18,6 +20,8 @@ enum StockDistributionStatus: int
             self::Pending => 'Pending',
             self::Received => 'Received',
             self::PartiallyReceived => 'Partially Received',
+            self::ReturnPending => 'Return Pending',
+            self::Returned => 'Returned',
         };
     }
 }

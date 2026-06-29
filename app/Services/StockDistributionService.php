@@ -304,6 +304,69 @@ class StockDistributionService
     }
 
     /**
+     * Step 1 of a two-step branch→main return: the goods physically leave the branch
+     * (in transit to the main warehouse). Only received lines hold branch stock.
+     * Throws if the branch has already sold/used the received stock.
+     */
+    public function withdrawReceivedLineFromBranch(StockDistributionProduct $line, int $toBranchId): void
+    {
+        if (! $line->isReceived()) {
+            return;
+        }
+
+        if (($line->destination_batches ?? []) !== []) {
+            $this->stock->deductFromBatchMap(
+                $line->destination_batches,
+                fn (Batch $batch, float $qty) => $batch->distributionOutStock($qty)
+            );
+
+            return;
+        }
+
+        if ($line->variation_id) {
+            $destinationProduct = $this->resolveDestinationProduct((int) $line->product_id, $toBranchId);
+            $sourceVariation = ProductVariation::query()->whereKey((int) $line->variation_id)->firstOrFail();
+
+            $destinationVariation = ProductVariation::query()
+                ->where('product_id', $destinationProduct->id)
+                ->where('branch_id', $toBranchId)
+                ->where('sku', $sourceVariation->sku)
+                ->lockForUpdate()
+                ->first();
+
+            if (! $destinationVariation) {
+                throw new \RuntimeException('Destination variation not found.');
+            }
+
+            if ((float) $destinationVariation->stock < (float) $line->quantity) {
+                throw new \RuntimeException('Cannot return because branch stock has already been used.');
+            }
+
+            $destinationVariation->decrement('stock', (float) $line->quantity);
+        }
+    }
+
+    /**
+     * Step 2 of a two-step branch→main return: the returned goods arrive back at the
+     * main warehouse when the admin receives them. Mirrors the original source dispatch.
+     */
+    public function restoreReturnedLineToMain(StockDistributionProduct $line): void
+    {
+        if (($line->source_batches ?? []) !== []) {
+            $this->stock->restoreFromBatchMap(
+                $line->source_batches,
+                fn (Batch $batch, float $qty) => $batch->distributionInStock($qty)
+            );
+
+            return;
+        }
+
+        if ($line->variation_id) {
+            ProductVariation::whereKey((int) $line->variation_id)->increment('stock', (float) $line->quantity);
+        }
+    }
+
+    /**
      * @return array{source_batches: array<int|string, float>, destination_batches: array<int|string, float>}
      */
     private function dispatchVariation(

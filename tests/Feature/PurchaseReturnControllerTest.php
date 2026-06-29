@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\PurchaseReceivedPayment;
+use App\Enums\StockDistributionStatus;
 use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Product;
@@ -8,6 +9,7 @@ use App\Models\Purchase;
 use App\Models\PurchaseProduct;
 use App\Models\PurchaseReturn;
 use App\Models\PurchaseReturnProduct;
+use App\Models\StockDistribution;
 use App\Models\Supplier;
 use App\Models\User;
 use Spatie\Permission\Models\Permission;
@@ -83,6 +85,63 @@ test('purchase lookup includes discount and vat fields', function () {
         ->assertJsonPath('discount', 100)
         ->assertJsonPath('vat', 50)
         ->assertJsonPath('vat_percent', 5);
+});
+
+test('purchase return is blocked while distributed stock is held at a branch', function () {
+    $user = purchaseReturnUser();
+    ['product' => $product, 'batch' => $batch] = purchaseReturnProduct(10, $user->branch_id);
+    $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id]);
+
+    $purchase = purchaseReturnPurchase($user, $supplier, [
+        'gross' => 1000,
+        'discount' => 0,
+        'vat' => 0,
+        'paid' => 1000,
+    ]);
+
+    $purchaseProduct = PurchaseProduct::factory()
+        ->forPurchase($purchase)
+        ->forProduct($product)
+        ->withBatch($batch->id, 10)
+        ->create();
+
+    $targetBranch = Branch::factory()->create(['name' => 'Gulshan Outlet '.fake()->unique()->numerify('###')]);
+
+    $distribution = StockDistribution::create([
+        'branch_id' => $user->branch_id,
+        'from_branch_id' => $user->branch_id,
+        'to_branch_id' => $targetBranch->id,
+        'date' => now()->format('Y-m-d'),
+        'status' => StockDistributionStatus::Received,
+        'purchase_id' => $purchase->id,
+        'serial' => 'INVT'.str_pad((string) (StockDistribution::max('id') + 1), 8, '0', STR_PAD_LEFT),
+    ]);
+
+    $distribution->products()->create([
+        'branch_id' => $user->branch_id,
+        'product_id' => $product->id,
+        'quantity' => 5,
+        'received_at' => now(),
+    ]);
+
+    $this->actingAs($user)
+        ->getJson(route('api.purchases.lookup', ['invoice' => $purchase->invoice_number]))
+        ->assertStatus(422)
+        ->assertJsonPath('message', fn ($message) => str_contains($message, $targetBranch->name));
+
+    $this->actingAs($user)
+        ->post(route('inventory.purchase-return.store'), [
+            'purchase_id' => $purchase->id,
+            'date' => now()->format('Y-m-d'),
+            'paid_amount' => '0',
+            'payment_type' => (string) PurchaseReceivedPayment::Supplier_Account->value,
+            'items' => [
+                ['purchase_product_id' => $purchaseProduct->id, 'quantity' => '5'],
+            ],
+        ])
+        ->assertSessionHasErrors('items');
+
+    expect(PurchaseReturn::query()->where('purchase_id', $purchase->id)->exists())->toBeFalse();
 });
 
 test('purchase return stores proportional discount and vat and caps paid at net', function () {

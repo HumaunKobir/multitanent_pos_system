@@ -12,7 +12,10 @@ class StockDistribution extends Model
 {
     use HasBranch;
 
-    protected $appends = ['invoice_number'];
+    protected $appends = [
+        'invoice_number',
+        'status_label',
+    ];
 
     protected $fillable = [
         'branch_id',
@@ -25,17 +28,50 @@ class StockDistribution extends Model
         'received_at',
         'received_by_user_id',
         'purchase_id',
+        'return_sent_at',
+        'return_sent_by_user_id',
+        'return_received_at',
+        'return_received_by_user_id',
     ];
 
     protected $casts = [
         'date' => 'date',
         'status' => StockDistributionStatus::class,
         'received_at' => 'datetime',
+        'return_sent_at' => 'datetime',
+        'return_received_at' => 'datetime',
     ];
 
     public function getInvoiceNumberAttribute(): string
     {
         return 'INVT'.str_pad((string) $this->id, 8, '0', STR_PAD_LEFT);
+    }
+
+    public function getStatusLabelAttribute(): string
+    {
+        return $this->status?->label() ?? StockDistributionStatus::Pending->label();
+    }
+
+    /**
+     * Names of branches that have received any stock distributed from the given purchase.
+     * While stock is held at a branch, the purchase cannot be returned from the admin
+     * panel — the branch must first return the stock to the main warehouse.
+     *
+     * @return list<string>
+     */
+    public static function branchesHoldingReceivedStockForPurchase(int $purchaseId): array
+    {
+        return self::query()
+            ->where('purchase_id', $purchaseId)
+            ->where('status', '!=', StockDistributionStatus::Returned->value)
+            ->whereHas('products', fn ($q) => $q->whereNotNull('received_at'))
+            ->with('toBranch:id,name')
+            ->get()
+            ->map(fn (self $distribution): ?string => $distribution->toBranch?->name)
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
     }
 
     public function isPending(): bool
@@ -51,6 +87,16 @@ class StockDistribution extends Model
     public function isReceived(): bool
     {
         return $this->status === StockDistributionStatus::Received;
+    }
+
+    public function isReturnPending(): bool
+    {
+        return $this->status === StockDistributionStatus::ReturnPending;
+    }
+
+    public function isReturned(): bool
+    {
+        return $this->status === StockDistributionStatus::Returned;
     }
 
     public function isReceivable(): bool
@@ -120,6 +166,16 @@ class StockDistribution extends Model
     public function receivedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'received_by_user_id');
+    }
+
+    public function returnSentBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'return_sent_by_user_id');
+    }
+
+    public function returnReceivedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'return_received_by_user_id');
     }
 
     public function purchase(): BelongsTo

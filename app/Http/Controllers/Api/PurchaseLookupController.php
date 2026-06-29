@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Purchase;
 use App\Models\PurchaseReturn;
+use App\Models\StockDistribution;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -36,6 +37,16 @@ class PurchaseLookupController extends Controller
 
         if (! $purchase) {
             return response()->json(['message' => 'Purchase not found.'], 404);
+        }
+
+        $branchesHoldingStock = StockDistribution::branchesHoldingReceivedStockForPurchase($purchase->id);
+
+        if ($branchesHoldingStock !== []) {
+            return response()->json([
+                'message' => 'This purchase cannot be returned yet. Its stock was received by '
+                    .implode(', ', $branchesHoldingStock)
+                    .'. That branch must return the stock to the main warehouse before this purchase can be returned.',
+            ], 422);
         }
 
         $returnedQtyByLine = PurchaseReturn::query()

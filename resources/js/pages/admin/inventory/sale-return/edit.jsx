@@ -15,6 +15,7 @@ import {
 import { useAppToast } from '@/contexts/app-toast-context';
 import { calcSaleReturnSummary } from '@/lib/sale-return-summary';
 import { buildInitialSalePayments, computeSplitSalePayment, serializeSalePayments, splitPaymentValidationError } from '@/lib/sale-payment';
+import { toDateInputValue } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { CalendarDays, Package, RotateCcw } from 'lucide-react';
@@ -50,7 +51,7 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
     );
 
     const form = useForm({
-        date: saleReturn.date ?? '',
+        date: toDateInputValue(saleReturn.date),
         comment: saleReturn.comment ?? '',
         paid_amount: '0',
         payment_type: '5',

@@ -16,6 +16,7 @@ import {
     roundCurrency,
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
+import { toDateInputValue } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { CalendarDays, HandCoins, Package } from 'lucide-react';
@@ -32,7 +33,7 @@ export default function PurchaseReturnEdit({ purchaseReturn, paymentAccounts = [
     );
 
     const form = useForm({
-        date: purchaseReturn.date ?? '',
+        date: toDateInputValue(purchaseReturn.date),
         comment: purchaseReturn.comment ?? '',
         paid_amount: purchaseReturn.paid_amount ?? '0',
         discount: String(purchaseReturn.discount ?? '0'),

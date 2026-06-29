@@ -19,6 +19,51 @@ function formatDateInBdTimezone(date) {
     return day && month && year ? `${day} ${month}, ${year}` : BD_DATE_FORMATTER.format(date);
 }
 
+/**
+ * Normalizes any date value to yyyy-mm-dd for <input type="date"> in Asia/Dhaka.
+ */
+export function toDateInputValue(date) {
+    if (!date) {
+        return '';
+    }
+
+    if (typeof date === 'string') {
+        const trimmed = date.trim();
+
+        if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+            return trimmed;
+        }
+
+        const parsed = new Date(trimmed);
+
+        if (!Number.isNaN(parsed.getTime())) {
+            return new Intl.DateTimeFormat('en-CA', {
+                timeZone: BD_TIMEZONE,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+            }).format(parsed);
+        }
+
+        return '';
+    }
+
+    if (date instanceof Date) {
+        if (Number.isNaN(date.getTime())) {
+            return '';
+        }
+
+        return new Intl.DateTimeFormat('en-CA', {
+            timeZone: BD_TIMEZONE,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+        }).format(date);
+    }
+
+    return '';
+}
+
 export function formatBdDate(date) {
     if (!date) {
         return '—';

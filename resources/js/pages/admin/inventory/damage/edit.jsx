@@ -11,6 +11,7 @@ import {
 } from '@/components/inventory/inventory-form';
 import { ProductSearchBox } from '@/components/inventory/product-search-box';
 import { useAppToast } from '@/contexts/app-toast-context';
+import { toDateInputValue } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { AlertTriangle, CalendarDays, Package, Trash2 } from 'lucide-react';
@@ -25,7 +26,7 @@ export default function DamageEdit({ damage }) {
     const [items, setItems] = useState(damage.items ?? []);
 
     const form = useForm({
-        date: damage.date ?? '',
+        date: toDateInputValue(damage.date),
         comment: damage.comment ?? '',
         items: [],
     });

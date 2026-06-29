@@ -3,6 +3,7 @@ import { PurchaseProductSearchBox } from '@/components/inventory/purchase-produc
 import { useAppToast } from '@/contexts/app-toast-context';
 import { useFlashToast } from '@/hooks/use-flash-toast';
 import { emptyWhenZero, normalizeOptionalNumeric } from '@/lib/form-numeric';
+import { toDateInputValue } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { ArrowLeft, ArrowRightLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Save, Search, Trash2, User } from 'lucide-react';
@@ -244,7 +245,7 @@ export default function PurchaseEdit({
     useFlashToast();
     const form = useForm({
         supplier_id: purchase.supplier_id ? String(purchase.supplier_id) : '',
-        date: purchase.date ?? '',
+        date: toDateInputValue(purchase.date),
         discount: emptyWhenZero(purchase.discount),
         vat: emptyWhenZero(purchase.vat_percent),
         additional_payment: '',
@@ -438,7 +439,7 @@ export default function PurchaseEdit({
                             <Field label="Date" required error={form.errors.date}>
                                 <Input
                                     type="date"
-                                    value={form.data.date}
+                                    value={toDateInputValue(form.data.date)}
                                     onChange={(e) => form.setData('date', e.target.value)}
                                     className={`h-8 text-xs ${dateInputRightIconClassName}`}
                                 />

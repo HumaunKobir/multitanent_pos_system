@@ -12,6 +12,7 @@ import {
 import { ProductSearchBox } from '@/components/inventory/product-search-box';
 import { SmartSelect } from '@/components/smart-select';
 import { useAppToast } from '@/contexts/app-toast-context';
+import { toDateInputValue } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { ArrowRightLeft, Building2, CalendarDays, Package, Trash2 } from 'lucide-react';
@@ -27,7 +28,7 @@ export default function StockDistributionEdit({ distribution, branches = [], tod
 
     const form = useForm({
         to_branch_id: distribution.to_branch_id ?? '',
-        date: distribution.date ?? today,
+        date: toDateInputValue(distribution.date) || today,
         comment: distribution.comment ?? '',
         items: [],
     });

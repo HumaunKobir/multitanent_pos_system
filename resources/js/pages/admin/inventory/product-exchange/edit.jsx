@@ -23,6 +23,7 @@ import { Label } from '@/components/ui/label';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { useCustomerCoinInfo } from '@/hooks/use-customer-coin-info';
 import { calcProductExchangeSummary } from '@/lib/product-exchange-summary';
+import { formatBdDate, toDateInputValue } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 
 export default function ProductExchangeEdit({
@@ -71,7 +72,7 @@ export default function ProductExchangeEdit({
     }));
 
     const form = useForm({
-        date: exchange.date ?? '',
+        date: toDateInputValue(exchange.date),
         comment: exchange.comment ?? '',
         paid_amount: exchange.paid_amount ?? '0',
         payment_type: String(exchange.payment_type ?? '5'),
@@ -359,7 +360,7 @@ export default function ProductExchangeEdit({
                             {paymentOnlyEdit ? (
                                 <div>
                                     <Label className="text-xs text-muted-foreground">Exchange Date</Label>
-                                    <p className="text-sm font-medium">{form.data.date}</p>
+                                    <p className="text-sm font-medium">{formatBdDate(form.data.date)}</p>
                                 </div>
                             ) : (
                                 <DateField

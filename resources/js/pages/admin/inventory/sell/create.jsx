@@ -23,6 +23,7 @@ import {
 import { useAppToast } from '@/contexts/app-toast-context';
 import { customerModalDefaultsFromSearch } from '@/lib/customer-modal-defaults';
 import { emptyWhenZero, normalizeOptionalNumeric } from '@/lib/form-numeric';
+import { toDateInputValue } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 import { hasRichTextContent } from '@/lib/pos-print';
 import { cn } from '@/lib/utils';
@@ -848,7 +849,7 @@ function buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAcco
     if (resumedSell) {
         return {
             customer_id: resumedSell.customer_id ? String(resumedSell.customer_id) : '',
-            date: resumedSell.date ?? today,
+            date: toDateInputValue(resumedSell.date) || today,
             discount_type: resumedSell.discount_type ?? 'flat',
             discount_value: emptyWhenZero(resumedSell.discount_value),
             special_discount_id: resumedSell.special_discount_id ? String(resumedSell.special_discount_id) : '',
@@ -1214,7 +1215,7 @@ export default function SellCreate({
                                     <CalendarDays className="pointer-events-none absolute top-1/2 left-2 size-3 -translate-y-1/2 text-muted-foreground lg:size-3.5" />
                                     <Input
                                         type="date"
-                                        value={form.data.date}
+                                        value={toDateInputValue(form.data.date)}
                                         onChange={(e) => form.setData('date', e.target.value)}
                                         className={cn(
                                             'h-7 w-[7rem] rounded-none border-blue-200 bg-white pl-6 text-[11px] text-blue-950 lg:h-8 lg:w-[8.75rem] lg:pl-7 lg:text-xs',

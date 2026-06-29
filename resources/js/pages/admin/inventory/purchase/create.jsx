@@ -9,6 +9,7 @@ import { RequiredMark } from '@/components/form-field';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { useFlashToast } from '@/hooks/use-flash-toast';
 import { emptyWhenZero, normalizeOptionalNumeric } from '@/lib/form-numeric';
+import { toDateInputValue } from '@/lib/format-bd-date';
 import { Button } from '@/components/ui/button';
 import { dateInputRightIconClassName } from '@/components/ui/date-kit';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
@@ -376,7 +377,7 @@ export default function PurchaseCreate({
                             <Field label="Date" required error={form.errors.date}>
                                 <Input
                                     type="date"
-                                    value={form.data.date}
+                                    value={toDateInputValue(form.data.date)}
                                     onChange={(e) => form.setData('date', e.target.value)}
                                     className={`h-8 text-xs ${dateInputRightIconClassName}`}
                                 />

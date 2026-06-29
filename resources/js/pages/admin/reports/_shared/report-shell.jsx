@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { dateInputRightIconClassName } from '@/components/ui/date-kit';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
+import { toDateInputValue } from '@/lib/format-bd-date';
 import { cn } from '@/lib/utils';
 
 /**
@@ -141,7 +142,7 @@ export function ReportDateInput({ value, onChange, className = '' }) {
         <div className="relative">
             <Input
                 type="date"
-                value={value}
+                value={toDateInputValue(value)}
                 onChange={(e) => onChange(e.target.value)}
                 className={cn('h-9 w-full border-0 bg-transparent pl-3 shadow-none focus-visible:ring-0', dateInputRightIconClassName, className)}
             />

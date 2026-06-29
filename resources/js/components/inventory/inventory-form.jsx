@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { dateInputRightIconClassName } from '@/components/ui/date-kit';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { toDateInputValue } from '@/lib/format-bd-date';
 
 export const inputCls = 'h-7 rounded-md border-border/60 text-xs px-2 focus:border-primary';
 
@@ -775,7 +776,7 @@ export function DateField({ label, value, onChange, error, required = true }) {
         <InventoryField label={label} required={required} error={error}>
             <Input
                 type="date"
-                value={value}
+                value={toDateInputValue(value)}
                 onChange={(e) => onChange(e.target.value)}
                 className={`h-8 text-xs ${dateInputRightIconClassName}`}
             />

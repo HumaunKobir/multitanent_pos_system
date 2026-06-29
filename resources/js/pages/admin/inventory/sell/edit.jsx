@@ -25,6 +25,7 @@ import {
     splitPaymentValidationError,
 } from '@/lib/sale-payment';
 import { customerModalDefaultsFromSearch } from '@/lib/customer-modal-defaults';
+import { formatBdDate, toDateInputValue } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Save, Search, ShoppingCart, Trash2, User } from 'lucide-react';
@@ -509,7 +510,7 @@ export default function SellEdit({
     );
     const form = useForm({
         customer_id: sell.customer_id ? String(sell.customer_id) : '',
-        date: sell.date ?? '',
+        date: toDateInputValue(sell.date),
         discount_type: sell.discount_type ?? 'flat',
         discount_value: emptyWhenZero(sell.discount_value ?? sell.discount),
         special_discount_id: sell.special_discount_id ? String(sell.special_discount_id) : '',
@@ -828,11 +829,11 @@ export default function SellEdit({
                             </div>
                             <Field label="Date" required={!paymentOnlyEdit} error={form.errors.date}>
                                 {paymentOnlyEdit ? (
-                                    <p className="text-sm font-medium">{form.data.date}</p>
+                                    <p className="text-sm font-medium">{formatBdDate(form.data.date)}</p>
                                 ) : (
                                     <Input
                                         type="date"
-                                        value={form.data.date}
+                                        value={toDateInputValue(form.data.date)}
                                         onChange={(e) => form.setData('date', e.target.value)}
                                         className={`h-8 text-xs ${dateInputRightIconClassName}`}
                                     />

@@ -86,13 +86,13 @@ class InventoryAccountingService
 
         $lines = [];
 
-        // Portion the supplier refunded in cash/bank now.
+        // Portion the supplier refunded in cash/bank now (explicit account only — never default to cash in hand).
         if ($paidAmount > 0) {
-            if ($paymentAccountId !== null) {
-                $lines[] = $this->debitPaymentAccount($paymentAccountId, $paidAmount, "Cash received — Purchase Return {$serial}");
-            } else {
-                $lines[] = $this->debitLine(SystemAccountKey::CashInHand, $paidAmount, "Cash received — Purchase Return {$serial}", $branchId);
+            if ($paymentAccountId === null) {
+                throw new \RuntimeException('Select a cash or bank account for the refund amount.');
             }
+
+            $lines[] = $this->debitPaymentAccount($paymentAccountId, $paidAmount, "Cash received — Purchase Return {$serial}", $branchId);
         }
 
         // Remaining value settled against the supplier's running account.

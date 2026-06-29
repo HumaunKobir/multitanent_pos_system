@@ -98,7 +98,7 @@ export function InventoryFormActions({ cancelRoute, submitLabel, processing, dis
 
 /**
  * payment_mode: 'party' | `cash-{accountId}`
- * Backend receives payment_type only: 5 = party, 0 = cash (account selection is UI-only for now).
+ * Backend receives payment_type: 5 = party (supplier account), 0 = cash/bank refund.
  */
 export function PaymentSummaryCard({
     Icon,
@@ -120,11 +120,20 @@ export function PaymentSummaryCard({
     parentPaymentInfo = null,
     paidLabel = 'Paid Amount',
     paidReadOnly = false,
+    partyPaidHint = 'The full return amount settles on the supplier account. No cash or bank entry is posted.',
 }) {
-    const paid = parseFloat(paidAmount || 0);
-    const due = Math.max(0, grossAmount - paid);
     const isParty = paymentMode === 'party';
+    const paid = isParty ? 0 : parseFloat(paidAmount || 0);
+    const due = Math.max(0, grossAmount - paid);
     const showDiscountBreakdown = subtotalAmount != null && (discountAmount > 0.009 || vatAmount > 0.009);
+
+    function handlePaymentModeChange(mode) {
+        onPaymentModeChange(mode);
+
+        if (mode === 'party') {
+            onPaidAmountChange('0');
+        }
+    }
 
     return (
         <InventoryCard title="Summary & Payment" icon={Icon}>
@@ -181,7 +190,7 @@ export function PaymentSummaryCard({
                     <select
                         className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs shadow-xs outline-none focus:border-primary focus:ring-[3px] focus:ring-ring/50"
                         value={paymentMode}
-                        onChange={(e) => onPaymentModeChange(e.target.value)}
+                        onChange={(e) => handlePaymentModeChange(e.target.value)}
                     >
                         <option value="party">{partyLabel}</option>
                         {paymentAccounts.map((acc) => (
@@ -190,8 +199,12 @@ export function PaymentSummaryCard({
                             </option>
                         ))}
                     </select>
-                    {!isParty && (
-                        <p className="mt-1 text-[10px] text-muted-foreground">Cash / bank account (asset ledger).</p>
+                    {isParty ? (
+                        <p className="mt-1 text-[10px] text-muted-foreground">{partyPaidHint}</p>
+                    ) : (
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                            Cash / bank account (asset ledger). Enter the refund received in Paid Amount.
+                        </p>
                     )}
                 </InventoryField>
 
@@ -201,10 +214,10 @@ export function PaymentSummaryCard({
                         type="number"
                         min="0"
                         step="0.01"
-                        value={paidAmount}
+                        value={isParty ? '0' : paidAmount}
                         onChange={(e) => onPaidAmountChange(e.target.value)}
-                        readOnly={paidReadOnly}
-                        className={`${inputCls} w-28 text-right ${paidReadOnly ? 'bg-muted/50' : ''}`}
+                        readOnly={paidReadOnly || isParty}
+                        className={`${inputCls} w-28 text-right ${paidReadOnly || isParty ? 'bg-muted/50' : ''}`}
                     />
                 </div>
                 {paidError && <p className="text-xs text-destructive">{paidError}</p>}

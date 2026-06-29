@@ -140,11 +140,7 @@ class PurchaseReturnController extends Controller
                 }
 
                 $adjustments = $this->purchaseReturnAdjustments($parent, $grossAmount, (float) ($data['discount'] ?? $parent->discount));
-                $netAmount = $adjustments['net'];
-                $paidAmount = min((float) $data['paid_amount'], $netAmount);
-                $dueAmount = max(0, $netAmount - $paidAmount);
-                $paymentType = PurchaseReceivedPayment::from((int) $data['payment_type']);
-                $paymentAccountId = $data['payment_account_id'] ?? null;
+                $payment = $this->resolvePurchaseReturnPayment($data, $adjustments['net']);
 
                 $purchaseReturn = PurchaseReturn::create([
                     'branch_id' => $branchId,
@@ -155,10 +151,10 @@ class PurchaseReturnController extends Controller
                     'gross_amount' => $grossAmount,
                     'discount' => $adjustments['discount'],
                     'vat' => $adjustments['vat'],
-                    'paid_amount' => $paidAmount,
-                    'due_amount' => $dueAmount,
-                    'payment_type' => $paymentType,
-                    'payment_account_id' => $paymentAccountId,
+                    'paid_amount' => $payment['paid_amount'],
+                    'due_amount' => $payment['due_amount'],
+                    'payment_type' => $payment['payment_type'],
+                    'payment_account_id' => $payment['payment_account_id'],
                     'comment' => $data['comment'] ?? null,
                     'serial' => 'INVPR'.str_pad((string) (PurchaseReturn::max('id') + 1), 8, '0', STR_PAD_LEFT),
                 ]);
@@ -169,11 +165,11 @@ class PurchaseReturnController extends Controller
 
                 // Only the portion settled on the supplier's account reduces the running
                 // balance; the cash-refunded portion is cleared immediately in cash.
-                if ($parent->supplier_id && $dueAmount > 0) {
-                    Supplier::whereKey($parent->supplier_id)->decrement('balance', $dueAmount);
+                if ($parent->supplier_id && $payment['due_amount'] > 0) {
+                    Supplier::whereKey($parent->supplier_id)->decrement('balance', $payment['due_amount']);
                 }
 
-                $this->accounting->postPurchaseReturn($purchaseReturn->fresh(['supplier']), $paymentAccountId);
+                $this->accounting->postPurchaseReturn($purchaseReturn->fresh(['supplier']), $payment['payment_account_id']);
             });
         } catch (\Throwable $e) {
             return back()
@@ -356,21 +352,17 @@ class PurchaseReturnController extends Controller
                 }
 
                 $adjustments = $this->purchaseReturnAdjustments($parent, $grossAmount, (float) ($data['discount'] ?? $parent->discount));
-                $netAmount = $adjustments['net'];
-                $paidAmount = min((float) $data['paid_amount'], $netAmount);
-                $dueAmount = max(0, $netAmount - $paidAmount);
-                $paymentType = PurchaseReceivedPayment::from((int) $data['payment_type']);
-                $paymentAccountId = $data['payment_account_id'] ?? null;
+                $payment = $this->resolvePurchaseReturnPayment($data, $adjustments['net']);
 
                 $purchaseReturn->update([
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
                     'discount' => $adjustments['discount'],
                     'vat' => $adjustments['vat'],
-                    'paid_amount' => $paidAmount,
-                    'due_amount' => $dueAmount,
-                    'payment_type' => $paymentType,
-                    'payment_account_id' => $paymentAccountId,
+                    'paid_amount' => $payment['paid_amount'],
+                    'due_amount' => $payment['due_amount'],
+                    'payment_type' => $payment['payment_type'],
+                    'payment_account_id' => $payment['payment_account_id'],
                     'comment' => $data['comment'] ?? null,
                 ]);
 
@@ -380,11 +372,11 @@ class PurchaseReturnController extends Controller
 
                 // Only the portion settled on the supplier's account reduces the running
                 // balance; the cash-refunded portion is cleared immediately in cash.
-                if ($parent->supplier_id && $dueAmount > 0) {
-                    Supplier::whereKey($parent->supplier_id)->decrement('balance', $dueAmount);
+                if ($parent->supplier_id && $payment['due_amount'] > 0) {
+                    Supplier::whereKey($parent->supplier_id)->decrement('balance', $payment['due_amount']);
                 }
 
-                $this->accounting->postPurchaseReturn($purchaseReturn->fresh(['supplier']), $paymentAccountId);
+                $this->accounting->postPurchaseReturn($purchaseReturn->fresh(['supplier']), $payment['payment_account_id']);
             });
         } catch (\Throwable $e) {
             return back()
@@ -463,6 +455,44 @@ class PurchaseReturnController extends Controller
         if ($purchaseReturn->supplier_id && $dueAmount > 0) {
             Supplier::whereKey($purchaseReturn->supplier_id)->increment('balance', $dueAmount);
         }
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{
+     *   payment_type: PurchaseReceivedPayment,
+     *   payment_account_id: ?int,
+     *   paid_amount: float,
+     *   due_amount: float
+     * }
+     */
+    private function resolvePurchaseReturnPayment(array $data, float $netAmount): array
+    {
+        $paymentType = PurchaseReceivedPayment::from((int) $data['payment_type']);
+        $netAmount = round(max(0, $netAmount), 2);
+
+        if ($paymentType === PurchaseReceivedPayment::Supplier_Account) {
+            return [
+                'payment_type' => $paymentType,
+                'payment_account_id' => null,
+                'paid_amount' => 0.0,
+                'due_amount' => $netAmount,
+            ];
+        }
+
+        $paidAmount = round(min(max(0, (float) $data['paid_amount']), $netAmount), 2);
+        $paymentAccountId = isset($data['payment_account_id']) ? (int) $data['payment_account_id'] : null;
+
+        if ($paidAmount > 0 && $paymentAccountId === null) {
+            throw new \RuntimeException('Select a cash or bank account for the refund amount.');
+        }
+
+        return [
+            'payment_type' => $paymentType,
+            'payment_account_id' => $paymentAccountId,
+            'paid_amount' => $paidAmount,
+            'due_amount' => round(max(0, $netAmount - $paidAmount), 2),
+        ];
     }
 
     /**

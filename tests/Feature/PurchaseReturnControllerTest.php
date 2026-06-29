@@ -2,6 +2,7 @@
 
 use App\Enums\PurchaseReceivedPayment;
 use App\Enums\StockDistributionStatus;
+use App\Enums\SystemAccountKey;
 use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Product;
@@ -11,7 +12,9 @@ use App\Models\PurchaseReturn;
 use App\Models\PurchaseReturnProduct;
 use App\Models\StockDistribution;
 use App\Models\Supplier;
+use App\Models\Transaction;
 use App\Models\User;
+use App\Services\SystemAccountService;
 use Spatie\Permission\Models\Permission;
 
 function purchaseReturnUser(array $permissions = [
@@ -144,7 +147,7 @@ test('purchase return is blocked while distributed stock is held at a branch', f
     expect(PurchaseReturn::query()->where('purchase_id', $purchase->id)->exists())->toBeFalse();
 });
 
-test('purchase return stores proportional discount and vat and caps paid at net', function () {
+test('purchase return on supplier account ignores paid amount and settles full net as due', function () {
     $user = purchaseReturnUser();
     ['product' => $product, 'batch' => $batch] = purchaseReturnProduct(10, $user->branch_id);
     $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id]);
@@ -181,8 +184,9 @@ test('purchase return stores proportional discount and vat and caps paid at net'
     expect((float) $purchaseReturn->discount)->toBe(50.0);
     expect((float) $purchaseReturn->vat)->toBe(25.0);
     expect((float) $purchaseReturn->net_amount)->toBe(475.0);
-    expect((float) $purchaseReturn->paid_amount)->toBe(475.0);
-    expect((float) $purchaseReturn->due_amount)->toBe(0.0);
+    expect((float) $purchaseReturn->paid_amount)->toBe(0.0);
+    expect((float) $purchaseReturn->due_amount)->toBe(475.0);
+    expect($purchaseReturn->payment_account_id)->toBeNull();
 });
 
 test('purchase return on supplier account decreases supplier balance by net amount', function () {
@@ -222,6 +226,7 @@ test('purchase return on supplier account decreases supplier balance by net amou
 
 test('purchase return with partial cash refund only reduces supplier balance by the due portion', function () {
     $user = purchaseReturnUser();
+    $cashInHand = seedAccountingAccounts(100000, $user->branch_id);
     ['product' => $product, 'batch' => $batch] = purchaseReturnProduct(10, $user->branch_id);
     $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id, 'balance' => 950]);
 
@@ -244,6 +249,7 @@ test('purchase return with partial cash refund only reduces supplier balance by 
             'date' => now()->format('Y-m-d'),
             'paid_amount' => '200',
             'payment_type' => (string) PurchaseReceivedPayment::Cash->value,
+            'payment_account_id' => $cashInHand->id,
             'items' => [
                 ['purchase_product_id' => $purchaseProduct->id, 'quantity' => '5'],
             ],
@@ -255,11 +261,45 @@ test('purchase return with partial cash refund only reduces supplier balance by 
     expect((float) $purchaseReturn->net_amount)->toBe(475.0);
     expect((float) $purchaseReturn->paid_amount)->toBe(200.0);
     expect((float) $purchaseReturn->due_amount)->toBe(275.0);
+    expect($purchaseReturn->payment_account_id)->toBe($cashInHand->id);
 
     $supplier->refresh();
 
     // Only the unpaid (due) portion is settled against the supplier account.
     expect((float) $supplier->balance)->toBe(675.0); // 950 - 275
+});
+
+test('purchase return cash refund requires a payment account', function () {
+    $user = purchaseReturnUser();
+    ['product' => $product, 'batch' => $batch] = purchaseReturnProduct(10, $user->branch_id);
+    $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id]);
+
+    $purchase = purchaseReturnPurchase($user, $supplier, [
+        'gross' => 1000,
+        'discount' => 0,
+        'vat' => 0,
+        'paid' => 1000,
+    ]);
+
+    $purchaseProduct = PurchaseProduct::factory()
+        ->forPurchase($purchase)
+        ->forProduct($product)
+        ->withBatch($batch->id, 10)
+        ->create();
+
+    $this->actingAs($user)
+        ->post(route('inventory.purchase-return.store'), [
+            'purchase_id' => $purchase->id,
+            'date' => now()->format('Y-m-d'),
+            'paid_amount' => '100',
+            'payment_type' => (string) PurchaseReceivedPayment::Cash->value,
+            'items' => [
+                ['purchase_product_id' => $purchaseProduct->id, 'quantity' => '5'],
+            ],
+        ])
+        ->assertSessionHasErrors('items');
+
+    expect(PurchaseReturn::query()->where('purchase_id', $purchase->id)->exists())->toBeFalse();
 });
 
 test('purchase return update recalculates discount and vat', function () {
@@ -375,4 +415,149 @@ test('purchase return destroy rolls back supplier balance by net amount', functi
     $supplier->refresh();
 
     expect((float) $supplier->balance)->toBe(0.0);
+});
+
+test('purchase return destroy reverses ledger balances and restores batch stock after full supplier account return', function () {
+    $user = purchaseReturnUser();
+    seedAccountingAccounts(10000, $user->branch_id);
+
+    $inventory = SystemAccountService::resolve(SystemAccountKey::ProductInventory, $user->branch_id);
+    $payables = SystemAccountService::resolve(SystemAccountKey::SupplierPayables, $user->branch_id);
+
+    $inventoryBefore = (float) $inventory->fresh()->current_balance;
+    $payablesBefore = (float) $payables->fresh()->current_balance;
+
+    ['product' => $product, 'batch' => $batch] = purchaseReturnProduct(20, $user->branch_id);
+    $batchAvailableBefore = (float) $batch->available;
+
+    $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id, 'balance' => 950.0]);
+
+    $purchase = purchaseReturnPurchase($user, $supplier, [
+        'gross' => 1000,
+        'discount' => 100,
+        'vat' => 50,
+        'paid' => 950,
+    ]);
+
+    $purchaseProduct = PurchaseProduct::factory()
+        ->forPurchase($purchase)
+        ->forProduct($product)
+        ->withBatch($batch->id, 10)
+        ->create();
+
+    $this->actingAs($user)
+        ->post(route('inventory.purchase-return.store'), [
+            'purchase_id' => $purchase->id,
+            'date' => now()->format('Y-m-d'),
+            'paid_amount' => '0',
+            'payment_type' => (string) PurchaseReceivedPayment::Supplier_Account->value,
+            'items' => [
+                ['purchase_product_id' => $purchaseProduct->id, 'quantity' => '5'],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase-return.index'));
+
+    $purchaseReturn = PurchaseReturn::query()->latest('id')->first();
+
+    expect($purchaseReturn)->not->toBeNull();
+    expect(Transaction::query()
+        ->where('source_type', PurchaseReturn::class)
+        ->where('source_id', $purchaseReturn->id)
+        ->exists())->toBeTrue();
+
+    $batch->refresh();
+    $supplier->refresh();
+    $inventory->refresh();
+    $payables->refresh();
+
+    expect((float) $batch->available)->toBe($batchAvailableBefore - 5);
+    expect((float) $supplier->balance)->toBe(475.0);
+    expect((float) $inventory->current_balance)->toBeLessThan($inventoryBefore);
+    expect((float) $payables->current_balance)->toBeLessThan($payablesBefore);
+
+    $this->actingAs($user)
+        ->delete(route('inventory.purchase-return.destroy', $purchaseReturn))
+        ->assertRedirect(route('inventory.purchase-return.index'));
+
+    $batch->refresh();
+    $supplier->refresh();
+    $inventory->refresh();
+    $payables->refresh();
+
+    expect(PurchaseReturn::query()->whereKey($purchaseReturn->id)->exists())->toBeFalse();
+    expect(Transaction::query()
+        ->where('source_type', PurchaseReturn::class)
+        ->where('source_id', $purchaseReturn->id)
+        ->exists())->toBeFalse();
+    expect((float) $batch->available)->toBe($batchAvailableBefore);
+    expect((float) $supplier->balance)->toBe(950.0);
+    expect((float) $inventory->current_balance)->toBe($inventoryBefore);
+    expect((float) $payables->current_balance)->toBe($payablesBefore);
+});
+
+test('purchase return destroy reverses cash and supplier ledger balances for partial cash refund', function () {
+    $user = purchaseReturnUser();
+    $cashInHand = seedAccountingAccounts(10000, $user->branch_id);
+
+    $inventory = SystemAccountService::resolve(SystemAccountKey::ProductInventory, $user->branch_id);
+    $payables = SystemAccountService::resolve(SystemAccountKey::SupplierPayables, $user->branch_id);
+
+    $cashBefore = (float) $cashInHand->fresh()->current_balance;
+    $inventoryBefore = (float) $inventory->fresh()->current_balance;
+    $payablesBefore = (float) $payables->fresh()->current_balance;
+
+    ['product' => $product, 'batch' => $batch] = purchaseReturnProduct(20, $user->branch_id);
+    $batchAvailableBefore = (float) $batch->available;
+
+    $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id, 'balance' => 950.0]);
+
+    $purchase = purchaseReturnPurchase($user, $supplier, [
+        'gross' => 1000,
+        'discount' => 100,
+        'vat' => 50,
+        'paid' => 950,
+    ]);
+
+    $purchaseProduct = PurchaseProduct::factory()
+        ->forPurchase($purchase)
+        ->forProduct($product)
+        ->withBatch($batch->id, 10)
+        ->create();
+
+    $this->actingAs($user)
+        ->post(route('inventory.purchase-return.store'), [
+            'purchase_id' => $purchase->id,
+            'date' => now()->format('Y-m-d'),
+            'paid_amount' => '200',
+            'payment_type' => (string) PurchaseReceivedPayment::Cash->value,
+            'payment_account_id' => $cashInHand->id,
+            'items' => [
+                ['purchase_product_id' => $purchaseProduct->id, 'quantity' => '5'],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase-return.index'));
+
+    $purchaseReturn = PurchaseReturn::query()->latest('id')->first();
+
+    $cashInHand->refresh();
+    $supplier->refresh();
+
+    expect((float) $cashInHand->current_balance)->toBe($cashBefore + 200.0);
+    expect((float) $supplier->balance)->toBe(675.0);
+
+    $this->actingAs($user)
+        ->delete(route('inventory.purchase-return.destroy', $purchaseReturn))
+        ->assertRedirect(route('inventory.purchase-return.index'));
+
+    $batch->refresh();
+    $cashInHand->refresh();
+    $supplier->refresh();
+    $inventory->refresh();
+    $payables->refresh();
+
+    expect((float) $batch->available)->toBe($batchAvailableBefore);
+    expect((float) $cashInHand->current_balance)->toBe($cashBefore);
+    expect((float) $supplier->balance)->toBe(950.0);
+    expect((float) $inventory->current_balance)->toBe($inventoryBefore);
+    expect((float) $payables->current_balance)->toBe($payablesBefore);
 });

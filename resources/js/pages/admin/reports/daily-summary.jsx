@@ -12,6 +12,8 @@ import {
     HandCoins,
     Receipt,
     ReceiptText,
+    Repeat,
+    Undo2,
     User,
     Wallet,
 } from 'lucide-react';
@@ -107,7 +109,39 @@ const sections = [
         ringClass: 'ring-amber-500/20',
         rows: (s) => [
             { label: 'Returns', value: s.sale_returns?.count ?? 0, plain: true },
-            { label: 'Amount', value: <MoneyCell value={s.sale_returns?.amount} />, highlight: true },
+            { label: 'Amount', value: <MoneyCell value={s.sale_returns?.amount} /> },
+            { label: 'Refunded', value: <MoneyCell value={s.sale_returns?.paid} /> },
+            { label: 'Refund due', value: <MoneyCell value={s.sale_returns?.due} />, highlight: true },
+        ],
+    },
+    {
+        key: 'purchase_returns',
+        title: 'Purchase Returns',
+        icon: Undo2,
+        headerClass: 'bg-orange-600',
+        bodyClass: 'from-orange-50/90 to-white dark:from-orange-950/30 dark:to-card',
+        accentClass: 'text-orange-700 dark:text-orange-300',
+        ringClass: 'ring-orange-500/20',
+        rows: (s) => [
+            { label: 'Returns', value: s.purchase_returns?.count ?? 0, plain: true },
+            { label: 'Amount', value: <MoneyCell value={s.purchase_returns?.amount} /> },
+            { label: 'Received', value: <MoneyCell value={s.purchase_returns?.paid} /> },
+            { label: 'Due', value: <MoneyCell value={s.purchase_returns?.due} />, highlight: true },
+        ],
+    },
+    {
+        key: 'product_exchanges',
+        title: 'Product Exchanges',
+        icon: Repeat,
+        headerClass: 'bg-fuchsia-600',
+        bodyClass: 'from-fuchsia-50/90 to-white dark:from-fuchsia-950/30 dark:to-card',
+        accentClass: 'text-fuchsia-700 dark:text-fuchsia-300',
+        ringClass: 'ring-fuchsia-500/20',
+        rows: (s) => [
+            { label: 'Exchanges', value: s.product_exchanges?.count ?? 0, plain: true },
+            { label: 'Net', value: <MoneyCell value={s.product_exchanges?.amount} /> },
+            { label: 'Collected', value: <MoneyCell value={s.product_exchanges?.paid} /> },
+            { label: 'Price diff', value: <MoneyCell value={s.product_exchanges?.difference} />, highlight: true },
         ],
     },
     {
@@ -118,7 +152,10 @@ const sections = [
         bodyClass: 'from-red-50/90 to-white dark:from-red-950/30 dark:to-card',
         accentClass: 'text-red-700 dark:text-red-300',
         ringClass: 'ring-red-500/20',
-        rows: (s) => [{ label: 'Records', value: s.damages?.count ?? 0, plain: true, highlight: true }],
+        rows: (s) => [
+            { label: 'Records', value: s.damages?.count ?? 0, plain: true },
+            { label: 'Amount', value: <MoneyCell value={s.damages?.amount} />, highlight: true },
+        ],
     },
     {
         key: 'vouchers',
@@ -154,6 +191,16 @@ const sections = [
         ],
     },
 ];
+
+const sectionByKey = Object.fromEntries(sections.map((section) => [section.key, section]));
+
+const salesGroupKeys = ['sales', 'sale_returns', 'product_exchanges'];
+const purchaseGroupKeys = ['purchases', 'purchase_returns', 'damages'];
+const groupedKeys = new Set([...salesGroupKeys, ...purchaseGroupKeys]);
+
+const salesGroup = salesGroupKeys.map((key) => sectionByKey[key]);
+const purchaseGroup = purchaseGroupKeys.map((key) => sectionByKey[key]);
+const otherSections = sections.filter((section) => !groupedKeys.has(section.key));
 
 function SummaryStatCard({ section, summary }) {
     const Icon = section.icon;
@@ -242,6 +289,27 @@ function TransactionItems({ title, items = [], type, accentClass }) {
     );
 }
 
+function ModuleCell({ count, amount, accentClass, borderClass = '' }) {
+    return (
+        <td className={`px-3 py-2.5 font-mono tabular-nums ${borderClass}`}>
+            <div className="leading-tight">
+                <div className="text-[11px] text-muted-foreground">{count ?? 0}</div>
+                <div className={accentClass}>
+                    <MoneyCell value={amount} />
+                </div>
+            </div>
+        </td>
+    );
+}
+
+function AmountCell({ amount, accentClass, borderClass = '' }) {
+    return (
+        <td className={`px-3 py-2.5 font-mono tabular-nums ${accentClass} ${borderClass}`}>
+            <MoneyCell value={amount} />
+        </td>
+    );
+}
+
 function StaffBreakdownRow({ row }) {
     const [expanded, setExpanded] = useState(true);
     const salesItems = row.sales_items ?? [];
@@ -271,30 +339,32 @@ function StaffBreakdownRow({ row }) {
                     </div>
                 </td>
                 <td className="px-4 py-2.5">{row.user_name}</td>
-                <td className="px-4 py-2.5 font-mono tabular-nums">{row.sales?.count ?? 0}</td>
-                <td className="px-4 py-2.5 font-mono tabular-nums text-emerald-700 dark:text-emerald-400">
-                    <MoneyCell value={row.sales?.gross} />
-                </td>
-                <td className="px-4 py-2.5 font-mono tabular-nums">
-                    <MoneyCell value={row.sales?.paid} />
-                </td>
-                <td className="px-4 py-2.5 font-mono tabular-nums">{row.purchases?.count ?? 0}</td>
-                <td className="px-4 py-2.5 font-mono tabular-nums text-blue-700 dark:text-blue-400">
-                    <MoneyCell value={row.purchases?.gross} />
-                </td>
-                <td className="px-4 py-2.5 font-mono tabular-nums">
-                    <MoneyCell value={row.purchases?.paid} />
-                </td>
-                <td className="px-4 py-2.5 font-mono tabular-nums text-violet-700 dark:text-violet-400">
-                    <MoneyCell value={row.supplier_payments?.amount} />
-                </td>
-                <td className="px-4 py-2.5 font-mono tabular-nums text-teal-700 dark:text-teal-400">
-                    <MoneyCell value={row.customer_collections?.amount} />
-                </td>
+
+                {/* Sales-related modules */}
+                <ModuleCell
+                    count={row.sales?.count}
+                    amount={row.sales?.gross}
+                    accentClass="text-emerald-700 dark:text-emerald-400"
+                    borderClass="border-l border-black/5 dark:border-white/10"
+                />
+                <ModuleCell count={row.sale_returns?.count} amount={row.sale_returns?.amount} accentClass="text-amber-700 dark:text-amber-400" />
+                <ModuleCell count={row.product_exchanges?.count} amount={row.product_exchanges?.amount} accentClass="text-fuchsia-700 dark:text-fuchsia-400" />
+                <AmountCell amount={row.customer_collections?.amount} accentClass="text-teal-700 dark:text-teal-400" />
+
+                {/* Purchase-related modules */}
+                <ModuleCell
+                    count={row.purchases?.count}
+                    amount={row.purchases?.gross}
+                    accentClass="text-blue-700 dark:text-blue-400"
+                    borderClass="border-l border-black/5 dark:border-white/10"
+                />
+                <ModuleCell count={row.purchase_returns?.count} amount={row.purchase_returns?.amount} accentClass="text-orange-700 dark:text-orange-400" />
+                <ModuleCell count={row.damages?.count} amount={row.damages?.amount} accentClass="text-red-700 dark:text-red-400" />
+                <AmountCell amount={row.supplier_payments?.amount} accentClass="text-violet-700 dark:text-violet-400" />
             </tr>
             {expanded && hasDetails ? (
                 <tr key={`${rowKey}-details`} className="border-b bg-muted/10 last:border-b-0">
-                    <td colSpan={8} className="px-4 py-3">
+                    <td colSpan={10} className="px-4 py-3">
                         <div className="grid gap-4 lg:grid-cols-2">
                             <TransactionItems
                                 title="Sales invoices"
@@ -448,10 +518,22 @@ export default function DailySummaryReport({
                     />
                 </div>
 
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-                    {sections.map((section) => (
-                        <SummaryStatCard key={section.key} section={section} summary={s} />
-                    ))}
+                <div className="space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {salesGroup.map((section) => (
+                            <SummaryStatCard key={section.key} section={section} summary={s} />
+                        ))}
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {purchaseGroup.map((section) => (
+                            <SummaryStatCard key={section.key} section={section} summary={s} />
+                        ))}
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {otherSections.map((section) => (
+                            <SummaryStatCard key={section.key} section={section} summary={s} />
+                        ))}
+                    </div>
                 </div>
 
                 {staffBreakdown.length > 0 ? (
@@ -461,23 +543,38 @@ export default function DailySummaryReport({
                                 Branch &amp; User Performance
                             </h3>
                             <p className="mt-0.5 text-xs text-muted-foreground">
-                                Sales and purchase totals grouped by branch and user. Expand a row to see each invoice amount.
+                                Sales-related and purchase-related modules grouped by branch and user. Each module cell shows
+                                count over amount. Expand a row to see each invoice amount.
                             </p>
                         </div>
                         <div className="overflow-x-auto">
                             <table className="w-full min-w-[1200px] text-sm">
                                 <thead>
                                     <tr className="border-b bg-muted/20 text-left">
-                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Branch</th>
-                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">User</th>
-                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Sales</th>
-                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Sales gross</th>
-                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Sales collected</th>
-                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Purchases</th>
-                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Purchase gross</th>
-                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Purchase paid</th>
-                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Supplier paid</th>
-                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Customer collected</th>
+                                        <th className="px-4 py-2 text-[10px] font-semibold uppercase tracking-widest" rowSpan={2}>Branch</th>
+                                        <th className="px-4 py-2 text-[10px] font-semibold uppercase tracking-widest" rowSpan={2}>User</th>
+                                        <th
+                                            className="border-l border-black/5 bg-emerald-50/60 px-3 py-2 text-center text-[10px] font-semibold uppercase tracking-widest text-emerald-800 dark:border-white/10 dark:bg-emerald-950/30 dark:text-emerald-300"
+                                            colSpan={4}
+                                        >
+                                            Sales related
+                                        </th>
+                                        <th
+                                            className="border-l border-black/5 bg-blue-50/60 px-3 py-2 text-center text-[10px] font-semibold uppercase tracking-widest text-blue-800 dark:border-white/10 dark:bg-blue-950/30 dark:text-blue-300"
+                                            colSpan={4}
+                                        >
+                                            Purchase related
+                                        </th>
+                                    </tr>
+                                    <tr className="border-b bg-muted/20 text-left">
+                                        <th className="border-l border-black/5 px-3 py-2 text-[10px] font-semibold uppercase tracking-widest dark:border-white/10">Sales</th>
+                                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest">Sale returns</th>
+                                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest">Exchanges</th>
+                                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest">Collected</th>
+                                        <th className="border-l border-black/5 px-3 py-2 text-[10px] font-semibold uppercase tracking-widest dark:border-white/10">Purchases</th>
+                                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest">Purch. returns</th>
+                                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest">Damage</th>
+                                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest">Supplier paid</th>
                                     </tr>
                                 </thead>
                                 <tbody>

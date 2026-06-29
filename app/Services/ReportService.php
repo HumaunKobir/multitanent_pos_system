@@ -17,6 +17,7 @@ use App\Models\Product;
 use App\Models\ProductExchange;
 use App\Models\ProductInOutLog;
 use App\Models\Purchase;
+use App\Models\PurchaseReturn;
 use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\StockDistribution;
@@ -32,6 +33,8 @@ use Illuminate\Support\Facades\Auth;
 
 class ReportService
 {
+    public function __construct(private InventoryCostService $costService) {}
+
     /**
      * @return array{customer: array<string, mixed>|null, entries: list<array<string, mixed>>, totals: array<string, float>}
      */
@@ -488,6 +491,8 @@ class ReportService
         $paymentsQuery = SupplierPayment::query()->whereDate('date', $date);
         $collectionsQuery = CustomerPayment::query()->whereDate('date', $date);
         $returnsQuery = SaleReturn::query()->whereDate('date', $date);
+        $purchaseReturnsQuery = PurchaseReturn::query()->whereDate('date', $date);
+        $exchangesQuery = ProductExchange::query()->whereDate('date', $date);
         $damagesQuery = Damage::query()->whereDate('date', $date);
         $vouchersQuery = Voucher::query()->whereDate('date', $date);
 
@@ -497,6 +502,8 @@ class ReportService
             $paymentsQuery->where('branch_id', $effectiveBranchId);
             $collectionsQuery->where('branch_id', $effectiveBranchId);
             $returnsQuery->where('branch_id', $effectiveBranchId);
+            $purchaseReturnsQuery->where('branch_id', $effectiveBranchId);
+            $exchangesQuery->where('branch_id', $effectiveBranchId);
             $damagesQuery->where('branch_id', $effectiveBranchId);
             $vouchersQuery->where('branch_id', $effectiveBranchId);
         }
@@ -507,6 +514,8 @@ class ReportService
             $paymentsQuery,
             $collectionsQuery,
             $returnsQuery,
+            $purchaseReturnsQuery,
+            $exchangesQuery,
             $damagesQuery,
             $vouchersQuery,
             $effectiveUserId,
@@ -516,6 +525,9 @@ class ReportService
         $sales = $salesQuery->with(['products:id,sell_id,discount'])->get();
         $purchases = $purchasesQuery->get();
         $returns = $returnsQuery->get();
+        $purchaseReturns = $purchaseReturnsQuery->get();
+        $exchanges = $exchangesQuery->get();
+        $damages = $damagesQuery->with('products')->get();
         $vouchers = $vouchersQuery->get(['type', 'total_amount']);
 
         $salesNet = $sales->sum(fn (Sell $s) => $s->net_amount);
@@ -553,9 +565,24 @@ class ReportService
             'sale_returns' => [
                 'count' => $returns->count(),
                 'amount' => round($returns->sum(fn (SaleReturn $return) => $return->net_amount), 2),
+                'paid' => round($returns->sum(fn (SaleReturn $return) => (float) $return->paid_amount), 2),
+                'due' => round($returns->sum(fn (SaleReturn $return) => max(0, $return->net_amount - (float) $return->paid_amount)), 2),
+            ],
+            'purchase_returns' => [
+                'count' => $purchaseReturns->count(),
+                'amount' => round($purchaseReturns->sum(fn (PurchaseReturn $return) => $return->net_amount), 2),
+                'paid' => round($purchaseReturns->sum(fn (PurchaseReturn $return) => (float) $return->paid_amount), 2),
+                'due' => round($purchaseReturns->sum(fn (PurchaseReturn $return) => (float) $return->due_amount), 2),
+            ],
+            'product_exchanges' => [
+                'count' => $exchanges->count(),
+                'amount' => round($exchanges->sum(fn (ProductExchange $exchange) => (float) $exchange->net_amount), 2),
+                'paid' => round($exchanges->sum(fn (ProductExchange $exchange) => (float) $exchange->paid_amount), 2),
+                'difference' => round($exchanges->sum(fn (ProductExchange $exchange) => (float) $exchange->price_difference), 2),
             ],
             'damages' => [
-                'count' => $damagesQuery->count(),
+                'count' => $damages->count(),
+                'amount' => round($damages->sum(fn (Damage $damage) => $this->costService->costForDamage($damage)), 2),
             ],
             'vouchers' => [
                 'income' => [
@@ -601,12 +628,20 @@ class ReportService
 
         $paymentsQuery = SupplierPayment::query()->whereDate('date', $date);
         $collectionsQuery = CustomerPayment::query()->whereDate('date', $date);
+        $saleReturnsQuery = SaleReturn::query()->whereDate('date', $date);
+        $exchangesQuery = ProductExchange::query()->whereDate('date', $date);
+        $purchaseReturnsQuery = PurchaseReturn::query()->whereDate('date', $date);
+        $damagesQuery = Damage::query()->whereDate('date', $date)->with('products');
 
         if ($branchId !== null) {
             $salesQuery->where('branch_id', $branchId);
             $purchasesQuery->where('branch_id', $branchId);
             $paymentsQuery->where('branch_id', $branchId);
             $collectionsQuery->where('branch_id', $branchId);
+            $saleReturnsQuery->where('branch_id', $branchId);
+            $exchangesQuery->where('branch_id', $branchId);
+            $purchaseReturnsQuery->where('branch_id', $branchId);
+            $damagesQuery->where('branch_id', $branchId);
         }
 
         if ($userId !== null) {
@@ -614,16 +649,28 @@ class ReportService
             $purchasesQuery->where('user_id', $userId);
             $paymentsQuery->where('created_by', $userId);
             $collectionsQuery->where('created_by', $userId);
+            $saleReturnsQuery->where('user_id', $userId);
+            $exchangesQuery->where('user_id', $userId);
+            $purchaseReturnsQuery->where('user_id', $userId);
+            $damagesQuery->where('user_id', $userId);
         }
 
         $salesByStaff = $salesQuery->get()->groupBy(fn (Sell $sell) => "{$sell->branch_id}-{$sell->user_id}");
         $purchasesByStaff = $purchasesQuery->get()->groupBy(fn (Purchase $purchase) => "{$purchase->branch_id}-{$purchase->user_id}");
         $paymentsByStaff = $paymentsQuery->get()->groupBy(fn (SupplierPayment $payment) => "{$payment->branch_id}-{$payment->created_by}");
         $collectionsByStaff = $collectionsQuery->get()->groupBy(fn (CustomerPayment $payment) => "{$payment->branch_id}-{$payment->created_by}");
+        $saleReturnsByStaff = $saleReturnsQuery->get()->groupBy(fn (SaleReturn $return) => "{$return->branch_id}-{$return->user_id}");
+        $exchangesByStaff = $exchangesQuery->get()->groupBy(fn (ProductExchange $exchange) => "{$exchange->branch_id}-{$exchange->user_id}");
+        $purchaseReturnsByStaff = $purchaseReturnsQuery->get()->groupBy(fn (PurchaseReturn $return) => "{$return->branch_id}-{$return->user_id}");
+        $damagesByStaff = $damagesQuery->get()->groupBy(fn (Damage $damage) => "{$damage->branch_id}-{$damage->user_id}");
         $staffKeys = $salesByStaff->keys()
             ->merge($purchasesByStaff->keys())
             ->merge($paymentsByStaff->keys())
             ->merge($collectionsByStaff->keys())
+            ->merge($saleReturnsByStaff->keys())
+            ->merge($exchangesByStaff->keys())
+            ->merge($purchaseReturnsByStaff->keys())
+            ->merge($damagesByStaff->keys())
             ->unique();
 
         $branchIds = $staffKeys
@@ -645,12 +692,17 @@ class ReportService
             ->pluck('name', 'id');
 
         return $staffKeys
-            ->map(function (string $key) use ($salesByStaff, $purchasesByStaff, $paymentsByStaff, $collectionsByStaff, $branchNames, $userNames) {
+            ->map(function (string $key) use ($salesByStaff, $purchasesByStaff, $paymentsByStaff, $collectionsByStaff, $saleReturnsByStaff, $exchangesByStaff, $purchaseReturnsByStaff, $damagesByStaff, $branchNames, $userNames) {
                 $sales = $salesByStaff->get($key, collect());
                 $purchases = $purchasesByStaff->get($key, collect());
                 $payments = $paymentsByStaff->get($key, collect());
                 $collections = $collectionsByStaff->get($key, collect());
-                $sample = $sales->first() ?? $purchases->first() ?? $payments->first() ?? $collections->first();
+                $saleReturns = $saleReturnsByStaff->get($key, collect());
+                $exchanges = $exchangesByStaff->get($key, collect());
+                $purchaseReturns = $purchaseReturnsByStaff->get($key, collect());
+                $damages = $damagesByStaff->get($key, collect());
+                $sample = $sales->first() ?? $purchases->first() ?? $payments->first() ?? $collections->first()
+                    ?? $saleReturns->first() ?? $exchanges->first() ?? $purchaseReturns->first() ?? $damages->first();
 
                 if ($sample === null) {
                     return null;
@@ -694,6 +746,22 @@ class ReportService
                         'count' => $collections->count(),
                         'amount' => round((float) $collections->sum('amount'), 2),
                     ],
+                    'sale_returns' => [
+                        'count' => $saleReturns->count(),
+                        'amount' => round($saleReturns->sum(fn (SaleReturn $return) => $return->net_amount), 2),
+                    ],
+                    'product_exchanges' => [
+                        'count' => $exchanges->count(),
+                        'amount' => round($exchanges->sum(fn (ProductExchange $exchange) => (float) $exchange->net_amount), 2),
+                    ],
+                    'purchase_returns' => [
+                        'count' => $purchaseReturns->count(),
+                        'amount' => round($purchaseReturns->sum(fn (PurchaseReturn $return) => $return->net_amount), 2),
+                    ],
+                    'damages' => [
+                        'count' => $damages->count(),
+                        'amount' => round($damages->sum(fn (Damage $damage) => $this->costService->costForDamage($damage)), 2),
+                    ],
                     'sales_items' => $sales
                         ->sortBy('id')
                         ->values()
@@ -714,7 +782,11 @@ class ReportService
                 return ($row['sales']['count'] ?? 0) > 0
                     || ($row['purchases']['count'] ?? 0) > 0
                     || ($row['supplier_payments']['count'] ?? 0) > 0
-                    || ($row['customer_collections']['count'] ?? 0) > 0;
+                    || ($row['customer_collections']['count'] ?? 0) > 0
+                    || ($row['sale_returns']['count'] ?? 0) > 0
+                    || ($row['product_exchanges']['count'] ?? 0) > 0
+                    || ($row['purchase_returns']['count'] ?? 0) > 0
+                    || ($row['damages']['count'] ?? 0) > 0;
             })
             ->sortBy([
                 ['branch_name', 'asc'],
@@ -730,6 +802,8 @@ class ReportService
         Builder $paymentsQuery,
         Builder $collectionsQuery,
         Builder $returnsQuery,
+        Builder $purchaseReturnsQuery,
+        Builder $exchangesQuery,
         Builder $damagesQuery,
         Builder $vouchersQuery,
         ?int $userId,
@@ -739,6 +813,8 @@ class ReportService
             $salesQuery->where('user_id', $userId);
             $purchasesQuery->where('user_id', $userId);
             $returnsQuery->where('user_id', $userId);
+            $purchaseReturnsQuery->where('user_id', $userId);
+            $exchangesQuery->where('user_id', $userId);
             $damagesQuery->where('user_id', $userId);
             $vouchersQuery->where('created_by', $userId);
         }

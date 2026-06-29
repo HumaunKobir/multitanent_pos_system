@@ -11,8 +11,12 @@ use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Models\Customer;
 use App\Models\CustomerPayment;
+use App\Models\Damage;
+use App\Models\DamageProduct;
 use App\Models\Product;
+use App\Models\ProductExchange;
 use App\Models\Purchase;
+use App\Models\PurchaseReturn;
 use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\SellProduct;
@@ -690,7 +694,58 @@ test('daily summary applies all sell discount types and sale return net amount',
         'date' => $date,
         'gross_amount' => 300,
         'discount_amount' => 45,
-        'paid_amount' => 255,
+        'paid_amount' => 200,
+    ]);
+
+    $supplier = Supplier::factory()->create(['branch_id' => $branch->id]);
+    $purchase = Purchase::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $staff->id,
+        'supplier_id' => $supplier->id,
+        'date' => $date,
+    ]);
+
+    PurchaseReturn::query()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $staff->id,
+        'purchase_id' => $purchase->id,
+        'supplier_id' => $supplier->id,
+        'date' => $date,
+        'gross_amount' => 500,
+        'discount' => 60,
+        'vat' => 40,
+        'paid_amount' => 400,
+        'due_amount' => 80,
+    ]);
+
+    ProductExchange::query()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $staff->id,
+        'sell_id' => $sell->id,
+        'customer_id' => null,
+        'date' => $date,
+        'gross_amount' => 200,
+        'net_amount' => 175,
+        'paid_amount' => 25,
+        'price_difference' => 25,
+    ]);
+
+    $damageBatch = Batch::factory()->for($product)->withStock(10)->create([
+        'branch_id' => $branch->id,
+        'purchase_price' => 50,
+    ]);
+    $damage = Damage::query()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $staff->id,
+        'date' => $date,
+    ]);
+    DamageProduct::query()->create([
+        'branch_id' => $branch->id,
+        'damage_id' => $damage->id,
+        'product_id' => $product->id,
+        'variation_id' => null,
+        'quantity' => 2,
+        'batches' => [$damageBatch->id => 2],
     ]);
 
     $this->actingAs($admin)
@@ -699,7 +754,27 @@ test('daily summary applies all sell discount types and sale return net amount',
         ->assertInertia(fn (Assert $page) => $page
             ->where('summary.sales.gross', 785)
             ->where('summary.sale_returns.amount', 255)
-            ->where('summary.staff_breakdown.0.sales.gross', 785));
+            ->where('summary.sale_returns.paid', 200)
+            ->where('summary.sale_returns.due', 55)
+            ->where('summary.purchase_returns.amount', 480)
+            ->where('summary.purchase_returns.count', 1)
+            ->where('summary.purchase_returns.paid', 400)
+            ->where('summary.purchase_returns.due', 80)
+            ->where('summary.product_exchanges.amount', 175)
+            ->where('summary.product_exchanges.count', 1)
+            ->where('summary.product_exchanges.paid', 25)
+            ->where('summary.product_exchanges.difference', 25)
+            ->where('summary.damages.count', 1)
+            ->where('summary.damages.amount', 100)
+            ->where('summary.staff_breakdown.0.sales.gross', 785)
+            ->where('summary.staff_breakdown.0.sale_returns.count', 1)
+            ->where('summary.staff_breakdown.0.sale_returns.amount', 255)
+            ->where('summary.staff_breakdown.0.product_exchanges.count', 1)
+            ->where('summary.staff_breakdown.0.product_exchanges.amount', 175)
+            ->where('summary.staff_breakdown.0.purchase_returns.count', 1)
+            ->where('summary.staff_breakdown.0.purchase_returns.amount', 480)
+            ->where('summary.staff_breakdown.0.damages.count', 1)
+            ->where('summary.staff_breakdown.0.damages.amount', 100));
 });
 
 test('branch user customer ledger options exclude other branches', function () {

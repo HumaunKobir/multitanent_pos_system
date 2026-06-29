@@ -71,7 +71,7 @@ export default function ProductExchangeCreate({
                 items,
                 sellDiscounts: source?.sell_discounts,
                 sourceItems: source?.items,
-                promotions,
+                promotions: source?.promotions ?? promotions,
                 saleDate: form.data.date,
                 manualDiscounts,
                 specialDiscounts,
@@ -192,6 +192,7 @@ export default function ProductExchangeCreate({
                 old_product_id: i.product_id,
                 old_product_name: i.product_name,
                 old_product_code: i.product_code,
+                old_variation_id: i.variation_id ?? null,
                 old_unit_price: i.unit_price,
                 line_discount: i.line_discount,
                 promotion_id: i.promotion_id,
@@ -577,6 +578,7 @@ export default function ProductExchangeCreate({
                             summary={summary}
                             manualDiscounts={manualDiscounts}
                             onManualDiscountChange={handleManualDiscountChange}
+                            sellDiscounts={source?.sell_discounts}
                             specialDiscounts={specialDiscounts}
                             coinSettings={source?.coin_settings}
                             coinInfo={coinInfo}

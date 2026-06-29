@@ -607,6 +607,7 @@ export default function ProductExchangeEdit({
                             summary={summary}
                             manualDiscounts={manualDiscounts}
                             onManualDiscountChange={handleManualDiscountChange}
+                            sellDiscounts={sellDiscounts}
                             specialDiscounts={specialDiscounts}
                             coinSettings={sellDiscounts?.coin_settings}
                             coinInfo={coinInfo}

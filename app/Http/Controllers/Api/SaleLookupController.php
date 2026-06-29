@@ -82,6 +82,7 @@ class SaleLookupController extends Controller
                 $promo = $promotionMap->get($line->promotion_id);
                 $promotionDetails = [
                     'type' => $promo->type->value,
+                    'name' => $promo->name,
                     'min_qty' => $promo->min_qty,
                     'buy_qty' => $promo->buy_qty,
                 ];

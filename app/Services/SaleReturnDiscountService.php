@@ -75,6 +75,25 @@ class SaleReturnDiscountService
         return $qty >= (float) $promotion->min_qty;
     }
 
+    public function carriedPromotionDiscount(SellProduct $line, float $exchangeQty, Sell $parent): float
+    {
+        $soldQty = (float) $line->quantity;
+        $exchangeQty = min(max(0, $exchangeQty), $soldQty);
+        $originalDiscount = (float) $line->promotion_discount;
+
+        if ($originalDiscount <= 0 || $exchangeQty <= 0) {
+            return 0.0;
+        }
+
+        if (! $this->remainingQuantityKeepsPromotion($line, $exchangeQty, $parent)) {
+            return 0.0;
+        }
+
+        $proportion = min(1, $exchangeQty / $soldQty);
+
+        return round($originalDiscount * $proportion, 2);
+    }
+
     public function promotionDiscountAtQuantity(SellProduct $line, float $paidQty, Sell $parent): float
     {
         if ($paidQty <= 0) {

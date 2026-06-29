@@ -702,7 +702,11 @@ class InventoryAccountingService
             );
         }
 
-        [$oldBase, $oldVat] = $this->splitVat($oldGross, $vatRatio);
+        $oldNetTotal = $parent
+            ? app(ProductExchangeDiscountService::class)->resolveOldNetTotal($parent, $oldGross)
+            : $oldGross;
+
+        [$oldBase, $oldVat] = $this->splitVat($oldNetTotal, $vatRatio);
 
         $invoiceDiscount = (float) $exchange->discount;
         $specialDiscount = (float) $exchange->special_discount_amount;
@@ -724,7 +728,7 @@ class InventoryAccountingService
             'special_discount' => $specialDiscount,
             'round_off' => $roundOff,
             'paid_amount' => (float) $exchange->paid_amount,
-            'price_difference' => (float) $exchange->price_difference,
+            'price_difference' => round($newNet - $oldNetTotal, 2),
         ];
     }
 

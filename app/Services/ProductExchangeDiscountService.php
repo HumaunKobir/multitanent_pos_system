@@ -72,23 +72,27 @@ class ProductExchangeDiscountService
                 && (int) ($newVariationId ?? 0) === (int) ($sellProduct->variation_id ?? 0);
 
             if ($isSameProduct && (float) $sellProduct->promotion_discount > 0) {
-                $promoDiscount = $this->saleReturnDiscountService->promotionDiscountAtQuantity(
+                $carriedPromoDiscount = $this->saleReturnDiscountService->carriedPromotionDiscount(
                     $sellProduct,
                     $exchangeQty,
                     $parent,
                 );
 
-                if ($promoDiscount > 0) {
-                    $cartItem = [
+                if ($carriedPromoDiscount > 0) {
+                    $unitPrice = $exchangeQty > 0
+                        ? round($catalogPrice - ($carriedPromoDiscount / $exchangeQty), 2)
+                        : $catalogPrice;
+                    $resolvedBySellLine[$sellProductId] = [
                         'product_id' => $newProductId,
                         'variation_id' => $newVariationId,
                         'quantity' => $exchangeQty,
-                        'unit_price' => $catalogPrice,
+                        'unit_price' => $unitPrice,
                         'original_unit_price' => $catalogPrice,
-                        'discount' => 0,
+                        'promotion_id' => $sellProduct->promotion_id,
+                        'promotion_discount' => $carriedPromoDiscount,
+                        'free_quantity' => 0,
+                        'promotion_meta' => null,
                     ];
-                    $result = $this->promotionService->applyToCart([$cartItem], $branchId, $saleDate);
-                    $resolvedBySellLine[$sellProductId] = $result['items'][0] ?? $this->defaultPromoLine($item);
 
                     continue;
                 }
@@ -248,72 +252,44 @@ class ProductExchangeDiscountService
         ];
     }
 
-    public function resolveSettlementAmount(float $netNew, float $oldTotal, float $grossNew): float
+    public function resolveSettlementAmount(float $netNew, float $oldNet): float
     {
-        $netNew = round($netNew, 2);
-        $oldTotal = round($oldTotal, 2);
-        $grossNew = round($grossNew, 2);
+        $diff = abs(round($netNew, 2) - round($oldNet, 2));
 
-        if ($netNew > $oldTotal + 0.009) {
-            return round($netNew - $oldTotal, 2);
-        }
-
-        if ($netNew < $oldTotal - 0.009) {
-            if (abs($grossNew - $oldTotal) < 0.01) {
-                return $netNew;
-            }
-
-            return round($oldTotal - $netNew, 2);
-        }
-
-        return 0.0;
+        return $diff < 0.01 ? 0.0 : round($diff, 2);
     }
 
-    public function resolveSignedSettlement(float $netNew, float $oldTotal, float $grossNew): float
+    public function resolveSignedSettlement(float $netNew, float $oldNet): float
     {
-        $settlement = $this->resolveSettlementAmount($netNew, $oldTotal, $grossNew);
+        $netNew = round($netNew, 2);
+        $oldNet = round($oldNet, 2);
 
-        if ($netNew > $oldTotal + 0.009) {
-            return $settlement;
+        if (abs($netNew - $oldNet) < 0.01) {
+            return 0.0;
         }
 
-        if ($netNew < $oldTotal - 0.009) {
-            return -$settlement;
-        }
-
-        return 0.0;
+        return $netNew > $oldNet
+            ? round($netNew - $oldNet, 2)
+            : -round($oldNet - $netNew, 2);
     }
 
     public function resolveOldNetTotal(Sell $parent, float $oldGross): float
     {
-        $parentGross = (float) $parent->gross_amount;
+        $parent->loadMissing('products');
+        $parentCatalogGross = round($parent->products->sum(
+            fn ($line) => (float) ($line->original_unit_price ?? $line->unit_price) * (float) $line->quantity
+        ), 2);
 
-        if ($parentGross <= 0) {
+        if ($parentCatalogGross <= 0) {
             return round($oldGross, 2);
         }
 
-        return round(($oldGross / $parentGross) * (float) $parent->net_amount, 2);
+        return round(($oldGross / $parentCatalogGross) * (float) $parent->net_amount, 2);
     }
 
-    public function resolveCustomerAccountEffect(
-        float $netNew,
-        float $oldGross,
-        float $oldNet,
-        float $grossNew,
-    ): float {
-        if ($netNew > $oldGross + 0.009) {
-            return round($netNew - $oldGross, 2);
-        }
-
-        if ($netNew < $oldGross - 0.009) {
-            if (abs($grossNew - $oldGross) < 0.01) {
-                return round($netNew - $oldNet, 2);
-            }
-
-            return -round($oldGross - $netNew, 2);
-        }
-
-        return 0.0;
+    public function resolveCustomerAccountEffect(float $netNew, float $oldNet): float
+    {
+        return round($netNew - $oldNet, 2);
     }
 
     /**

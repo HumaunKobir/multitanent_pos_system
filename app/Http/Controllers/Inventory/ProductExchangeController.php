@@ -133,15 +133,12 @@ class ProductExchangeController extends Controller
                 $oldNetTotal = $this->exchangeDiscounts->resolveOldNetTotal($parent, $oldTotal);
                 $signedSettlement = $this->exchangeDiscounts->resolveSignedSettlement(
                     $totals['net_amount'],
-                    $oldTotal,
-                    $grossAmount,
+                    $oldNetTotal,
                 );
-                $priceDifference = $totals['net_amount'] - $oldTotal;
+                $priceDifference = $totals['net_amount'] - $oldNetTotal;
                 $customerAccountEffect = $this->exchangeDiscounts->resolveCustomerAccountEffect(
                     $totals['net_amount'],
-                    $oldTotal,
                     $oldNetTotal,
-                    $grossAmount,
                 );
                 $payment = $this->exchangeDiscounts->resolvePayment($data, $signedSettlement, (int) $data['payment_type']);
 
@@ -393,15 +390,12 @@ class ProductExchangeController extends Controller
                 $oldNetTotal = $this->exchangeDiscounts->resolveOldNetTotal($parent, $oldTotal);
                 $signedSettlement = $this->exchangeDiscounts->resolveSignedSettlement(
                     $totals['net_amount'],
-                    $oldTotal,
-                    $grossAmount,
+                    $oldNetTotal,
                 );
-                $priceDifference = $totals['net_amount'] - $oldTotal;
+                $priceDifference = $totals['net_amount'] - $oldNetTotal;
                 $customerAccountEffect = $this->exchangeDiscounts->resolveCustomerAccountEffect(
                     $totals['net_amount'],
-                    $oldTotal,
                     $oldNetTotal,
-                    $grossAmount,
                 );
                 $payment = $this->exchangeDiscounts->resolvePayment($data, $signedSettlement, (int) $data['payment_type']);
 
@@ -509,14 +503,11 @@ class ProductExchangeController extends Controller
                     : $oldTotal;
                 $signedSettlement = $this->exchangeDiscounts->resolveSignedSettlement(
                     $netAmount,
-                    $oldTotal,
-                    $grossAmount,
+                    $oldNetTotal,
                 );
                 $customerAccountEffect = $this->exchangeDiscounts->resolveCustomerAccountEffect(
                     $netAmount,
-                    $oldTotal,
                     $oldNetTotal,
-                    $grossAmount,
                 );
                 $payment = $this->exchangeDiscounts->resolvePayment(
                     $data,
@@ -580,11 +571,10 @@ class ProductExchangeController extends Controller
         $oldTotal = round($productExchange->products->sum(
             fn ($line) => (float) $line->old_quantity * (float) $line->old_unit_price
         ), 2);
+        $oldNetTotal = $this->exchangeDiscounts->resolveOldNetTotal($parent, $oldTotal);
         $effect = $this->exchangeDiscounts->resolveCustomerAccountEffect(
             (float) $productExchange->net_amount,
-            $oldTotal,
-            $this->exchangeDiscounts->resolveOldNetTotal($parent, $oldTotal),
-            (float) $productExchange->gross_amount,
+            $oldNetTotal,
         );
 
         if ($effect > 0) {
@@ -756,7 +746,8 @@ class ProductExchangeController extends Controller
                 $lineGross,
             );
 
-            $lineOldTotal = $qty * (float) $sellProduct->unit_price;
+            $lineOldCatalogPrice = (float) ($sellProduct->original_unit_price ?? $sellProduct->unit_price);
+            $lineOldTotal = $qty * $lineOldCatalogPrice;
             $oldTotal += $lineOldTotal;
             $grossAmount += $lineGross;
             $lineDiscountTotal += $lineDiscount;
@@ -767,7 +758,7 @@ class ProductExchangeController extends Controller
                 'old_product_id' => $sellProduct->product_id,
                 'old_variation_id' => $sellProduct->variation_id,
                 'old_quantity' => $qty,
-                'old_unit_price' => $sellProduct->unit_price,
+                'old_unit_price' => $lineOldCatalogPrice,
                 'old_batches' => $oldBatchMap,
                 'new_product_id' => $newProductId,
                 'new_variation_id' => $newVariationId,
@@ -868,15 +859,17 @@ class ProductExchangeController extends Controller
         $lineDiscount = round($exchange->products->sum(
             fn ($line) => (float) $line->new_line_discount
         ), 2);
+        $parent = $exchange->sell;
+        $oldNetTotal = $parent
+            ? $this->exchangeDiscounts->resolveOldNetTotal($parent, $oldTotal)
+            : $oldTotal;
         $signedSettlement = $this->exchangeDiscounts->resolveSignedSettlement(
             $netAmount,
-            $oldTotal,
-            $grossAmount,
+            $oldNetTotal,
         );
         $settlementAmount = $this->exchangeDiscounts->resolveSettlementAmount(
             $netAmount,
-            $oldTotal,
-            $grossAmount,
+            $oldNetTotal,
         );
 
         return [

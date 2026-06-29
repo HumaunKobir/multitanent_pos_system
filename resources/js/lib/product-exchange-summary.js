@@ -30,6 +30,19 @@ function promotionDiscountAtQuantity(item, qty, promotions, saleDate) {
     return parseFloat(result.items[0]?.promotion_discount || 0);
 }
 
+function proportionalPromotionDiscount(sellLine, item, qty) {
+    const soldQty = parseFloat(sellLine?.sold_quantity ?? item.sold_quantity ?? 0);
+    const originalPromo = parseFloat(sellLine?.promotion_discount ?? item.promotion_discount ?? 0);
+
+    if (soldQty <= 0 || qty <= 0 || originalPromo <= 0) {
+        return 0;
+    }
+
+    const proportion = Math.min(1, qty / soldQty);
+
+    return Math.round(originalPromo * proportion * 100) / 100;
+}
+
 function resolveLinePromo(item, sellLine, promotions, saleDate) {
     const newProductId = Number(item.new_product_id);
     const oldProductId = Number(sellLine?.product_id ?? item.old_product_id ?? 0);
@@ -51,18 +64,24 @@ function resolveLinePromo(item, sellLine, promotions, saleDate) {
             null;
 
         if (remainingQuantityKeepsPromotion(promotion, qty)) {
-            const cartItem = {
-                product_id: newProductId,
-                variation_id: newVariationId,
-                category_id: item.category_id,
-                brand_id: item.brand_id,
-                quantity: qty,
-                unit_price: catalogPrice,
-                original_unit_price: catalogPrice,
-            };
-            const result = applyPromotionsToCart([cartItem], promotions, saleDate);
+            const promotionDiscount = proportionalPromotionDiscount(sellLine, item, qty);
+            const unitPrice =
+                qty > 0
+                    ? Math.round((catalogPrice - promotionDiscount / qty) * 100) / 100
+                    : catalogPrice;
+            const storedPromo = findPromotion(
+                promotions,
+                sellLine?.promotion_id ?? item.promotion_id,
+            );
 
-            return result.items[0] ?? null;
+            return {
+                product_id: newProductId,
+                unit_price: unitPrice,
+                promotion_discount: promotionDiscount,
+                promotion_id: sellLine?.promotion_id ?? item.promotion_id ?? null,
+                promotion_label: storedPromo?.name ?? promotion?.name ?? null,
+                free_quantity: 0,
+            };
         }
 
         return {
@@ -131,7 +150,7 @@ function previewExchangeItem(item) {
     }
 
     if (item.new_product_id) {
-        return { item, isPreview: false };
+        return { item };
     }
 
     const unitPrice = parseFloat(item.new_unit_price || item.old_unit_price || 0);
@@ -147,77 +166,48 @@ function previewExchangeItem(item) {
             new_variation_id: item.old_variation_id ?? item.new_variation_id ?? null,
             new_unit_price: String(unitPrice),
         },
-        isPreview: true,
     };
 }
 
-export function resolveExchangeSettlement(netNew, oldTotal, grossAmount) {
-    const net = parseFloat(netNew || 0);
-    const old = parseFloat(oldTotal || 0);
-    const gross = parseFloat(grossAmount || 0);
+export function resolveExchangeSettlement(netNew, oldNet) {
+    const diff = Math.abs(parseFloat(netNew || 0) - parseFloat(oldNet || 0));
 
-    if (net > old + 0.009) {
-        return net - old;
-    }
-
-    if (net < old - 0.009) {
-        if (Math.abs(gross - old) < 0.01) {
-            return net;
-        }
-
-        return old - net;
-    }
-
-    return 0;
+    return diff < 0.01 ? 0 : diff;
 }
 
-export function resolveSignedExchangeSettlement(netNew, oldTotal, grossAmount) {
-    const settlement = resolveExchangeSettlement(netNew, oldTotal, grossAmount);
+export function resolveSignedExchangeSettlement(netNew, oldNet) {
     const net = parseFloat(netNew || 0);
-    const old = parseFloat(oldTotal || 0);
+    const old = parseFloat(oldNet || 0);
 
-    if (net > old + 0.009) {
-        return settlement;
+    if (Math.abs(net - old) < 0.01) {
+        return 0;
     }
 
-    if (net < old - 0.009) {
-        return -settlement;
-    }
-
-    return 0;
+    return net > old ? net - old : -(old - net);
 }
 
-export function resolveOldNetTotal(sellDiscounts, oldTotal) {
-    const parentGross = parseFloat(sellDiscounts?.gross_amount || 0);
+export function resolveOldNetTotal(sellDiscounts, oldTotal, sourceItems = []) {
     const parentNet = parseFloat(sellDiscounts?.net_amount || 0);
+    const parentCatalogGross =
+        sourceItems.length > 0
+            ? sourceItems.reduce(
+                  (sum, line) =>
+                      sum +
+                      parseFloat(line.unit_price || 0) * parseFloat(line.sold_quantity || 0),
+                  0,
+              )
+            : parseFloat(sellDiscounts?.gross_amount || 0);
     const old = parseFloat(oldTotal || 0);
 
-    if (parentGross <= 0) {
+    if (parentCatalogGross <= 0) {
         return old;
     }
 
-    return (old / parentGross) * parentNet;
+    return Math.round((old / parentCatalogGross) * parentNet * 100) / 100;
 }
 
-export function resolveCustomerAccountEffect(netNew, oldTotal, oldNet, grossAmount) {
-    const net = parseFloat(netNew || 0);
-    const old = parseFloat(oldTotal || 0);
-    const oldNetValue = parseFloat(oldNet || 0);
-    const gross = parseFloat(grossAmount || 0);
-
-    if (net > old + 0.009) {
-        return net - old;
-    }
-
-    if (net < old - 0.009) {
-        if (Math.abs(gross - old) < 0.01) {
-            return net - oldNetValue;
-        }
-
-        return -(old - net);
-    }
-
-    return 0;
+export function resolveCustomerAccountEffect(netNew, oldNet) {
+    return Math.round((parseFloat(netNew || 0) - parseFloat(oldNet || 0)) * 100) / 100;
 }
 
 export function buildInitialExchangeDiscounts(sellDiscounts = {}) {
@@ -268,20 +258,8 @@ export function calcProductExchangeSummary({
             return;
         }
 
-        const { item: workingItem, isPreview } = resolved;
+        const { item: workingItem } = resolved;
         const sellLine = sourceMap[Number(item.sell_product_id)] ?? item;
-
-        if (isPreview) {
-            const catalogPrice = parseFloat(workingItem.new_unit_price || 0);
-            const qty = parseFloat(workingItem.quantity || 0);
-            const lineGross = qty * catalogPrice;
-            const lineDiscount = Math.min(resolveLineDiscount(workingItem, sellLine), lineGross);
-
-            grossAmount += lineGross;
-            lineDiscountTotal += lineDiscount;
-
-            return;
-        }
 
         const promoLine = resolveLinePromo(workingItem, sellLine, promotions, saleDate);
         promoLines[Number(item.sell_product_id)] = promoLine;
@@ -353,18 +331,13 @@ export function calcProductExchangeSummary({
             sum + parseFloat(item.quantity || 0) * parseFloat(item.old_unit_price || 0),
         0,
     );
-    const oldNetTotal = resolveOldNetTotal(sellDiscounts, oldTotal);
+    const oldNetTotal = resolveOldNetTotal(sellDiscounts, oldTotal, sourceItems);
     const grossPriceDifference = grossAmount - oldTotal;
     const newDiscountTotal = Math.max(0, grossAmount + vatAmount - netNewAmount);
     const priceDifference = grossPriceDifference;
-    const settlementAmount = resolveExchangeSettlement(netNewAmount, oldTotal, grossAmount);
-    const signedSettlement = resolveSignedExchangeSettlement(netNewAmount, oldTotal, grossAmount);
-    const customerAccountEffect = resolveCustomerAccountEffect(
-        netNewAmount,
-        oldTotal,
-        oldNetTotal,
-        grossAmount,
-    );
+    const settlementAmount = resolveExchangeSettlement(netNewAmount, oldNetTotal);
+    const signedSettlement = resolveSignedExchangeSettlement(netNewAmount, oldNetTotal);
+    const customerAccountEffect = resolveCustomerAccountEffect(netNewAmount, oldNetTotal);
 
     return {
         grossAmount,

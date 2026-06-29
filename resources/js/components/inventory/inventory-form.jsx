@@ -461,6 +461,7 @@ export function ProductExchangeDiscountsCard({
     summary,
     manualDiscounts = {},
     onManualDiscountChange,
+    sellDiscounts = null,
     specialDiscounts = [],
     coinSettings = null,
     coinInfo = null,
@@ -474,6 +475,9 @@ export function ProductExchangeDiscountsCard({
     }
 
     const invoiceType = manualDiscounts.invoiceType || 'flat';
+    const showSpecialDiscount =
+        parseFloat(sellDiscounts?.special_discount_amount || 0) > 0 ||
+        Boolean(sellDiscounts?.special_discount_id);
 
     return (
         <InventoryCard title="Discounts & Payment Adjustments" icon={Percent}>
@@ -506,7 +510,7 @@ export function ProductExchangeDiscountsCard({
                     </div>
                 </div>
 
-                {specialDiscounts.length > 0 && (
+                {showSpecialDiscount && specialDiscounts.length > 0 && (
                     <div className="grid grid-cols-[1fr_auto] items-center gap-2">
                         <div className="flex flex-col">
                             <span className="text-muted-foreground">Special discount</span>

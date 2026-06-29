@@ -417,7 +417,7 @@ export default function ProductExchangeEdit({
                                             </td>
                                         </tr>
                                     );
-                                ))}
+                                })}
                             </LineItemsTable>
 
                             {sellDiscounts && (
@@ -428,7 +428,7 @@ export default function ProductExchangeEdit({
                                     <div className="flex flex-wrap gap-x-4 gap-y-0.5">
                                         {invoiceDiscountAmount > 0 && (
                                             <span>
-                                                Invoice discount ({invoiceDiscountType === 'percent' ? `${invoiceDiscountValue}%` : `৳${invoiceDiscountValue}`): -৳{invoiceDiscountAmount.toFixed(2)}
+                                                Invoice discount ({invoiceDiscountType === 'percent' ? `${invoiceDiscountValue}%` : `৳${invoiceDiscountValue}`}): -৳{invoiceDiscountAmount.toFixed(2)}
                                             </span>
                                         )}
                                         {specialDiscountAmount > 0 && (

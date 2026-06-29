@@ -233,8 +233,13 @@ class SaleReturnController extends Controller
                     $saleReturn->products()->create($line);
                 }
 
-                if ($parent->customer_id && $paymentType === ReceivedPaymentMethod::Customer_Account && $paidAmount > 0) {
-                    Customer::whereKey($parent->customer_id)->increment('balance', $paidAmount);
+                if ($parent->customer_id) {
+                    $this->syncSaleReturnCustomerBalance(
+                        (int) $parent->customer_id,
+                        $netReturnAmount,
+                        $paymentType,
+                        $paidAmount,
+                    );
                 }
 
                 $this->syncSaleReturnPayments($saleReturn, $paymentLines);
@@ -606,8 +611,13 @@ class SaleReturnController extends Controller
                     $saleReturn->products()->create($line);
                 }
 
-                if ($parent->customer_id && $paymentType === ReceivedPaymentMethod::Customer_Account && $paidAmount > 0) {
-                    Customer::whereKey($parent->customer_id)->increment('balance', $paidAmount);
+                if ($parent->customer_id) {
+                    $this->syncSaleReturnCustomerBalance(
+                        (int) $parent->customer_id,
+                        $netReturnAmount,
+                        $paymentType,
+                        $paidAmount,
+                    );
                 }
 
                 $this->syncSaleReturnPayments($saleReturn, $paymentLines);
@@ -671,10 +681,38 @@ class SaleReturnController extends Controller
             }
         }
 
-        if ($saleReturn->customer_id
-            && $saleReturn->payment_type === ReceivedPaymentMethod::Customer_Account
-            && (float) $saleReturn->paid_amount > 0) {
-            Customer::whereKey($saleReturn->customer_id)->decrement('balance', (float) $saleReturn->paid_amount);
+        if ($saleReturn->customer_id) {
+            $this->rollbackSaleReturnCustomerBalance($saleReturn);
+        }
+    }
+
+    private function syncSaleReturnCustomerBalance(
+        int $customerId,
+        float $netReturnAmount,
+        ReceivedPaymentMethod $paymentType,
+        float $paidAmount,
+    ): void {
+        $cashRefund = $paymentType === ReceivedPaymentMethod::Cash
+            ? round(min($paidAmount, $netReturnAmount), 2)
+            : 0.0;
+        $dueReduction = round(max(0, $netReturnAmount - $cashRefund), 2);
+
+        if ($dueReduction > 0) {
+            Customer::whereKey($customerId)->decrement('balance', $dueReduction);
+        }
+    }
+
+    private function rollbackSaleReturnCustomerBalance(SaleReturn $saleReturn): void
+    {
+        $netReturnAmount = (float) $saleReturn->net_amount;
+        $paidAmount = (float) $saleReturn->paid_amount;
+        $cashRefund = $saleReturn->payment_type === ReceivedPaymentMethod::Cash
+            ? round(min($paidAmount, $netReturnAmount), 2)
+            : 0.0;
+        $dueReduction = round(max(0, $netReturnAmount - $cashRefund), 2);
+
+        if ($dueReduction > 0) {
+            Customer::whereKey($saleReturn->customer_id)->increment('balance', $dueReduction);
         }
     }
 

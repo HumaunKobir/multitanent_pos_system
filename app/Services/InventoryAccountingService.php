@@ -247,8 +247,8 @@ class InventoryAccountingService
 
         if ($remainingCredit > 0 && $saleReturn->customer_id) {
             $arCredit = round($arCredit + $remainingCredit, 2);
-        } elseif ($remainingCredit > 0 && $cashCredit <= 0) {
-            $fallbackAccountId = $paymentLines[0]['payment_account_id'] ?? null;
+        } elseif ($remainingCredit > 0) {
+            $fallbackAccountId = $paymentLines[0]['payment_account_id'] ?? $saleReturn->payment_account_id ?? null;
             if ($fallbackAccountId) {
                 $lines[] = $this->creditPaymentAccount(
                     (int) $fallbackAccountId,

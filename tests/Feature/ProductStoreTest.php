@@ -16,10 +16,16 @@ use App\Models\Size;
 use App\Models\Transaction;
 use App\Models\Unit;
 use App\Models\User;
+use Spatie\Permission\Models\Permission;
 
 function productStoreAdmin(): User
 {
-    return User::factory()->create(['branch_id' => null]);
+    Permission::findOrCreate('product.create', 'web');
+
+    $admin = User::factory()->create(['branch_id' => null]);
+    $admin->givePermissionTo('product.create');
+
+    return $admin;
 }
 
 function validProductPayload(array $overrides = []): array
@@ -70,7 +76,7 @@ test('product without manual code gets auto-generated code and barcode', functio
 
 test('product with manual code uses provided code for barcode', function () {
     $admin = productStoreAdmin();
-    $manualCode = 'MAN-'.fake()->unique()->numerify('######');
+    $manualCode = 'M'.fake()->unique()->numerify('#######');
     $payload = validProductPayload(['code' => $manualCode]);
 
     $this->actingAs($admin)
@@ -131,7 +137,7 @@ test('product store clears colors and sizes when variations are present', functi
                 'variation_data' => ['label' => 'Blue-L', 'Color' => 'Blue', 'Size' => 'L'],
                 'sale_price' => '200',
                 'purchase_price' => '120',
-                'sku' => 'VAR-'.fake()->unique()->numerify('######'),
+                'sku' => '',
                 'stock' => '5',
             ],
         ],
@@ -173,7 +179,7 @@ test('all branches product creates isolated copy for each active branch', functi
 
     $operatingBranch = Branch::factory()->create();
     $productName = 'All Branch Product '.fake()->unique()->numerify('######');
-    $manualCode = 'ALL-'.fake()->unique()->numerify('######');
+    $manualCode = 'A'.fake()->unique()->numerify('#######');
 
     $payload = validProductPayload([
         'branch_id' => null,
@@ -202,7 +208,8 @@ test('all branches product creates isolated copy for each active branch', functi
     expect($mainCopy)->not->toBeNull()
         ->and($branchCopy)->not->toBeNull()
         ->and($mainCopy->code)->toBe($manualCode)
-        ->and($branchCopy->code)->toBe($manualCode.'-B'.$operatingBranch->id)
+        ->and($branchCopy->code)->toBe($manualCode)
+        ->and(strlen($branchCopy->code))->toBeLessThanOrEqual(8)
         ->and($mainCopy->category_id)->not->toBe($branchCopy->category_id)
         ->and($mainCopy->category?->name)->toBe($branchCopy->category?->name)
         ->and($mainCopy->unit_id)->not->toBe($branchCopy->unit_id)
@@ -246,7 +253,7 @@ test('all branches product auto-generated barcode uses numeric base across branc
     expect($mainCopy)->not->toBeNull()
         ->and($branchCopy)->not->toBeNull()
         ->and($mainCopy->code)->toMatch('/^\d{7,8}$/')
-        ->and($branchCopy->code)->toBe($mainCopy->code.'-B'.$operatingBranch->id)
+        ->and($branchCopy->code)->toBe($mainCopy->code)
         ->and($branchCopy->slug)->toBe($mainCopy->slug.'-b'.$operatingBranch->id);
 
     expect(
@@ -353,7 +360,7 @@ test('all branches variation product applies initial stock only on main branch v
 
     $operatingBranch = Branch::factory()->create();
     $productName = 'Variant Stock Scope '.fake()->unique()->numerify('######');
-    $sku = 'VAR-'.fake()->unique()->numerify('######');
+    $sku = fake()->unique()->numerify('########');
 
     $payload = validProductPayload([
         'branch_id' => null,
@@ -437,10 +444,49 @@ test('product store creates batch initial stock for non-variant product', functi
         ->and(round($ledgers->sum('credit'), 2))->toBe(2000.0);
 });
 
+test('variant product auto-generates branch-unique barcode up to 8 characters', function () {
+    $admin = productStoreAdmin();
+    seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+
+    $payload = validProductPayload([
+        'purchase_price' => '0',
+        'sale_price' => '0',
+        'combinations' => [
+            [
+                'variant' => 'Blue-L',
+                'variation_data' => ['label' => 'Blue-L', 'Color' => 'Blue', 'Size' => 'L'],
+                'sale_price' => '200',
+                'purchase_price' => '120',
+                'sku' => '',
+                'stock' => '0',
+            ],
+        ],
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('product.store'), $payload)
+        ->assertRedirect(route('product.index'));
+
+    $product = Product::query()->where('name', $payload['name'])->first();
+    $variation = ProductVariation::query()->where('product_id', $product->id)->first();
+
+    expect($variation)->not->toBeNull()
+        ->and($variation->sku)->toMatch('/^\d{7,8}$/')
+        ->and(strlen($variation->sku))->toBeLessThanOrEqual(8);
+
+    expect(
+        Barcode::query()
+            ->where('product_id', $product->id)
+            ->where('product_variation_id', $variation->id)
+            ->where('code', $variation->sku)
+            ->exists(),
+    )->toBeTrue();
+});
+
 test('product store applies global initial stock to variation combinations without stock', function () {
     $admin = productStoreAdmin();
     seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
-    $sku = 'VAR-'.fake()->unique()->numerify('######');
+    $sku = fake()->unique()->numerify('########');
 
     $payload = validProductPayload([
         'purchase_price' => '0',
@@ -472,7 +518,7 @@ test('product store applies global initial stock to variation combinations witho
 test('product store uses per-combination stock when provided for variations', function () {
     $admin = productStoreAdmin();
     seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
-    $sku = 'VAR-'.fake()->unique()->numerify('######');
+    $sku = fake()->unique()->numerify('########');
 
     $payload = validProductPayload([
         'purchase_price' => '0',

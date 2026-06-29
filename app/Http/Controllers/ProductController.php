@@ -15,6 +15,7 @@ use App\Models\Size;
 use App\Models\Tag;
 use App\Models\Unit;
 use App\Models\Warranty;
+use App\Services\BarcodeService;
 use App\Services\EcommerceBranchService;
 use App\Services\ProductBranchReplicationService;
 use App\Services\ProductInitialStockService;
@@ -35,6 +36,7 @@ class ProductController extends Controller
     public function __construct(
         private ProductBranchReplicationService $productReplication,
         private ProductInitialStockService $initialStock,
+        private BarcodeService $barcodes,
     ) {}
 
     public function index(Request $request): Response
@@ -164,7 +166,12 @@ class ProductController extends Controller
             'size_ids' => ['nullable', 'array'],
             'size_ids.*' => [Rule::exists('sizes', 'id')],
             'name' => ['required', 'string', 'max:255', 'unique:products,name'],
-            'code' => ['nullable', 'string', 'max:8', 'unique:products,code'],
+            'code' => [
+                'nullable',
+                'string',
+                'max:'.BarcodeService::MAX_LENGTH,
+                $this->barcodeUniqueRule(),
+            ],
             'purchase_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'sale_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric'],
@@ -184,7 +191,7 @@ class ProductController extends Controller
             'combinations.*.variation_data' => ['nullable', 'array'],
             'combinations.*.sale_price' => ['nullable', 'numeric', 'min:0'],
             'combinations.*.purchase_price' => ['nullable', 'numeric', 'min:0'],
-            'combinations.*.sku' => ['required_with:combinations', 'string', 'max:255'],
+            'combinations.*.sku' => ['nullable', 'string', 'max:'.BarcodeService::MAX_LENGTH],
             'combinations.*.stock' => ['nullable', 'integer', 'min:0'],
         ]);
 
@@ -323,7 +330,12 @@ class ProductController extends Controller
             'size_ids' => ['nullable', 'array'],
             'size_ids.*' => [Rule::exists('sizes', 'id')],
             'name' => ['required', 'string', 'max:255', $this->productNameUniqueRule($product)],
-            'code' => ['required', 'string', 'max:100', Rule::unique('products', 'code')->ignore($product->id)],
+            'code' => [
+                'required',
+                'string',
+                'max:'.BarcodeService::MAX_LENGTH,
+                $this->barcodeUniqueRule($product),
+            ],
             'purchase_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'sale_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric'],
@@ -344,7 +356,7 @@ class ProductController extends Controller
             'combinations.*.variation_data' => ['nullable', 'array'],
             'combinations.*.sale_price' => ['nullable', 'numeric', 'min:0'],
             'combinations.*.purchase_price' => ['nullable', 'numeric', 'min:0'],
-            'combinations.*.sku' => ['required_with:combinations', 'string', 'max:255'],
+            'combinations.*.sku' => ['nullable', 'string', 'max:'.BarcodeService::MAX_LENGTH],
             'combinations.*.stock' => ['nullable', 'integer', 'min:0'],
         ]);
 
@@ -563,6 +575,13 @@ class ProductController extends Controller
      */
     private function syncProductVariations(Product $product, array $combinations, float $mainPurchasePrice, float $mainSalePrice, int $mainInitialStock = 0): void
     {
+        $combinations = $this->barcodes->normalizeCombinationsForBranch(
+            (int) $product->branch_id,
+            $combinations,
+            $product->product_group_id,
+            $product->id,
+        );
+
         $keepIds = collect($combinations)->pluck('id')->filter()->map(fn ($id) => (int) $id)->values();
 
         $product->variations()
@@ -594,9 +613,16 @@ class ProductController extends Controller
 
                 if ($variation) {
                     $oldStock = (int) $variation->stock;
+                    $sku = $this->barcodes->resolveVariationBarcode(
+                        (int) $product->branch_id,
+                        $combo['sku'],
+                        $variation->id,
+                        $product->id,
+                        $product->product_group_id,
+                    );
 
                     $variation->update([
-                        'sku' => $combo['sku'],
+                        'sku' => $sku,
                         'price' => $salePrice,
                         'purchase_price' => $purchasePrice,
                         'stock' => $stock,
@@ -614,15 +640,26 @@ class ProductController extends Controller
                             $product->name.' — '.($variationData['label'] ?? $combo['variant']),
                         );
                     }
+
+                    Barcode::query()
+                        ->where('product_variation_id', $variation->id)
+                        ->update(['code' => $sku]);
                 }
 
                 continue;
             }
 
+            $sku = $this->barcodes->resolveVariationBarcode(
+                (int) $product->branch_id,
+                $combo['sku'],
+                excludeProductId: $product->id,
+                productGroupId: $product->product_group_id,
+            );
+
             $variation = ProductVariation::create([
                 'product_id' => $product->id,
                 'branch_id' => $product->branch_id,
-                'sku' => $combo['sku'],
+                'sku' => $sku,
                 'price' => $salePrice,
                 'purchase_price' => $purchasePrice,
                 'stock' => 0,
@@ -635,7 +672,7 @@ class ProductController extends Controller
                 'branch_id' => $product->branch_id,
                 'product_id' => $product->id,
                 'product_variation_id' => $variation->id,
-                'code' => $combo['sku'],
+                'code' => $sku,
                 'name' => $product->name.' - '.$combo['variant'],
             ]);
         }
@@ -700,6 +737,23 @@ class ProductController extends Controller
         }
 
         return $rule;
+    }
+
+    private function barcodeUniqueRule(?Product $product = null): \Closure
+    {
+        return function (string $attribute, mixed $value, \Closure $fail) use ($product): void {
+            if (blank($value)) {
+                return;
+            }
+
+            if (! $this->barcodes->codeIsAvailableGlobally(
+                (string) $value,
+                $product?->product_group_id,
+                $product?->id,
+            )) {
+                $fail('This barcode is already used by another product.');
+            }
+        };
     }
 
     /**

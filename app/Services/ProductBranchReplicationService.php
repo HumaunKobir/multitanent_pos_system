@@ -28,6 +28,7 @@ class ProductBranchReplicationService
     public function __construct(
         private BranchCatalogReplicationService $catalogReplication,
         private ProductInitialStockService $initialStock,
+        private BarcodeService $barcodes,
     ) {}
 
     /**
@@ -52,7 +53,10 @@ class ProductBranchReplicationService
         $baseSlug = filled($data['slug'] ?? null)
             ? (string) $data['slug']
             : Product::generateUniqueSlug((string) $data['name']);
-        $autoCodeBase = $manualCode ?? Product::generateUniqueBarcodeNumber();
+        $mainBranchId = Branch::resolveMainBranchId();
+        $branchIdList = $branchIds->map(fn ($id) => (int) $id)->values();
+        $sharedCode = $this->barcodes->resolveSharedProductCode($manualCode, $branchIdList, $productGroupId);
+        $normalizedCombinations = $this->barcodes->normalizeCombinationsForBranches($branchIdList, $combinations, $productGroupId);
         $created = [];
 
         foreach ($branchIds as $branchId) {
@@ -61,7 +65,7 @@ class ProductBranchReplicationService
             $branchData['branch_id'] = $branchId;
             $branchData['product_group_id'] = $productGroupId;
             $branchData['slug'] = $this->resolveBranchSlug($baseSlug, $branchId);
-            $branchData['code'] = $this->resolveBranchCode($manualCode ?? $autoCodeBase, $branchId);
+            $branchData['code'] = $sharedCode;
 
             if (! Branch::isMainBranch($branchId)) {
                 unset($branchData['selected_branch_id']);
@@ -93,7 +97,7 @@ class ProductBranchReplicationService
                 $this->initialStock->syncNonVariant($product, $initialStockQty, $mainPurchasePrice);
             }
 
-            foreach ($combinations as $combo) {
+            foreach ($normalizedCombinations as $combo) {
                 $salePrice = (isset($combo['sale_price']) && (string) $combo['sale_price'] !== '')
                     ? $combo['sale_price']
                     : $mainSalePrice;
@@ -122,7 +126,7 @@ class ProductBranchReplicationService
                     'branch_id' => $branchId,
                     'product_id' => $product->id,
                     'product_variation_id' => $variation->id,
-                    'code' => $combo['sku'],
+                    'code' => $variation->sku,
                     'name' => $product->name.' - '.$combo['variant'],
                 ]);
             }
@@ -231,22 +235,26 @@ class ProductBranchReplicationService
         $baseSlug = filled($data['slug'] ?? null)
             ? (string) $data['slug']
             : Product::generateUniqueSlug((string) $data['name']);
-        $autoCodeBase = $manualCode ?? Product::generateUniqueBarcodeNumber();
+
+        $branchIds = collect([$branchId, $mainBranchId]);
+        $sharedCode = $this->barcodes->resolveSharedProductCode($manualCode, $branchIds, $productGroupId);
+        $normalizedCombinations = $this->barcodes->normalizeCombinationsForBranches($branchIds, $combinations, $productGroupId);
 
         $branchData = $this->mapBranchCatalogFields($data, $branchId);
         $branchData['branch_id'] = $branchId;
         $branchData['product_group_id'] = $productGroupId;
         $branchData['slug'] = $this->resolveBranchSlug($baseSlug, $branchId);
-        $branchData['code'] = $this->resolveBranchCode($manualCode ?? $autoCodeBase, $branchId);
+        $branchData['code'] = $sharedCode;
 
         $branchProduct = $this->persistProductAtBranch(
             $branchData,
-            $combinations,
+            $normalizedCombinations,
             $mainPurchasePrice,
             $mainSalePrice,
             $mainInitialStock,
             $photoPaths,
             $branchId,
+            normalizeCombinations: false,
         );
 
         $mainData = $this->mapBranchCatalogFields($data, $mainBranchId);
@@ -255,13 +263,13 @@ class ProductBranchReplicationService
         $mainData['source_branch_id'] = $branchId;
         $mainData['received_at'] = null;
         $mainData['slug'] = $this->resolveBranchSlug($baseSlug, $mainBranchId);
-        $mainData['code'] = $this->resolveBranchCode($manualCode ?? $autoCodeBase, $mainBranchId);
+        $mainData['code'] = $sharedCode;
 
         $mainCombinations = array_map(function (array $combo): array {
             unset($combo['stock']);
 
             return $combo;
-        }, $combinations);
+        }, $normalizedCombinations);
 
         $this->persistProductAtBranch(
             $mainData,
@@ -271,6 +279,7 @@ class ProductBranchReplicationService
             0,
             $photoPaths,
             $mainBranchId,
+            normalizeCombinations: false,
         );
 
         $this->ensureTagRecordsForBranch($branchData['tags'] ?? [], $branchId);
@@ -292,7 +301,17 @@ class ProductBranchReplicationService
         int $mainInitialStock,
         array $photoPaths,
         int $branchId,
+        bool $normalizeCombinations = true,
     ): Product {
+        if ($normalizeCombinations) {
+            $combinations = $this->barcodes->normalizeCombinationsForBranch(
+                $branchId,
+                $combinations,
+                $data['product_group_id'] ?? null,
+                isset($data['id']) ? (int) $data['id'] : null,
+            );
+        }
+
         $product = Product::create($data);
 
         foreach ($photoPaths as $path) {
@@ -490,7 +509,7 @@ class ProductBranchReplicationService
         $copyData['product_group_id'] = $productGroupId;
         unset($copyData['selected_branch_id']);
         $copyData['slug'] = $this->resolveBranchSlug($baseSlug, $targetBranchId);
-        $copyData['code'] = $this->resolveBranchCode($baseCode, $targetBranchId);
+        $copyData['code'] = $baseCode;
         $copyData['image'] = filled($data['image'] ?? null) ? $data['image'] : $source->image;
         $copyData['chest_size_image'] = filled($data['chest_size_image'] ?? null) ? $data['chest_size_image'] : $source->chest_size_image;
 
@@ -514,6 +533,7 @@ class ProductBranchReplicationService
             $mainInitialStock,
             $source->photos()->pluck('image')->all(),
             $targetBranchId,
+            normalizeCombinations: false,
         );
 
         return $copy;
@@ -597,16 +617,6 @@ class ProductBranchReplicationService
 
         $manualCode = filled($data['code'] ?? null) ? (string) $data['code'] : $sourceProduct->code;
         $sourceBranchId = (int) $sourceProduct->branch_id;
-
-        if ($manualCode !== null && ! Branch::isMainBranch($sourceBranchId) && $sourceProduct->code === $manualCode) {
-            $branchCode = $this->resolveBranchCode($manualCode, $sourceBranchId);
-            $sourceProduct->update(['code' => $branchCode]);
-
-            Barcode::query()
-                ->where('product_id', $sourceProduct->id)
-                ->whereNull('product_variation_id')
-                ->update(['code' => $branchCode]);
-        }
 
         $missingBranchIds = Branch::query()
             ->active()
@@ -705,19 +715,6 @@ class ProductBranchReplicationService
                 ['status' => CommonStatus::Active],
             );
         }
-    }
-
-    private function resolveBranchCode(?string $manualCode, int $branchId): ?string
-    {
-        if ($manualCode === null) {
-            return null;
-        }
-
-        if (Branch::isMainBranch($branchId)) {
-            return $manualCode;
-        }
-
-        return $manualCode.'-B'.$branchId;
     }
 
     private function resolveBranchSlug(string $baseSlug, int $branchId): string

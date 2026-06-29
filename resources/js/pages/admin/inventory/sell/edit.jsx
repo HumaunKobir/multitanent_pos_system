@@ -338,6 +338,13 @@ function ProductSearchBox({ onAdd }) {
             if (!res.ok) return;
             const json = await res.json();
             const data = Array.isArray(json) ? json : [];
+            const variationMatch = data
+                .flatMap((product) => (product.variations ?? []).map((variation) => ({ product, variation })))
+                .find(({ variation }) => variation.sku === term);
+            if (variationMatch) {
+                addItem(variationMatch.product, variationMatch.variation);
+                return;
+            }
             const exact = data.find((p) => p.code === term);
             const match = exact ?? (data.length === 1 ? data[0] : null);
             if (match && !match.has_variations) {

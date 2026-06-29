@@ -554,15 +554,13 @@ function VariationBuilder({
         const newCombos = cartesian.map((combo) => {
             const variation_data = buildVariationDataFromRows(parsed, combo);
             const variantText = variation_data.label ?? combo.join('-');
-            const skuPart = variantText.replace(/[^A-Za-z0-9]+/g, '-').toUpperCase();
-            const sku = [productCode, skuPart].filter(Boolean).join('-');
 
             return {
                 variant: variantText,
                 variation_data,
                 sale_price: '',
                 purchase_price: '',
-                sku,
+                sku: '',
                 stock: '',
             };
         });
@@ -750,7 +748,7 @@ function VariationBuilder({
                                                 {errors[`combinations.${idx}.purchase_price`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.purchase_price`]}</p>}
                                             </td>
                                             <td className="p-2">
-                                                <Input className="h-7 w-32 text-xs" value={combo.sku} onChange={(e) => updateCombo(idx, 'sku', e.target.value)} disabled={locked} />
+                                                <Input className="h-7 w-32 text-xs" value={combo.sku} onChange={(e) => updateCombo(idx, 'sku', e.target.value)} disabled={locked} maxLength={8} placeholder="Auto" />
                                                 {errors[`combinations.${idx}.sku`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.sku`]}</p>}
                                             </td>
                                             <td className="p-2">

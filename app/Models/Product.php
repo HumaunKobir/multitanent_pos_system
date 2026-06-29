@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\BarcodeService;
 use App\Services\EcommerceBranchService;
 use App\Traits\HasBranch;
 use Illuminate\Database\Eloquent\Builder;
@@ -230,6 +231,11 @@ class Product extends Model
             ->withCount(['reviews as reviews_count' => fn (Builder $query) => $query->approved()]);
     }
 
+    public function barcodes(): HasMany
+    {
+        return $this->hasMany(Barcode::class);
+    }
+
     public function batches(): HasMany
     {
         return $this->hasMany(Batch::class);
@@ -273,7 +279,9 @@ class Product extends Model
 
         static::creating(function (Product $product) {
             if (blank(trim((string) ($product->code ?? '')))) {
-                $product->code = static::generateUniqueBarcodeNumber();
+                $product->code = static::generateUniqueBarcodeNumber(
+                    productGroupId: $product->product_group_id,
+                );
             }
         });
     }
@@ -284,13 +292,9 @@ class Product extends Model
      * Numeric codes keep the printed Code 128 barcode short so the bars stay
      * wide enough for scanners to read reliably.
      */
-    public static function generateUniqueBarcodeNumber(): string
+    public static function generateUniqueBarcodeNumber(?int $branchId = null, ?string $productGroupId = null): string
     {
-        do {
-            $code = (string) random_int(1_000_000, 99_999_999);
-        } while (static::where('code', $code)->exists());
-
-        return $code;
+        return app(BarcodeService::class)->generateUniqueSharedCode($productGroupId);
     }
 
     public static function generateUniqueSlug(string $name): string

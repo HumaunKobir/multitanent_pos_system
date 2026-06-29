@@ -36,9 +36,15 @@ class ProductSearchController extends Controller
                 'batches' => fn ($q) => $q->atBranchWarehouse($branchId)
                     ->select(['id', 'product_id', 'branch_id', 'available']),
             ])
-            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
+            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s, $branchId) {
                 $q->where('name', 'like', "%{$s}%")
-                    ->orWhere('code', 'like', "%{$s}%");
+                    ->orWhere('code', 'like', "%{$s}%")
+                    ->orWhereHas('variations', fn ($variationQuery) => $variationQuery
+                        ->where('branch_id', $branchId)
+                        ->where('sku', 'like', "%{$s}%"))
+                    ->orWhereHas('barcodes', fn ($barcodeQuery) => $barcodeQuery
+                        ->where('branch_id', $branchId)
+                        ->where('code', 'like', "%{$s}%"));
             }))
             ->limit(15)
             ->get(['id', 'name', 'code', 'purchase_price', 'sale_price', 'image']);
@@ -55,6 +61,7 @@ class ProductSearchController extends Controller
             'variations' => $product->variations->map(fn ($v) => [
                 'id' => $v->id,
                 'label' => $v->variation_data['label'] ?? $v->sku,
+                'sku' => $v->sku,
                 'purchase_price' => $v->purchase_price,
                 'sale_price' => $v->price,
                 'stock' => (float) $v->stock,
@@ -94,9 +101,15 @@ class ProductSearchController extends Controller
                     ->where('available', '>', 0)
                     ->select(['id', 'product_id', 'branch_id', 'available']),
             ])
-            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
+            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s, $branchId) {
                 $q->where('name', 'like', "%{$s}%")
-                    ->orWhere('code', 'like', "%{$s}%");
+                    ->orWhere('code', 'like', "%{$s}%")
+                    ->orWhereHas('variations', fn ($variationQuery) => $variationQuery
+                        ->where('branch_id', $branchId)
+                        ->where('sku', 'like', "%{$s}%"))
+                    ->orWhereHas('barcodes', fn ($barcodeQuery) => $barcodeQuery
+                        ->where('branch_id', $branchId)
+                        ->where('code', 'like', "%{$s}%"));
             }))
             ->when($request->category_id, fn ($q, $id) => $q->where('category_id', $id))
             ->limit($limit)
@@ -123,6 +136,7 @@ class ProductSearchController extends Controller
                     ->map(fn ($v) => [
                         'id' => $v->id,
                         'label' => $v->variation_data['label'] ?? $v->sku,
+                        'sku' => $v->sku,
                         'sale_price' => (float) $v->price,
                         'stock' => (float) $v->stock,
                     ])
@@ -169,9 +183,15 @@ class ProductSearchController extends Controller
                     ->where('available', '>', 0)
                     ->select(['id', 'product_id', 'branch_id', 'available']),
             ])
-            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
+            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s, $mainBranchId) {
                 $q->where('name', 'like', "%{$s}%")
-                    ->orWhere('code', 'like', "%{$s}%");
+                    ->orWhere('code', 'like', "%{$s}%")
+                    ->orWhereHas('variations', fn ($variationQuery) => $variationQuery
+                        ->where('branch_id', $mainBranchId)
+                        ->where('sku', 'like', "%{$s}%"))
+                    ->orWhereHas('barcodes', fn ($barcodeQuery) => $barcodeQuery
+                        ->where('branch_id', $mainBranchId)
+                        ->where('code', 'like', "%{$s}%"));
             }))
             ->orderBy('name')
             ->when($hasSearch, fn ($q) => $q->limit(50))

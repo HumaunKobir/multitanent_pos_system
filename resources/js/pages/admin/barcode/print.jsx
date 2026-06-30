@@ -363,12 +363,19 @@ export default function BarcodePrint({ barcodes }) {
                                         {row.name}
                                     </p>
                                     {row.variation && (
-                                        <p className="text-xs text-slate-500">
-                                            {
-                                                row.variation.variation_data
-                                                    ?.label
-                                            }
-                                        </p>
+                                        <>
+                                            <p className="text-xs text-slate-500">
+                                                {
+                                                    row.variation.variation_data
+                                                        ?.label
+                                                }
+                                            </p>
+                                            {row.variation.sku && (
+                                                <p className="font-mono text-xs text-slate-500">
+                                                    SKU: {row.variation.sku}
+                                                </p>
+                                            )}
+                                        </>
                                     )}
                                 </div>
                                 <span className="font-mono text-xs font-semibold tracking-widest text-slate-600">

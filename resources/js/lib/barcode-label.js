@@ -157,8 +157,34 @@ export function getLabelName(row) {
     return rawName.split('/')[0].trim();
 }
 
+export function getVariantSku(row) {
+    const sku = row?.variation?.sku?.trim();
+
+    return sku || null;
+}
+
+export function getVariantLabel(row) {
+    const label = row?.variation?.variation_data?.label?.trim();
+
+    return label || null;
+}
+
 export function getLabelTitle(row) {
     const baseName = getLabelName(row);
+    const variantLabel = getVariantLabel(row);
+    const variantSku = getVariantSku(row);
+
+    if (variantLabel && variantSku) {
+        return `${baseName} - ${variantLabel} - ${variantSku}`;
+    }
+
+    if (variantLabel) {
+        return `${baseName} - ${variantLabel}`;
+    }
+
+    if (variantSku) {
+        return `${baseName} - ${variantSku}`;
+    }
 
     return row?.code ? `${baseName} - ${row.code}` : baseName;
 }

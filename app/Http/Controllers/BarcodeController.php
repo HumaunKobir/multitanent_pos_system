@@ -58,7 +58,7 @@ class BarcodeController extends Controller
         $mainBranchId = Branch::resolveMainBranchId();
 
         $barcodes = $this->listQuery($request->search, $listBranchId)
-            ->with(['product:id,name,image,sale_price,discount_price', 'variation:id,variation_data,price'])
+            ->with(['product:id,name,image,sale_price,discount_price', 'variation:id,variation_data,price,sku'])
             ->paginate(10)
             ->withQueryString();
 
@@ -81,7 +81,7 @@ class BarcodeController extends Controller
 
         $ids = array_filter(explode(',', (string) $request->query('ids', '')));
 
-        $barcodes = Barcode::with(['product:id,name,image,sale_price,discount_price', 'variation:id,variation_data,price'])
+        $barcodes = Barcode::with(['product:id,name,image,sale_price,discount_price', 'variation:id,variation_data,price,sku'])
             ->when($ids, fn ($q) => $q->whereIn('id', $ids))
             ->listed()
             ->get();

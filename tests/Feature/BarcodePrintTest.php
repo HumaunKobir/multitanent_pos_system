@@ -96,6 +96,7 @@ test('barcode print page includes variation price for variant products', functio
             ->component('admin/barcode/print')
             ->has('barcodes', 1)
             ->where('barcodes.0.variation.price', '350.00')
+            ->where('barcodes.0.variation.sku', 'BLACK-S-30')
             ->where('barcodes.0.product.sale_price', '0.00'));
 });
 

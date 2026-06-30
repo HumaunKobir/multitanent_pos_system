@@ -315,22 +315,24 @@ export default function ProductExchangeShow({ exchange, totals = {} }) {
                                 <SummaryRow label="Status">
                                     <Badge variant="outline">{paymentStatus}</Badge>
                                 </SummaryRow>
-                                <div className="border-t border-border pt-2">
-                                    <SummaryRow
-                                        label={paidLabel}
-                                        value={`৳${(totals.paid ?? 0).toFixed(2)}`}
-                                        accent="text-green-700 dark:text-green-400"
-                                    />
-                                    <SummaryRow
-                                        label={dueLabel}
-                                        value={`৳${(totals.due ?? 0).toFixed(2)}`}
-                                        accent={
-                                            (totals.due ?? 0) > 0
-                                                ? 'font-semibold text-destructive'
-                                                : 'font-semibold text-green-700 dark:text-green-400'
-                                        }
-                                    />
-                                </div>
+                                {(totals.settlement ?? 0) > 0.009 && (
+                                    <div className="border-t border-border pt-2">
+                                        <SummaryRow
+                                            label={paidLabel}
+                                            value={`৳${(totals.paid ?? 0).toFixed(2)}`}
+                                            accent="text-green-700 dark:text-green-400"
+                                        />
+                                        <SummaryRow
+                                            label={dueLabel}
+                                            value={`৳${(totals.due ?? 0).toFixed(2)}`}
+                                            accent={
+                                                (totals.due ?? 0) > 0
+                                                    ? 'font-semibold text-destructive'
+                                                    : 'font-semibold text-green-700 dark:text-green-400'
+                                            }
+                                        />
+                                    </div>
+                                )}
                             </SummaryCard>
                         </div>
 

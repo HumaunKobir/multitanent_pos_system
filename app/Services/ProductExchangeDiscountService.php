@@ -178,11 +178,15 @@ class ProductExchangeDiscountService
             $discountValue = 100.0;
         }
 
-        $invoiceDiscount = $this->specialDiscountService->computeAmount(
-            $discountType,
-            $discountValue,
-            $taxableBase,
-        );
+        $parent->loadMissing('products');
+        $parentCatalogGross = round($parent->products->sum(
+            fn ($line) => (float) ($line->original_unit_price ?? $line->unit_price) * (float) $line->quantity
+        ), 2);
+        $flatProportion = $parentCatalogGross > 0 ? min(1.0, $grossAmount / $parentCatalogGross) : 1.0;
+
+        $invoiceDiscount = $discountType === DiscountType::Flat
+            ? round(min($discountValue * $flatProportion, $taxableBase), 2)
+            : $this->specialDiscountService->computeAmount($discountType, $discountValue, $taxableBase);
 
         $specialDiscountId = $this->normalizedSpecialDiscountId($data, $parent);
         $specialResolved = $specialDiscountId

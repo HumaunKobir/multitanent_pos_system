@@ -188,15 +188,7 @@ export function resolveSignedExchangeSettlement(netNew, oldNet) {
 
 export function resolveOldNetTotal(sellDiscounts, oldTotal, sourceItems = []) {
     const parentNet = parseFloat(sellDiscounts?.net_amount || 0);
-    const parentCatalogGross =
-        sourceItems.length > 0
-            ? sourceItems.reduce(
-                  (sum, line) =>
-                      sum +
-                      parseFloat(line.unit_price || 0) * parseFloat(line.sold_quantity || 0),
-                  0,
-              )
-            : parseFloat(sellDiscounts?.gross_amount || 0);
+    const parentCatalogGross = parseFloat(sellDiscounts?.gross_amount || 0);
     const old = parseFloat(oldTotal || 0);
 
     if (parentCatalogGross <= 0) {
@@ -279,11 +271,15 @@ export function calcProductExchangeSummary({
 
     const taxableBase = Math.max(0, grossAmount - lineDiscountTotal);
     const invoiceType = manualDiscounts.invoiceType || 'flat';
-    const invoiceDiscountAmount = computeDiscountAmount(
-        invoiceType,
-        manualDiscounts.invoice || 0,
-        taxableBase,
-    );
+    const parentCatalogGross = parseFloat(sellDiscounts?.gross_amount || 0);
+    const flatProportion = parentCatalogGross > 0 ? Math.min(1, grossAmount / parentCatalogGross) : 1;
+    const invoiceDiscountAmount =
+        invoiceType === 'flat'
+            ? Math.min(
+                  parseFloat(manualDiscounts.invoice || 0) * flatProportion,
+                  taxableBase,
+              )
+            : computeDiscountAmount(invoiceType, manualDiscounts.invoice || 0, taxableBase);
 
     const specialDiscount = findSpecialDiscountById(
         specialDiscounts,
@@ -331,7 +327,7 @@ export function calcProductExchangeSummary({
             sum + parseFloat(item.quantity || 0) * parseFloat(item.old_unit_price || 0),
         0,
     );
-    const oldNetTotal = resolveOldNetTotal(sellDiscounts, oldTotal, sourceItems);
+    const oldNetTotal = resolveOldNetTotal(sellDiscounts, oldTotal);
     const grossPriceDifference = grossAmount - oldTotal;
     const newDiscountTotal = Math.max(0, grossAmount + vatAmount - netNewAmount);
     const priceDifference = grossPriceDifference;

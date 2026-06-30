@@ -27,6 +27,7 @@ class PurchaseReturn extends Model
         'vat',
         'paid_amount',
         'due_amount',
+        'purchase_due_offset',
         'payment_type',
         'payment_account_id',
         'serial',
@@ -40,6 +41,7 @@ class PurchaseReturn extends Model
         'vat' => 'decimal:2',
         'paid_amount' => 'decimal:2',
         'due_amount' => 'decimal:2',
+        'purchase_due_offset' => 'decimal:2',
         'payment_type' => PurchaseReceivedPayment::class,
     ];
 

@@ -142,6 +142,8 @@ class PurchaseReturnController extends Controller
                 $adjustments = $this->purchaseReturnAdjustments($parent, $grossAmount, (float) ($data['discount'] ?? $parent->discount));
                 $payment = $this->resolvePurchaseReturnPayment($data, $adjustments['net']);
 
+                [$payment, $purchaseDueOffset] = $this->applyPurchaseDueOffset($parent, $payment);
+
                 $purchaseReturn = PurchaseReturn::create([
                     'branch_id' => $branchId,
                     'user_id' => $this->currentUserId(),
@@ -153,6 +155,7 @@ class PurchaseReturnController extends Controller
                     'vat' => $adjustments['vat'],
                     'paid_amount' => $payment['paid_amount'],
                     'due_amount' => $payment['due_amount'],
+                    'purchase_due_offset' => $purchaseDueOffset,
                     'payment_type' => $payment['payment_type'],
                     'payment_account_id' => $payment['payment_account_id'],
                     'comment' => $data['comment'] ?? null,
@@ -163,8 +166,8 @@ class PurchaseReturnController extends Controller
                     $purchaseReturn->products()->create($line);
                 }
 
-                // Only the portion settled on the supplier's account reduces the running
-                // balance; the cash-refunded portion is cleared immediately in cash.
+                // Offset portion already reduced supplier balance inside applyPurchaseDueOffset.
+                // Only the remaining return due (if any) still settles via the supplier's running account.
                 if ($parent->supplier_id && $payment['due_amount'] > 0) {
                     Supplier::whereKey($parent->supplier_id)->decrement('balance', $payment['due_amount']);
                 }
@@ -354,6 +357,8 @@ class PurchaseReturnController extends Controller
                 $adjustments = $this->purchaseReturnAdjustments($parent, $grossAmount, (float) ($data['discount'] ?? $parent->discount));
                 $payment = $this->resolvePurchaseReturnPayment($data, $adjustments['net']);
 
+                [$payment, $purchaseDueOffset] = $this->applyPurchaseDueOffset($parent, $payment);
+
                 $purchaseReturn->update([
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
@@ -361,6 +366,7 @@ class PurchaseReturnController extends Controller
                     'vat' => $adjustments['vat'],
                     'paid_amount' => $payment['paid_amount'],
                     'due_amount' => $payment['due_amount'],
+                    'purchase_due_offset' => $purchaseDueOffset,
                     'payment_type' => $payment['payment_type'],
                     'payment_account_id' => $payment['payment_account_id'],
                     'comment' => $data['comment'] ?? null,
@@ -370,8 +376,8 @@ class PurchaseReturnController extends Controller
                     $purchaseReturn->products()->create($line);
                 }
 
-                // Only the portion settled on the supplier's account reduces the running
-                // balance; the cash-refunded portion is cleared immediately in cash.
+                // Offset portion already reduced supplier balance inside applyPurchaseDueOffset.
+                // Only the remaining return due (if any) still settles via the supplier's running account.
                 if ($parent->supplier_id && $payment['due_amount'] > 0) {
                     Supplier::whereKey($parent->supplier_id)->decrement('balance', $payment['due_amount']);
                 }
@@ -450,11 +456,59 @@ class PurchaseReturnController extends Controller
             }
         }
 
-        $dueAmount = max(0, (float) $purchaseReturn->net_amount - (float) $purchaseReturn->paid_amount);
+        // Restore any amount that was offset against the original purchase's due.
+        $purchaseDueOffset = (float) $purchaseReturn->purchase_due_offset;
 
-        if ($purchaseReturn->supplier_id && $dueAmount > 0) {
-            Supplier::whereKey($purchaseReturn->supplier_id)->increment('balance', $dueAmount);
+        if ($purchaseDueOffset > 0) {
+            Purchase::whereKey($purchaseReturn->purchase_id)->increment('due_amount', $purchaseDueOffset);
+            if ($purchaseReturn->supplier_id) {
+                Supplier::whereKey($purchaseReturn->supplier_id)->increment('balance', $purchaseDueOffset);
+            }
         }
+
+        // Restore supplier balance for any return due that settled on the supplier account.
+        $returnDue = (float) $purchaseReturn->due_amount;
+
+        if ($purchaseReturn->supplier_id && $returnDue > 0) {
+            Supplier::whereKey($purchaseReturn->supplier_id)->increment('balance', $returnDue);
+        }
+    }
+
+    /**
+     * When the original purchase still has unpaid due, offset the return amount against
+     * that due rather than creating a new due on the purchase return. The offset amount
+     * is debited from the supplier's running balance and deducted from purchase.due_amount.
+     *
+     * Returns the adjusted payment array and the offset amount applied.
+     *
+     * @param  array{payment_type: PurchaseReceivedPayment, payment_account_id: ?int, paid_amount: float, due_amount: float}  $payment
+     * @return array{0: array{payment_type: PurchaseReceivedPayment, payment_account_id: ?int, paid_amount: float, due_amount: float}, 1: float}
+     */
+    private function applyPurchaseDueOffset(Purchase $parent, array $payment): array
+    {
+        $purchaseDue = round((float) $parent->due_amount, 2);
+
+        if ($payment['payment_type'] !== PurchaseReceivedPayment::Supplier_Account || $purchaseDue <= 0) {
+            return [$payment, 0.0];
+        }
+
+        $offset = round(min($purchaseDue, $payment['due_amount']), 2);
+
+        if ($offset <= 0) {
+            return [$payment, 0.0];
+        }
+
+        // Reduce the original purchase's outstanding due.
+        Purchase::whereKey($parent->id)->decrement('due_amount', $offset);
+
+        // Settle the offset portion against the supplier's running account balance.
+        if ($parent->supplier_id) {
+            Supplier::whereKey($parent->supplier_id)->decrement('balance', $offset);
+        }
+
+        $payment['due_amount'] = round(max(0, $payment['due_amount'] - $offset), 2);
+
+        return [$payment, $offset];
     }
 
     /**

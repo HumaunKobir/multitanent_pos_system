@@ -495,6 +495,242 @@ test('purchase return destroy reverses ledger balances and restores batch stock 
     expect((float) $payables->current_balance)->toBe($payablesBefore);
 });
 
+test('purchase return on unpaid purchase offsets return amount against purchase due leaving zero return due', function () {
+    $user = purchaseReturnUser();
+    ['product' => $product, 'batch' => $batch] = purchaseReturnProduct(10, $user->branch_id);
+    $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id, 'balance' => 300]);
+
+    // Fully unpaid purchase (due = 300).
+    $purchase = purchaseReturnPurchase($user, $supplier, [
+        'gross' => 300,
+        'discount' => 0,
+        'vat' => 0,
+        'paid' => 0,
+    ]);
+
+    $purchaseProduct = PurchaseProduct::factory()
+        ->forPurchase($purchase)
+        ->forProduct($product)
+        ->withBatch($batch->id, 2)
+        ->create(['unit_price' => 150]);
+
+    $this->actingAs($user)
+        ->post(route('inventory.purchase-return.store'), [
+            'purchase_id' => $purchase->id,
+            'date' => now()->format('Y-m-d'),
+            'paid_amount' => '0',
+            'payment_type' => (string) PurchaseReceivedPayment::Supplier_Account->value,
+            'items' => [
+                ['purchase_product_id' => $purchaseProduct->id, 'quantity' => '1'],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase-return.index'));
+
+    $purchaseReturn = PurchaseReturn::query()->latest('id')->first();
+
+    // Return net = 150; fully offset against purchase due — no return due created.
+    expect((float) $purchaseReturn->net_amount)->toBe(150.0);
+    expect((float) $purchaseReturn->due_amount)->toBe(0.0);
+    expect((float) $purchaseReturn->purchase_due_offset)->toBe(150.0);
+
+    // Original purchase due reduced by the offset.
+    $purchase->refresh();
+    expect((float) $purchase->due_amount)->toBe(150.0);
+
+    // Supplier balance reduced by the full return amount via the offset.
+    $supplier->refresh();
+    expect((float) $supplier->balance)->toBe(150.0); // 300 - 150
+});
+
+test('purchase return on fully unpaid purchase reduces purchase due to zero when return covers it all', function () {
+    $user = purchaseReturnUser();
+    ['product' => $product, 'batch' => $batch] = purchaseReturnProduct(10, $user->branch_id);
+    $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id, 'balance' => 300]);
+
+    $purchase = purchaseReturnPurchase($user, $supplier, [
+        'gross' => 300,
+        'discount' => 0,
+        'vat' => 0,
+        'paid' => 0,
+    ]);
+
+    $purchaseProduct = PurchaseProduct::factory()
+        ->forPurchase($purchase)
+        ->forProduct($product)
+        ->withBatch($batch->id, 2)
+        ->create(['unit_price' => 150]);
+
+    $this->actingAs($user)
+        ->post(route('inventory.purchase-return.store'), [
+            'purchase_id' => $purchase->id,
+            'date' => now()->format('Y-m-d'),
+            'paid_amount' => '0',
+            'payment_type' => (string) PurchaseReceivedPayment::Supplier_Account->value,
+            'items' => [
+                ['purchase_product_id' => $purchaseProduct->id, 'quantity' => '2'],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase-return.index'));
+
+    $purchaseReturn = PurchaseReturn::query()->latest('id')->first();
+
+    expect((float) $purchaseReturn->net_amount)->toBe(300.0);
+    expect((float) $purchaseReturn->due_amount)->toBe(0.0);
+    expect((float) $purchaseReturn->purchase_due_offset)->toBe(300.0);
+
+    $purchase->refresh();
+    expect((float) $purchase->due_amount)->toBe(0.0);
+
+    $supplier->refresh();
+    expect((float) $supplier->balance)->toBe(0.0);
+});
+
+test('purchase return on partially paid purchase offsets remaining due first then settles excess on supplier account', function () {
+    $user = purchaseReturnUser();
+    ['product' => $product, 'batch' => $batch] = purchaseReturnProduct(10, $user->branch_id);
+    // Purchase paid=200, due=100.
+    $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id, 'balance' => 100]);
+
+    $purchase = purchaseReturnPurchase($user, $supplier, [
+        'gross' => 300,
+        'discount' => 0,
+        'vat' => 0,
+        'paid' => 200,
+    ]);
+
+    $purchaseProduct = PurchaseProduct::factory()
+        ->forPurchase($purchase)
+        ->forProduct($product)
+        ->withBatch($batch->id, 2)
+        ->create(['unit_price' => 150]);
+
+    $this->actingAs($user)
+        ->post(route('inventory.purchase-return.store'), [
+            'purchase_id' => $purchase->id,
+            'date' => now()->format('Y-m-d'),
+            'paid_amount' => '0',
+            'payment_type' => (string) PurchaseReceivedPayment::Supplier_Account->value,
+            'items' => [
+                ['purchase_product_id' => $purchaseProduct->id, 'quantity' => '2'],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase-return.index'));
+
+    $purchaseReturn = PurchaseReturn::query()->latest('id')->first();
+
+    // Return net = 300, purchase due = 100 → offset = 100, return.due = 200.
+    expect((float) $purchaseReturn->net_amount)->toBe(300.0);
+    expect((float) $purchaseReturn->purchase_due_offset)->toBe(100.0);
+    expect((float) $purchaseReturn->due_amount)->toBe(200.0);
+
+    $purchase->refresh();
+    expect((float) $purchase->due_amount)->toBe(0.0);
+
+    // Supplier balance: -100 (offset) -200 (return due) = -200.
+    $supplier->refresh();
+    expect((float) $supplier->balance)->toBe(-200.0); // 100 - 300
+});
+
+test('purchase return rollback on unpaid purchase restores purchase due and supplier balance', function () {
+    $user = purchaseReturnUser();
+    seedAccountingAccounts(10000, $user->branch_id);
+
+    $inventory = SystemAccountService::resolve(SystemAccountKey::ProductInventory, $user->branch_id);
+    $payables = SystemAccountService::resolve(SystemAccountKey::SupplierPayables, $user->branch_id);
+    $inventoryBefore = (float) $inventory->fresh()->current_balance;
+    $payablesBefore = (float) $payables->fresh()->current_balance;
+
+    ['product' => $product, 'batch' => $batch] = purchaseReturnProduct(10, $user->branch_id);
+    $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id, 'balance' => 300]);
+
+    $purchase = purchaseReturnPurchase($user, $supplier, [
+        'gross' => 300,
+        'discount' => 0,
+        'vat' => 0,
+        'paid' => 0,
+    ]);
+
+    $purchaseProduct = PurchaseProduct::factory()
+        ->forPurchase($purchase)
+        ->forProduct($product)
+        ->withBatch($batch->id, 2)
+        ->create(['unit_price' => 150]);
+
+    $this->actingAs($user)
+        ->post(route('inventory.purchase-return.store'), [
+            'purchase_id' => $purchase->id,
+            'date' => now()->format('Y-m-d'),
+            'paid_amount' => '0',
+            'payment_type' => (string) PurchaseReceivedPayment::Supplier_Account->value,
+            'items' => [
+                ['purchase_product_id' => $purchaseProduct->id, 'quantity' => '2'],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase-return.index'));
+
+    $purchaseReturn = PurchaseReturn::query()->latest('id')->first();
+
+    $this->actingAs($user)
+        ->delete(route('inventory.purchase-return.destroy', $purchaseReturn))
+        ->assertRedirect(route('inventory.purchase-return.index'));
+
+    // Purchase due restored to 300.
+    $purchase->refresh();
+    expect((float) $purchase->due_amount)->toBe(300.0);
+
+    // Supplier balance restored to 300.
+    $supplier->refresh();
+    expect((float) $supplier->balance)->toBe(300.0);
+
+    // Accounting reversed.
+    $inventory->refresh();
+    $payables->refresh();
+    expect((float) $inventory->current_balance)->toBe($inventoryBefore);
+    expect((float) $payables->current_balance)->toBe($payablesBefore);
+});
+
+test('purchase return on unpaid purchase correctly debits supplier payables in accounting', function () {
+    $user = purchaseReturnUser();
+    seedAccountingAccounts(10000, $user->branch_id);
+
+    $payables = SystemAccountService::resolve(SystemAccountKey::SupplierPayables, $user->branch_id);
+    $payablesBefore = (float) $payables->fresh()->current_balance;
+
+    ['product' => $product, 'batch' => $batch] = purchaseReturnProduct(10, $user->branch_id);
+    $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id, 'balance' => 300]);
+
+    $purchase = purchaseReturnPurchase($user, $supplier, [
+        'gross' => 300,
+        'discount' => 0,
+        'vat' => 0,
+        'paid' => 0,
+    ]);
+
+    $purchaseProduct = PurchaseProduct::factory()
+        ->forPurchase($purchase)
+        ->forProduct($product)
+        ->withBatch($batch->id, 2)
+        ->create(['unit_price' => 150]);
+
+    $this->actingAs($user)
+        ->post(route('inventory.purchase-return.store'), [
+            'purchase_id' => $purchase->id,
+            'date' => now()->format('Y-m-d'),
+            'paid_amount' => '0',
+            'payment_type' => (string) PurchaseReceivedPayment::Supplier_Account->value,
+            'items' => [
+                ['purchase_product_id' => $purchaseProduct->id, 'quantity' => '2'],
+            ],
+        ])
+        ->assertRedirect(route('inventory.purchase-return.index'));
+
+    // SupplierPayables should be debited for the full return amount (300) even though
+    // it was tracked as a purchase due offset rather than a return due.
+    $payables->refresh();
+    expect((float) $payables->current_balance)->toBeLessThan($payablesBefore);
+    expect(round($payablesBefore - (float) $payables->current_balance, 2))->toBe(300.0);
+});
+
 test('purchase return destroy reverses cash and supplier ledger balances for partial cash refund', function () {
     $user = purchaseReturnUser();
     $cashInHand = seedAccountingAccounts(10000, $user->branch_id);

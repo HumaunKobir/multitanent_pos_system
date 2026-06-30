@@ -79,7 +79,10 @@ class InventoryAccountingService
         $vatAmount = round((float) $purchaseReturn->vat, 2);
         $returnNet = round((float) $purchaseReturn->net_amount, 2);
         $paidAmount = round(min(max(0, (float) $purchaseReturn->paid_amount), $returnNet), 2);
-        $dueAmount = round(max(0, $returnNet - $paidAmount), 2);
+        // Use the stored due_amount — it may be lower than net-paid when part was offset against
+        // the original purchase's outstanding due (tracked separately in purchase_due_offset).
+        $dueAmount = round((float) $purchaseReturn->due_amount, 2);
+        $purchaseDueOffset = round((float) $purchaseReturn->purchase_due_offset, 2);
         $serial = $purchaseReturn->serial ?? $purchaseReturn->invoice_number;
         $supplierName = $purchaseReturn->supplier?->name ?? 'Supplier';
         $branchId = $purchaseReturn->branch_id;
@@ -95,9 +98,12 @@ class InventoryAccountingService
             $lines[] = $this->debitPaymentAccount($paymentAccountId, $paidAmount, "Cash received — Purchase Return {$serial}", $branchId);
         }
 
-        // Remaining value settled against the supplier's running account.
-        if ($dueAmount > 0) {
-            $lines[] = $this->debitLine(SystemAccountKey::SupplierPayables, $dueAmount, "Supplier payable reduced — Purchase Return {$serial}, {$supplierName}", $branchId);
+        // Supplier payable reduced: covers both the offset against the original purchase due
+        // and any remaining return due that settles on the supplier's running account.
+        $supplierPayablesDebit = $dueAmount + $purchaseDueOffset;
+
+        if ($supplierPayablesDebit > 0) {
+            $lines[] = $this->debitLine(SystemAccountKey::SupplierPayables, $supplierPayablesDebit, "Supplier payable reduced — Purchase Return {$serial}, {$supplierName}", $branchId);
         }
 
         if ($returnBase > 0) {

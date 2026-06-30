@@ -218,6 +218,37 @@ export function resolveGrossBasedSignedSettlement(
     return Math.round((parseFloat(newGross || 0) - discountOnGross - old) * 100) / 100;
 }
 
+export function resolveSoldLineTotal(items = []) {
+    return items.reduce(
+        (sum, item) =>
+            sum +
+            parseFloat(item.sold_quantity || 0) *
+                parseFloat(item.original_old_unit_price ?? (item.old_unit_price || 0)),
+        0,
+    );
+}
+
+export function resolveOldExchangeTotal(items = []) {
+    return items.reduce(
+        (sum, item) =>
+            sum +
+            parseFloat(item.quantity || 0) *
+                parseFloat(item.original_old_unit_price ?? (item.old_unit_price || 0)),
+        0,
+    );
+}
+
+export function resolveExchangeCatalogProportion(oldExchangeTotal, parentCatalogGross) {
+    const parentGross = parseFloat(parentCatalogGross || 0);
+    const oldGross = parseFloat(oldExchangeTotal || 0);
+
+    if (parentGross <= 0) {
+        return 1;
+    }
+
+    return Math.min(1, oldGross / parentGross);
+}
+
 export function resolveOldNetTotal(sellDiscounts, oldTotal, sourceItems = []) {
     const parentNet = parseFloat(sellDiscounts?.net_amount || 0);
     const parentCatalogGross = parseFloat(sellDiscounts?.gross_amount || 0);
@@ -304,11 +335,13 @@ export function calcProductExchangeSummary({
     const taxableBase = Math.max(0, grossAmount - lineDiscountTotal);
     const invoiceType = manualDiscounts.invoiceType || 'flat';
     const parentCatalogGross = parseFloat(sellDiscounts?.gross_amount || 0);
-    const flatProportion = parentCatalogGross > 0 ? Math.min(1, grossAmount / parentCatalogGross) : 1;
+    const soldLineTotal = resolveSoldLineTotal(items);
+    const oldExchangeTotal = resolveOldExchangeTotal(items);
+    const exchangeProportion = resolveExchangeCatalogProportion(oldExchangeTotal, parentCatalogGross);
     const invoiceDiscountAmount =
         invoiceType === 'flat'
             ? Math.min(
-                  parseFloat(manualDiscounts.invoice || 0) * flatProportion,
+                  parseFloat(manualDiscounts.invoice || 0) * exchangeProportion,
                   taxableBase,
               )
             : computeDiscountAmount(invoiceType, manualDiscounts.invoice || 0, taxableBase);
@@ -349,16 +382,12 @@ export function calcProductExchangeSummary({
 
     const netBeforeRoundOff = Math.max(0, netBeforeCoin - coinDiscountAmount);
     const roundOffAmount = Math.min(
-        Math.max(0, parseFloat(manualDiscounts.roundOff || 0)),
+        Math.max(0, parseFloat(manualDiscounts.roundOff || 0)) * exchangeProportion,
         netBeforeRoundOff,
     );
     const netNewAmount = Math.max(0, netBeforeRoundOff - roundOffAmount);
 
-    const oldTotal = items.reduce(
-        (sum, item) =>
-            sum + parseFloat(item.quantity || 0) * parseFloat(item.old_unit_price || 0),
-        0,
-    );
+    const oldTotal = oldExchangeTotal;
     const oldNetTotal = resolveOldNetTotal(sellDiscounts, oldTotal);
     const grossPriceDifference = grossAmount - oldTotal;
     const newDiscountTotal = Math.max(0, grossAmount + vatAmount - netNewAmount);
@@ -391,6 +420,9 @@ export function calcProductExchangeSummary({
         roundOffAmount,
         netNewAmount,
         oldTotal,
+        soldLineTotal,
+        oldExchangeTotal,
+        exchangeProportion,
         oldNetTotal,
         grossPriceDifference,
         newDiscountTotal,

@@ -751,6 +751,7 @@ class ProductExchangeController extends Controller
             $lineDiscountTotal,
             $promotionDiscountTotal,
             $branchId,
+            $oldTotal,
         );
 
         return [
@@ -836,9 +837,17 @@ class ProductExchangeController extends Controller
      */
     private function exchangeShowTotals(ProductExchange $exchange): array
     {
+        $exchange->loadMissing(['products', 'sell.products']);
+
         $oldTotal = round($exchange->products->sum(
             fn ($line) => (float) $line->old_quantity * (float) $line->old_unit_price
         ), 2);
+        $soldLineTotal = round($exchange->products->sum(function ($line) use ($exchange) {
+            $sellLine = $exchange->sell?->products->firstWhere('id', $line->sell_product_id);
+            $soldQty = $sellLine ? (float) $sellLine->quantity : (float) $line->old_quantity;
+
+            return $soldQty * (float) $line->old_unit_price;
+        }), 2);
         $grossAmount = round((float) $exchange->gross_amount, 2);
         $netAmount = round((float) $exchange->net_amount, 2);
         $vat = round((float) $exchange->vat, 2);
@@ -854,6 +863,8 @@ class ProductExchangeController extends Controller
 
         return [
             'old_total' => $oldTotal,
+            'sold_line_total' => $soldLineTotal,
+            'old_exchange_total' => $oldTotal,
             'gross' => $grossAmount,
             'gross_price_difference' => round($grossAmount - $oldTotal, 2),
             'new_discount_total' => round(max(0, $grossAmount + $vat - $netAmount), 2),

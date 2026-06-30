@@ -194,6 +194,7 @@ export default function ProductExchangeCreate({
                 old_product_code: i.product_code,
                 old_variation_id: i.variation_id ?? null,
                 old_unit_price: i.unit_price,
+                original_old_unit_price: i.unit_price,
                 line_discount: i.line_discount,
                 promotion_id: i.promotion_id,
                 promotion_details: i.promotion_details,
@@ -383,8 +384,13 @@ export default function ProductExchangeCreate({
                                     { id: 'old', header: 'Old Product' },
                                     { id: 'new', header: 'New Product' },
                                     {
+                                        id: 'soldQty',
+                                        header: 'Sold',
+                                        align: 'right',
+                                    },
+                                    {
                                         id: 'qty',
-                                        header: 'Qty',
+                                        header: 'Exchange Qty',
                                         align: 'right',
                                     },
                                     {
@@ -446,6 +452,9 @@ export default function ProductExchangeCreate({
                                                     </button>
                                                 )}
                                             </td>
+                                            <td className="px-3 py-2 text-right text-muted-foreground">
+                                                {item.sold_quantity}
+                                            </td>
                                             <td className="px-2 py-1.5 text-right">
                                                 <Input
                                                     type="number"
@@ -471,7 +480,8 @@ export default function ProductExchangeCreate({
                                             <td className="px-3 py-2 text-right text-muted-foreground">
                                                 ৳
                                                 {parseFloat(
-                                                    item.old_unit_price,
+                                                    item.original_old_unit_price ??
+                                                        item.old_unit_price,
                                                 ).toFixed(2)}
                                             </td>
                                             <td className="px-2 py-1.5 text-right">
@@ -530,11 +540,25 @@ export default function ProductExchangeCreate({
                                     </strong>
                                 </span>
                                 <span>
-                                    Old total:{' '}
+                                    Sold line total:{' '}
                                     <strong>
-                                        ৳{(summary?.oldTotal ?? 0).toFixed(2)}
+                                        ৳
+                                        {(summary?.soldLineTotal ?? 0).toFixed(2)}
                                     </strong>
                                 </span>
+                                {(summary?.soldLineTotal ?? 0) -
+                                    (summary?.oldExchangeTotal ?? 0) >
+                                    0.009 && (
+                                    <span>
+                                        Exchange old total:{' '}
+                                        <strong>
+                                            ৳
+                                            {(
+                                                summary?.oldExchangeTotal ?? 0
+                                            ).toFixed(2)}
+                                        </strong>
+                                    </span>
+                                )}
                                 <span>
                                     Price difference:{' '}
                                     <strong

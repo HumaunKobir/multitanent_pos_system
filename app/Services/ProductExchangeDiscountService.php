@@ -164,6 +164,7 @@ class ProductExchangeDiscountService
         float $lineDiscountTotal,
         float $promotionDiscountTotal,
         ?int $branchId,
+        float $oldExchangeGross = 0.0,
     ): array {
         $taxableBase = round(max(0, $grossAmount - $lineDiscountTotal), 2);
 
@@ -182,10 +183,12 @@ class ProductExchangeDiscountService
         $parentCatalogGross = round($parent->products->sum(
             fn ($line) => (float) ($line->original_unit_price ?? $line->unit_price) * (float) $line->quantity
         ), 2);
-        $flatProportion = $parentCatalogGross > 0 ? min(1.0, $grossAmount / $parentCatalogGross) : 1.0;
+        $exchangeProportion = $parentCatalogGross > 0
+            ? min(1.0, round($oldExchangeGross, 2) / $parentCatalogGross)
+            : 1.0;
 
         $invoiceDiscount = $discountType === DiscountType::Flat
-            ? round(min($discountValue * $flatProportion, $taxableBase), 2)
+            ? round(min($discountValue * $exchangeProportion, $taxableBase), 2)
             : $this->specialDiscountService->computeAmount($discountType, $discountValue, $taxableBase);
 
         $specialDiscountId = $this->normalizedSpecialDiscountId($data, $parent);
@@ -235,7 +238,7 @@ class ProductExchangeDiscountService
         }
 
         $netBeforeRoundOff = round($netBeforeCoin - $coinDiscountAmount, 2);
-        $roundOffAmount = $this->resolveRoundOffAmount($data, $parent, $netBeforeRoundOff);
+        $roundOffAmount = $this->resolveRoundOffAmount($data, $parent, $netBeforeRoundOff, $exchangeProportion);
 
         $netAmount = round(max(0, $netBeforeRoundOff - $roundOffAmount), 2);
 
@@ -390,14 +393,22 @@ class ProductExchangeDiscountService
     /**
      * @param  array<string, mixed>  $data
      */
-    private function resolveRoundOffAmount(array $data, Sell $parent, float $netBeforeRoundOff): float
-    {
+    private function resolveRoundOffAmount(
+        array $data,
+        Sell $parent,
+        float $netBeforeRoundOff,
+        float $exchangeProportion = 1.0,
+    ): float {
+        $exchangeProportion = max(0, min(1.0, $exchangeProportion));
+
         if (array_key_exists('round_off_amount', $data)) {
-            $roundOff = round(max(0, (float) ($data['round_off_amount'] ?? 0)), 2);
+            $roundOff = round(max(0, (float) ($data['round_off_amount'] ?? 0)) * $exchangeProportion, 2);
 
             return round(min($roundOff, max(0, $netBeforeRoundOff)), 2);
         }
 
-        return round(min((float) $parent->round_off_amount, max(0, $netBeforeRoundOff)), 2);
+        $parentRoundOff = round((float) $parent->round_off_amount * $exchangeProportion, 2);
+
+        return round(min($parentRoundOff, max(0, $netBeforeRoundOff)), 2);
     }
 }

@@ -37,7 +37,13 @@ export default function ProductExchangeEdit({
 }) {
     const { flash, walkInCustomerId } = usePage().props;
     const toast = useAppToast();
-    const [items, setItems] = useState(exchange.items ?? []);
+    const [items, setItems] = useState(
+        (exchange.items ?? []).map((item) => ({
+            ...item,
+            original_old_unit_price:
+                item.original_old_unit_price ?? item.old_unit_price,
+        })),
+    );
     const [paymentMode, setPaymentMode] = useState(() => {
         const mode = paymentTypeToMode(
             exchange.payment_type,
@@ -398,8 +404,13 @@ export default function ProductExchangeEdit({
                                     { id: 'old', header: 'Old Product' },
                                     { id: 'new', header: 'New Product' },
                                     {
+                                        id: 'soldQty',
+                                        header: 'Sold',
+                                        align: 'right',
+                                    },
+                                    {
                                         id: 'qty',
-                                        header: 'Qty',
+                                        header: 'Exchange Qty',
                                         align: 'right',
                                     },
                                     {
@@ -465,6 +476,9 @@ export default function ProductExchangeEdit({
                                                     )
                                                 )}
                                             </td>
+                                            <td className="px-3 py-2 text-right text-muted-foreground">
+                                                {item.sold_quantity}
+                                            </td>
                                             <td className="px-2 py-1.5 text-right">
                                                 {paymentOnlyEdit ? (
                                                     item.quantity
@@ -494,7 +508,8 @@ export default function ProductExchangeEdit({
                                             <td className="px-3 py-2 text-right text-muted-foreground">
                                                 ৳
                                                 {parseFloat(
-                                                    item.old_unit_price,
+                                                    item.original_old_unit_price ??
+                                                        item.old_unit_price,
                                                 ).toFixed(2)}
                                             </td>
                                             <td className="px-2 py-1.5 text-right">
@@ -563,11 +578,39 @@ export default function ProductExchangeEdit({
                                     </strong>
                                 </span>
                                 <span>
-                                    Old total:{' '}
+                                    Sold line total:{' '}
                                     <strong>
-                                        ৳{(lineTotals?.old_total ?? lineTotals?.oldTotal ?? 0).toFixed(2)}
+                                        ৳
+                                        {(
+                                            lineTotals?.soldLineTotal ??
+                                            lineTotals?.sold_line_total ??
+                                            0
+                                        ).toFixed(2)}
                                     </strong>
                                 </span>
+                                {(lineTotals?.soldLineTotal ??
+                                    lineTotals?.sold_line_total ??
+                                    0) -
+                                    (lineTotals?.oldExchangeTotal ??
+                                        lineTotals?.old_exchange_total ??
+                                        lineTotals?.old_total ??
+                                        lineTotals?.oldTotal ??
+                                        0) >
+                                    0.009 && (
+                                    <span>
+                                        Exchange old total:{' '}
+                                        <strong>
+                                            ৳
+                                            {(
+                                                lineTotals?.oldExchangeTotal ??
+                                                lineTotals?.old_exchange_total ??
+                                                lineTotals?.old_total ??
+                                                lineTotals?.oldTotal ??
+                                                0
+                                            ).toFixed(2)}
+                                        </strong>
+                                    </span>
+                                )}
                                 <span>
                                     Price difference:{' '}
                                     <strong

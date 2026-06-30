@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\CommonStatus;
+use App\Services\DefaultCustomerService;
 use App\Services\EcommerceBranchService;
 use Database\Factories\BranchFactory;
 use Illuminate\Database\Eloquent\Builder;
@@ -35,6 +36,13 @@ class Branch extends Model
     protected $casts = [
         'status' => CommonStatus::class,
     ];
+
+    protected static function booted(): void
+    {
+        static::created(function (Branch $branch): void {
+            DefaultCustomerService::seed($branch);
+        });
+    }
 
     public function scopeActive(Builder $query): Builder
     {

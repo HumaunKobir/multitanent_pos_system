@@ -83,11 +83,17 @@ class BranchController extends Controller
                 ->with('error', 'Cannot delete branch with assigned users.');
         }
 
-        if ($branch->customers()->exists() || $branch->suppliers()->exists()) {
+        if ($branch->customers()->where('is_default', false)->exists()) {
             return redirect()->route('branch.index')
                 ->with('error', 'Cannot delete branch with customers or suppliers.');
         }
 
+        if ($branch->suppliers()->exists()) {
+            return redirect()->route('branch.index')
+                ->with('error', 'Cannot delete branch with customers or suppliers.');
+        }
+
+        $branch->customers()->delete();
         $branch->delete();
 
         return redirect()->route('branch.index')

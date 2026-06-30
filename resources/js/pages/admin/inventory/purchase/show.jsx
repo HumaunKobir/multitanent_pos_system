@@ -86,6 +86,7 @@ export default function PurchaseShow({ purchase }) {
                     items={purchase.purchase_products ?? []}
                     totals={{ gross, vat, discount, net, paid, due }}
                     comment={purchase.comment}
+                    isReturned={!!purchase.is_fully_returned}
                     partySection={
                         <PartyInfoCard
                             icon={User}

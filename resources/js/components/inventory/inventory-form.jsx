@@ -126,10 +126,14 @@ export function PaymentSummaryCard({
     settlementLineLabel = null,
     dueLabel = 'Due Amount',
     showPaidAmount = true,
+    dueAmountOverride = null,
+    dueOffsetAmount = null,
+    paymentHint = null,
 }) {
     const isParty = paymentMode === 'party';
     const paid = isParty ? 0 : parseFloat(paidAmount || 0);
-    const due = Math.max(0, grossAmount - paid);
+    const offset = parseFloat(dueOffsetAmount ?? 0);
+    const due = dueAmountOverride !== null ? dueAmountOverride : Math.max(0, grossAmount - paid - offset);
     const showSettlementLine = settlementLineLabel && grossAmount > 0.009;
     const showDiscountBreakdown = subtotalAmount != null && (discountAmount > 0.009 || vatAmount > 0.009);
 
@@ -184,6 +188,13 @@ export function PaymentSummaryCard({
                     <span className="font-semibold">৳{grossAmount.toFixed(2)}</span>
                 </div>
 
+                {dueOffsetAmount > 0.009 && (
+                    <div className="flex justify-between text-green-700 dark:text-green-400">
+                        <span>Purchase Due Reversed</span>
+                        <span>-৳{dueOffsetAmount.toFixed(2)}</span>
+                    </div>
+                )}
+
                 {showSettlementLine && (
                     <div className="flex justify-between border-t border-border pt-2">
                         <span className="text-muted-foreground">{settlementLineLabel}</span>
@@ -212,7 +223,9 @@ export function PaymentSummaryCard({
                             </option>
                         ))}
                     </select>
-                    {isParty ? (
+                    {paymentHint ? (
+                        <p className="mt-1 text-[10px] text-muted-foreground">{paymentHint}</p>
+                    ) : isParty ? (
                         <p className="mt-1 text-[10px] text-muted-foreground">{partyPaidHint}</p>
                     ) : (
                         <p className="mt-1 text-[10px] text-muted-foreground">

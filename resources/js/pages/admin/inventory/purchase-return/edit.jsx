@@ -15,6 +15,7 @@ import {
     paymentTypeToMode,
     roundCurrency,
 } from '@/components/inventory/inventory-form';
+import { Badge } from '@/components/ui/badge';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { toDateInputValue } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
@@ -55,6 +56,15 @@ export default function PurchaseReturnEdit({ purchaseReturn, paymentAccounts = [
     const vatPercent = parseFloat(purchaseReturn?.purchase_vat_percent || 0);
     const vatAmount = roundCurrency(subtotalAmount * vatPercent / 100);
     const grossAmount = subtotalAmount + vatAmount - discountAmount;
+
+    // Purchase payment info (restored due = original due before this return was applied).
+    const purchaseDue = parseFloat(purchaseReturn.purchase_due_amount || 0);
+    const purchasePaid = parseFloat(purchaseReturn.purchase_paid_amount || 0);
+    const purchaseNet = parseFloat(purchaseReturn.purchase_gross_amount || 0)
+        + parseFloat(purchaseReturn.purchase_vat || 0)
+        - parseFloat(purchaseReturn.purchase_discount || 0);
+    const dueOffset = Math.min(purchaseDue, grossAmount);
+    const effectiveReturnDue = Math.max(0, grossAmount - dueOffset);
 
     function updateReturnQty(index, rawValue) {
         const item = items[index];
@@ -120,6 +130,31 @@ export default function PurchaseReturnEdit({ purchaseReturn, paymentAccounts = [
                             Supplier: {purchaseReturn.supplier_name ?? '—'} · Purchase:{' '}
                             {purchaseReturn.purchase_invoice ?? purchaseReturn.purchase_id}
                         </p>
+
+                        {purchaseNet > 0 && (
+                            <div className="mt-3 flex flex-wrap items-center gap-3 rounded-md border border-border bg-muted/40 px-3 py-2 text-xs">
+                                <span className="font-medium text-foreground">Purchase Payment</span>
+                                <span className="text-muted-foreground">Net ৳{purchaseNet.toFixed(2)}</span>
+                                <span className="text-green-700 dark:text-green-400">Paid ৳{purchasePaid.toFixed(2)}</span>
+                                {purchaseDue > 0 ? (
+                                    <span className="font-semibold text-red-600">Due ৳{purchaseDue.toFixed(2)}</span>
+                                ) : (
+                                    <span className="text-green-700 dark:text-green-400">No Due</span>
+                                )}
+                                <Badge
+                                    className={
+                                        purchaseDue <= 0
+                                            ? 'bg-green-600 text-white'
+                                            : purchasePaid <= 0
+                                              ? 'bg-red-600 text-white'
+                                              : 'bg-orange-500 text-white'
+                                    }
+                                >
+                                    {purchaseDue <= 0 ? 'Paid' : purchasePaid <= 0 ? 'Unpaid' : 'Partially Paid'}
+                                </Badge>
+                            </div>
+                        )}
+
                         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <DateField
                                 label="Return Date"
@@ -196,6 +231,16 @@ export default function PurchaseReturnEdit({ purchaseReturn, paymentAccounts = [
                             paymentAccounts={paymentAccounts}
                             partyLabel="Supplier Account"
                             paidError={form.errors.paid_amount}
+                            dueOffsetAmount={purchaseNet > 0 && dueOffset > 0 ? dueOffset : null}
+                            paymentHint={
+                                purchaseNet > 0 && dueOffset > 0
+                                    ? paymentMode === 'party'
+                                        ? effectiveReturnDue > 0
+                                            ? `Purchase due ৳${purchaseDue.toFixed(2)} is reversed. Remaining ৳${effectiveReturnDue.toFixed(2)} stays as return due on the supplier account.`
+                                            : `Purchase due ৳${purchaseDue.toFixed(2)} fully reversed — no new return due is created.`
+                                        : `Purchase due ৳${purchaseDue.toFixed(2)} is reversed from the return total. Enter the cash amount received from the supplier.`
+                                    : undefined
+                            }
                         />
                     </div>
 

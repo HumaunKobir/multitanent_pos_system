@@ -258,6 +258,18 @@ class PurchaseController extends Controller
 
         $paymentAccountLabels = collect($this->paymentAccounts())->keyBy('id');
 
+        $returnedQtyByLine = PurchaseReturn::where('purchase_id', $purchase->id)
+            ->with('products')
+            ->get()
+            ->flatMap(fn ($r) => $r->products)
+            ->groupBy('purchase_product_id')
+            ->map(fn ($lines) => $lines->sum('quantity'));
+
+        $isFullyReturned = $purchase->purchaseProducts->isNotEmpty()
+            && $purchase->purchaseProducts->every(
+                fn ($pp) => ($returnedQtyByLine[$pp->id] ?? 0) >= (float) $pp->quantity
+            );
+
         return Inertia::render('admin/inventory/purchase/show', [
             'purchase' => [
                 ...$purchase->toArray(),
@@ -267,6 +279,7 @@ class PurchaseController extends Controller
                 'direct_payment' => $this->allocations->purchaseDirectPaymentForView($purchase, $paymentAccountLabels),
                 'supplier_payment_details' => $this->allocations->supplierAllocationDetailsForPurchase($purchase, $paymentAccountLabels),
                 'can_edit' => $this->canEditPurchase($purchase),
+                'is_fully_returned' => $isFullyReturned,
             ],
         ]);
     }

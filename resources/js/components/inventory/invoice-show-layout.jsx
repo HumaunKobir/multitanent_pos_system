@@ -216,6 +216,7 @@ export function InvoiceDocument({
     items = [],
     totals,
     comment,
+    isReturned = false,
 }) {
     const { logo } = usePage().props;
     const displayLogo = logoUrl ?? logo;
@@ -277,17 +278,21 @@ export function InvoiceDocument({
                 />
 
                 <div className="mt-4 flex items-center gap-2 print:hidden">
-                    <Badge
-                        className={
-                            due <= 0
-                                ? 'bg-green-600 text-white'
-                                : paid <= 0
-                                  ? 'bg-red-600 text-white'
-                                  : 'bg-orange-500 text-white'
-                        }
-                    >
-                        {due <= 0 ? 'Paid' : paid <= 0 ? 'Unpaid' : 'Partially Paid'}
-                    </Badge>
+                    {isReturned ? (
+                        <Badge className="bg-blue-600 text-white">Returned</Badge>
+                    ) : (
+                        <Badge
+                            className={
+                                due <= 0
+                                    ? 'bg-green-600 text-white'
+                                    : paid <= 0
+                                      ? 'bg-red-600 text-white'
+                                      : 'bg-orange-500 text-white'
+                            }
+                        >
+                            {due <= 0 ? 'Paid' : paid <= 0 ? 'Unpaid' : 'Partially Paid'}
+                        </Badge>
+                    )}
                 </div>
 
                 <div className="mt-4 overflow-hidden rounded-lg border border-border">

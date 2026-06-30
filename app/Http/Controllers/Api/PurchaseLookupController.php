@@ -80,6 +80,8 @@ class PurchaseLookupController extends Controller
             ? ((float) $purchase->vat / (float) $purchase->gross_amount) * 100
             : 0;
 
+        $netAmount = (float) $purchase->gross_amount + (float) $purchase->vat - (float) $purchase->discount;
+
         return response()->json([
             'id' => $purchase->id,
             'invoice_number' => $purchase->invoice_number,
@@ -91,6 +93,9 @@ class PurchaseLookupController extends Controller
             'discount' => (float) $purchase->discount,
             'vat' => (float) $purchase->vat,
             'vat_percent' => $vatPercent,
+            'net_amount' => $netAmount,
+            'paid_amount' => (float) $purchase->paid_amount,
+            'due_amount' => (float) $purchase->due_amount,
             'items' => $items,
         ]);
     }

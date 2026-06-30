@@ -265,6 +265,10 @@ class PurchaseReturnController extends Controller
                 'purchase_vat_percent' => (float) $parent->gross_amount > 0
                     ? ((float) $parent->vat / (float) $parent->gross_amount) * 100
                     : 0,
+                // Restore the offset so the edit form reflects what purchase due will be
+                // available after rollback (rollback adds purchase_due_offset back to purchase.due_amount).
+                'purchase_paid_amount' => (float) $parent->paid_amount,
+                'purchase_due_amount' => (float) $parent->due_amount + (float) $purchaseReturn->purchase_due_offset,
                 'items' => $items,
             ],
         ]);
@@ -488,7 +492,7 @@ class PurchaseReturnController extends Controller
     {
         $purchaseDue = round((float) $parent->due_amount, 2);
 
-        if ($payment['payment_type'] !== PurchaseReceivedPayment::Supplier_Account || $purchaseDue <= 0) {
+        if ($purchaseDue <= 0) {
             return [$payment, 0.0];
         }
 

@@ -130,16 +130,9 @@ class ProductExchangeController extends Controller
                 $lines = $processed['lines'];
                 $oldTotal = $processed['old_total'];
                 $grossAmount = $processed['gross_amount'];
-                $oldNetTotal = $this->exchangeDiscounts->resolveOldNetTotal($parent, $oldTotal);
-                $signedSettlement = $this->exchangeDiscounts->resolveSignedSettlement(
-                    $totals['net_amount'],
-                    $oldNetTotal,
-                );
-                $priceDifference = $totals['net_amount'] - $oldNetTotal;
-                $customerAccountEffect = $this->exchangeDiscounts->resolveCustomerAccountEffect(
-                    $totals['net_amount'],
-                    $oldNetTotal,
-                );
+                $signedSettlement = $this->resolveExchangeSignedSettlement($totals, $oldTotal, $grossAmount);
+                $priceDifference = $signedSettlement;
+                $customerAccountEffect = $signedSettlement;
                 $payment = $this->exchangeDiscounts->resolvePayment($data, $signedSettlement, (int) $data['payment_type']);
 
                 $exchange = ProductExchange::create([
@@ -387,16 +380,9 @@ class ProductExchangeController extends Controller
                 $lines = $processed['lines'];
                 $oldTotal = $processed['old_total'];
                 $grossAmount = $processed['gross_amount'];
-                $oldNetTotal = $this->exchangeDiscounts->resolveOldNetTotal($parent, $oldTotal);
-                $signedSettlement = $this->exchangeDiscounts->resolveSignedSettlement(
-                    $totals['net_amount'],
-                    $oldNetTotal,
-                );
-                $priceDifference = $totals['net_amount'] - $oldNetTotal;
-                $customerAccountEffect = $this->exchangeDiscounts->resolveCustomerAccountEffect(
-                    $totals['net_amount'],
-                    $oldNetTotal,
-                );
+                $signedSettlement = $this->resolveExchangeSignedSettlement($totals, $oldTotal, $grossAmount);
+                $priceDifference = $signedSettlement;
+                $customerAccountEffect = $signedSettlement;
                 $payment = $this->exchangeDiscounts->resolvePayment($data, $signedSettlement, (int) $data['payment_type']);
 
                 if ($lines === []) {
@@ -495,20 +481,8 @@ class ProductExchangeController extends Controller
                 $oldTotal = round($productExchange->products->sum(
                     fn ($line) => (float) $line->old_quantity * (float) $line->old_unit_price
                 ), 2);
-                $grossAmount = round((float) $productExchange->gross_amount, 2);
-                $netAmount = round((float) $productExchange->net_amount, 2);
-                $parent = $productExchange->sell;
-                $oldNetTotal = $parent
-                    ? $this->exchangeDiscounts->resolveOldNetTotal($parent, $oldTotal)
-                    : $oldTotal;
-                $signedSettlement = $this->exchangeDiscounts->resolveSignedSettlement(
-                    $netAmount,
-                    $oldNetTotal,
-                );
-                $customerAccountEffect = $this->exchangeDiscounts->resolveCustomerAccountEffect(
-                    $netAmount,
-                    $oldNetTotal,
-                );
+                $signedSettlement = (float) $productExchange->price_difference;
+                $customerAccountEffect = $signedSettlement;
                 $payment = $this->exchangeDiscounts->resolvePayment(
                     $data,
                     $signedSettlement,
@@ -571,11 +545,7 @@ class ProductExchangeController extends Controller
         $oldTotal = round($productExchange->products->sum(
             fn ($line) => (float) $line->old_quantity * (float) $line->old_unit_price
         ), 2);
-        $oldNetTotal = $this->exchangeDiscounts->resolveOldNetTotal($parent, $oldTotal);
-        $effect = $this->exchangeDiscounts->resolveCustomerAccountEffect(
-            (float) $productExchange->net_amount,
-            $oldNetTotal,
-        );
+        $effect = (float) $productExchange->price_difference;
 
         if ($effect > 0) {
             Customer::whereKey($productExchange->customer_id)->increment('balance', $effect);
@@ -794,6 +764,22 @@ class ProductExchangeController extends Controller
     /**
      * @param  array<string, mixed>  $totals
      */
+    private function resolveExchangeSignedSettlement(array $totals, float $oldTotal, float $grossAmount): float
+    {
+        return $this->exchangeDiscounts->resolveGrossBasedSignedSettlement(
+            $oldTotal,
+            $grossAmount,
+            (float) $totals['discount'],
+            (float) $totals['round_off_amount'],
+            (float) $totals['line_discount_total'],
+            (float) ($totals['special_discount_amount'] ?? 0),
+            (float) ($totals['coin_discount_amount'] ?? 0),
+        );
+    }
+
+    /**
+     * @param  array<string, mixed>  $totals
+     */
     private function applyExchangeCustomerEffects(
         Sell $parent,
         ProductExchange $exchange,
@@ -863,14 +849,8 @@ class ProductExchangeController extends Controller
         $oldNetTotal = $parent
             ? $this->exchangeDiscounts->resolveOldNetTotal($parent, $oldTotal)
             : $oldTotal;
-        $signedSettlement = $this->exchangeDiscounts->resolveSignedSettlement(
-            $netAmount,
-            $oldNetTotal,
-        );
-        $settlementAmount = $this->exchangeDiscounts->resolveSettlementAmount(
-            $netAmount,
-            $oldNetTotal,
-        );
+        $signedSettlement = (float) $exchange->price_difference;
+        $settlementAmount = abs($signedSettlement) < 0.01 ? 0.0 : round(abs($signedSettlement), 2);
 
         return [
             'old_total' => $oldTotal,

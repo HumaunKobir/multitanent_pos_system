@@ -186,6 +186,38 @@ export function resolveSignedExchangeSettlement(netNew, oldNet) {
     return net > old ? net - old : -(old - net);
 }
 
+/**
+ * Settlement compares catalog gross totals. VAT is excluded from the payment/refund
+ * difference; invoice, round off, and other gross-level discounts reduce the new side.
+ */
+export function resolveGrossBasedSignedSettlement(
+    oldGross,
+    newGross,
+    invoiceDiscount = 0,
+    roundOffAmount = 0,
+    lineDiscountTotal = 0,
+    specialDiscountAmount = 0,
+    coinDiscountAmount = 0,
+) {
+    const old = parseFloat(oldGross || 0);
+    const grossDiff = Math.round((parseFloat(newGross || 0) - old) * 100) / 100;
+
+    if (Math.abs(grossDiff) < 0.01) {
+        return 0;
+    }
+
+    const discountOnGross = Math.round(
+        (parseFloat(invoiceDiscount || 0) +
+            parseFloat(roundOffAmount || 0) +
+            parseFloat(lineDiscountTotal || 0) +
+            parseFloat(specialDiscountAmount || 0) +
+            parseFloat(coinDiscountAmount || 0)) *
+            100,
+    ) / 100;
+
+    return Math.round((parseFloat(newGross || 0) - discountOnGross - old) * 100) / 100;
+}
+
 export function resolveOldNetTotal(sellDiscounts, oldTotal, sourceItems = []) {
     const parentNet = parseFloat(sellDiscounts?.net_amount || 0);
     const parentCatalogGross = parseFloat(sellDiscounts?.gross_amount || 0);
@@ -331,9 +363,17 @@ export function calcProductExchangeSummary({
     const grossPriceDifference = grossAmount - oldTotal;
     const newDiscountTotal = Math.max(0, grossAmount + vatAmount - netNewAmount);
     const priceDifference = grossPriceDifference;
-    const settlementAmount = resolveExchangeSettlement(netNewAmount, oldNetTotal);
-    const signedSettlement = resolveSignedExchangeSettlement(netNewAmount, oldNetTotal);
-    const customerAccountEffect = resolveCustomerAccountEffect(netNewAmount, oldNetTotal);
+    const signedSettlement = resolveGrossBasedSignedSettlement(
+        oldTotal,
+        grossAmount,
+        invoiceDiscountAmount,
+        roundOffAmount,
+        lineDiscountTotal,
+        specialDiscountAmount,
+        coinDiscountAmount,
+    );
+    const settlementAmount = Math.abs(signedSettlement) < 0.01 ? 0 : Math.abs(signedSettlement);
+    const customerAccountEffect = Math.round(signedSettlement * 100) / 100;
 
     return {
         grossAmount,

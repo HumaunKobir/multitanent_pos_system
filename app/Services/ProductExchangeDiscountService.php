@@ -277,6 +277,33 @@ class ProductExchangeDiscountService
             : -round($oldNet - $netNew, 2);
     }
 
+    /**
+     * Settlement compares catalog gross totals. VAT is excluded from the payment/refund
+     * difference; invoice, round off, and other gross-level discounts reduce the new side.
+     */
+    public function resolveGrossBasedSignedSettlement(
+        float $oldGross,
+        float $newGross,
+        float $invoiceDiscount,
+        float $roundOffAmount,
+        float $lineDiscountTotal,
+        float $specialDiscountAmount = 0.0,
+        float $coinDiscountAmount = 0.0,
+    ): float {
+        $grossDiff = round($newGross - $oldGross, 2);
+
+        if (abs($grossDiff) < 0.01) {
+            return 0.0;
+        }
+
+        $discountOnGross = round(
+            $invoiceDiscount + $roundOffAmount + $lineDiscountTotal + $specialDiscountAmount + $coinDiscountAmount,
+            2,
+        );
+
+        return round($newGross - $discountOnGross - $oldGross, 2);
+    }
+
     public function resolveOldNetTotal(Sell $parent, float $oldGross): float
     {
         $parent->loadMissing('products');

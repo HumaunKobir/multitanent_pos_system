@@ -764,7 +764,7 @@ class InventoryAccountingService
             'special_discount' => $specialDiscount,
             'round_off' => $roundOff,
             'paid_amount' => (float) $exchange->paid_amount,
-            'price_difference' => round($newNet - $oldNetTotal, 2),
+            'price_difference' => round((float) $exchange->price_difference, 2),
         ];
     }
 

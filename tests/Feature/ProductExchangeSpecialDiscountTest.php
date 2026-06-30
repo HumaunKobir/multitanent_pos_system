@@ -198,7 +198,7 @@ test('sale with only special discount can be exchanged', function () {
     expect((float) $exchange->gross_amount)->toBe(3000.0);
     expect($exchange->special_discount_id)->toBe($specialDiscount->id);
     expect((float) $exchange->special_discount_amount)->toBe(150.0);
-    expect((float) $exchange->price_difference)->toBe(500.0);
+    expect((float) $exchange->price_difference)->toBe(350.0);
 
     $newBatch->refresh();
     expect((float) $newBatch->available)->toBe(5.0);
@@ -260,7 +260,7 @@ test('product exchange auto applies matching special discount when id is omitted
 
     expect($exchange->special_discount_id)->toBe($specialDiscount->id);
     expect((float) $exchange->special_discount_amount)->toBe(200.0);
-    expect((float) $exchange->price_difference)->toBe(500.0);
+    expect((float) $exchange->price_difference)->toBe(300.0);
 });
 
 test('sale with manual invoice discount can be exchanged', function () {
@@ -948,9 +948,9 @@ test('partially paid exchange opens payment-only edit', function () {
 
     $exchange = ProductExchange::query()->latest('id')->firstOrFail();
 
-    expect((float) $exchange->price_difference)->toBe(500.0);
+    expect((float) $exchange->price_difference)->toBe(350.0);
     expect((float) $exchange->paid_amount)->toBe(40.0);
-    expect((float) $exchange->due_amount)->toBe(460.0);
+    expect((float) $exchange->due_amount)->toBe(310.0);
     expect($exchange->fresh()->isEditable())->toBeFalse();
     expect($exchange->fresh()->isPaymentOnlyEditable())->toBeTrue();
     expect($exchange->fresh()->canAccessEdit())->toBeTrue();
@@ -966,7 +966,7 @@ test('partially paid exchange opens payment-only edit', function () {
     $this->actingAs($user)
         ->put(route('inventory.product-exchange.update', $exchange), [
             'comment' => 'Partial payment updated',
-            'paid_amount' => '500',
+            'paid_amount' => '350',
             'payment_type' => ReceivedPaymentMethod::Cash->value,
             'payment_account_id' => $cash->id,
         ])
@@ -975,9 +975,88 @@ test('partially paid exchange opens payment-only edit', function () {
 
     $exchange->refresh();
 
-    expect((float) $exchange->paid_amount)->toBe(500.0);
+    expect((float) $exchange->paid_amount)->toBe(350.0);
     expect((float) $exchange->due_amount)->toBe(0.0);
     expect($exchange->comment)->toBe('Partial payment updated');
+});
+
+test('product exchange refund uses gross difference plus new invoice and round off discounts', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser();
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+
+    $oldProduct = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 400]);
+    Batch::factory()->for($oldProduct)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    $newProduct = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 175]);
+    Batch::factory()->for($newProduct)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => DiscountType::Percent->value,
+            'discount_value' => '3',
+            'round_off_amount' => '2',
+            'special_discount_id' => null,
+            'vat' => '5',
+            'paid_amount' => '1630',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [
+                [
+                    'product_id' => $oldProduct->id,
+                    'variation_id' => null,
+                    'unit_price' => '400',
+                    'quantity' => '4',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $sell = Sell::query()->latest('id')->firstOrFail();
+    $sellProductId = $sell->products()->first()->id;
+
+    $this->actingAs($user)
+        ->post('/inventory/product-exchange', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => null,
+            'paid_amount' => '0',
+            'payment_type' => ReceivedPaymentMethod::Customer_Account->value,
+            'discount_type' => DiscountType::Percent->value,
+            'discount_value' => '3',
+            'round_off_amount' => '2',
+            'items' => [
+                [
+                    'sell_product_id' => $sellProductId,
+                    'product_id' => $newProduct->id,
+                    'variation_id' => null,
+                    'unit_price' => '175',
+                    'quantity' => '4',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect();
+
+    $exchange = ProductExchange::query()->latest('id')->firstOrFail();
+
+    expect((float) $exchange->discount)->toBe(21.0);
+    expect((float) $exchange->round_off_amount)->toBe(2.0);
+    expect((float) $exchange->net_amount)->toBe(712.0);
+    expect((float) $exchange->price_difference)->toBe(-923.0);
+    expect($exchange->settlementAmount())->toBe(923.0);
 });
 
 test('product exchange applies percent invoice discount and round off on same product exchange', function () {
@@ -1181,7 +1260,7 @@ test('partial cash upgrade posts only paid amount to selected account and due to
 
     expect($totals['cash_debit'])->toBe(40.0);
     expect($totals['cash_credit'])->toBe(0.0);
-    expect($totals['ar_debit'])->toBe(460.0);
+    expect($totals['ar_debit'])->toBe(310.0);
     expect($totals['ar_credit'])->toBe(0.0);
 });
 

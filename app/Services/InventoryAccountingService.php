@@ -17,6 +17,7 @@ use App\Models\ProductExchange;
 use App\Models\ProductInitialStock;
 use App\Models\Purchase;
 use App\Models\PurchaseReturn;
+use App\Models\PurchaseReturnPayment;
 use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\StockDistribution;
@@ -125,6 +126,32 @@ class InventoryAccountingService
             "Purchase Return {$serial}",
             $lines,
             validateBalance: false,
+        );
+    }
+
+    /**
+     * Record the cash/bank receipt when a supplier pays back a purchase return due.
+     * Dr CashAccount, Cr SupplierPayables — clears the negative payable created at return time.
+     */
+    public function postPurchaseReturnPayment(PurchaseReturnPayment $payment): void
+    {
+        $serial = $payment->purchaseReturn?->invoice_number ?? "PR#{$payment->purchase_return_id}";
+        $supplierName = $payment->supplier?->name ?? 'Supplier';
+        $branchId = $payment->branch_id;
+        $amount = round((float) $payment->amount, 2);
+
+        $lines = [
+            $this->debitPaymentAccount($payment->payment_account_id, $amount, "Supplier refund received — Purchase Return {$serial}, {$supplierName}", $branchId),
+            $this->creditLine(SystemAccountKey::SupplierPayables, $amount, "Supplier payable cleared — Purchase Return {$serial}, {$supplierName}", $branchId),
+        ];
+
+        $this->postJournal(
+            PurchaseReturnPayment::class,
+            $payment->id,
+            $payment->date->format('Y-m-d'),
+            "Purchase Return Refund {$serial}",
+            $lines,
+            validateBalance: true,
         );
     }
 

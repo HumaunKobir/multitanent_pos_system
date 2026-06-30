@@ -124,6 +124,7 @@ Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')
     Route::redirect('stock', '/report/inventory-stock');
     Route::resource('purchase', PurchaseController::class);
     Route::resource('purchase-return', PurchaseReturnController::class);
+    Route::post('purchase-return/{purchase_return}/receive-payment', [PurchaseReturnController::class, 'receivePayment'])->name('purchase-return.receive-payment');
     Route::resource('damage', DamageController::class);
     Route::post('sell/pause', [SellController::class, 'pause'])->name('sell.pause');
     Route::resource('sell', SellController::class);

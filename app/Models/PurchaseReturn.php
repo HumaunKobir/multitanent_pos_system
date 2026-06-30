@@ -28,6 +28,7 @@ class PurchaseReturn extends Model
         'paid_amount',
         'due_amount',
         'purchase_due_offset',
+        'received_amount',
         'payment_type',
         'payment_account_id',
         'serial',
@@ -42,6 +43,7 @@ class PurchaseReturn extends Model
         'paid_amount' => 'decimal:2',
         'due_amount' => 'decimal:2',
         'purchase_due_offset' => 'decimal:2',
+        'received_amount' => 'decimal:2',
         'payment_type' => PurchaseReceivedPayment::class,
     ];
 
@@ -75,5 +77,10 @@ class PurchaseReturn extends Model
     public function products(): HasMany
     {
         return $this->hasMany(PurchaseReturnProduct::class);
+    }
+
+    public function payments(): HasMany
+    {
+        return $this->hasMany(PurchaseReturnPayment::class);
     }
 }

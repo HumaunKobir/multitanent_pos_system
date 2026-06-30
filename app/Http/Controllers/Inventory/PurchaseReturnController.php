@@ -10,6 +10,7 @@ use App\Models\Batch;
 use App\Models\Purchase;
 use App\Models\PurchaseProduct;
 use App\Models\PurchaseReturn;
+use App\Models\PurchaseReturnPayment;
 use App\Models\StockDistribution;
 use App\Models\Supplier;
 use App\Services\InventoryAccountingService;
@@ -198,10 +199,13 @@ class PurchaseReturnController extends Controller
             'purchase',
             'products.product',
             'products.variation',
+            'payments',
         ]);
 
         return Inertia::render('admin/inventory/purchase-return/show', [
             'purchaseReturn' => $purchaseReturn,
+            'paymentAccounts' => $this->paymentAccounts(),
+            'today' => now()->format('Y-m-d'),
         ]);
     }
 
@@ -407,10 +411,19 @@ class PurchaseReturnController extends Controller
         $this->authorize('inventory.purchase-return.delete');
         $this->authorizeBranchUserRecord($purchaseReturn);
 
-        $purchaseReturn->load(['products']);
+        $purchaseReturn->load(['products', 'payments']);
 
         try {
             DB::transaction(function () use ($purchaseReturn) {
+                // Reverse each received payment before reversing the return itself.
+                foreach ($purchaseReturn->payments as $payment) {
+                    $this->accounting->reverseFor($payment);
+                    if ($purchaseReturn->supplier_id) {
+                        Supplier::whereKey($purchaseReturn->supplier_id)->decrement('balance', (float) $payment->amount);
+                    }
+                    $payment->delete();
+                }
+
                 $this->accounting->reverseFor($purchaseReturn);
                 $this->rollbackPurchaseReturn($purchaseReturn);
                 $purchaseReturn->products()->delete();
@@ -422,6 +435,54 @@ class PurchaseReturnController extends Controller
 
         return redirect()->route('inventory.purchase-return.index')
             ->with('success', 'Purchase return deleted successfully.');
+    }
+
+    public function receivePayment(Request $request, PurchaseReturn $purchaseReturn): RedirectResponse
+    {
+        $this->authorize('inventory.purchase-return.update');
+        $this->authorizeBranchUserRecord($purchaseReturn);
+
+        $data = $request->validate([
+            'date' => ['required', 'date'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'payment_account_id' => ['required', 'integer', 'exists:chart_of_accounts,id'],
+        ]);
+
+        $amount = round((float) $data['amount'], 2);
+        $currentDue = round((float) $purchaseReturn->due_amount, 2);
+
+        if ($amount > $currentDue + 0.009) {
+            return back()->withErrors(['amount' => "Amount cannot exceed the remaining due of ৳{$currentDue}."])->withInput();
+        }
+
+        try {
+            DB::transaction(function () use ($purchaseReturn, $data, $amount) {
+                $serial = 'INVRP'.str_pad((string) (PurchaseReturnPayment::max('id') + 1), 8, '0', STR_PAD_LEFT);
+
+                $payment = PurchaseReturnPayment::create([
+                    'purchase_return_id' => $purchaseReturn->id,
+                    'supplier_id' => $purchaseReturn->supplier_id,
+                    'branch_id' => $purchaseReturn->branch_id,
+                    'date' => $data['date'],
+                    'amount' => $amount,
+                    'payment_account_id' => (int) $data['payment_account_id'],
+                    'serial' => $serial,
+                ]);
+
+                $purchaseReturn->decrement('due_amount', $amount);
+                $purchaseReturn->increment('received_amount', $amount);
+
+                if ($purchaseReturn->supplier_id) {
+                    Supplier::whereKey($purchaseReturn->supplier_id)->increment('balance', $amount);
+                }
+
+                $this->accounting->postPurchaseReturnPayment($payment->load(['purchaseReturn', 'supplier']));
+            });
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Unable to record payment: '.$e->getMessage());
+        }
+
+        return back()->with('success', 'Payment received successfully.');
     }
 
     /**
@@ -470,11 +531,12 @@ class PurchaseReturnController extends Controller
             }
         }
 
-        // Restore supplier balance for any return due that settled on the supplier account.
-        $returnDue = (float) $purchaseReturn->due_amount;
+        // Restore supplier balance for any return due still outstanding (not yet received).
+        // Received payments are reversed separately in destroy() before this method is called.
+        $outstandingDue = (float) $purchaseReturn->due_amount;
 
-        if ($purchaseReturn->supplier_id && $returnDue > 0) {
-            Supplier::whereKey($purchaseReturn->supplier_id)->increment('balance', $returnDue);
+        if ($purchaseReturn->supplier_id && $outstandingDue > 0) {
+            Supplier::whereKey($purchaseReturn->supplier_id)->increment('balance', $outstandingDue);
         }
     }
 

@@ -4,15 +4,20 @@ namespace App\Http\Controllers\Customer;
 
 use App\Enums\CommonStatus;
 use App\Enums\CustomerRegistrationType;
+use App\Exports\CustomerReportExport;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Services\CustomerReportService;
 use App\Services\InventoryAccountingService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Enum;
 use Inertia\Inertia;
 use Inertia\Response;
+use Maatwebsite\Excel\Facades\Excel;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class CustomerController extends Controller
 {
@@ -116,6 +121,23 @@ class CustomerController extends Controller
         $customer->update($data);
 
         return back()->with('success', 'Customer updated successfully.');
+    }
+
+    public function report(Customer $customer, CustomerReportService $reportService): BinaryFileResponse
+    {
+        $this->authorize('party.customer.view');
+
+        $branchId = auth()->user()?->branch_id;
+
+        if ($branchId !== null && (int) $customer->branch_id !== (int) $branchId) {
+            abort(404);
+        }
+
+        $data = $reportService->build($customer);
+        $slug = Str::slug($customer->name ?: $customer->phone);
+        $filename = "customer-report-{$slug}-".now()->format('Y-m-d').'.xlsx';
+
+        return Excel::download(new CustomerReportExport($data), $filename);
     }
 
     public function destroy(Customer $customer): RedirectResponse

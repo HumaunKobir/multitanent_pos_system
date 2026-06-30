@@ -144,6 +144,7 @@ Route::middleware(['auth', 'verified'])->prefix('party')->name('party.')->group(
         ->only(['index', 'store', 'update', 'destroy'])
         ->parameters(['customer-due-collection' => 'customerPayment']);
     Route::resource('customer-due-alert', CustomerDueAlertController::class)->except(['create', 'edit', 'show']);
+    Route::get('customer/{customer}/report', [CustomerController::class, 'report'])->name('customer.report');
     Route::resource('customer', CustomerController::class)->except(['create', 'edit', 'show']);
 });
 

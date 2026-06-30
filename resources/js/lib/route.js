@@ -211,6 +211,7 @@ const routes = {
     'party.customer-due-alert.destroy': '/party/customer-due-alert/:customer_due_alert',
     'party.customer.index': '/party/customer',
     'party.customer.store': '/party/customer',
+    'party.customer.report': '/party/customer/:customer/report',
     'party.customer.update': '/party/customer/:customer',
     'party.customer.destroy': '/party/customer/:customer',
     'report.customer-ledger': '/report/customer-ledger',

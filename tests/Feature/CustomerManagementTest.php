@@ -1,7 +1,10 @@
 <?php
 
+use App\Enums\SaleType;
 use App\Models\Branch;
 use App\Models\Customer;
+use App\Models\CustomerPayment;
+use App\Models\Sell;
 use App\Models\User;
 use Spatie\Permission\Models\Permission;
 
@@ -169,4 +172,60 @@ test('duplicate phone is rejected within the same branch', function () {
             'status' => 1,
         ])
         ->assertSessionHasErrors('phone');
+});
+
+test('user without permission cannot download customer report', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerManagementUser();
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    $this->actingAs($user)
+        ->get(route('party.customer.report', $customer))
+        ->assertForbidden();
+});
+
+test('user can download customer excel report', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerManagementUser(['party.customer.view']);
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'name' => 'Report Customer',
+        'balance' => 1500,
+    ]);
+
+    Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'customer_id' => $customer->id,
+        'type' => SaleType::Sale,
+        'gross_amount' => 2000,
+        'paid_amount' => 500,
+    ]);
+
+    CustomerPayment::query()->create([
+        'branch_id' => $user->branch_id,
+        'customer_id' => $customer->id,
+        'date' => now()->format('Y-m-d'),
+        'amount' => 300,
+        'comment' => 'Partial collection',
+        'created_by' => $user->id,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('party.customer.report', $customer))
+        ->assertSuccessful()
+        ->assertDownload('customer-report-report-customer-'.now()->format('Y-m-d').'.xlsx');
+});
+
+test('branch user cannot download report for customer from another branch', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerManagementUser(['party.customer.view']);
+    $otherBranch = Branch::factory()->create();
+    $customer = Customer::factory()->create(['branch_id' => $otherBranch->id]);
+
+    $this->actingAs($user)
+        ->get(route('party.customer.report', $customer))
+        ->assertNotFound();
 });

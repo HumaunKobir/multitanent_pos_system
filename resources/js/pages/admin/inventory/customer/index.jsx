@@ -1,7 +1,7 @@
 import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
+import { FileSpreadsheet, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { FormField } from '@/components/form-field';
@@ -274,12 +274,30 @@ export default function CustomerIndex({ customers, filters, statuses }) {
             ),
         },
         {
-            id: 'actions', header: 'Actions', align: 'right',             render: (row) => (
-                <AdminInlineActions
-                    prefix="party.customer"
-                    onEdit={() => openEdit(row)}
-                    onDelete={() => setDeleting(row)}
-                />
+            id: 'actions', header: 'Actions', align: 'right', render: (row) => (
+                <div className="flex justify-end gap-1">
+                    {can('party.customer.view') && (
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            asChild
+                        >
+                            <a
+                                href={route('party.customer.report', row.id)}
+                                aria-label={`Download report for ${row.name ?? row.phone}`}
+                                title="Download Excel report"
+                            >
+                                <FileSpreadsheet className="size-4" />
+                            </a>
+                        </Button>
+                    )}
+                    <AdminInlineActions
+                        prefix="party.customer"
+                        onEdit={() => openEdit(row)}
+                        onDelete={() => setDeleting(row)}
+                    />
+                </div>
             ),
         },
     ];

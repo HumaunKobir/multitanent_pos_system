@@ -221,7 +221,8 @@ test('purchase return on supplier account decreases supplier balance by net amou
 
     $supplier->refresh();
 
-    expect((float) $supplier->balance)->toBe(475.0); // 950 - 475
+    // Due is tracked in AccountsReceivable — supplier balance is unchanged.
+    expect((float) $supplier->balance)->toBe(950.0);
 });
 
 test('purchase return with partial cash refund only reduces supplier balance by the due portion', function () {
@@ -265,8 +266,8 @@ test('purchase return with partial cash refund only reduces supplier balance by 
 
     $supplier->refresh();
 
-    // Only the unpaid (due) portion is settled against the supplier account.
-    expect((float) $supplier->balance)->toBe(675.0); // 950 - 275
+    // Due portion is tracked in AccountsReceivable — supplier balance is unchanged.
+    expect((float) $supplier->balance)->toBe(950.0);
 });
 
 test('purchase return cash refund requires a payment account', function () {
@@ -343,8 +344,6 @@ test('purchase return update recalculates discount and vat', function () {
         'batches' => [(string) $batch->id => 5],
     ]);
 
-    $supplier->update(['balance' => -475]);
-
     $this->actingAs($user)
         ->put(route('inventory.purchase-return.update', $purchaseReturn), [
             'date' => now()->format('Y-m-d'),
@@ -362,15 +361,12 @@ test('purchase return update recalculates discount and vat', function () {
     expect((float) $purchaseReturn->discount)->toBe(100.0);
     expect((float) $purchaseReturn->vat)->toBe(50.0);
     expect((float) $purchaseReturn->net_amount)->toBe(950.0);
-
-    $supplier->refresh();
-    expect((float) $supplier->balance)->toBe(-950.0);
 });
 
-test('purchase return destroy rolls back supplier balance by net amount', function () {
+test('purchase return destroy does not alter supplier balance for due-only returns', function () {
     $user = purchaseReturnUser();
     ['product' => $product, 'batch' => $batch] = purchaseReturnProduct(10, $user->branch_id);
-    $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id, 'balance' => -475]);
+    $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id, 'balance' => 0]);
 
     $purchase = purchaseReturnPurchase($user, $supplier, [
         'gross' => 1000,
@@ -412,8 +408,8 @@ test('purchase return destroy rolls back supplier balance by net amount', functi
         ->delete(route('inventory.purchase-return.destroy', $purchaseReturn))
         ->assertRedirect(route('inventory.purchase-return.index'));
 
+    // Due portion was never applied to supplier balance, so destroy should not change it.
     $supplier->refresh();
-
     expect((float) $supplier->balance)->toBe(0.0);
 });
 
@@ -423,9 +419,11 @@ test('purchase return destroy reverses ledger balances and restores batch stock 
 
     $inventory = SystemAccountService::resolve(SystemAccountKey::ProductInventory, $user->branch_id);
     $payables = SystemAccountService::resolve(SystemAccountKey::SupplierPayables, $user->branch_id);
+    $receivable = SystemAccountService::resolve(SystemAccountKey::AccountsReceivable, $user->branch_id);
 
     $inventoryBefore = (float) $inventory->fresh()->current_balance;
     $payablesBefore = (float) $payables->fresh()->current_balance;
+    $receivableBefore = (float) $receivable->fresh()->current_balance;
 
     ['product' => $product, 'batch' => $batch] = purchaseReturnProduct(20, $user->branch_id);
     $batchAvailableBefore = (float) $batch->available;
@@ -469,11 +467,15 @@ test('purchase return destroy reverses ledger balances and restores batch stock 
     $supplier->refresh();
     $inventory->refresh();
     $payables->refresh();
+    $receivable->refresh();
 
     expect((float) $batch->available)->toBe($batchAvailableBefore - 5);
-    expect((float) $supplier->balance)->toBe(475.0);
+    // No purchase due offset, so supplier balance unchanged; due goes to AccountsReceivable.
+    expect((float) $supplier->balance)->toBe(950.0);
     expect((float) $inventory->current_balance)->toBeLessThan($inventoryBefore);
-    expect((float) $payables->current_balance)->toBeLessThan($payablesBefore);
+    // SupplierPayables NOT debited (no offset for this return); only AccountsReceivable is debited.
+    expect((float) $payables->current_balance)->toBe($payablesBefore);
+    expect((float) $receivable->current_balance)->toBeGreaterThan($receivableBefore);
 
     $this->actingAs($user)
         ->delete(route('inventory.purchase-return.destroy', $purchaseReturn))
@@ -483,6 +485,7 @@ test('purchase return destroy reverses ledger balances and restores batch stock 
     $supplier->refresh();
     $inventory->refresh();
     $payables->refresh();
+    $receivable->refresh();
 
     expect(PurchaseReturn::query()->whereKey($purchaseReturn->id)->exists())->toBeFalse();
     expect(Transaction::query()
@@ -493,6 +496,7 @@ test('purchase return destroy reverses ledger balances and restores batch stock 
     expect((float) $supplier->balance)->toBe(950.0);
     expect((float) $inventory->current_balance)->toBe($inventoryBefore);
     expect((float) $payables->current_balance)->toBe($payablesBefore);
+    expect((float) $receivable->current_balance)->toBe($receivableBefore);
 });
 
 test('purchase return on unpaid purchase offsets return amount against purchase due leaving zero return due', function () {
@@ -626,9 +630,9 @@ test('purchase return on partially paid purchase offsets remaining due first the
     $purchase->refresh();
     expect((float) $purchase->due_amount)->toBe(0.0);
 
-    // Supplier balance: -100 (offset) -200 (return due) = -200.
+    // Offset reduces balance by 100 (100→0); return due goes to AccountsReceivable, not supplier balance.
     $supplier->refresh();
-    expect((float) $supplier->balance)->toBe(-200.0); // 100 - 300
+    expect((float) $supplier->balance)->toBe(0.0);
 });
 
 test('purchase return rollback on unpaid purchase restores purchase due and supplier balance', function () {
@@ -779,7 +783,8 @@ test('purchase return destroy reverses cash and supplier ledger balances for par
     $supplier->refresh();
 
     expect((float) $cashInHand->current_balance)->toBe($cashBefore + 200.0);
-    expect((float) $supplier->balance)->toBe(675.0);
+    // No purchase due offset, so supplier balance unchanged; due goes to AccountsReceivable.
+    expect((float) $supplier->balance)->toBe(950.0);
 
     $this->actingAs($user)
         ->delete(route('inventory.purchase-return.destroy', $purchaseReturn))

@@ -99,12 +99,15 @@ class InventoryAccountingService
             $lines[] = $this->debitPaymentAccount($paymentAccountId, $paidAmount, "Cash received — Purchase Return {$serial}", $branchId);
         }
 
-        // Supplier payable reduced: covers both the offset against the original purchase due
-        // and any remaining return due that settles on the supplier's running account.
-        $supplierPayablesDebit = $dueAmount + $purchaseDueOffset;
+        // Only the offset portion clears an existing supplier payable (purchase due reversed).
+        // The remaining return due is not yet received from the supplier, so it goes to
+        // AccountsReceivable and will be cleared when the supplier actually pays (receivePayment).
+        if ($purchaseDueOffset > 0) {
+            $lines[] = $this->debitLine(SystemAccountKey::SupplierPayables, $purchaseDueOffset, "Purchase due reversed — Purchase Return {$serial}, {$supplierName}", $branchId);
+        }
 
-        if ($supplierPayablesDebit > 0) {
-            $lines[] = $this->debitLine(SystemAccountKey::SupplierPayables, $supplierPayablesDebit, "Supplier payable reduced — Purchase Return {$serial}, {$supplierName}", $branchId);
+        if ($dueAmount > 0) {
+            $lines[] = $this->debitLine(SystemAccountKey::AccountsReceivable, $dueAmount, "Supplier refund pending — Purchase Return {$serial}, {$supplierName}", $branchId);
         }
 
         if ($returnBase > 0) {
@@ -131,7 +134,7 @@ class InventoryAccountingService
 
     /**
      * Record the cash/bank receipt when a supplier pays back a purchase return due.
-     * Dr CashAccount, Cr SupplierPayables — clears the negative payable created at return time.
+     * Dr CashAccount, Cr AccountsReceivable — clears the receivable posted at return creation.
      */
     public function postPurchaseReturnPayment(PurchaseReturnPayment $payment): void
     {
@@ -142,7 +145,7 @@ class InventoryAccountingService
 
         $lines = [
             $this->debitPaymentAccount($payment->payment_account_id, $amount, "Supplier refund received — Purchase Return {$serial}, {$supplierName}", $branchId),
-            $this->creditLine(SystemAccountKey::SupplierPayables, $amount, "Supplier payable cleared — Purchase Return {$serial}, {$supplierName}", $branchId),
+            $this->creditLine(SystemAccountKey::AccountsReceivable, $amount, "Supplier receivable cleared — Purchase Return {$serial}, {$supplierName}", $branchId),
         ];
 
         $this->postJournal(

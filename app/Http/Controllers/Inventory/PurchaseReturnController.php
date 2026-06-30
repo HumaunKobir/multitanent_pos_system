@@ -168,11 +168,7 @@ class PurchaseReturnController extends Controller
                 }
 
                 // Offset portion already reduced supplier balance inside applyPurchaseDueOffset.
-                // Only the remaining return due (if any) still settles via the supplier's running account.
-                if ($parent->supplier_id && $payment['due_amount'] > 0) {
-                    Supplier::whereKey($parent->supplier_id)->decrement('balance', $payment['due_amount']);
-                }
-
+                // Return due is tracked in AccountsReceivable (not supplier balance) until received.
                 $this->accounting->postPurchaseReturn($purchaseReturn->fresh(['supplier']), $payment['payment_account_id']);
             });
         } catch (\Throwable $e) {
@@ -385,11 +381,7 @@ class PurchaseReturnController extends Controller
                 }
 
                 // Offset portion already reduced supplier balance inside applyPurchaseDueOffset.
-                // Only the remaining return due (if any) still settles via the supplier's running account.
-                if ($parent->supplier_id && $payment['due_amount'] > 0) {
-                    Supplier::whereKey($parent->supplier_id)->decrement('balance', $payment['due_amount']);
-                }
-
+                // Return due is tracked in AccountsReceivable (not supplier balance) until received.
                 $this->accounting->postPurchaseReturn($purchaseReturn->fresh(['supplier']), $payment['payment_account_id']);
             });
         } catch (\Throwable $e) {
@@ -418,9 +410,6 @@ class PurchaseReturnController extends Controller
                 // Reverse each received payment before reversing the return itself.
                 foreach ($purchaseReturn->payments as $payment) {
                     $this->accounting->reverseFor($payment);
-                    if ($purchaseReturn->supplier_id) {
-                        Supplier::whereKey($purchaseReturn->supplier_id)->decrement('balance', (float) $payment->amount);
-                    }
                     $payment->delete();
                 }
 
@@ -471,10 +460,6 @@ class PurchaseReturnController extends Controller
 
                 $purchaseReturn->decrement('due_amount', $amount);
                 $purchaseReturn->increment('received_amount', $amount);
-
-                if ($purchaseReturn->supplier_id) {
-                    Supplier::whereKey($purchaseReturn->supplier_id)->increment('balance', $amount);
-                }
 
                 $this->accounting->postPurchaseReturnPayment($payment->load(['purchaseReturn', 'supplier']));
             });
@@ -531,13 +516,8 @@ class PurchaseReturnController extends Controller
             }
         }
 
-        // Restore supplier balance for any return due still outstanding (not yet received).
-        // Received payments are reversed separately in destroy() before this method is called.
-        $outstandingDue = (float) $purchaseReturn->due_amount;
-
-        if ($purchaseReturn->supplier_id && $outstandingDue > 0) {
-            Supplier::whereKey($purchaseReturn->supplier_id)->increment('balance', $outstandingDue);
-        }
+        // Return due was tracked in AccountsReceivable (not supplier balance), so no supplier
+        // balance change is needed here. The AccountsReceivable entry is reversed via reverseFor().
     }
 
     /**

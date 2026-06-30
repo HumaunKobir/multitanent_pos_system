@@ -46,6 +46,7 @@ class ProductSearchController extends Controller
                         ->where('branch_id', $branchId)
                         ->where('code', 'like', "%{$s}%"));
             }))
+            ->latest()
             ->limit(15)
             ->get(['id', 'name', 'code', 'purchase_price', 'sale_price', 'image']);
 

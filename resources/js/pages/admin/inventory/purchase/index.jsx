@@ -59,7 +59,24 @@ export default function PurchaseIndex({ purchases, filters }) {
         {
             id: 'supplier',
             header: 'Supplier',
-            render: (row) => row.supplier?.name ?? '—',
+            render: (row) => {
+                const supplier = row.supplier;
+
+                if (!supplier) {
+                    return '—';
+                }
+
+                if (supplier.company_name) {
+                    return (
+                        <div>
+                            <p className="font-medium">{supplier.company_name}</p>
+                            <p className="text-xs text-muted-foreground">{supplier.name}</p>
+                        </div>
+                    );
+                }
+
+                return supplier.name;
+            },
         },
         {
             id: 'total',

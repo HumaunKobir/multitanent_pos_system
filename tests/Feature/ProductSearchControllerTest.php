@@ -9,6 +9,36 @@ use App\Models\User;
 use App\Services\EcommerceBranchService;
 use Spatie\Permission\Models\Permission;
 
+test('purchase search returns latest products first', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = ensureMainBranch();
+    $mainUser = User::factory()->create(['branch_id' => $mainBranchId]);
+    Permission::findOrCreate('inventory.purchase.create', 'web');
+    $mainUser->givePermissionTo('inventory.purchase.create');
+
+    $olderProduct = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Older Purchase Product '.fake()->unique()->numerify('###'),
+        'created_at' => now()->subDay(),
+    ]);
+
+    $newerProduct = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Newer Purchase Product '.fake()->unique()->numerify('###'),
+        'created_at' => now(),
+    ]);
+
+    $response = $this->actingAs($mainUser)
+        ->getJson('/api/products/for-purchase?search=');
+
+    $response->assertOk();
+
+    $ids = collect($response->json())->pluck('id');
+
+    expect($ids->search($newerProduct->id))->toBeLessThan($ids->search($olderProduct->id));
+});
+
 test('main branch user only sees main branch products in purchase search', function () {
     $this->artisan('permissions:sync');
 

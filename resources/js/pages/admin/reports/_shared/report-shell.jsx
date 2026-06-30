@@ -32,13 +32,13 @@ export function useLiveReportFilters(routeName, query, deps) {
 
 export function ReportPage({ title, description, filterBar, filterGridClassName, filterActions, children }) {
     return (
-        <div className="px-2 py-1">
-            <div className="mb-3 flex items-center justify-between rounded-lg bg-blue-950 px-5 py-3 shadow-sm">
-                <div className="flex items-center gap-3">
-                    <div className="flex size-8 items-center justify-center rounded-md bg-white/15">
+        <div className="min-w-0 px-2 py-1 sm:px-3">
+            <div className="mb-3 flex items-center justify-between rounded-lg bg-blue-950 px-4 py-3 shadow-sm sm:px-5">
+                <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-white/15">
                         <BarChart2 className="size-4 text-white" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                         <h1 className="text-base font-semibold text-white">{title}</h1>
                         <p className="text-xs text-white/60">{description}</p>
                     </div>
@@ -59,14 +59,16 @@ export function ReportPage({ title, description, filterBar, filterGridClassName,
 export function ReportFilterPanel({ children, className, actions }) {
     return (
         <div className="mb-4 overflow-hidden rounded-lg border border-blue-950/10 bg-card shadow-sm">
-            <div className="flex items-center gap-2.5 bg-blue-950 px-4 py-2.5">
+            <div className="flex flex-wrap items-center gap-2.5 bg-blue-950 px-4 py-2.5">
                 <div className="flex size-6 items-center justify-center rounded bg-white/15">
                     <SlidersHorizontal className="size-3.5 text-white" />
                 </div>
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-white">Report Filters</h2>
-                <div className="ml-auto flex items-center gap-2">
+                <div className="ml-auto flex flex-wrap items-center gap-2">
                     {actions}
-                    <span className="text-[10px] font-medium uppercase tracking-wider text-white/50">Live update</span>
+                    <span className="hidden text-[10px] font-medium uppercase tracking-wider text-white/50 sm:inline">
+                        Live update
+                    </span>
                 </div>
             </div>
             <div

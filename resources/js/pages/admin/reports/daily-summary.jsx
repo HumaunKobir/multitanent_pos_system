@@ -209,27 +209,27 @@ function SummaryStatCard({ section, summary }) {
     return (
         <div
             className={[
-                'overflow-hidden rounded-lg border bg-card shadow-sm ring-1',
+                'min-w-0 overflow-hidden rounded-lg border bg-card shadow-sm ring-1',
                 section.ringClass,
             ].join(' ')}
         >
-            <div className={['flex items-center gap-2.5 px-4 py-2.5', section.headerClass].join(' ')}>
-                <div className="flex size-7 items-center justify-center rounded-md bg-white/20">
+            <div className={['flex min-w-0 items-center gap-2.5 px-4 py-2.5', section.headerClass].join(' ')}>
+                <div className="flex size-7 shrink-0 items-center justify-center rounded-md bg-white/20">
                     <Icon className="size-4 text-white" />
                 </div>
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-white">{section.title}</h3>
+                <h3 className="min-w-0 text-sm font-semibold uppercase leading-tight tracking-wide text-white">{section.title}</h3>
             </div>
             <div className={['space-y-0 bg-gradient-to-b p-3', section.bodyClass].join(' ')}>
                 {rows.map((row) => (
                     <div
                         key={row.label}
                         className={[
-                            'flex items-center justify-between border-b border-dashed border-black/5 py-2.5 text-sm last:border-0 dark:border-white/10',
+                            'flex items-start justify-between gap-3 border-b border-dashed border-black/5 py-2.5 text-sm last:border-0 dark:border-white/10',
                             row.highlight ? 'font-semibold' : '',
                         ].join(' ')}
                     >
-                        <span className="text-muted-foreground">{row.label}</span>
-                        <span className={row.highlight ? section.accentClass : 'font-medium'}>{row.value}</span>
+                        <span className="shrink-0 text-muted-foreground">{row.label}</span>
+                        <span className={['min-w-0 break-words text-right', row.highlight ? section.accentClass : 'font-medium'].join(' ')}>{row.value}</span>
                     </div>
                 ))}
             </div>
@@ -239,9 +239,9 @@ function SummaryStatCard({ section, summary }) {
 
 function KpiTile({ label, value, sub, className }) {
     return (
-        <div className={['rounded-lg border px-4 py-3 shadow-sm', className].join(' ')}>
+        <div className={['min-w-0 rounded-lg border px-4 py-3 shadow-sm', className].join(' ')}>
             <p className="text-[10px] font-semibold uppercase tracking-wider opacity-80">{label}</p>
-            <p className="mt-1 text-xl font-bold">{value}</p>
+            <p className="mt-1 break-words text-lg font-bold sm:text-xl">{value}</p>
             {sub && <p className="mt-0.5 text-xs opacity-70">{sub}</p>}
         </div>
     );
@@ -266,7 +266,7 @@ function TransactionItems({
                 {items.map((item) => (
                     <div
                         key={`${showRoute}-${item.id}`}
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-dashed border-black/10 bg-white/70 px-2.5 py-1.5 text-xs dark:border-white/10 dark:bg-slate-950/40"
+                        className="flex flex-col gap-1.5 rounded-md border border-dashed border-black/10 bg-white/70 px-2.5 py-1.5 text-xs sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2 dark:border-white/10 dark:bg-slate-950/40"
                     >
                         <Link
                             href={route(showRoute, item.id)}
@@ -274,7 +274,7 @@ function TransactionItems({
                         >
                             {item.reference}
                         </Link>
-                        <div className="flex flex-wrap items-center gap-3 font-mono tabular-nums">
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono tabular-nums">
                             <span>
                                 {amountLabel} <MoneyCell value={item.gross} />
                             </span>
@@ -317,8 +317,7 @@ function AmountCell({ amount, accentClass, borderClass = '' }) {
     );
 }
 
-function StaffBreakdownRow({ row }) {
-    const [expanded, setExpanded] = useState(true);
+function useStaffBreakdownItems(row) {
     const salesItems = row.sales_items ?? [];
     const saleReturnItems = row.sale_returns_items ?? [];
     const exchangeItems = row.product_exchanges_items ?? [];
@@ -332,6 +331,229 @@ function StaffBreakdownRow({ row }) {
         || purchaseItems.length > 0
         || purchaseReturnItems.length > 0
         || damageItems.length > 0;
+
+    return {
+        salesItems,
+        saleReturnItems,
+        exchangeItems,
+        purchaseItems,
+        purchaseReturnItems,
+        damageItems,
+        hasDetails,
+    };
+}
+
+function ExpandToggle({ expanded, onToggle, hasDetails }) {
+    if (!hasDetails) {
+        return <span className="size-6 shrink-0" aria-hidden />;
+    }
+
+    return (
+        <button
+            type="button"
+            onClick={onToggle}
+            className="flex size-6 shrink-0 items-center justify-center rounded border border-black/10 bg-white/80 text-muted-foreground hover:bg-muted dark:border-white/10 dark:bg-slate-900/60"
+            aria-expanded={expanded}
+            aria-label={expanded ? 'Hide transactions' : 'Show transactions'}
+        >
+            <ChevronDown className={`size-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+        </button>
+    );
+}
+
+function StaffBreakdownMetric({ label, count, amount, accentClass }) {
+    return (
+        <div className="min-w-0 rounded-md border border-dashed border-black/10 bg-muted/20 px-2.5 py-2 dark:border-white/10">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+            <p className={`mt-0.5 break-words font-mono text-sm tabular-nums ${accentClass}`}>
+                <span className="text-[11px] text-muted-foreground">{count ?? 0}</span>
+                {' · '}
+                <MoneyCell value={amount} />
+            </p>
+        </div>
+    );
+}
+
+function StaffBreakdownAmountMetric({ label, amount, accentClass }) {
+    return (
+        <div className="min-w-0 rounded-md border border-dashed border-black/10 bg-muted/20 px-2.5 py-2 dark:border-white/10">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+            <p className={`mt-0.5 break-words font-mono text-sm tabular-nums ${accentClass}`}>
+                <MoneyCell value={amount} />
+            </p>
+        </div>
+    );
+}
+
+function StaffBreakdownDetails({
+    salesItems,
+    saleReturnItems,
+    exchangeItems,
+    purchaseItems,
+    purchaseReturnItems,
+    damageItems,
+}) {
+    return (
+        <div className="grid gap-4 lg:grid-cols-2">
+            <TransactionItems
+                title="Sales invoices"
+                items={salesItems}
+                showRoute="inventory.sell.show"
+                accentClass="text-emerald-700 dark:text-emerald-300"
+            />
+            <TransactionItems
+                title="Sale returns"
+                items={saleReturnItems}
+                showRoute="inventory.sale-return.show"
+                accentClass="text-amber-700 dark:text-amber-300"
+            />
+            <TransactionItems
+                title="Product exchanges"
+                items={exchangeItems}
+                showRoute="inventory.product-exchange.show"
+                accentClass="text-fuchsia-700 dark:text-fuchsia-300"
+            />
+            <TransactionItems
+                title="Purchase orders"
+                items={purchaseItems}
+                showRoute="inventory.purchase.show"
+                accentClass="text-blue-700 dark:text-blue-300"
+            />
+            <TransactionItems
+                title="Purchase returns"
+                items={purchaseReturnItems}
+                showRoute="inventory.purchase-return.show"
+                accentClass="text-orange-700 dark:text-orange-300"
+            />
+            <TransactionItems
+                title="Damage records"
+                items={damageItems}
+                showRoute="inventory.damage.show"
+                accentClass="text-red-700 dark:text-red-300"
+                amountLabel="Amount"
+                showPaid={false}
+            />
+        </div>
+    );
+}
+
+function StaffBreakdownCard({ row }) {
+    const [expanded, setExpanded] = useState(true);
+    const {
+        salesItems,
+        saleReturnItems,
+        exchangeItems,
+        purchaseItems,
+        purchaseReturnItems,
+        damageItems,
+        hasDetails,
+    } = useStaffBreakdownItems(row);
+
+    return (
+        <div className="rounded-lg border bg-card p-4 shadow-sm">
+            <div className="flex items-start gap-2">
+                <ExpandToggle
+                    expanded={expanded}
+                    onToggle={() => setExpanded((open) => !open)}
+                    hasDetails={hasDetails}
+                />
+                <div className="min-w-0 flex-1">
+                    <p className="font-semibold">{row.user_name}</p>
+                    <p className="text-xs text-muted-foreground">{row.branch_name}</p>
+                </div>
+            </div>
+
+            <div className="mt-3 space-y-3">
+                <div>
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-emerald-700 dark:text-emerald-300">
+                        Sales related
+                    </p>
+                    <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-2">
+                        <StaffBreakdownMetric
+                            label="Sales"
+                            count={row.sales?.count}
+                            amount={row.sales?.gross}
+                            accentClass="text-emerald-700 dark:text-emerald-400"
+                        />
+                        <StaffBreakdownMetric
+                            label="Sale returns"
+                            count={row.sale_returns?.count}
+                            amount={row.sale_returns?.amount}
+                            accentClass="text-amber-700 dark:text-amber-400"
+                        />
+                        <StaffBreakdownMetric
+                            label="Exchanges"
+                            count={row.product_exchanges?.count}
+                            amount={row.product_exchanges?.amount}
+                            accentClass="text-fuchsia-700 dark:text-fuchsia-400"
+                        />
+                        <StaffBreakdownAmountMetric
+                            label="Collected"
+                            amount={row.customer_collections?.amount}
+                            accentClass="text-teal-700 dark:text-teal-400"
+                        />
+                    </div>
+                </div>
+
+                <div>
+                    <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-widest text-blue-700 dark:text-blue-300">
+                        Purchase related
+                    </p>
+                    <div className="grid grid-cols-1 gap-2 min-[400px]:grid-cols-2">
+                        <StaffBreakdownMetric
+                            label="Purchases"
+                            count={row.purchases?.count}
+                            amount={row.purchases?.gross}
+                            accentClass="text-blue-700 dark:text-blue-400"
+                        />
+                        <StaffBreakdownMetric
+                            label="Purch. returns"
+                            count={row.purchase_returns?.count}
+                            amount={row.purchase_returns?.amount}
+                            accentClass="text-orange-700 dark:text-orange-400"
+                        />
+                        <StaffBreakdownMetric
+                            label="Damage"
+                            count={row.damages?.count}
+                            amount={row.damages?.amount}
+                            accentClass="text-red-700 dark:text-red-400"
+                        />
+                        <StaffBreakdownAmountMetric
+                            label="Supplier paid"
+                            amount={row.supplier_payments?.amount}
+                            accentClass="text-violet-700 dark:text-violet-400"
+                        />
+                    </div>
+                </div>
+            </div>
+
+            {expanded && hasDetails ? (
+                <div className="mt-4 border-t border-dashed border-black/10 pt-4 dark:border-white/10">
+                    <StaffBreakdownDetails
+                        salesItems={salesItems}
+                        saleReturnItems={saleReturnItems}
+                        exchangeItems={exchangeItems}
+                        purchaseItems={purchaseItems}
+                        purchaseReturnItems={purchaseReturnItems}
+                        damageItems={damageItems}
+                    />
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
+function StaffBreakdownRow({ row }) {
+    const [expanded, setExpanded] = useState(true);
+    const {
+        salesItems,
+        saleReturnItems,
+        exchangeItems,
+        purchaseItems,
+        purchaseReturnItems,
+        damageItems,
+        hasDetails,
+    } = useStaffBreakdownItems(row);
     const rowKey = `${row.branch_id}-${row.user_id}`;
 
     return (
@@ -339,19 +561,11 @@ function StaffBreakdownRow({ row }) {
             <tr className="border-b last:border-b-0">
                 <td className="px-4 py-2.5 font-medium">
                     <div className="flex items-center gap-2">
-                        {hasDetails ? (
-                            <button
-                                type="button"
-                                onClick={() => setExpanded((open) => !open)}
-                                className="flex size-6 shrink-0 items-center justify-center rounded border border-black/10 bg-white/80 text-muted-foreground hover:bg-muted dark:border-white/10 dark:bg-slate-900/60"
-                                aria-expanded={expanded}
-                                aria-label={expanded ? 'Hide transactions' : 'Show transactions'}
-                            >
-                                <ChevronDown className={`size-3.5 transition-transform ${expanded ? 'rotate-180' : ''}`} />
-                            </button>
-                        ) : (
-                            <span className="size-6 shrink-0" />
-                        )}
+                        <ExpandToggle
+                            expanded={expanded}
+                            onToggle={() => setExpanded((open) => !open)}
+                            hasDetails={hasDetails}
+                        />
                         <span>{row.branch_name}</span>
                     </div>
                 </td>
@@ -382,46 +596,14 @@ function StaffBreakdownRow({ row }) {
             {expanded && hasDetails ? (
                 <tr key={`${rowKey}-details`} className="border-b bg-muted/10 last:border-b-0">
                     <td colSpan={10} className="px-4 py-3">
-                        <div className="grid gap-4 lg:grid-cols-2">
-                            <TransactionItems
-                                title="Sales invoices"
-                                items={salesItems}
-                                showRoute="inventory.sell.show"
-                                accentClass="text-emerald-700 dark:text-emerald-300"
-                            />
-                            <TransactionItems
-                                title="Sale returns"
-                                items={saleReturnItems}
-                                showRoute="inventory.sale-return.show"
-                                accentClass="text-amber-700 dark:text-amber-300"
-                            />
-                            <TransactionItems
-                                title="Product exchanges"
-                                items={exchangeItems}
-                                showRoute="inventory.product-exchange.show"
-                                accentClass="text-fuchsia-700 dark:text-fuchsia-300"
-                            />
-                            <TransactionItems
-                                title="Purchase orders"
-                                items={purchaseItems}
-                                showRoute="inventory.purchase.show"
-                                accentClass="text-blue-700 dark:text-blue-300"
-                            />
-                            <TransactionItems
-                                title="Purchase returns"
-                                items={purchaseReturnItems}
-                                showRoute="inventory.purchase-return.show"
-                                accentClass="text-orange-700 dark:text-orange-300"
-                            />
-                            <TransactionItems
-                                title="Damage records"
-                                items={damageItems}
-                                showRoute="inventory.damage.show"
-                                accentClass="text-red-700 dark:text-red-300"
-                                amountLabel="Amount"
-                                showPaid={false}
-                            />
-                        </div>
+                        <StaffBreakdownDetails
+                            salesItems={salesItems}
+                            saleReturnItems={saleReturnItems}
+                            exchangeItems={exchangeItems}
+                            purchaseItems={purchaseItems}
+                            purchaseReturnItems={purchaseReturnItems}
+                            damageItems={damageItems}
+                        />
                     </td>
                 </tr>
             ) : null}
@@ -529,9 +711,9 @@ export default function DailySummaryReport({
                     </>
                 }
             >
-                <div className="mb-4 overflow-hidden rounded-lg border border-blue-950/15 bg-gradient-to-r from-blue-950 to-blue-800 px-5 py-4 text-white shadow-md">
+                <div className="mb-4 overflow-hidden rounded-lg border border-blue-950/15 bg-gradient-to-r from-blue-950 to-blue-800 px-4 py-3 text-white shadow-md sm:px-5 sm:py-4">
                     <p className="text-xs font-medium uppercase tracking-wider text-white/60">Summary date</p>
-                    <p className="mt-1 text-2xl font-bold tracking-tight">{formatBdDate(s.date ?? date)}</p>
+                    <p className="mt-1 text-xl font-bold tracking-tight sm:text-2xl">{formatBdDate(s.date ?? date)}</p>
                 </div>
 
                 <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -590,8 +772,15 @@ export default function DailySummaryReport({
                                 count over amount. Expand a row to see each invoice amount.
                             </p>
                         </div>
-                        <div className="overflow-x-auto">
-                            <table className="w-full min-w-[1200px] text-sm">
+
+                        <div className="space-y-3 p-3 xl:hidden">
+                            {staffBreakdown.map((row) => (
+                                <StaffBreakdownCard key={`${row.branch_id}-${row.user_id}`} row={row} />
+                            ))}
+                        </div>
+
+                        <div className="hidden overflow-x-auto xl:block">
+                            <table className="w-full min-w-[1100px] text-sm">
                                 <thead>
                                     <tr className="border-b bg-muted/20 text-left">
                                         <th className="px-4 py-2 text-[10px] font-semibold uppercase tracking-widest" rowSpan={2}>Branch</th>

@@ -213,6 +213,7 @@ class ProductController extends Controller
             $data['sale_price'] = 0;
             $data['colors'] = null;
             $data['sizes'] = null;
+            $data['code'] = null;
         }
 
         DB::transaction(function () use ($request, $data, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock) {
@@ -331,7 +332,7 @@ class ProductController extends Controller
             'size_ids.*' => [Rule::exists('sizes', 'id')],
             'name' => ['required', 'string', 'max:255', $this->productNameUniqueRule($product)],
             'code' => [
-                'required',
+                'nullable',
                 'string',
                 'max:'.BarcodeService::MAX_LENGTH,
                 $this->barcodeUniqueRule($product),
@@ -379,6 +380,9 @@ class ProductController extends Controller
             $data['sale_price'] = 0;
             $data['colors'] = null;
             $data['sizes'] = null;
+            $data['code'] = null;
+        } elseif (blank(trim((string) ($data['code'] ?? '')))) {
+            $data['code'] = $product->code;
         }
 
         DB::transaction(function () use ($request, $data, $product, $combinations, $hasVariations, $variantsLocked, $mainPurchasePrice, $mainSalePrice, $mainInitialStock) {
@@ -475,6 +479,8 @@ class ProductController extends Controller
                         );
                     }
 
+                    $this->syncProductBarcode($anchorProduct->fresh(), $hasVariations);
+
                     return;
                 }
 
@@ -491,6 +497,8 @@ class ProductController extends Controller
                         (float) $mainSalePrice,
                         $mainInitialStock,
                     );
+
+                    $this->syncProductBarcode($product->fresh(), $hasVariations);
 
                     return;
                 }
@@ -523,8 +531,12 @@ class ProductController extends Controller
                     $mainInitialStock,
                 );
 
+                $this->syncProductBarcode($product->fresh(), $hasVariations);
+
                 return;
             }
+
+            $this->syncProductBarcode($product->fresh(), $hasVariations);
         });
 
         return redirect()->route('product.index')
@@ -641,9 +653,15 @@ class ProductController extends Controller
                         );
                     }
 
-                    Barcode::query()
-                        ->where('product_variation_id', $variation->id)
-                        ->update(['code' => $sku]);
+                    Barcode::query()->updateOrCreate(
+                        ['product_variation_id' => $variation->id],
+                        [
+                            'branch_id' => $product->branch_id,
+                            'product_id' => $product->id,
+                            'code' => $sku,
+                            'name' => $product->name.' - '.($variationData['label'] ?? $combo['variant']),
+                        ],
+                    );
                 }
 
                 continue;
@@ -687,6 +705,7 @@ class ProductController extends Controller
                     return;
                 }
 
+                Barcode::query()->where('product_variation_id', $variation->id)->delete();
                 $variation->delete();
             });
 
@@ -699,6 +718,39 @@ class ProductController extends Controller
                 'name' => $product->name,
             ]);
         }
+    }
+
+    private function syncProductBarcode(Product $product, bool $hasVariations): void
+    {
+        if ($hasVariations || $product->variations()->exists()) {
+            Barcode::query()
+                ->where('product_id', $product->id)
+                ->whereNull('product_variation_id')
+                ->delete();
+
+            return;
+        }
+
+        if (blank($product->code)) {
+            Barcode::query()
+                ->where('product_id', $product->id)
+                ->whereNull('product_variation_id')
+                ->delete();
+
+            return;
+        }
+
+        Barcode::query()->updateOrCreate(
+            [
+                'product_id' => $product->id,
+                'product_variation_id' => null,
+            ],
+            [
+                'branch_id' => $product->branch_id,
+                'code' => $product->code,
+                'name' => $product->name,
+            ],
+        );
     }
 
     /** @return array<string, mixed> */

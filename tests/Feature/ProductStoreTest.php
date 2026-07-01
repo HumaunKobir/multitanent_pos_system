@@ -444,6 +444,45 @@ test('product store creates batch initial stock for non-variant product', functi
         ->and(round($ledgers->sum('credit'), 2))->toBe(2000.0);
 });
 
+test('variant product uses submitted sku as barcode', function () {
+    $admin = productStoreAdmin();
+    seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    $sku = fake()->unique()->numerify('########');
+
+    $payload = validProductPayload([
+        'code' => 'IGNORED1',
+        'purchase_price' => '0',
+        'sale_price' => '0',
+        'combinations' => [
+            [
+                'variant' => 'Red-M',
+                'variation_data' => ['label' => 'Red-M', 'Color' => 'Red', 'Size' => 'M'],
+                'sale_price' => '200',
+                'purchase_price' => '120',
+                'sku' => $sku,
+                'stock' => '0',
+            ],
+        ],
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('product.store'), $payload)
+        ->assertRedirect(route('product.index'));
+
+    $product = Product::query()->where('name', $payload['name'])->first();
+    $variation = ProductVariation::query()->where('product_id', $product->id)->first();
+
+    expect($product->code)->toBeNull()
+        ->and($variation->sku)->toBe($sku)
+        ->and(
+            Barcode::query()
+                ->where('product_id', $product->id)
+                ->where('product_variation_id', $variation->id)
+                ->where('code', $sku)
+                ->exists(),
+        )->toBeTrue();
+});
+
 test('variant product auto-generates branch-unique barcode up to 8 characters', function () {
     $admin = productStoreAdmin();
     seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
@@ -471,6 +510,7 @@ test('variant product auto-generates branch-unique barcode up to 8 characters', 
     $variation = ProductVariation::query()->where('product_id', $product->id)->first();
 
     expect($variation)->not->toBeNull()
+        ->and($product->code)->toBeNull()
         ->and($variation->sku)->toMatch('/^\d{7,8}$/')
         ->and(strlen($variation->sku))->toBeLessThanOrEqual(8);
 

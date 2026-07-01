@@ -84,7 +84,7 @@ export default function ProductEdit({
         unit_id: String(product.unit_id ?? ''),
         warranty_id: product.warranty_id ? String(product.warranty_id) : null,
         name: product.name ?? '',
-        code: product.code ?? '',
+        code: (product.variations?.length ?? 0) > 0 ? '' : (product.code ?? ''),
         purchase_price: product.purchase_price ?? '',
         sale_price: product.sale_price ?? '',
         discount_price: product.discount_price ?? '',

@@ -49,13 +49,16 @@ class ProductBranchReplicationService
     ): array {
         $productGroupId ??= (string) Str::uuid();
         $branchIds ??= Branch::query()->active()->orderBy('id')->pluck('id');
-        $manualCode = filled($data['code'] ?? null) ? (string) $data['code'] : null;
+        $hasVariations = $combinations !== [];
+        $manualCode = $hasVariations ? null : (filled($data['code'] ?? null) ? (string) $data['code'] : null);
         $baseSlug = filled($data['slug'] ?? null)
             ? (string) $data['slug']
             : Product::generateUniqueSlug((string) $data['name']);
         $mainBranchId = Branch::resolveMainBranchId();
         $branchIdList = $branchIds->map(fn ($id) => (int) $id)->values();
-        $sharedCode = $this->barcodes->resolveSharedProductCode($manualCode, $branchIdList, $productGroupId);
+        $sharedCode = $hasVariations
+            ? null
+            : $this->barcodes->resolveSharedProductCode($manualCode, $branchIdList, $productGroupId);
         $normalizedCombinations = $this->barcodes->normalizeCombinationsForBranches($branchIdList, $combinations, $productGroupId);
         $created = [];
 
@@ -71,7 +74,7 @@ class ProductBranchReplicationService
                 unset($branchData['selected_branch_id']);
             }
 
-            $product = Product::create($branchData);
+            $product = Product::createCatalogEntry($branchData, withVariations: $hasVariations);
 
             $this->ensureTagRecordsForBranch($branchData['tags'] ?? [], $branchId);
 
@@ -231,13 +234,16 @@ class ProductBranchReplicationService
     ): array {
         $productGroupId = (string) Str::uuid();
         $mainBranchId = Branch::resolveMainBranchId();
-        $manualCode = filled($data['code'] ?? null) ? (string) $data['code'] : null;
+        $hasVariations = $combinations !== [];
+        $manualCode = $hasVariations ? null : (filled($data['code'] ?? null) ? (string) $data['code'] : null);
         $baseSlug = filled($data['slug'] ?? null)
             ? (string) $data['slug']
             : Product::generateUniqueSlug((string) $data['name']);
 
         $branchIds = collect([$branchId, $mainBranchId]);
-        $sharedCode = $this->barcodes->resolveSharedProductCode($manualCode, $branchIds, $productGroupId);
+        $sharedCode = $hasVariations
+            ? null
+            : $this->barcodes->resolveSharedProductCode($manualCode, $branchIds, $productGroupId);
         $normalizedCombinations = $this->barcodes->normalizeCombinationsForBranches($branchIds, $combinations, $productGroupId);
 
         $branchData = $this->mapBranchCatalogFields($data, $branchId);
@@ -312,7 +318,7 @@ class ProductBranchReplicationService
             );
         }
 
-        $product = Product::create($data);
+        $product = Product::createCatalogEntry($data, withVariations: $combinations !== []);
 
         foreach ($photoPaths as $path) {
             ProductPhoto::create([
@@ -509,10 +515,6 @@ class ProductBranchReplicationService
         $copyData['product_group_id'] = $productGroupId;
         unset($copyData['selected_branch_id']);
         $copyData['slug'] = $this->resolveBranchSlug($baseSlug, $targetBranchId);
-        $copyData['code'] = $baseCode;
-        $copyData['image'] = filled($data['image'] ?? null) ? $data['image'] : $source->image;
-        $copyData['chest_size_image'] = filled($data['chest_size_image'] ?? null) ? $data['chest_size_image'] : $source->chest_size_image;
-
         $copyCombinations = $combinations;
         if ($copyCombinations === [] && $source->variations()->exists()) {
             $copyCombinations = $source->variations->map(fn (ProductVariation $variation): array => [
@@ -524,6 +526,11 @@ class ProductBranchReplicationService
                 'stock' => $variation->stock,
             ])->all();
         }
+
+        $hasVariations = $copyCombinations !== [];
+        $copyData['code'] = $hasVariations ? null : $baseCode;
+        $copyData['image'] = filled($data['image'] ?? null) ? $data['image'] : $source->image;
+        $copyData['chest_size_image'] = filled($data['chest_size_image'] ?? null) ? $data['chest_size_image'] : $source->chest_size_image;
 
         $copy = $this->persistProductAtBranch(
             $copyData,
@@ -574,11 +581,14 @@ class ProductBranchReplicationService
             ->pluck('id')
             ->filter(fn (int $branchId): bool => ! $existingBranchIds->contains($branchId));
 
-        $manualCode = filled($data['code'] ?? null) ? (string) $data['code'] : $mainProduct->code;
+        $hasVariations = $combinations !== [];
+        $manualCode = $hasVariations ? null : (filled($data['code'] ?? null) ? (string) $data['code'] : $mainProduct->code);
         $replicationData = $data;
         unset($replicationData['branch_id'], $replicationData['selected_branch_id']);
         $replicationData['slug'] = $this->resolveBaseSlug($mainProduct->slug, (int) $mainProduct->branch_id);
-        $replicationData['code'] = $this->resolveBaseCode($manualCode, (int) $mainProduct->branch_id);
+        $replicationData['code'] = $hasVariations
+            ? null
+            : $this->resolveBaseCode($manualCode, (int) $mainProduct->branch_id);
 
         $photoPaths = $mainProduct->photos()->pluck('image')->all();
 
@@ -615,7 +625,8 @@ class ProductBranchReplicationService
 
         $sourceProduct->update(['product_group_id' => $productGroupId]);
 
-        $manualCode = filled($data['code'] ?? null) ? (string) $data['code'] : $sourceProduct->code;
+        $hasVariations = $combinations !== [];
+        $manualCode = $hasVariations ? null : (filled($data['code'] ?? null) ? (string) $data['code'] : $sourceProduct->code);
         $sourceBranchId = (int) $sourceProduct->branch_id;
 
         $missingBranchIds = Branch::query()
@@ -631,7 +642,9 @@ class ProductBranchReplicationService
         $replicationData = $data;
         unset($replicationData['branch_id']);
         $replicationData['slug'] = $this->resolveBaseSlug($sourceProduct->slug, (int) $sourceProduct->branch_id);
-        $replicationData['code'] = $this->resolveBaseCode($manualCode, (int) $sourceProduct->branch_id);
+        $replicationData['code'] = $hasVariations
+            ? null
+            : $this->resolveBaseCode($manualCode, (int) $sourceProduct->branch_id);
 
         $photoPaths = $sourceProduct->photos()->pluck('image')->all();
 

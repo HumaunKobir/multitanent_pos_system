@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Barcode;
 use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Brand;
@@ -15,10 +16,16 @@ use App\Models\Transaction;
 use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Support\Str;
+use Spatie\Permission\Models\Permission;
 
 function productUpdateAdmin(): User
 {
-    return User::factory()->create(['branch_id' => null]);
+    Permission::findOrCreate('product.update', 'web');
+
+    $admin = User::factory()->create(['branch_id' => null]);
+    $admin->givePermissionTo('product.update');
+
+    return $admin;
 }
 
 function productUpdatePayload(Product $product, array $overrides = []): array
@@ -42,12 +49,12 @@ test('product edit page includes variant data and lock flag', function () {
         'category_id' => Category::factory()->create(['status' => 1])->id,
         'brand_id' => Brand::factory()->create(['status' => 1])->id,
         'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
-        'code' => 'EDIT-'.fake()->unique()->numerify('######'),
+        'code' => fake()->unique()->numerify('########'),
     ]);
 
     ProductVariation::query()->create([
         'product_id' => $product->id,
-        'sku' => $product->code.'-RED-S',
+        'sku' => fake()->unique()->numerify('########'),
         'price' => 200,
         'purchase_price' => 120,
         'stock' => 5,
@@ -74,12 +81,12 @@ test('product edit page locks variants when product has sales history', function
         'category_id' => Category::factory()->create(['status' => 1])->id,
         'brand_id' => Brand::factory()->create(['status' => 1])->id,
         'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
-        'code' => 'LOCK-'.fake()->unique()->numerify('######'),
+        'code' => fake()->unique()->numerify('########'),
     ]);
 
     $variation = ProductVariation::query()->create([
         'product_id' => $product->id,
-        'sku' => $product->code.'-BLUE-M',
+        'sku' => fake()->unique()->numerify('########'),
         'price' => 180,
         'purchase_price' => 110,
         'stock' => 2,
@@ -143,7 +150,7 @@ test('all branches product edit page includes catalog relations for form', funct
         'unit_id' => $unit->id,
         'colors' => [$color->id],
         'sizes' => [$size->id],
-        'code' => 'edit-group-'.fake()->unique()->numerify('######'),
+        'code' => fake()->unique()->numerify('########'),
     ]);
 
     $this->actingAs($admin)
@@ -162,27 +169,79 @@ test('all branches product edit page includes catalog relations for form', funct
             ->where('defaultCatalogBranchId', $mainBranchId));
 });
 
-test('product update syncs variations when not locked', function () {
+test('product update syncs product barcode when code changes', function () {
     $admin = productUpdateAdmin();
+    $oldCode = fake()->unique()->numerify('########');
+    $newCode = fake()->unique()->numerify('########');
+
     $product = Product::factory()->create([
         'category_id' => Category::factory()->create(['status' => 1])->id,
         'brand_id' => Brand::factory()->create(['status' => 1])->id,
         'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
-        'code' => 'SYNC-'.fake()->unique()->numerify('######'),
+        'code' => $oldCode,
+    ]);
+
+    Barcode::query()->create([
+        'branch_id' => $product->branch_id,
+        'product_id' => $product->id,
+        'product_variation_id' => null,
+        'code' => $oldCode,
+        'name' => $product->name,
+    ]);
+
+    $payload = productUpdatePayload($product, ['code' => $newCode]);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), $payload)
+        ->assertRedirect(route('product.index'));
+
+    expect($product->fresh()->code)->toBe($newCode)
+        ->and(
+            Barcode::query()
+                ->where('product_id', $product->id)
+                ->whereNull('product_variation_id')
+                ->value('code'),
+        )->toBe($newCode);
+});
+
+test('product update syncs variation barcode when sku changes', function () {
+    $admin = productUpdateAdmin();
+    seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+
+    $oldSku = fake()->unique()->numerify('########');
+    $newSku = fake()->unique()->numerify('########');
+
+    $product = Product::createCatalogEntry([
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'name' => 'Variant Barcode Edit '.fake()->unique()->numerify('######'),
         'purchase_price' => 0,
         'sale_price' => 0,
-    ]);
+        'visible' => 'no',
+        'status' => 1,
+    ], withVariations: true);
 
     $variation = ProductVariation::query()->create([
         'product_id' => $product->id,
-        'sku' => $product->code.'-RED-S',
+        'branch_id' => $product->branch_id,
+        'sku' => $oldSku,
         'price' => 200,
         'purchase_price' => 120,
         'stock' => 5,
         'variation_data' => ['label' => 'Red-S', 'Color' => 'Red', 'Size' => 'S'],
     ]);
 
+    Barcode::query()->create([
+        'branch_id' => $product->branch_id,
+        'product_id' => $product->id,
+        'product_variation_id' => $variation->id,
+        'code' => $oldSku,
+        'name' => $product->name.' - Red-S',
+    ]);
+
     $payload = productUpdatePayload($product, [
+        'code' => '',
         'purchase_price' => '0',
         'sale_price' => '0',
         'combinations' => [
@@ -192,7 +251,67 @@ test('product update syncs variations when not locked', function () {
                 'variation_data' => ['label' => 'Red-S', 'Color' => 'Red', 'Size' => 'S'],
                 'sale_price' => '220',
                 'purchase_price' => '130',
-                'sku' => $product->code.'-RED-S',
+                'sku' => $newSku,
+                'stock' => '7',
+            ],
+        ],
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), $payload)
+        ->assertRedirect(route('product.index'));
+
+    $variation->refresh();
+
+    expect($product->fresh()->code)->toBeNull()
+        ->and($variation->sku)->toBe($newSku)
+        ->and(
+            Barcode::query()
+                ->where('product_variation_id', $variation->id)
+                ->value('code'),
+        )->toBe($newSku)
+        ->and(
+            Barcode::query()
+                ->where('product_id', $product->id)
+                ->whereNull('product_variation_id')
+                ->exists(),
+        )->toBeFalse();
+});
+
+test('product update syncs variations when not locked', function () {
+    $admin = productUpdateAdmin();
+    $sku = fake()->unique()->numerify('########');
+
+    $product = Product::factory()->create([
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+        'purchase_price' => 0,
+        'sale_price' => 0,
+    ]);
+
+    $variation = ProductVariation::query()->create([
+        'product_id' => $product->id,
+        'sku' => $sku,
+        'price' => 200,
+        'purchase_price' => 120,
+        'stock' => 5,
+        'variation_data' => ['label' => 'Red-S', 'Color' => 'Red', 'Size' => 'S'],
+    ]);
+
+    $payload = productUpdatePayload($product, [
+        'code' => '',
+        'purchase_price' => '0',
+        'sale_price' => '0',
+        'combinations' => [
+            [
+                'id' => $variation->id,
+                'variant' => 'Red-S',
+                'variation_data' => ['label' => 'Red-S', 'Color' => 'Red', 'Size' => 'S'],
+                'sale_price' => '220',
+                'purchase_price' => '130',
+                'sku' => $sku,
                 'stock' => '7',
             ],
         ],
@@ -220,12 +339,12 @@ test('product update saves multiple colors and sizes even when variants are lock
         'category_id' => Category::factory()->create(['status' => 1])->id,
         'brand_id' => Brand::factory()->create(['status' => 1])->id,
         'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
-        'code' => 'COLOR-'.fake()->unique()->numerify('######'),
+        'code' => fake()->unique()->numerify('########'),
     ]);
 
     $variation = ProductVariation::query()->create([
         'product_id' => $product->id,
-        'sku' => $product->code.'-GREEN-L',
+        'sku' => fake()->unique()->numerify('########'),
         'price' => 190,
         'purchase_price' => 115,
         'stock' => 4,
@@ -267,12 +386,12 @@ test('product update ignores variation changes when locked', function () {
         'category_id' => Category::factory()->create(['status' => 1])->id,
         'brand_id' => Brand::factory()->create(['status' => 1])->id,
         'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
-        'code' => 'IGNORE-'.fake()->unique()->numerify('######'),
+        'code' => fake()->unique()->numerify('########'),
     ]);
 
     $variation = ProductVariation::query()->create([
         'product_id' => $product->id,
-        'sku' => $product->code.'-GREEN-L',
+        'sku' => fake()->unique()->numerify('########'),
         'price' => 190,
         'purchase_price' => 115,
         'stock' => 4,
@@ -301,7 +420,7 @@ test('product update ignores variation changes when locked', function () {
                 'variation_data' => ['label' => 'Green-L', 'Color' => 'Green', 'Size' => 'L'],
                 'sale_price' => '999',
                 'purchase_price' => '888',
-                'sku' => $product->code.'-GREEN-L',
+                'sku' => fake()->unique()->numerify('########'),
                 'stock' => '99',
             ],
         ],
@@ -327,7 +446,7 @@ test('product update syncs non-variant initial stock with accounting', function 
         'category_id' => Category::factory()->create(['status' => 1])->id,
         'brand_id' => Brand::factory()->create(['status' => 1])->id,
         'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
-        'code' => 'INIT-'.fake()->unique()->numerify('######'),
+        'code' => fake()->unique()->numerify('########'),
         'purchase_price' => 100,
         'sale_price' => 150,
     ]);
@@ -374,16 +493,19 @@ test('product update syncs non-variant initial stock with accounting', function 
 test('product update applies global initial stock to new variation without stock', function () {
     $admin = productUpdateAdmin();
     seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    $sku = fake()->unique()->numerify('########');
+
     $product = Product::factory()->create([
         'category_id' => Category::factory()->create(['status' => 1])->id,
         'brand_id' => Brand::factory()->create(['status' => 1])->id,
         'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
-        'code' => 'NEWVAR-'.fake()->unique()->numerify('######'),
+        'code' => fake()->unique()->numerify('########'),
         'purchase_price' => 0,
         'sale_price' => 0,
     ]);
 
     $payload = productUpdatePayload($product, [
+        'code' => '',
         'purchase_price' => '0',
         'sale_price' => '0',
         'initial_stock' => '15',
@@ -393,7 +515,7 @@ test('product update applies global initial stock to new variation without stock
                 'variation_data' => ['label' => 'Black-XL', 'Color' => 'Black', 'Size' => 'XL'],
                 'sale_price' => '250',
                 'purchase_price' => '140',
-                'sku' => $product->code.'-BLACK-XL',
+                'sku' => $sku,
                 'stock' => '',
             ],
         ],
@@ -420,7 +542,7 @@ test('updating main branch product to specific branch creates copy with same sto
 
     $operatingBranch = Branch::factory()->create();
     $productName = 'Copy Branch Product '.fake()->unique()->numerify('######');
-    $manualCode = 'CPY-'.fake()->unique()->numerify('######');
+    $manualCode = fake()->unique()->numerify('########');
 
     $category = Category::factory()->create(['status' => 1, 'branch_id' => Branch::MAIN_BRANCH_ID]);
     $brand = Brand::factory()->create(['status' => 1, 'branch_id' => Branch::MAIN_BRANCH_ID]);
@@ -517,7 +639,7 @@ test('product update allows unchanged name for all branch group siblings', funct
         'brand_id' => Brand::factory()->create(['status' => 1])->id,
         'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
         'name' => $productName,
-        'code' => 'GRP-A-'.fake()->unique()->numerify('######'),
+        'code' => fake()->unique()->numerify('########'),
         'sale_price' => 300,
     ]);
 
@@ -528,7 +650,7 @@ test('product update allows unchanged name for all branch group siblings', funct
         'brand_id' => $productA->brand_id,
         'unit_id' => $productA->unit_id,
         'name' => $productName,
-        'code' => 'GRP-B-'.fake()->unique()->numerify('######'),
+        'code' => fake()->unique()->numerify('########'),
         'sale_price' => 300,
     ]);
 
@@ -558,7 +680,7 @@ test('product update still rejects duplicate name outside product group', functi
         'brand_id' => Brand::factory()->create(['status' => 1])->id,
         'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
         'name' => 'Grouped Product '.fake()->unique()->numerify('######'),
-        'code' => 'OUT-A-'.fake()->unique()->numerify('######'),
+        'code' => fake()->unique()->numerify('########'),
     ]);
 
     Product::factory()->create([
@@ -566,7 +688,7 @@ test('product update still rejects duplicate name outside product group', functi
         'brand_id' => Brand::factory()->create(['status' => 1])->id,
         'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
         'name' => $sharedName,
-        'code' => 'OUT-B-'.fake()->unique()->numerify('######'),
+        'code' => fake()->unique()->numerify('########'),
     ]);
 
     $payload = productUpdatePayload($productA, [
@@ -588,7 +710,7 @@ test('product edit page exposes selected branch for form', function () {
         'category_id' => Category::factory()->create(['status' => 1])->id,
         'brand_id' => Brand::factory()->create(['status' => 1])->id,
         'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
-        'code' => 'SEL-'.fake()->unique()->numerify('######'),
+        'code' => fake()->unique()->numerify('########'),
     ]);
 
     $this->actingAs($admin)
@@ -609,7 +731,7 @@ test('updating all branches product to specific branch removes other branch copi
 
     $operatingBranch = Branch::factory()->create();
     $productName = 'Narrow Branch Product '.fake()->unique()->numerify('######');
-    $manualCode = 'NAR-'.fake()->unique()->numerify('######');
+    $manualCode = fake()->unique()->numerify('########');
 
     $category = Category::factory()->create(['status' => 1, 'branch_id' => Branch::MAIN_BRANCH_ID]);
     $brand = Brand::factory()->create(['status' => 1, 'branch_id' => Branch::MAIN_BRANCH_ID]);
@@ -685,7 +807,7 @@ test('narrowing branch selection is blocked when another branch has sales histor
         'brand_id' => $brandId,
         'unit_id' => $unitId,
         'name' => $productName,
-        'code' => 'BLK-M-'.fake()->unique()->numerify('######'),
+        'code' => fake()->unique()->numerify('########'),
     ]);
 
     $soldBranchProduct = Product::factory()->create([
@@ -695,7 +817,7 @@ test('narrowing branch selection is blocked when another branch has sales histor
         'brand_id' => $brandId,
         'unit_id' => $unitId,
         'name' => $productName,
-        'code' => 'BLK-S-'.fake()->unique()->numerify('######'),
+        'code' => fake()->unique()->numerify('########'),
     ]);
 
     Product::factory()->create([
@@ -705,7 +827,7 @@ test('narrowing branch selection is blocked when another branch has sales histor
         'brand_id' => $brandId,
         'unit_id' => $unitId,
         'name' => $productName,
-        'code' => 'BLK-T-'.fake()->unique()->numerify('######'),
+        'code' => fake()->unique()->numerify('########'),
     ]);
 
     $sell = Sell::query()->create([
@@ -744,7 +866,7 @@ test('updating specific branch product to all branches creates missing branch co
 
     $operatingBranch = Branch::factory()->create();
     $productName = 'Expand All Branch Product '.fake()->unique()->numerify('######');
-    $manualCode = 'EXP-'.fake()->unique()->numerify('######');
+    $manualCode = fake()->unique()->numerify('########');
 
     $category = Category::factory()->create(['status' => 1, 'branch_id' => Branch::MAIN_BRANCH_ID]);
     $brand = Brand::factory()->create(['status' => 1, 'branch_id' => Branch::MAIN_BRANCH_ID]);

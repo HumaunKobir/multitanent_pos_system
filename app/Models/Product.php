@@ -269,6 +269,8 @@ class Product extends Model
         return $this->hasMany(SellProduct::class);
     }
 
+    public bool $autoGenerateCode = true;
+
     protected static function booted(): void
     {
         static::saving(function (Product $product) {
@@ -278,12 +280,35 @@ class Product extends Model
         });
 
         static::creating(function (Product $product) {
+            if (! $product->autoGenerateCode) {
+                $product->code = filled($product->code) ? $product->code : null;
+
+                return;
+            }
+
             if (blank(trim((string) ($product->code ?? '')))) {
                 $product->code = static::generateUniqueBarcodeNumber(
                     productGroupId: $product->product_group_id,
                 );
             }
         });
+    }
+
+    /**
+     * @param  array<string, mixed>  $attributes
+     */
+    public static function createCatalogEntry(array $attributes, bool $withVariations = false): self
+    {
+        $product = new static($attributes);
+
+        if ($withVariations) {
+            $product->autoGenerateCode = false;
+            $product->code = null;
+        }
+
+        $product->save();
+
+        return $product;
     }
 
     /**

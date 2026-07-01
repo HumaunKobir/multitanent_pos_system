@@ -440,7 +440,6 @@ function formatVariantSummary(variationData = {}) {
 }
 
 function VariationBuilder({
-    productCode,
     colorOptions = [],
     sizeOptions = [],
     initialVariations = [],
@@ -721,7 +720,7 @@ function VariationBuilder({
                                         <th className="p-2">Variant</th>
                                         <th className="p-2">Sale Price</th>
                                         <th className="p-2">Purchase Price</th>
-                                        <th className="p-2">SKU</th>
+                                        <th className="p-2">SKU / Barcode</th>
                                         <th className="p-2">Stock</th>
                                         <th className="p-2"></th>
                                     </tr>
@@ -748,7 +747,17 @@ function VariationBuilder({
                                                 {errors[`combinations.${idx}.purchase_price`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.purchase_price`]}</p>}
                                             </td>
                                             <td className="p-2">
-                                                <Input className="h-7 w-32 text-xs" value={combo.sku} onChange={(e) => updateCombo(idx, 'sku', e.target.value)} disabled={locked} maxLength={8} placeholder="Auto" />
+                                                <Input
+                                                    className="h-7 w-32 text-xs"
+                                                    value={combo.sku}
+                                                    onChange={(e) => updateCombo(idx, 'sku', e.target.value.slice(0, 8))}
+                                                    disabled={locked}
+                                                    maxLength={8}
+                                                    placeholder="Auto"
+                                                />
+                                                <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
+                                                    Max 8 chars — used as barcode. Leave empty to auto-generate.
+                                                </p>
                                                 {errors[`combinations.${idx}.sku`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.sku`]}</p>}
                                             </td>
                                             <td className="p-2">
@@ -866,6 +875,7 @@ export default function ProductForm({
         if (val) {
             form.setData((data) => ({
                 ...data,
+                code: '',
                 color_ids: [],
                 size_ids: [],
             }));
@@ -959,19 +969,21 @@ export default function ProductForm({
                             <Input className="h-8 text-xs" value={form.data.name} onChange={(e) => form.setData('name', e.target.value)} placeholder="Product name" />
                         </Field>
 
-                        <Field label="Barcode" error={form.errors.code}>
-                            <Input
-                                className="h-8 text-xs"
-                                value={form.data.code}
-                                onChange={(e) => form.setData('code', e.target.value)}
-                                onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
-                                placeholder="Leave empty for auto code"
-                                maxLength={8}
-                            />
-                            <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
-                                Max 8 characters — keeps the barcode short and scannable. Leave empty to auto-generate a numeric barcode.
-                            </p>
-                        </Field>
+                        {!hasVariations && (
+                            <Field label="Barcode" error={form.errors.code}>
+                                <Input
+                                    className="h-8 text-xs"
+                                    value={form.data.code}
+                                    onChange={(e) => form.setData('code', e.target.value.slice(0, 8))}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+                                    placeholder="Leave empty for auto code"
+                                    maxLength={8}
+                                />
+                                <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
+                                    Max 8 characters — keeps the barcode short and scannable. Leave empty to auto-generate a numeric barcode.
+                                </p>
+                            </Field>
+                        )}
                     </div>
                 </Card>
 
@@ -1060,7 +1072,6 @@ export default function ProductForm({
                 {/* Variations */}
                 <Card title="Variations" icon={GitBranch}>
                     <VariationBuilder
-                        productCode={form.data.code}
                         colorOptions={branchColorOptions}
                         sizeOptions={branchSizeOptions}
                         initialVariations={initialVariations}

@@ -4,8 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Models\Barcode;
 use App\Models\Branch;
+use App\Models\Color;
+use App\Models\Size;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -49,6 +52,69 @@ class BarcodeController extends Controller
         return Auth::user()?->usesAdminPanel() ?? false;
     }
 
+    /**
+     * @param  Collection<int, Barcode>  $barcodes
+     * @return Collection<int, Barcode>
+     */
+    private function withResolvedProductAttributes($barcodes)
+    {
+        $colorIds = $barcodes
+            ->pluck('product.colors')
+            ->flatten()
+            ->filter()
+            ->unique()
+            ->values();
+
+        $sizeIds = $barcodes
+            ->pluck('product.sizes')
+            ->flatten()
+            ->filter()
+            ->unique()
+            ->values();
+
+        $colorNames = $colorIds->isNotEmpty()
+            ? Color::query()->whereIn('id', $colorIds)->pluck('name', 'id')
+            : collect();
+
+        $sizeNames = $sizeIds->isNotEmpty()
+            ? Size::query()->whereIn('id', $sizeIds)->pluck('name', 'id')
+            : collect();
+
+        return $barcodes->each(function (Barcode $barcode) use ($colorNames, $sizeNames): void {
+            $product = $barcode->product;
+
+            if ($product === null) {
+                return;
+            }
+
+            $product->setAttribute(
+                'color_labels',
+                collect($product->colors ?? [])
+                    ->map(fn ($id) => $colorNames[(int) $id] ?? null)
+                    ->filter()
+                    ->values()
+                    ->all(),
+            );
+
+            $product->setAttribute(
+                'size_labels',
+                collect($product->sizes ?? [])
+                    ->map(fn ($id) => $sizeNames[(int) $id] ?? null)
+                    ->filter()
+                    ->values()
+                    ->all(),
+            );
+        });
+    }
+
+    private function barcodeRelations(): array
+    {
+        return [
+            'product:id,name,code,image,sale_price,discount_price,colors,sizes',
+            'variation:id,variation_data,price,sku,sku_code',
+        ];
+    }
+
     public function index(Request $request): Response
     {
         $this->authorize('barcode.view');
@@ -58,9 +124,11 @@ class BarcodeController extends Controller
         $mainBranchId = Branch::resolveMainBranchId();
 
         $barcodes = $this->listQuery($request->search, $listBranchId)
-            ->with(['product:id,name,image,sale_price,discount_price', 'variation:id,variation_data,price,sku'])
+            ->with($this->barcodeRelations())
             ->paginate(10)
             ->withQueryString();
+
+        $this->withResolvedProductAttributes($barcodes->getCollection());
 
         return Inertia::render('admin/barcode/index', [
             'barcodes' => $barcodes,
@@ -81,10 +149,12 @@ class BarcodeController extends Controller
 
         $ids = array_filter(explode(',', (string) $request->query('ids', '')));
 
-        $barcodes = Barcode::with(['product:id,name,image,sale_price,discount_price', 'variation:id,variation_data,price,sku'])
+        $barcodes = Barcode::with($this->barcodeRelations())
             ->when($ids, fn ($q) => $q->whereIn('id', $ids))
             ->listed()
             ->get();
+
+        $this->withResolvedProductAttributes($barcodes);
 
         return Inertia::render('admin/barcode/print', [
             'barcodes' => $barcodes,

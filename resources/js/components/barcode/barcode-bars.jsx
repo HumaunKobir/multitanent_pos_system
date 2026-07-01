@@ -9,29 +9,6 @@ export function BarcodeBars({ code, barHeight, fill = false }) {
     useLayoutEffect(() => {
         const measure = () => {
             if (svgRef.current && wrapRef.current) {
-                // #region agent log
-                fetch('/debug/client-log', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        sessionId: '601285',
-                        location: 'barcode-bars.jsx:measure',
-                        message: 'preview measure start',
-                        data: {
-                            rawCodeLen: String(code ?? '').length,
-                            barHeight,
-                            fill,
-                            wrapW: wrapRef.current.clientWidth,
-                            wrapH: wrapRef.current.clientHeight,
-                            renderer: 'jsbarcode-svg',
-                        },
-                        timestamp: Date.now(),
-                        hypothesisId: 'D',
-                        runId: 'post-fix',
-                    }),
-                }).catch(() => {});
-                // #endregion
-
                 renderBarcodeSvg(
                     svgRef.current,
                     wrapRef.current,

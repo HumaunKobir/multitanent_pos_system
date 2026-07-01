@@ -15,31 +15,62 @@ import {
 } from '@/components/ui/select';
 import {
     buildPrintHtml,
-    calculateBarcodeBarHeight,
     formatLabelPrice,
     getEffectivePrice,
-    getLabelTitle,
-    getNameBarcodeGap,
+    getEffectiveLabelFontSize,
+    getLabelBarcodeBarHeight,
+    getLabelCodeLine,
+    getLabelContentDimensions,
+    getLabelHeaderLines,
+    getLabelLineHeight,
+    getLabelPreviewScale,
     getBarcodePriceGap,
+    getNameBarcodeGap,
+    LIST_BARCODE_BAR_HEIGHT,
     PRINT_DPI,
 } from '@/lib/barcode-label';
 import { route } from '@/lib/route';
 
 const PREVIEW_MAX_W = 500;
-const PREVIEW_MAX_H = 220;
+const PREVIEW_MAX_H = 320;
 
 function LabelPreview({ row, settings }) {
     const pxWidth = settings.width * PRINT_DPI;
     const pxHeight = settings.height * PRINT_DPI;
-    const scale = Math.min(PREVIEW_MAX_W / pxWidth, PREVIEW_MAX_H / pxHeight);
+    const contentDims = getLabelContentDimensions(settings);
+    const contentPxWidth = contentDims.width * PRINT_DPI;
+    const contentPxHeight = contentDims.height * PRINT_DPI;
+    const scale = getLabelPreviewScale(
+        settings.width,
+        settings.height,
+        PREVIEW_MAX_W,
+        PREVIEW_MAX_H,
+    );
     const displayW = Math.round(pxWidth * scale);
     const displayH = Math.round(pxHeight * scale);
+    const effectiveFontSize = getEffectiveLabelFontSize(settings, row);
 
     const fw = settings.fontWeight === 'bold' ? 700 : 400;
-    const barHeight = calculateBarcodeBarHeight(settings);
-    const nameBarcodeGap = getNameBarcodeGap(settings.fontSize);
+    const lineHeight = getLabelLineHeight(effectiveFontSize);
+    const barHeight = getLabelBarcodeBarHeight(settings, row);
+    const nameBarcodeGap = getNameBarcodeGap(effectiveFontSize);
     const barcodePriceGap = getBarcodePriceGap();
     const price = getEffectivePrice(row);
+    const headerLines = getLabelHeaderLines(row);
+    const codeLine = getLabelCodeLine(row);
+
+    const lineStyle = {
+        fontSize: `${effectiveFontSize}px`,
+        fontWeight: fw,
+        fontFamily: 'sans-serif',
+        textAlign: 'center',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        lineHeight: `${lineHeight}px`,
+        flexShrink: 0,
+        color: '#111827',
+    };
 
     return (
         <div
@@ -57,7 +88,7 @@ function LabelPreview({ row, settings }) {
                     border: '1px solid #d1d5db',
                     background: '#fff',
                     display: 'flex',
-                    alignItems: 'stretch',
+                    alignItems: 'center',
                     justifyContent: 'center',
                     padding: '3px 5px',
                     boxSizing: 'border-box',
@@ -72,47 +103,64 @@ function LabelPreview({ row, settings }) {
                         height: '100%',
                         minHeight: 0,
                         display: 'flex',
-                        flexDirection: 'column',
-                        justifyContent: 'stretch',
-                        gap: 0,
+                        alignItems: 'center',
+                        justifyContent: 'center',
                     }}
                 >
                     <div
                         style={{
-                            fontSize: `${settings.fontSize}px`,
-                            fontWeight: fw,
-                            fontFamily: 'sans-serif',
-                            textAlign: 'center',
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            lineHeight: 1.2,
+                            width: `${contentPxWidth}px`,
+                            height: `${contentPxHeight}px`,
                             flexShrink: 0,
-                            marginBottom: `${nameBarcodeGap}px`,
-                            color: '#111827',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            gap: 0,
+                            overflow: 'hidden',
                         }}
                     >
-                        {getLabelTitle(row)}
+                    <div
+                        style={{
+                            flexShrink: 0,
+                            marginBottom: `${nameBarcodeGap}px`,
+                            textAlign: 'center',
+                            width: '100%',
+                        }}
+                    >
+                        {headerLines.map((line) => (
+                            <div
+                                key={line.text}
+                                style={{
+                                    ...lineStyle,
+                                    fontWeight: line.bold ? 700 : fw,
+                                }}
+                            >
+                                {line.text}
+                            </div>
+                        ))}
                     </div>
-                    <BarcodeBars
-                        code={row?.code ?? '123456789'}
-                        barHeight={barHeight}
-                        fill
-                    />
+                    <div style={{ width: '100%' }}>
+                        <BarcodeBars
+                            code={row?.code ?? '123456789'}
+                            barHeight={barHeight}
+                        />
+                    </div>
                     <div
                         style={{
                             display: 'flex',
-                            justifyContent: 'center',
-                            fontSize: `${settings.fontSize}px`,
-                            fontWeight: fw,
-                            fontFamily: 'monospace',
-                            lineHeight: 1,
+                            flexDirection: 'column',
+                            alignItems: 'center',
                             flexShrink: 0,
                             marginTop: `${barcodePriceGap}px`,
-                            color: '#111827',
+                            width: '100%',
                         }}
                     >
-                        <span>{formatLabelPrice(price)}</span>
+                        <div style={lineStyle}>{codeLine}</div>
+                        <div style={{ ...lineStyle, fontWeight: 700 }}>
+                            {formatLabelPrice(price)}
+                        </div>
+                    </div>
                     </div>
                 </div>
             </div>
@@ -133,6 +181,7 @@ export default function BarcodePrint({ barcodes }) {
         setSettings((prev) => ({ ...prev, [key]: value }));
 
     const previewRow = barcodes[0] ?? null;
+    const contentDims = getLabelContentDimensions(settings);
 
     const handlePrint = () => {
         const win = window.open('', '_blank', 'width=700,height=500');
@@ -316,7 +365,7 @@ export default function BarcodePrint({ barcodes }) {
                     </div>
                     <div
                         className="flex items-center justify-center bg-slate-100"
-                        style={{ height: '280px' }}
+                        style={{ minHeight: '320px', padding: '16px' }}
                     >
                         {previewRow ? (
                             <LabelPreview
@@ -331,8 +380,27 @@ export default function BarcodePrint({ barcodes }) {
                     </div>
                     <div className="border-t border-blue-200 px-4 py-2 text-center">
                         <p className="text-xs text-slate-500">
-                            {settings.width}" × {settings.height}" ·{' '}
-                            {settings.copies}× per label
+                            {settings.width}" × {settings.height}" page
+                            {contentDims.width < settings.width ||
+                            contentDims.height < settings.height ? (
+                                <>
+                                    {' '}
+                                    · barcode{' '}
+                                    {contentDims.width}" × {contentDims.height}"
+                                </>
+                            ) : null}{' '}
+                            · {settings.copies}× per label
+                            {previewRow && (
+                                <>
+                                    {' '}
+                                    · renders at{' '}
+                                    {getEffectiveLabelFontSize(
+                                        settings,
+                                        previewRow,
+                                    )}
+                                    px
+                                </>
+                            )}
                         </p>
                     </div>
                 </div>
@@ -355,7 +423,7 @@ export default function BarcodePrint({ barcodes }) {
                                 <div className="rounded bg-white px-1 py-0.5" style={{ width: '120px', flexShrink: 0 }}>
                                     <BarcodeBars
                                         code={row.code}
-                                        barHeight={28}
+                                        barHeight={LIST_BARCODE_BAR_HEIGHT}
                                     />
                                 </div>
                                 <div className="min-w-0 flex-1">

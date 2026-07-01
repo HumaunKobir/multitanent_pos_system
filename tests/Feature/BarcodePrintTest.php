@@ -4,8 +4,10 @@ use App\Models\Barcode;
 use App\Models\Branch;
 use App\Models\Brand;
 use App\Models\Category;
+use App\Models\Color;
 use App\Models\Product;
 use App\Models\ProductVariation;
+use App\Models\Size;
 use App\Models\Unit;
 use App\Models\User;
 use Illuminate\Support\Facades\Artisan;
@@ -104,6 +106,8 @@ test('barcode print page includes product sale price for simple products', funct
     barcodePrintMainBranch();
     $admin = barcodePrintAdmin();
     $mainBranchId = Branch::resolveMainBranchId();
+    $color = Color::query()->create(['name' => 'Navy', 'status' => 1]);
+    $size = Size::query()->create(['name' => 'XL', 'status' => 1]);
     $product = Product::factory()->create([
         'category_id' => Category::factory()->create(['status' => 1])->id,
         'brand_id' => Brand::factory()->create(['status' => 1])->id,
@@ -111,6 +115,8 @@ test('barcode print page includes product sale price for simple products', funct
         'code' => 'SIMPLE-'.fake()->unique()->numerify('######'),
         'sale_price' => 275,
         'discount_price' => 0,
+        'colors' => [$color->id],
+        'sizes' => [$size->id],
     ]);
 
     $barcode = Barcode::query()->create([
@@ -128,7 +134,12 @@ test('barcode print page includes product sale price for simple products', funct
             ->component('admin/barcode/print')
             ->has('barcodes', 1)
             ->where('barcodes.0.product.sale_price', '275.00')
+            ->where('barcodes.0.product.color_labels', ['Navy'])
+            ->where('barcodes.0.product.size_labels', ['XL'])
             ->where('barcodes.0.variation', null));
+
+    $color->delete();
+    $size->delete();
 });
 
 test('barcode serial range endpoint returns ids for list position range', function () {

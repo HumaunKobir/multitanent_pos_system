@@ -1,8 +1,13 @@
 import JsBarcode from 'jsbarcode';
 
 export const PRINT_DPI = 96;
-export const NAME_BARCODE_GAP_PX = 6;
+export const NAME_BARCODE_GAP_PX = 4;
 export const BARCODE_PRICE_GAP_PX = 1;
+export const MIN_LABEL_FONT_PX = 5;
+/** Share of label height used to cap font size on small labels. */
+export const LABEL_FONT_HEIGHT_RATIO = 0.065;
+/** Maximum upscale factor for on-screen preview (avoids oversized text). */
+export const PREVIEW_MAX_SCALE = 2;
 /** Minimum bar height for reliable scanner reads (~8.5mm at 96 DPI). */
 export const MIN_BARCODE_BAR_HEIGHT_PX = 32;
 /** Floor when scaling barcode width to fit the label. */
@@ -14,39 +19,16 @@ export const MIN_BARCODE_FONT_PX = 18;
 export const BARCODE_WIDTH_SAFETY_RATIO = 0.86;
 /** Use most of the vertical space between name and price for bar height. */
 export const BARCODE_HEIGHT_USAGE_RATIO = 0.98;
+/** Compact bar height used in the barcode list and label preview (at 1" label height). */
+export const LIST_BARCODE_BAR_HEIGHT = 28;
+/** Default sticker content size — barcode stays this size when the page is larger. */
+export const DEFAULT_LABEL_CONTENT_WIDTH = 1.5;
+export const DEFAULT_LABEL_CONTENT_HEIGHT = 1;
 export const JSBARCODE_CDN =
     'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
 
 const CODE128_START_B = 204;
 const CODE128_STOP = 206;
-
-// #region agent log
-function debugLog(location, message, data, hypothesisId) {
-    const payload = {
-        sessionId: '601285',
-        location,
-        message,
-        data,
-        timestamp: Date.now(),
-        hypothesisId,
-    };
-
-    fetch('http://127.0.0.1:7682/ingest/b2b77a02-47d0-43f6-ab11-689e8f32c576', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-Debug-Session-Id': '601285',
-        },
-        body: JSON.stringify(payload),
-    }).catch(() => {});
-
-    fetch('/debug/client-log', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-    }).catch(() => {});
-}
-// #endregion
 
 function code128SymbolToChar(value) {
     if (value <= 94) {
@@ -87,17 +69,6 @@ export function encodeCode128B(input) {
     checksum %= 103;
     encoded += code128SymbolToChar(checksum);
     encoded += String.fromCharCode(CODE128_STOP);
-
-    // #region agent log
-    debugLog('barcode-label.js:encodeCode128B', 'encoded barcode', {
-        inputLen: text.length,
-        outputLen: encoded.length,
-        startChar: encoded.charCodeAt(0),
-        stopChar: encoded.charCodeAt(encoded.length - 1),
-        checksumValue: checksum,
-        checksumChar: encoded.charCodeAt(encoded.length - 2),
-    }, 'A');
-    // #endregion
 
     return encoded;
 }
@@ -146,15 +117,265 @@ export function getEffectivePrice(row) {
 export function formatLabelPrice(price) {
     const amount = price != null ? Number(price) : 0;
 
-    return `Price: ${amount.toFixed(2)}`;
+    return `TK: ${amount.toFixed(2)}`;
+}
+
+const LABEL_LINE_HEIGHT_RATIO = 1.15;
+
+export function getLabelLineHeight(fontSize) {
+    return Math.ceil(fontSize * LABEL_LINE_HEIGHT_RATIO);
+}
+
+/**
+ * Scale font size to fit the label dimensions and line count.
+ */
+export function getEffectiveLabelFontSize(settings, row = null) {
+    const { width, height, fontSize } = getContentLayoutSettings(settings);
+    const labelHeightPx = height * PRINT_DPI;
+    const labelWidthPx = width * PRINT_DPI;
+    const headerLines = row ? getLabelHeaderLineCount(row) : 1;
+    const totalLines = headerLines + 2;
+    const paddingY = 6;
+    const barcodeReserve = Math.min(
+        MIN_BARCODE_BAR_HEIGHT_PX,
+        Math.floor(labelHeightPx * 0.34),
+    );
+    const gapReserve = 6;
+    const textBudget = labelHeightPx - paddingY - barcodeReserve - gapReserve;
+    const maxByLineCount = Math.floor(
+        textBudget / (totalLines * LABEL_LINE_HEIGHT_RATIO),
+    );
+    const maxByHeight = Math.max(
+        MIN_LABEL_FONT_PX,
+        Math.floor(labelHeightPx * LABEL_FONT_HEIGHT_RATIO),
+    );
+    const maxByWidth = Math.max(
+        MIN_LABEL_FONT_PX,
+        Math.floor(labelWidthPx / 22),
+    );
+
+    return Math.max(
+        MIN_LABEL_FONT_PX,
+        Math.min(fontSize, maxByLineCount, maxByHeight, maxByWidth),
+    );
+}
+
+/**
+ * Preview scale capped so small labels are not blown up on screen.
+ */
+export function getLabelPreviewScale(
+    widthIn,
+    heightIn,
+    maxW = 500,
+    maxH = 320,
+) {
+    const pxW = widthIn * PRINT_DPI;
+    const pxH = heightIn * PRINT_DPI;
+    const fit = Math.min(maxW / pxW, maxH / pxH);
+
+    return Math.min(PREVIEW_MAX_SCALE, fit);
+}
+
+/**
+ * Barcode content area — capped at the default sticker size when the page is larger.
+ *
+ * @returns {{ width: number, height: number }}
+ */
+export function getLabelContentDimensions(settings) {
+    return {
+        width: Math.min(settings.width, DEFAULT_LABEL_CONTENT_WIDTH),
+        height: Math.min(settings.height, DEFAULT_LABEL_CONTENT_HEIGHT),
+    };
+}
+
+/** Settings used to lay out text and barcode inside the content area. */
+export function getContentLayoutSettings(settings) {
+    return {
+        ...settings,
+        ...getLabelContentDimensions(settings),
+    };
+}
+
+function getVariationField(row, ...keys) {
+    const data = row?.variation?.variation_data ?? {};
+
+    for (const key of keys) {
+        const match = Object.entries(data).find(
+            ([field]) => field.toLowerCase() === key.toLowerCase() && field !== 'label',
+        );
+
+        if (match?.[1]) {
+            return String(match[1]).trim();
+        }
+    }
+
+    return null;
+}
+
+function getProductAttributeLabels(row, key) {
+    const labels = row?.product?.[`${key}_labels`];
+
+    if (!Array.isArray(labels) || labels.length === 0) {
+        return null;
+    }
+
+    return labels.filter(Boolean).join(', ');
+}
+
+function parseColorSizeFromLabel(label) {
+    const text = String(label ?? '').trim();
+
+    if (!text) {
+        return { color: null, size: null };
+    }
+
+    const main = text.split('/')[0].trim();
+    const dashParts = main.split('-');
+
+    if (dashParts.length < 2) {
+        return { color: null, size: null };
+    }
+
+    const sizePattern = /^(XXS|XS|S|M|L|XL|XXL|2XL|3XL|4XL|\d+)$/i;
+    const last = dashParts[dashParts.length - 1];
+
+    if (!sizePattern.test(last)) {
+        return { color: null, size: null };
+    }
+
+    return {
+        color: dashParts.slice(0, -1).join('-').trim(),
+        size: last,
+    };
+}
+
+function getParsedVariationAttributes(row) {
+    const label = row?.variation?.variation_data?.label?.trim();
+
+    if (!label) {
+        return { color: null, size: null };
+    }
+
+    return parseColorSizeFromLabel(label);
 }
 
 export function getLabelName(row) {
     const rawName = row?.product?.name ?? row?.name ?? 'Product Name';
 
-    // Show only the part before a "/" — the slash and anything after it
-    // is omitted from the printed/listed label.
     return rawName.split('/')[0].trim();
+}
+
+export function getLabelProductName(row) {
+    return getLabelName(row).toUpperCase();
+}
+
+export function getLabelStyle(row) {
+    const fromVariation = getVariationField(row, 'fit', 'style');
+
+    if (fromVariation) {
+        return fromVariation;
+    }
+
+    const rawName = row?.product?.name ?? row?.name ?? '';
+    const parts = rawName.split('/');
+
+    if (parts.length > 1) {
+        return parts.slice(1).join('/').trim();
+    }
+
+    return null;
+}
+
+export function getLabelColor(row) {
+    const fromVariation = getVariationField(row, 'color');
+
+    if (fromVariation) {
+        return fromVariation.toUpperCase();
+    }
+
+    const parsed = getParsedVariationAttributes(row);
+
+    if (parsed.color) {
+        return parsed.color.toUpperCase();
+    }
+
+    const fromProduct = getProductAttributeLabels(row, 'color');
+
+    return fromProduct ? fromProduct.toUpperCase() : null;
+}
+
+export function getLabelSize(row) {
+    const fromVariation = getVariationField(row, 'size');
+
+    if (fromVariation) {
+        return fromVariation;
+    }
+
+    const parsed = getParsedVariationAttributes(row);
+
+    if (parsed.size) {
+        return parsed.size;
+    }
+
+    return getProductAttributeLabels(row, 'size');
+}
+
+export function getLabelSkuLine(row) {
+    const barcodeCode = String(row?.code ?? '').trim();
+    const sku =
+        row?.variation?.sku_code?.trim() || row?.variation?.sku?.trim();
+    const productCode = row?.product?.code?.trim();
+
+    if (sku && sku !== barcodeCode) {
+        return sku;
+    }
+
+    if (productCode && productCode !== barcodeCode) {
+        return productCode;
+    }
+
+    return null;
+}
+
+export function getLabelCodeLine(row) {
+    const code = String(row?.code ?? '').trim();
+    const size = getLabelSize(row);
+
+    if (!code) {
+        return '';
+    }
+
+    return size ? `${code} (${size})` : code;
+}
+
+/**
+ * @returns {Array<{ text: string, bold?: boolean }>}
+ */
+export function getLabelHeaderLines(row) {
+    const lines = [{ text: getLabelProductName(row), bold: true }];
+    const color = getLabelColor(row);
+
+    if (color) {
+        lines.push({ text: color });
+    }
+
+    const style = getLabelStyle(row);
+
+    if (style) {
+        lines.push({ text: style });
+    }
+
+    const sku = getLabelSkuLine(row);
+
+    if (sku) {
+        lines.push({ text: sku });
+    }
+
+    return lines;
+}
+
+export function getLabelHeaderLineCount(row) {
+    return getLabelHeaderLines(row).length;
 }
 
 export function getVariantSku(row) {
@@ -190,31 +411,59 @@ export function getLabelTitle(row) {
 }
 
 /**
- * Fit barcode height inside the label without clipping name/price rows.
+ * Fit barcode height inside the label without clipping text rows.
  */
-export function calculateBarcodeBarHeight(settings) {
-    const { height, fontSize } = settings;
+export function calculateBarcodeBarHeight(settings, row = null) {
+    const { height } = getContentLayoutSettings(settings);
+    const fontSize = getEffectiveLabelFontSize(settings, row);
     const labelHeightPx = height * PRINT_DPI;
     const paddingY = 6;
-    const nameLinePx = Math.ceil(fontSize * 1.2);
+    const lineHeightPx = getLabelLineHeight(fontSize);
+    const headerLines = row ? getLabelHeaderLineCount(row) : 1;
+    const headerBlockPx = headerLines * lineHeightPx;
     const nameBarcodeGapPx = getNameBarcodeGap(fontSize);
     const barcodePriceGapPx = getBarcodePriceGap();
-    const footerLinePx = fontSize + barcodePriceGapPx;
+    const footerBlockPx = lineHeightPx * 2 + barcodePriceGapPx;
     const maxBarHeight =
         labelHeightPx -
         paddingY -
-        nameLinePx -
+        headerBlockPx -
         nameBarcodeGapPx -
-        footerLinePx;
+        footerBlockPx;
+    const minBarHeight = Math.max(10, Math.floor(labelHeightPx * 0.22));
 
-    if (maxBarHeight <= MIN_BARCODE_BAR_HEIGHT_PX) {
-        return Math.max(12, maxBarHeight);
+    if (maxBarHeight <= minBarHeight) {
+        return Math.max(minBarHeight, maxBarHeight);
     }
 
     return Math.max(
-        MIN_BARCODE_BAR_HEIGHT_PX,
+        minBarHeight,
         Math.floor(maxBarHeight * BARCODE_HEIGHT_USAGE_RATIO),
     );
+}
+
+/**
+ * Bar height for labels and preview — matches the compact list thumbnail style.
+ */
+export function getLabelBarcodeBarHeight(settings, row = null) {
+    const layout = getContentLayoutSettings(settings);
+    const scaled = Math.round(LIST_BARCODE_BAR_HEIGHT * layout.height);
+    const maxFit = calculateBarcodeBarHeight(settings, row);
+
+    return Math.max(10, Math.min(scaled, maxFit));
+}
+
+function buildLabelHeaderHtml(row, fontSize, fontWeight) {
+    const fw = fontWeight === 'bold' ? 700 : 400;
+    const lineHeight = getLabelLineHeight(fontSize);
+
+    return getLabelHeaderLines(row)
+        .map((line) => {
+            const weight = line.bold ? 700 : fw;
+
+            return `<div class="label-line" style="font-size:${fontSize}px;font-weight:${weight};line-height:${lineHeight}px;">${escapeHtml(line.text)}</div>`;
+        })
+        .join('');
 }
 
 export function escapeHtmlAttr(text) {
@@ -245,7 +494,7 @@ export function renderBarcodeSvg(svgEl, containerEl, code, maxBarHeight, { fill 
             ? Math.floor(availableHeight * BARCODE_HEIGHT_USAGE_RATIO)
             : maxBarHeight;
     let barHeight = Math.max(
-        MIN_BARCODE_BAR_HEIGHT_PX,
+        10,
         Math.min(maxBarHeight, heightFromContainer),
     );
 
@@ -275,23 +524,6 @@ export function renderBarcodeSvg(svgEl, containerEl, code, maxBarHeight, { fill 
         svgWidth = svgEl.getBoundingClientRect().width;
     }
 
-    const widthOverflow = svgWidth > targetWidth;
-
-    // #region agent log
-    debugLog('barcode-label.js:renderBarcodeSvg', 'svg fit result', {
-        fill,
-        maxBarHeight,
-        containerW: containerEl.clientWidth,
-        containerH: containerEl.clientHeight,
-        targetWidth,
-        finalBarHeight: barHeight,
-        moduleWidth,
-        svgWidth,
-        widthOverflow,
-        codeLen: text.length,
-    }, 'C');
-    // #endregion
-
     return barHeight;
 }
 
@@ -307,36 +539,39 @@ export function fitBarcodeToContainer(svgEl, containerEl, maxBarHeight, options 
 }
 
 export function buildPrintHtml(rows, settings) {
-    const { width, height, fontSize, fontWeight, copies } = settings;
+    const { width, height, fontWeight, copies } = settings;
+    const content = getLabelContentDimensions(settings);
     const fw = fontWeight === 'bold' ? 700 : 400;
-    const barHeight = calculateBarcodeBarHeight(settings);
-    const nameBarcodeGap = getNameBarcodeGap(fontSize);
     const barcodePriceGap = getBarcodePriceGap();
+    const defaultBarHeight = getLabelBarcodeBarHeight(settings);
 
     const labels = rows
         .flatMap((row) => Array.from({ length: copies }, () => row))
         .map((row) => {
             const price = getEffectivePrice(row) ?? 0;
-            const labelName = getLabelTitle(row);
-
-            // #region agent log
-            debugLog('barcode-label.js:buildPrintHtml', 'print label barcode', {
-                rawCodeLen: String(row.code ?? '').length,
-                settings: { width, height, fontSize, copies },
-                barHeight,
-                renderer: 'jsbarcode-svg',
-            }, 'C');
-            // #endregion
+            const effectiveFontSize = getEffectiveLabelFontSize(settings, row);
+            const barHeight = getLabelBarcodeBarHeight(settings, row);
+            const headerHtml = buildLabelHeaderHtml(
+                row,
+                effectiveFontSize,
+                fontWeight,
+            );
+            const codeLine = getLabelCodeLine(row);
+            const lineHeight = getLabelLineHeight(effectiveFontSize);
+            const rowNameBarcodeGap = getNameBarcodeGap(effectiveFontSize);
 
             return `
       <div class="label">
         <div class="label-inner">
-          <div class="name">${escapeHtml(labelName)}</div>
-          <div class="bars-wrap">
-            <svg class="bars" data-code="${escapeHtmlAttr(row.code)}" data-max-bar-height="${barHeight}"></svg>
-          </div>
-          <div class="footer">
-            <span>${escapeHtml(formatLabelPrice(price))}</span>
+          <div class="label-content">
+            <div class="label-header" style="margin-bottom:${rowNameBarcodeGap}px;">${headerHtml}</div>
+            <div class="bars-wrap">
+              <svg class="bars" data-code="${escapeHtmlAttr(row.code)}" data-max-bar-height="${barHeight}"></svg>
+            </div>
+            <div class="footer">
+              <div class="label-line label-code" style="font-size:${effectiveFontSize}px;line-height:${lineHeight}px;">${escapeHtml(codeLine)}</div>
+              <div class="label-line label-price" style="font-size:${effectiveFontSize}px;font-weight:700;line-height:${lineHeight}px;">${escapeHtml(formatLabelPrice(price))}</div>
+            </div>
           </div>
         </div>
       </div>`;
@@ -359,7 +594,7 @@ export function buildPrintHtml(rows, settings) {
       height: ${height}in;
       border: 1px solid #ccc;
       display: flex;
-      align-items: stretch;
+      align-items: center;
       justify-content: center;
       padding: 3px 5px;
       overflow: hidden;
@@ -371,26 +606,43 @@ export function buildPrintHtml(rows, settings) {
       height: 100%;
       min-height: 0;
       display: flex;
-      flex-direction: column;
-      justify-content: stretch;
-      gap: 0;
+      align-items: center;
+      justify-content: center;
     }
-    .name {
-      font-size: ${fontSize}px;
+    .label-content {
+      width: ${content.width}in;
+      height: ${content.height}in;
+      flex-shrink: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      gap: 0;
+      overflow: hidden;
+    }
+    .label-header {
+      flex-shrink: 0;
+      text-align: center;
+      width: 100%;
+    }
+    .label-line {
       font-weight: ${fw};
       font-family: sans-serif;
       text-align: center;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      line-height: 1.2;
       flex-shrink: 0;
-      margin-bottom: ${nameBarcodeGap}px;
+    }
+    .label-code {
+      margin-bottom: 1px;
+    }
+    .label-price {
+      font-weight: 700;
     }
     .bars-wrap {
       width: 100%;
-      flex: 1 1 0;
-      min-height: 0;
+      flex-shrink: 0;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -405,13 +657,11 @@ export function buildPrintHtml(rows, settings) {
     }
     .footer {
       display: flex;
-      justify-content: center;
-      font-size: ${fontSize}px;
-      font-weight: ${fw};
-      font-family: monospace;
-      line-height: 1;
+      flex-direction: column;
+      align-items: center;
       flex-shrink: 0;
       margin-top: ${barcodePriceGap}px;
+      width: 100%;
     }
     @media print {
       @page { size: ${width}in ${height}in; margin: 0; }
@@ -451,16 +701,9 @@ export function buildPrintHtml(rows, settings) {
       var svg = wrap.querySelector('.bars');
       if (!svg || !window.JsBarcode) return;
       var code = svg.getAttribute('data-code') || '';
-      var maxBarHeight = parseFloat(svg.getAttribute('data-max-bar-height') || '${barHeight}');
+      var maxBarHeight = parseFloat(svg.getAttribute('data-max-bar-height') || '${defaultBarHeight}');
       var targetWidth = wrap.clientWidth * ${BARCODE_WIDTH_SAFETY_RATIO};
-      var availableHeight = wrap.clientHeight;
-      var heightFromContainer = availableHeight > 8
-        ? Math.floor(availableHeight * ${BARCODE_HEIGHT_USAGE_RATIO})
-        : maxBarHeight;
-      var barHeight = Math.max(
-        ${MIN_BARCODE_BAR_HEIGHT_PX},
-        Math.min(maxBarHeight, heightFromContainer)
-      );
+      var barHeight = Math.max(10, maxBarHeight);
       var moduleWidth = 2;
       var minModuleWidth = 0.3;
       var draw = function() {
@@ -481,7 +724,6 @@ export function buildPrintHtml(rows, settings) {
         draw();
         svgWidth = svg.getBoundingClientRect().width;
       }
-      fetch('/debug/client-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sessionId:'601285',location:'print-window:fitBarcode',message:'print svg fit result',data:{containerW:wrap.clientWidth,containerH:wrap.clientHeight,targetWidth:targetWidth,finalBarHeight:barHeight,moduleWidth:moduleWidth,svgWidth:svgWidth,widthOverflow:svgWidth>targetWidth,codeLen:code.length,renderer:'jsbarcode-svg'},timestamp:Date.now(),hypothesisId:'C',runId:'post-fix'})}).catch(function(){});
     }
 
     function printWhenReady() {

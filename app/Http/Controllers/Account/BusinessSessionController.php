@@ -156,7 +156,12 @@ class BusinessSessionController extends Controller
 
         $this->sessions->log($dailySession, $request->user(), 'session.export_excel', []);
 
-        return Excel::download(new BusinessSessionReportExport($report), $filename);
+        $includeIncomeExpenseSummaries = ! $request->user()->usesBranchPanel();
+
+        return Excel::download(
+            new BusinessSessionReportExport($report, $includeIncomeExpenseSummaries),
+            $filename,
+        );
     }
 
     public function reopen(BusinessSession $dailySession, Request $request): RedirectResponse

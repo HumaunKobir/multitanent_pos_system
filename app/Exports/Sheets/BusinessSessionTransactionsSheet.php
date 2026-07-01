@@ -14,7 +14,7 @@ use PhpOffice\PhpSpreadsheet\Cell\Coordinate;
 
 class BusinessSessionTransactionsSheet implements FromCollection, ShouldAutoSize, WithEvents, WithHeadings, WithTitle
 {
-    private const COLUMN_COUNT = 13;
+    private const COLUMN_COUNT = 11;
 
     /** @var list<int> */
     private const CURRENCY_COLUMNS = [8, 9];
@@ -50,8 +50,6 @@ class BusinessSessionTransactionsSheet implements FromCollection, ShouldAutoSize
             'Credit',
             'Created By',
             'Branch',
-            'Approval Status',
-            'Deleted',
         ];
     }
 
@@ -69,8 +67,6 @@ class BusinessSessionTransactionsSheet implements FromCollection, ShouldAutoSize
             $row['credit'] ?? 0,
             $row['created_by'] ?? '',
             $row['branch'] ?? '',
-            $row['approval_status'] ?? '',
-            ($row['is_deleted'] ?? false) ? 'Yes' : 'No',
         ]);
 
         if ($rows->isNotEmpty()) {
@@ -84,8 +80,6 @@ class BusinessSessionTransactionsSheet implements FromCollection, ShouldAutoSize
                 'Totals',
                 round($rows->sum(fn (array $row) => (float) $row[7]), 2),
                 round($rows->sum(fn (array $row) => (float) $row[8]), 2),
-                '',
-                '',
                 '',
                 '',
             ]);

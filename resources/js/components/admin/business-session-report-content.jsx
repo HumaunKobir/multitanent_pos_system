@@ -60,7 +60,7 @@ function SummaryCard({ label, value }) {
 
 export function BusinessSessionReportContent({ report }) {
     const { panelType } = usePage().props;
-    const showIncomeExpense = panelType !== 'admin';
+    const showIncomeExpenseSummaries = panelType === 'admin';
     const info = report?.session ?? {};
     const closing = report?.closing_summary ?? {};
     const accountRows = report?.account_balances ?? [];
@@ -71,7 +71,11 @@ export function BusinessSessionReportContent({ report }) {
 
     return (
         <div className="space-y-4">
-            <div className="grid gap-3 rounded-lg border bg-card p-4 text-sm sm:grid-cols-3">
+            <div className="grid gap-3 rounded-lg border bg-card p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+                <div>
+                    <span className="text-muted-foreground">Branch</span>
+                    <p className="font-medium">{info.branch_name ?? '—'}</p>
+                </div>
                 <div>
                     <span className="text-muted-foreground">Start Time</span>
                     <p className="font-medium">{info.started_at ?? '—'}</p>
@@ -132,8 +136,8 @@ export function BusinessSessionReportContent({ report }) {
             <SectionTable
                 title="Transactions"
                 count={transactionRows.length}
-                minWidth="52rem"
-                headers={['Date', 'Reference', 'Type', 'From', 'To', 'Description', 'Amount', 'Status']}
+                minWidth="48rem"
+                headers={['Date', 'Reference', 'Type', 'From', 'To', 'Description', 'Amount']}
                 rows={transactionRows}
                 renderRow={(row) => (
                     <tr key={row.id} className="border-t hover:bg-muted/30">
@@ -142,17 +146,16 @@ export function BusinessSessionReportContent({ report }) {
                         <td className="px-3 py-2.5">{row.type}</td>
                         <td className="max-w-40 truncate px-3 py-2.5" title={row.source_account}>{row.source_account}</td>
                         <td className="max-w-40 truncate px-3 py-2.5" title={row.destination_account}>{row.destination_account}</td>
-                        <td className="max-w-48 truncate px-3 py-2.5" title={row.description}>{row.description}</td>
-                        <td className="px-3 py-2.5 text-right tabular-nums">{formatSessionMoney(row.debit)}</td>
-                        <td className="px-3 py-2.5">
-                            {row.approval_status}
+                        <td className="max-w-48 truncate px-3 py-2.5" title={row.description}>
+                            {row.description}
                             {row.is_deleted ? ' (Deleted)' : ''}
                         </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{formatSessionMoney(row.debit)}</td>
                     </tr>
                 )}
             />
 
-            {showIncomeExpense ? (
+            {showIncomeExpenseSummaries ? (
                 <>
                     <SectionTable
                         title="Income Summary"

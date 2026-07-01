@@ -17,18 +17,26 @@ use Illuminate\Support\Collection;
 
 class BusinessSessionReportService
 {
+    /** @var list<int> */
+    private array $accountsAddedDuringSession = [];
+
     /**
      * @return array<string, mixed>
      */
     public function buildReport(BusinessSession $session): array
     {
+        $this->accountsAddedDuringSession = [];
+
         $session->loadMissing(['startedBy', 'closedBy', 'branch', 'accountBalances']);
+
+        $this->syncMissingAccountBalances($session);
 
         $transactionScope = app(BusinessSessionTransactionScope::class);
         $transactionScope->syncSessionTransactions($session);
 
         $transactions = Transaction::query()
             ->where('business_session_id', $session->id)
+            ->tap(fn ($query) => $transactionScope->scopeForBranch($query, $session->branch_id))
             ->tap(fn ($query) => $transactionScope->scopeWithinSessionWindow($query, $session))
             ->withTrashed()
             ->with([
@@ -54,8 +62,8 @@ class BusinessSessionReportService
         $incomeSummary = $this->buildIncomeSummary($transactions);
         $expenseSummary = $this->buildExpenseSummary($transactions);
         $transactionRows = $this->buildTransactionRows($transactions, $session, $contraTransactionIds);
-        $pendingTransactions = $transactionRows->filter(fn (array $row) => $row['approval_status'] === 'Pending')->values()->all();
         $closingSummary = $this->buildClosingSummary($accountBalances, $incomeSummary, $expenseSummary);
+        $accountBalances = $this->filterAccountsUsedInSession($accountBalances);
 
         $closedAt = $session->closed_at ?? now();
         $durationMinutes = (int) round($session->started_at->diffInMinutes($closedAt));
@@ -80,11 +88,6 @@ class BusinessSessionReportService
             'income_summary' => $incomeSummary,
             'expense_summary' => $expenseSummary,
             'closing_summary' => $closingSummary,
-            'warnings' => [
-                'pending_transactions' => $pendingTransactions,
-                'pending_count' => count($pendingTransactions),
-                'balance_mismatch' => false,
-            ],
         ];
     }
 
@@ -94,29 +97,102 @@ class BusinessSessionReportService
     public function persistAccountClosingBalances(BusinessSession $session, array $accountBalances): void
     {
         foreach ($accountBalances as $row) {
-            BusinessSessionAccountBalance::query()
-                ->where('business_session_id', $session->id)
-                ->where('account_id', $row['account_id'])
-                ->update([
-                    'total_debit' => $row['total_debit'],
-                    'total_credit' => $row['total_credit'],
-                    'total_received' => $row['total_received'],
-                    'total_paid' => $row['total_paid'],
-                    'total_transfer_in' => $row['total_transfer_in'],
-                    'total_transfer_out' => $row['total_transfer_out'],
-                    'closing_balance' => $row['closing_balance'],
-                ]);
+            $account = ChartOfAccount::query()->find($row['account_id']);
+
+            $balance = BusinessSessionAccountBalance::query()->firstOrNew([
+                'business_session_id' => $session->id,
+                'account_id' => $row['account_id'],
+            ]);
+
+            if (! $balance->exists) {
+                $balance->account_name = $row['account_name'];
+                $balance->account_type = $account?->type ?? AccountType::Asset;
+                $balance->opening_balance = $row['opening_balance'];
+            }
+
+            $balance->fill([
+                'total_debit' => $row['total_debit'],
+                'total_credit' => $row['total_credit'],
+                'total_received' => $row['total_received'],
+                'total_paid' => $row['total_paid'],
+                'total_transfer_in' => $row['total_transfer_in'],
+                'total_transfer_out' => $row['total_transfer_out'],
+                'closing_balance' => $row['closing_balance'],
+            ]);
+
+            $balance->save();
         }
     }
 
     /**
      * @return list<array<string, mixed>>
      */
+    private function syncMissingAccountBalances(BusinessSession $session): void
+    {
+        $existingAccountIds = $session->accountBalances->pluck('account_id')->all();
+
+        $missingAccounts = $this->branchAccounts($session->branch_id)
+            ->whereNotIn('id', $existingAccountIds);
+
+        $changed = false;
+
+        foreach ($missingAccounts as $account) {
+            BusinessSessionAccountBalance::query()->create([
+                'business_session_id' => $session->id,
+                'account_id' => $account->id,
+                'account_name' => $account->name,
+                'account_type' => $account->type,
+                'opening_balance' => $this->resolveSessionOpeningBalance($account->id, $session),
+            ]);
+
+            $this->accountsAddedDuringSession[] = $account->id;
+
+            $changed = true;
+        }
+
+        foreach ($session->accountBalances as $balance) {
+            $account = ChartOfAccount::query()->find($balance->account_id);
+
+            if ($account === null || $account->created_at->lt($session->started_at)) {
+                continue;
+            }
+
+            $sessionOpening = $this->resolveSessionOpeningBalance($account->id, $session);
+
+            if ($sessionOpening > 0 && (float) $balance->opening_balance !== $sessionOpening) {
+                $balance->update(['opening_balance' => $sessionOpening]);
+                $this->accountsAddedDuringSession[] = $account->id;
+                $changed = true;
+            }
+        }
+
+        if ($changed) {
+            $session->unsetRelation('accountBalances');
+            $session->load('accountBalances');
+        }
+    }
+
+    /**
+     * @return Collection<int, ChartOfAccount>
+     */
+    private function branchAccounts(?int $branchId): Collection
+    {
+        $query = ChartOfAccount::query()->whereNotNull('parent_id');
+
+        if ($branchId === null) {
+            $query->whereNull('source_type')->whereNull('source_id');
+        } else {
+            $query->where('source_type', Branch::class)->where('source_id', $branchId);
+        }
+
+        return $query->orderBy('code')->get();
+    }
+
     private function buildAccountBalances(BusinessSession $session, Collection $ledgers, Collection $transactions): array
     {
-        $openingByAccount = $session->accountBalances->keyBy('account_id');
         $paymentAccountIds = $this->paymentAccountIds($session);
         $contraTransactionIds = $this->contraTransactionIds($transactions);
+        $openingBalanceTransactionIds = $this->openingBalanceTransactionIds($transactions);
 
         $aggregates = [];
 
@@ -141,6 +217,10 @@ class BusinessSessionReportService
             $accountId = $ledger->account_id;
 
             if (! isset($aggregates[$accountId])) {
+                continue;
+            }
+
+            if ($openingBalanceTransactionIds->contains($ledger->transaction_id)) {
                 continue;
             }
 
@@ -189,6 +269,41 @@ class BusinessSessionReportService
                 'closing_balance' => round($row['closing_balance'], 2),
             ];
         }, $aggregates));
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $accountBalances
+     * @return list<array<string, mixed>>
+     */
+    private function filterAccountsUsedInSession(array $accountBalances): array
+    {
+        return array_values(array_filter(
+            $accountBalances,
+            fn (array $row) => $this->accountWasUsedInSession($row),
+        ));
+    }
+
+    /**
+     * @param  array<string, mixed>  $row
+     */
+    private function accountWasUsedInSession(array $row): bool
+    {
+        $hasActivity = $row['total_debit'] > 0
+            || $row['total_credit'] > 0
+            || $row['total_received'] > 0
+            || $row['total_paid'] > 0
+            || $row['total_transfer_in'] > 0
+            || $row['total_transfer_out'] > 0;
+
+        if ($hasActivity) {
+            return true;
+        }
+
+        if (in_array((int) $row['account_id'], $this->accountsAddedDuringSession, true)) {
+            return (float) $row['opening_balance'] > 0;
+        }
+
+        return false;
     }
 
     private function sessionBalanceChange(AccountType $type, float $totalDebit, float $totalCredit): float
@@ -402,7 +517,6 @@ class BusinessSessionReportService
                     'credit' => round((float) $transaction->amount, 2),
                     'created_by' => $performedBy,
                     'branch' => $session->branch?->name ?? 'Head Office',
-                    'approval_status' => $transaction->approved_at ? 'Approved' : 'Pending',
                     'is_deleted' => $transaction->trashed(),
                 ];
             })
@@ -436,6 +550,38 @@ class BusinessSessionReportService
             'total_transfer_out' => $totalTransferOut,
             'total_closing_balance' => $totalClosing,
         ];
+    }
+
+    /**
+     * @return Collection<int, int>
+     */
+    private function openingBalanceTransactionIds(Collection $transactions): Collection
+    {
+        return $transactions
+            ->filter(fn (Transaction $transaction) => $transaction->source_type === ChartOfAccount::class
+                && str_starts_with((string) $transaction->description, 'Opening balance —'))
+            ->pluck('id');
+    }
+
+    private function resolveSessionOpeningBalance(int $accountId, BusinessSession $session): float
+    {
+        $transaction = Transaction::query()
+            ->where('source_type', ChartOfAccount::class)
+            ->where('source_id', $accountId)
+            ->where('description', 'like', 'Opening balance —%')
+            ->where('created_at', '>=', $session->started_at)
+            ->when(
+                $session->closed_at !== null,
+                fn ($query) => $query->where('created_at', '<=', $session->closed_at),
+            )
+            ->orderBy('id')
+            ->first();
+
+        if ($transaction === null) {
+            return 0.0;
+        }
+
+        return round((float) $transaction->amount, 2);
     }
 
     /**

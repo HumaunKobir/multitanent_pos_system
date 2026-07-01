@@ -1,5 +1,4 @@
 import { router } from '@inertiajs/react';
-import { AlertTriangle } from 'lucide-react';
 import { useRef, useState } from 'react';
 
 import { BusinessSessionExportButton } from '@/components/admin/business-session-export-button';
@@ -17,7 +16,6 @@ export function BusinessSessionCloseModal({ open, onOpenChange, data }) {
     const report = data?.report;
     const session = data?.session;
     const info = report?.session ?? {};
-    const pendingCount = report?.warnings?.pending_count ?? 0;
     const canExport = can('business-session.export') && (data?.can_export ?? false);
 
     const handleOpenChange = (nextOpen) => {
@@ -83,13 +81,6 @@ export function BusinessSessionCloseModal({ open, onOpenChange, data }) {
             )}
         >
             <div className="space-y-4 p-5">
-                {pendingCount > 0 ? (
-                    <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                        <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                        <p>{pendingCount} transaction(s) are still pending approval.</p>
-                    </div>
-                ) : null}
-
                 {report ? <BusinessSessionReportContent report={report} /> : null}
             </div>
         </VoucherModalShell>

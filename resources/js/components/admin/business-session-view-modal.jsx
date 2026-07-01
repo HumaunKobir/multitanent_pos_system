@@ -1,5 +1,3 @@
-import { AlertTriangle } from 'lucide-react';
-
 import { BusinessSessionExportButton } from '@/components/admin/business-session-export-button';
 import { BusinessSessionReportContent } from '@/components/admin/business-session-report-content';
 import { Button } from '@/components/ui/button';
@@ -48,12 +46,6 @@ export function BusinessSessionViewModal({ open, onOpenChange, sessionId, sessio
             )}
         >
             <div className="space-y-4 p-5">
-                {(report?.warnings?.pending_count ?? 0) > 0 ? (
-                    <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                        <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                        <p>{report.warnings.pending_count} transaction(s) were pending approval.</p>
-                    </div>
-                ) : null}
                 {report ? <BusinessSessionReportContent report={report} /> : null}
             </div>
         </VoucherModalShell>

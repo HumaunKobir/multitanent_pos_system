@@ -15,7 +15,10 @@ class BusinessSessionReportExport implements WithMultipleSheets
     /**
      * @param  array<string, mixed>  $report
      */
-    public function __construct(private array $report) {}
+    public function __construct(
+        private array $report,
+        private bool $includeIncomeExpenseSummaries = true,
+    ) {}
 
     /**
      * @return list<object>
@@ -24,13 +27,19 @@ class BusinessSessionReportExport implements WithMultipleSheets
     {
         $session = $this->report['session'] ?? [];
 
-        return [
+        $sheets = [
             new BusinessSessionSummarySheet($this->report),
             new BusinessSessionAccountBalancesSheet($this->report['account_balances'] ?? [], $session),
             new BusinessSessionTransactionsSheet($this->report['transactions'] ?? [], $session),
-            new BusinessSessionIncomeSheet($this->report['income_summary'] ?? [], $session),
-            new BusinessSessionExpensesSheet($this->report['expense_summary'] ?? [], $session),
-            new BusinessSessionTransfersSheet($this->report['transfers'] ?? [], $session),
         ];
+
+        if ($this->includeIncomeExpenseSummaries) {
+            $sheets[] = new BusinessSessionIncomeSheet($this->report['income_summary'] ?? [], $session);
+            $sheets[] = new BusinessSessionExpensesSheet($this->report['expense_summary'] ?? [], $session);
+        }
+
+        $sheets[] = new BusinessSessionTransfersSheet($this->report['transfers'] ?? [], $session);
+
+        return $sheets;
     }
 }

@@ -3,6 +3,7 @@
 use App\Enums\AccountType;
 use App\Enums\BusinessSessionOpeningMethod;
 use App\Enums\BusinessSessionStatus;
+use App\Enums\CommonStatus;
 use App\Enums\SystemAccountKey;
 use App\Enums\VoucherType;
 use App\Http\Controllers\Account\BusinessSessionController;
@@ -13,6 +14,7 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Services\BusinessSessionReportService;
 use App\Services\BusinessSessionService;
+use App\Services\InventoryAccountingService;
 use App\Services\SystemAccountService;
 use App\Services\TransactionService;
 use App\Services\VoucherService;
@@ -264,7 +266,6 @@ test('closed session report endpoint returns persisted snapshot', function () {
                 'description' => 'Snapshot income',
                 'debit' => 500,
                 'credit' => 500,
-                'approval_status' => 'Approved',
                 'is_deleted' => false,
             ],
         ],
@@ -276,11 +277,6 @@ test('closed session report endpoint returns persisted snapshot', function () {
             'total_receipts' => 500,
             'total_payments' => 200,
             'total_closing_balance' => 1300,
-        ],
-        'warnings' => [
-            'pending_transactions' => [],
-            'pending_count' => 0,
-            'balance_mismatch' => false,
         ],
     ];
 
@@ -430,6 +426,62 @@ test('session report includes only transactions created after session start', fu
 
     expect(collect($report['income_summary'])->sum('total_amount'))->toBe(750.0)
         ->and($report['transactions'])->not->toBeEmpty();
+});
+
+test('session report includes accounts created after session start', function () {
+    $branch = Branch::factory()->create();
+    $user = businessSessionUser($branch->id, ['accounts.create', 'business-session.start', 'business-session.close']);
+    seedAccountingAccounts(branchId: $branch->id);
+
+    $this->actingAs($user);
+
+    $session = app(BusinessSessionService::class)->start($user, BusinessSessionOpeningMethod::ManualFromPanel);
+
+    $cashBankParent = SystemAccountService::resolve(SystemAccountKey::CashAndBank, $branch->id);
+
+    $bank = ChartOfAccount::query()->create([
+        ...ChartOfAccount::panelSourceAttributes($branch->id),
+        'parent_id' => $cashBankParent->id,
+        'type' => AccountType::Asset,
+        'name' => 'Dutch Bangla Bank',
+        'status' => CommonStatus::Active,
+        'current_balance' => 0,
+    ]);
+
+    app(InventoryAccountingService::class)->postAccountOpeningBalance(
+        $bank,
+        4000000,
+        now()->format('Y-m-d'),
+    );
+
+    $report = app(BusinessSessionReportService::class)->buildReport($session->fresh());
+
+    $bankRow = collect($report['account_balances'])->firstWhere('account_name', 'Dutch Bangla Bank');
+
+    expect($bankRow)->not->toBeNull()
+        ->and($bankRow['opening_balance'])->toBe(4000000.0)
+        ->and($bankRow['total_received'])->toBe(0.0)
+        ->and($bankRow['closing_balance'])->toBe(4000000.0);
+
+    $unusedAccount = collect($report['account_balances'])->firstWhere('account_name', 'Cash in Hand');
+
+    expect($unusedAccount)->toBeNull();
+});
+
+test('session report hides accounts with no session activity', function () {
+    $branch = Branch::factory()->create();
+    $user = businessSessionUser($branch->id, ['business-session.start', 'business-session.close']);
+    seedAccountingAccounts(branchId: $branch->id);
+
+    $this->actingAs($user);
+
+    $session = app(BusinessSessionService::class)->start($user, BusinessSessionOpeningMethod::ManualFromPanel);
+
+    $report = app(BusinessSessionReportService::class)->buildReport($session);
+
+    expect(collect($report['account_balances'])->pluck('account_name'))
+        ->not->toContain('Cash in Hand')
+        ->and($report['closing_summary']['total_opening_balance'])->toBeGreaterThan(0);
 });
 
 test('session report lists contra vouchers in transfers and excludes them from transactions', function () {

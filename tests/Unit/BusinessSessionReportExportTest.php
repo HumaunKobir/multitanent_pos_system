@@ -50,7 +50,6 @@ function businessSessionReportSampleData(): array
             'credit' => 500,
             'created_by' => 'Super Admin',
             'branch' => 'Main Branch',
-            'approval_status' => 'Approved',
             'is_deleted' => false,
         ]],
         'income_summary' => [[
@@ -129,6 +128,30 @@ test('business session report export generates a styled multi-sheet workbook', f
 
     $transactionsSheet = $spreadsheet->getSheetByName('All Transactions');
     expect($transactionsSheet->getCell('A5')->getValue())->toBe('01 July, 2026');
+
+    Storage::disk('local')->delete($filename);
+});
+
+test('business session branch export omits income and expense summary sheets', function () {
+    $filename = 'business-session-branch-export-test.xlsx';
+
+    Storage::disk('local')->delete($filename);
+
+    Excel::store(
+        new BusinessSessionReportExport(businessSessionReportSampleData(), includeIncomeExpenseSummaries: false),
+        $filename,
+        'local',
+    );
+
+    $spreadsheet = IOFactory::load(Storage::disk('local')->path($filename));
+
+    expect($spreadsheet->getSheetCount())->toBe(4);
+    expect($spreadsheet->getSheetNames())->toBe([
+        'Session Summary',
+        'Account Balances',
+        'All Transactions',
+        'Balance Transfers',
+    ]);
 
     Storage::disk('local')->delete($filename);
 });

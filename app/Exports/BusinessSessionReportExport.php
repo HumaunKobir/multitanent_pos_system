@@ -22,13 +22,15 @@ class BusinessSessionReportExport implements WithMultipleSheets
      */
     public function sheets(): array
     {
+        $session = $this->report['session'] ?? [];
+
         return [
             new BusinessSessionSummarySheet($this->report),
-            new BusinessSessionAccountBalancesSheet($this->report['account_balances'] ?? []),
-            new BusinessSessionTransactionsSheet($this->report['transactions'] ?? []),
-            new BusinessSessionIncomeSheet($this->report['income_summary'] ?? []),
-            new BusinessSessionExpensesSheet($this->report['expense_summary'] ?? []),
-            new BusinessSessionTransfersSheet($this->report['transfers'] ?? []),
+            new BusinessSessionAccountBalancesSheet($this->report['account_balances'] ?? [], $session),
+            new BusinessSessionTransactionsSheet($this->report['transactions'] ?? [], $session),
+            new BusinessSessionIncomeSheet($this->report['income_summary'] ?? [], $session),
+            new BusinessSessionExpensesSheet($this->report['expense_summary'] ?? [], $session),
+            new BusinessSessionTransfersSheet($this->report['transfers'] ?? [], $session),
         ];
     }
 }

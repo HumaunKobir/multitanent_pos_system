@@ -2,14 +2,21 @@
 
 namespace App\Exports\Sheets;
 
+use App\Exports\Support\CustomerReportSheetStyles;
 use Illuminate\Support\Collection;
 use Maatwebsite\Excel\Concerns\FromCollection;
 use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithEvents;
 use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithTitle;
+use Maatwebsite\Excel\Events\AfterSheet;
 
-class CustomerReportSalesSheet implements FromCollection, ShouldAutoSize, WithHeadings, WithTitle
+class CustomerReportSalesSheet implements FromCollection, ShouldAutoSize, WithEvents, WithHeadings, WithTitle
 {
+    private const COLUMN_COUNT = 9;
+
+    private const CURRENCY_COLUMNS = [3, 4, 5, 6, 7, 8];
+
     /**
      * @param  list<array<string, mixed>>  $sales
      * @param  array<string, float>  $totals
@@ -17,6 +24,7 @@ class CustomerReportSalesSheet implements FromCollection, ShouldAutoSize, WithHe
     public function __construct(
         private array $sales,
         private array $totals,
+        private string $customerName,
     ) {}
 
     public function title(): string
@@ -71,5 +79,60 @@ class CustomerReportSalesSheet implements FromCollection, ShouldAutoSize, WithHe
         }
 
         return $rows;
+    }
+
+    /**
+     * @return array<class-string, callable>
+     */
+    public function registerEvents(): array
+    {
+        return [
+            AfterSheet::class => function (AfterSheet $event): void {
+                $sheet = $event->sheet->getDelegate();
+                $sheet->insertNewRowBefore(1, 3);
+
+                CustomerReportSheetStyles::applyReportHeader(
+                    $sheet,
+                    'Sales History',
+                    CustomerReportSheetStyles::subtitle($this->customerName),
+                    self::COLUMN_COUNT,
+                );
+
+                $headerRow = 4;
+                $lastColumn = 'I';
+                $highestRow = $sheet->getHighestRow();
+
+                CustomerReportSheetStyles::applyTableHeader($sheet, "A{$headerRow}:{$lastColumn}{$headerRow}");
+
+                $dataEndRow = $highestRow;
+                $totalRows = [];
+
+                if ($highestRow > $headerRow && collect($this->sales)->isNotEmpty()) {
+                    $dataEndRow = $highestRow - 1;
+                    $totalRows[] = $highestRow;
+                }
+
+                if ($dataEndRow > $headerRow) {
+                    CustomerReportSheetStyles::applyDataTable(
+                        $sheet,
+                        $headerRow + 1,
+                        $dataEndRow,
+                        self::COLUMN_COUNT,
+                        self::CURRENCY_COLUMNS,
+                    );
+                }
+
+                if ($totalRows !== []) {
+                    CustomerReportSheetStyles::applyTotalRows(
+                        $sheet,
+                        $totalRows,
+                        self::COLUMN_COUNT,
+                        [6, 7, 8],
+                    );
+                }
+
+                CustomerReportSheetStyles::freezeBelowHeader($sheet, $headerRow);
+            },
+        ];
     }
 }

@@ -26,11 +26,13 @@ class CustomerReportExport implements WithMultipleSheets
      */
     public function sheets(): array
     {
+        $customerName = (string) ($this->data['customer']['name'] ?? 'Customer');
+
         return [
             new CustomerReportInfoSheet($this->data['customer']),
-            new CustomerReportSalesSheet($this->data['sales'], $this->data['totals']),
-            new CustomerReportCollectionsSheet($this->data['collections'], $this->data['totals']),
-            new CustomerReportCurrentDueSheet($this->data['due_sales'], $this->data['totals']),
+            new CustomerReportSalesSheet($this->data['sales'], $this->data['totals'], $customerName),
+            new CustomerReportCollectionsSheet($this->data['collections'], $this->data['totals'], $customerName),
+            new CustomerReportCurrentDueSheet($this->data['due_sales'], $this->data['totals'], $customerName),
         ];
     }
 }

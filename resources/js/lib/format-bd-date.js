@@ -10,6 +10,13 @@ const BD_DATE_FORMATTER = new Intl.DateTimeFormat('en-GB', {
     year: 'numeric',
 });
 
+const BD_DATE_LONG_FORMATTER = new Intl.DateTimeFormat('en-GB', {
+    timeZone: BD_TIMEZONE,
+    day: '2-digit',
+    month: 'long',
+    year: 'numeric',
+});
+
 function formatDateInBdTimezone(date) {
     const dateParts = BD_DATE_FORMATTER.formatToParts(date);
     const day = dateParts.find((p) => p.type === 'day')?.value;
@@ -17,6 +24,15 @@ function formatDateInBdTimezone(date) {
     const year = dateParts.find((p) => p.type === 'year')?.value;
 
     return day && month && year ? `${day} ${month}, ${year}` : BD_DATE_FORMATTER.format(date);
+}
+
+function formatDateLongInBdTimezone(date) {
+    const dateParts = BD_DATE_LONG_FORMATTER.formatToParts(date);
+    const day = dateParts.find((p) => p.type === 'day')?.value;
+    const month = dateParts.find((p) => p.type === 'month')?.value;
+    const year = dateParts.find((p) => p.type === 'year')?.value;
+
+    return day && month && year ? `${day} ${month}, ${year}` : BD_DATE_LONG_FORMATTER.format(date);
 }
 
 /**
@@ -103,6 +119,47 @@ export function formatBdDate(date) {
 }
 
 /**
+ * Formats a date as "03 June, 2026" in Asia/Dhaka (full month name).
+ */
+export function formatBdDateLong(date) {
+    if (!date) {
+        return '—';
+    }
+
+    if (typeof date === 'string') {
+        const trimmed = date.trim();
+
+        if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+            const [y, m, d] = trimmed.split('-').map((p) => Number(p));
+
+            if (!y || !m || !d) {
+                return trimmed;
+            }
+
+            return formatDateLongInBdTimezone(new Date(Date.UTC(y, m - 1, d)));
+        }
+
+        const parsed = new Date(trimmed);
+
+        if (!Number.isNaN(parsed.getTime())) {
+            return formatDateLongInBdTimezone(parsed);
+        }
+
+        return trimmed;
+    }
+
+    if (date instanceof Date) {
+        if (Number.isNaN(date.getTime())) {
+            return '—';
+        }
+
+        return formatDateLongInBdTimezone(date);
+    }
+
+    return String(date);
+}
+
+/**
  * Formats a datetime as "03:45 PM" in Asia/Dhaka.
  */
 export function formatBdTime(value) {
@@ -148,4 +205,21 @@ export function formatBdDateTime(value) {
         .replace(',', '');
 
     return `${datePart} ${formatBdTime(date)}`;
+}
+
+/**
+ * Formats a datetime as "01 July, 2026 03:45 PM" in Asia/Dhaka.
+ */
+export function formatBdDateTimeLong(value) {
+    if (!value) {
+        return '—';
+    }
+
+    const date = value instanceof Date ? value : new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return String(value);
+    }
+
+    return `${formatBdDateLong(date)} ${formatBdTime(date)}`;
 }

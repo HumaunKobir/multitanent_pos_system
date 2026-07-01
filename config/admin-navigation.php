@@ -138,6 +138,7 @@ return [
                 ['title' => 'Contra Voucher', 'href' => '/accounts/vouchers?type=contra', 'permission' => 'accounts.view'],
                 ['title' => 'Income Voucher', 'href' => '/accounts/vouchers?type=income', 'permission' => 'accounts.view'],
                 ['title' => 'Expense Voucher', 'href' => '/accounts/vouchers?type=expense', 'permission' => 'accounts.view'],
+                ['title' => 'Daily Sessions', 'href' => '/accounts/daily-sessions', 'permission' => 'business-session.view'],
             ],
         ],
         [

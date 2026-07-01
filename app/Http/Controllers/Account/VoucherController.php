@@ -99,7 +99,7 @@ class VoucherController extends Controller
         $this->authorize('accounts.update');
 
         try {
-            $this->voucherService->update($voucher, $request->validated());
+            $this->voucherService->update($voucher, $request->validated(), Auth::user());
         } catch (\Exception $e) {
             return back()->withErrors(['general' => $e->getMessage()])->withInput();
         }

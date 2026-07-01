@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\ConfigDictionary;
 use App\Models\Tag;
 use App\Models\User;
+use App\Services\BusinessSessionService;
 use App\Support\AdminNavigation;
 use App\Support\StorageUrl;
 use App\Support\WebsiteSettings;
@@ -65,6 +66,9 @@ class HandleInertiaRequests extends Middleware
                 ? app(AdminNavigation::class)->build($user)
                 : [],
             'panelType' => $user instanceof User && $user->usesBranchPanel() ? 'branch' : 'admin',
+            'businessSession' => $user instanceof User
+                ? app(BusinessSessionService::class)->sharedPanelState($user)
+                : ['active' => false, 'can_start' => false, 'can_close' => false, 'can_resume_close' => false],
             'hasPanelGuide' => $user instanceof User
                 && count(app(AdminNavigation::class)->build($user)) > 0,
             'showPanelGuideButton' => $user instanceof User

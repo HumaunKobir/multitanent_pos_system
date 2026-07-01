@@ -11,7 +11,7 @@ class Transaction extends Model
 {
     use SoftDeletes;
 
-    protected $fillable = ['source_type', 'source_id', 'performed_by_type', 'performed_by_id', 'date', 'amount', 'debit_account_id', 'credit_account_id', 'debit_decrease', 'credit_decrease', 'description', 'approved_at'];
+    protected $fillable = ['source_type', 'source_id', 'performed_by_type', 'performed_by_id', 'date', 'amount', 'debit_account_id', 'credit_account_id', 'debit_decrease', 'credit_decrease', 'description', 'approved_at', 'business_session_id'];
 
     protected $casts = [
         'date' => 'date',
@@ -38,5 +38,10 @@ class Transaction extends Model
     public function creditAccount(): BelongsTo
     {
         return $this->belongsTo(ChartOfAccount::class, 'credit_account_id');
+    }
+
+    public function businessSession(): BelongsTo
+    {
+        return $this->belongsTo(BusinessSession::class);
     }
 }

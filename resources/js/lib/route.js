@@ -250,6 +250,14 @@ const routes = {
     'accounts.vouchers.update': '/accounts/vouchers/:voucher',
     'accounts.vouchers.destroy': '/accounts/vouchers/:voucher',
     'accounts.vouchers.next-number': '/accounts/vouchers/next-number',
+    'accounts.daily-sessions.index': '/accounts/daily-sessions',
+    'accounts.daily-sessions.store': '/accounts/daily-sessions',
+    'accounts.daily-sessions.close-preview': '/accounts/daily-sessions/close',
+    'accounts.daily-sessions.close-confirm': '/accounts/daily-sessions/close',
+    'accounts.daily-sessions.close-cancel': '/accounts/daily-sessions/close/cancel',
+    'accounts.daily-sessions.report': '/accounts/daily-sessions/:dailySession/report',
+    'accounts.daily-sessions.export-excel': '/accounts/daily-sessions/:dailySession/export/excel',
+    'accounts.daily-sessions.reopen': '/accounts/daily-sessions/:dailySession/reopen',
 };
 
 const methods = {
@@ -374,6 +382,10 @@ const methods = {
     'accounts.vouchers.store': 'post',
     'accounts.vouchers.update': 'put',
     'accounts.vouchers.destroy': 'delete',
+    'accounts.daily-sessions.store': 'post',
+    'accounts.daily-sessions.close-confirm': 'post',
+    'accounts.daily-sessions.close-cancel': 'post',
+    'accounts.daily-sessions.reopen': 'post',
     'contact-list.destroy': 'delete',
     'online-order.send-steadfast': 'post',
     'online-order.sync-steadfast': 'patch',

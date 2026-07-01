@@ -206,6 +206,18 @@ return [
             ],
         ],
 
+        'business-session' => [
+            'label' => 'Daily Business Sessions',
+            'group' => 'Accounts',
+            'permissions' => [
+                'business-session.view' => 'View Daily Sessions',
+                'business-session.start' => 'Start Business Session',
+                'business-session.close' => 'Close Business Session',
+                'business-session.export' => 'Export Session Reports',
+                'business-session.reopen' => 'Reopen Closed Session',
+            ],
+        ],
+
         // ── Settings ──────────────────────────────────────────────────────────
 
         'setting.category' => [

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Account\AccountController;
+use App\Http\Controllers\Account\BusinessSessionController;
 use App\Http\Controllers\Account\VoucherController;
 use App\Http\Controllers\Api\CustomerDueSalesController;
 use App\Http\Controllers\Api\CustomerSearchController;
@@ -181,6 +182,15 @@ Route::middleware(['auth', 'verified'])->prefix('accounts')->name('accounts.')->
     Route::redirect('contra-voucher', '/accounts/vouchers?type=contra')->name('contra-voucher.index');
     Route::redirect('income-voucher', '/accounts/vouchers?type=income')->name('income-voucher.index');
     Route::redirect('expense-voucher', '/accounts/vouchers?type=expense')->name('expense-voucher.index');
+
+    Route::get('daily-sessions', [BusinessSessionController::class, 'index'])->name('daily-sessions.index');
+    Route::post('daily-sessions', [BusinessSessionController::class, 'store'])->name('daily-sessions.store');
+    Route::get('daily-sessions/close', [BusinessSessionController::class, 'closePreview'])->name('daily-sessions.close-preview');
+    Route::post('daily-sessions/close', [BusinessSessionController::class, 'closeConfirm'])->name('daily-sessions.close-confirm');
+    Route::post('daily-sessions/close/cancel', [BusinessSessionController::class, 'closeCancel'])->name('daily-sessions.close-cancel');
+    Route::get('daily-sessions/{dailySession}/report', [BusinessSessionController::class, 'report'])->name('daily-sessions.report');
+    Route::get('daily-sessions/{dailySession}/export/excel', [BusinessSessionController::class, 'exportExcel'])->name('daily-sessions.export-excel');
+    Route::post('daily-sessions/{dailySession}/reopen', [BusinessSessionController::class, 'reopen'])->name('daily-sessions.reopen');
 });
 
 Route::middleware(['auth', 'verified'])->prefix('report')->name('report.')->group(function () {

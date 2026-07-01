@@ -6,6 +6,8 @@ use App\Enums\AccountType;
 use App\Models\ChartOfAccount;
 use App\Models\Ledger;
 use App\Models\Transaction;
+use App\Models\User;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
 class TransactionService
@@ -52,6 +54,7 @@ class TransactionService
                 'source_id' => $sourceId,
                 'performed_by_type' => $performedByType,
                 'performed_by_id' => $performedById,
+                'business_session_id' => self::resolveBusinessSessionId($data),
             ]);
             $entries = self::buildTwoSideEntries($data, $performedByType, $performedById);
 
@@ -137,6 +140,7 @@ class TransactionService
                 'credit_decrease' => $firstCreditLine['decrease'] ?? false,
                 'description' => $header['description'] ?? null,
                 'approved_at' => $header['approved_at'] ?? null,
+                'business_session_id' => self::resolveBusinessSessionId($header),
             ]);
 
             foreach ($lines as $entry) {
@@ -474,5 +478,23 @@ class TransactionService
             }
             $transaction->delete();
         });
+    }
+
+    /**
+     * @param  array{business_session_id?: int|null}  $payload
+     */
+    private static function resolveBusinessSessionId(array $payload): ?int
+    {
+        if (array_key_exists('business_session_id', $payload)) {
+            return $payload['business_session_id'];
+        }
+
+        $user = Auth::user();
+
+        if ($user instanceof User) {
+            return app(BusinessSessionService::class)->activeSessionIdForUser($user);
+        }
+
+        return null;
     }
 }

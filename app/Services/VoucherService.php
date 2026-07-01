@@ -42,7 +42,7 @@ class VoucherService
     {
         return DB::transaction(function () use ($data, $user) {
             $voucher = $this->createVoucherRecord($data, $user);
-            $transaction = $this->postToLedger($voucher, $data);
+            $transaction = $this->postToLedger($voucher, $data, $user);
             $voucher->update(['transaction_id' => $transaction->id]);
 
             return $voucher->fresh(['lines.account', 'party', 'fromAccount', 'toAccount', 'paymentAccount']);
@@ -52,9 +52,9 @@ class VoucherService
     /**
      * @param  array<string, mixed>  $data
      */
-    public function update(Voucher $voucher, array $data): Voucher
+    public function update(Voucher $voucher, array $data, ?User $user = null): Voucher
     {
-        return DB::transaction(function () use ($voucher, $data) {
+        return DB::transaction(function () use ($voucher, $data, $user) {
             if ($voucher->transaction_id) {
                 $existing = Transaction::find($voucher->transaction_id);
                 if ($existing) {
@@ -67,7 +67,7 @@ class VoucherService
             $voucher->save();
             $this->syncLines($voucher, $data);
 
-            $transaction = $this->postToLedger($voucher->fresh(['lines.account']), $data);
+            $transaction = $this->postToLedger($voucher->fresh(['lines.account']), $data, $user);
             $voucher->update(['transaction_id' => $transaction->id]);
 
             return $voucher->fresh(['lines.account', 'party', 'fromAccount', 'toAccount', 'paymentAccount']);
@@ -161,17 +161,19 @@ class VoucherService
     /**
      * @param  array<string, mixed>  $data
      */
-    private function postToLedger(Voucher $voucher, array $data): Transaction
+    private function postToLedger(Voucher $voucher, array $data, ?User $user = null): Transaction
     {
         $type = $voucher->type;
         $performedBy = $this->performedByPayload($voucher);
         $masterNarration = $voucher->narration;
+        $sessionPayload = $this->businessSessionPayload($user);
 
         if ($type === VoucherType::Contra) {
             return TransactionService::recordTransaction([
                 'source_type' => Voucher::class,
                 'source_id' => $voucher->id,
                 ...$performedBy,
+                ...$sessionPayload,
                 'date' => $voucher->date->format('Y-m-d'),
                 'amount' => (float) $voucher->total_amount,
                 'debit_account_id' => $voucher->to_account_id,
@@ -190,9 +192,24 @@ class VoucherService
             'source_type' => Voucher::class,
             'source_id' => $voucher->id,
             ...$performedBy,
+            ...$sessionPayload,
             'date' => $voucher->date->format('Y-m-d'),
             'description' => $masterNarration,
         ], $glLines);
+    }
+
+    /**
+     * @return array{business_session_id?: int}
+     */
+    private function businessSessionPayload(?User $user): array
+    {
+        $sessionId = app(BusinessSessionService::class)->activeSessionIdForUser($user);
+
+        if ($sessionId === null) {
+            return [];
+        }
+
+        return ['business_session_id' => $sessionId];
     }
 
     /**

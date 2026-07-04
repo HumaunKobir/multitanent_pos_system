@@ -37,10 +37,11 @@ class PurchaseReturnController extends Controller
         $this->authorize('inventory.purchase-return.view');
 
         $returns = PurchaseReturn::query()->ownBranchUser()
-            ->with(['supplier:id,name', 'purchase:id'])
+            ->with(['supplier:id,name,company_name', 'purchase:id'])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('id', 'like', "%{$s}%")
-                    ->orWhereHas('supplier', fn ($q) => $q->where('name', 'like', "%{$s}%"));
+                    ->orWhereHas('supplier', fn ($q) => $q->where('name', 'like', "%{$s}%")
+                        ->orWhere('company_name', 'like', "%{$s}%"));
             }))
             ->latest()
             ->paginate(20)
@@ -250,7 +251,7 @@ class PurchaseReturnController extends Controller
                 'invoice_number' => $purchaseReturn->invoice_number,
                 'purchase_id' => $purchaseReturn->purchase_id,
                 'purchase_invoice' => $purchaseReturn->purchase?->invoice_number,
-                'supplier_name' => $purchaseReturn->supplier?->name,
+                'supplier_name' => $this->supplierDisplayName($purchaseReturn->supplier),
                 'date' => optional($purchaseReturn->date)->format('Y-m-d'),
                 'comment' => $purchaseReturn->comment,
                 'paid_amount' => (string) $purchaseReturn->paid_amount,
@@ -485,6 +486,22 @@ class PurchaseReturnController extends Controller
                 .'. That branch must return the stock to the main warehouse first.'
             );
         }
+    }
+
+    private function supplierDisplayName(?Supplier $supplier): ?string
+    {
+        if ($supplier === null) {
+            return null;
+        }
+
+        $company = trim((string) $supplier->company_name);
+        $person = trim((string) $supplier->name);
+
+        if ($company !== '' && $person !== '') {
+            return "{$company} ({$person})";
+        }
+
+        return $company !== '' ? $company : ($person !== '' ? $person : null);
     }
 
     private function rollbackPurchaseReturn(PurchaseReturn $purchaseReturn): void

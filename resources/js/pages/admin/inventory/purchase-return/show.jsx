@@ -62,7 +62,7 @@ export default function PurchaseReturnShow({ purchaseReturn, paymentAccounts = [
                 comment={purchaseReturn.comment}
                 extra={
                     <div className="mt-1 space-y-2 text-xs">
-                        <p>Supplier: {purchaseReturn.supplier?.name} · Purchase #{purchaseReturn.purchase_id}</p>
+                        <p>Supplier: {purchaseReturn.supplier?.company_name && purchaseReturn.supplier?.name ? `${purchaseReturn.supplier.company_name} (${purchaseReturn.supplier.name})` : purchaseReturn.supplier?.company_name || purchaseReturn.supplier?.name} · Purchase #{purchaseReturn.purchase_id}</p>
                         <div className="flex flex-wrap gap-x-3 text-muted-foreground">
                             <span>Gross ৳{gross.toFixed(2)}</span>
                             {discount > 0.009 && <span>Discount -৳{discount.toFixed(2)}</span>}

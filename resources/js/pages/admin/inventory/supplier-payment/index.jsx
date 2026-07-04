@@ -23,6 +23,21 @@ import {
     buildAllocations,
 } from '@/components/party/payment-allocation-table';
 
+function supplierLabel(supplier) {
+    if (!supplier) {
+        return '—';
+    }
+
+    const company = supplier.company_name?.trim();
+    const person = supplier.name?.trim();
+
+    if (company && person) {
+        return `${company} (${person})`;
+    }
+
+    return company || person || '—';
+}
+
 function PaymentSummary({ payment }) {
     if (!payment) {
         return null;
@@ -41,7 +56,7 @@ function PaymentSummary({ payment }) {
                 </div>
                 <div>
                     <p className="text-muted-foreground">Supplier</p>
-                    <p className="font-medium">{payment.supplier?.name ?? '—'}</p>
+                    <p className="font-medium">{supplierLabel(payment.supplier)}</p>
                 </div>
                 <div>
                     <p className="text-muted-foreground">Payment Account</p>
@@ -182,7 +197,7 @@ function PaymentForm({ form, suppliers, paymentAccounts = [], payment = null, on
                     <SelectContent>
                         {suppliers.map((supplier) => (
                             <SelectItem key={supplier.id} value={String(supplier.id)}>
-                                {supplier.name} — ৳{parseFloat(supplier.balance).toFixed(2)} due
+                                {supplierLabel(supplier)} — ৳{parseFloat(supplier.balance).toFixed(2)} due
                             </SelectItem>
                         ))}
                     </SelectContent>
@@ -366,7 +381,7 @@ export default function SupplierPaymentIndex({ payments, suppliers, filters, tod
             header: 'Supplier',
             render: (row) => (
                 <div>
-                    <p className="font-medium">{row.supplier?.name ?? '—'}</p>
+                    <p className="font-medium">{supplierLabel(row.supplier)}</p>
                     <p className="text-xs text-muted-foreground">{row.supplier?.phone ?? ''}</p>
                 </div>
             ),
@@ -566,7 +581,7 @@ export default function SupplierPaymentIndex({ payments, suppliers, filters, tod
                         <div className="px-5 pb-5 pt-4">
                             <p className="text-sm text-muted-foreground">
                                 Delete payment <strong>{deleting?.invoice_number}</strong> for{' '}
-                                <strong>{deleting?.supplier?.name}</strong>? Supplier due balance will be restored.
+                                <strong>{supplierLabel(deleting?.supplier)}</strong>? Supplier due balance will be restored.
                             </p>
                             <div className="mt-4 flex justify-end gap-3 border-t pt-4">
                                 <DialogClose asChild>

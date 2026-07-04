@@ -166,7 +166,7 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
                             error={lookupError || form.errors.purchase_id}
                             hint={
                                 source
-                                    ? `Supplier: ${source.supplier?.name ?? '—'} · ${source.invoice_number}`
+                                    ? `Supplier: ${source.supplier?.company_name && source.supplier?.name ? `${source.supplier.company_name} (${source.supplier.name})` : source.supplier?.company_name || source.supplier?.name || '—'} · ${source.invoice_number}`
                                     : 'Enter invoice number and press Enter or click Load.'
                             }
                         />

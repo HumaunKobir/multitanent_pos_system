@@ -34,7 +34,7 @@ class SupplierPaymentController extends Controller
         $payments = SupplierPayment::query()
             ->ownBranch()
             ->with([
-                'supplier:id,name,phone',
+                'supplier:id,name,company_name,phone',
                 'createdBy:id,name',
                 'allocations.purchase:id,gross_amount,discount,vat,paid_amount,due_amount',
             ])
@@ -44,6 +44,7 @@ class SupplierPaymentController extends Controller
                         ->orWhere('comment', 'like', "%{$search}%")
                         ->orWhereHas('supplier', fn ($sq) => $sq
                             ->where('name', 'like', "%{$search}%")
+                            ->orWhere('company_name', 'like', "%{$search}%")
                             ->orWhere('phone', 'like', "%{$search}%"))
                         ->orWhereHas('allocations.purchase', fn ($pq) => $pq
                             ->where('serial', 'like', "%{$search}%"));
@@ -71,7 +72,7 @@ class SupplierPaymentController extends Controller
 
         $suppliers = Supplier::ownBranch()
             ->orderBy('name')
-            ->get(['id', 'name', 'phone', 'balance']);
+            ->get(['id', 'name', 'company_name', 'phone', 'balance']);
 
         return Inertia::render('admin/inventory/supplier-payment/index', [
             'payments' => $payments,

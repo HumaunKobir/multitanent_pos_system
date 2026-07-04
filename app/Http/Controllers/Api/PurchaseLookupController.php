@@ -29,7 +29,7 @@ class PurchaseLookupController extends Controller
             ->ownBranchUser()
             ->purchase()
             ->with([
-                'supplier:id,name,phone',
+                'supplier:id,name,company_name,phone',
                 'purchaseProducts.product:id,name,code',
                 'purchaseProducts.variation:id,variation_data,stock',
             ])

@@ -202,6 +202,7 @@ Route::middleware(['auth', 'verified'])->prefix('report')->name('report.')->grou
     Route::get('stock-ledger', [ReportController::class, 'stockLedger'])->name('stock-ledger');
     Route::get('inventory-stock', InventoryStockController::class)->name('inventory-stock');
     Route::get('daily-summary', [ReportController::class, 'dailySummary'])->name('daily-summary');
+    Route::get('sales-summary', [ReportController::class, 'salesSummary'])->name('sales-summary');
     Route::get('account-ledger', [ReportController::class, 'accountLedger'])->name('account-ledger');
     Route::get('account-transactions', [ReportController::class, 'accountTransactions'])->name('account-transactions');
     Route::get('balance-sheet', [ReportController::class, 'balanceSheet'])->name('balance-sheet');

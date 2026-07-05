@@ -156,6 +156,7 @@ return [
                 ['title' => 'Stock Ledger', 'href' => '/report/stock-ledger', 'permission' => 'report.stock-ledger.view'],
                 ['title' => 'Inventory Stock', 'href' => '/report/inventory-stock', 'permission' => 'report.inventory-stock.view'],
                 ['title' => 'Daily Summary', 'href' => '/report/daily-summary', 'permission' => 'report.daily-summary.view'],
+                ['title' => 'Sales Summary', 'href' => '/report/sales-summary', 'permission' => 'report.sales-summary.view'],
             ],
         ],
         [

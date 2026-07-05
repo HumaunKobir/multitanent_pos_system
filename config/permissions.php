@@ -543,6 +543,14 @@ return [
             ],
         ],
 
+        'report.sales-summary' => [
+            'label' => 'Sales Summary',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.sales-summary.view' => 'View Sales Summary',
+            ],
+        ],
+
         'report.account-ledger' => [
             'label' => 'Account Ledger',
             'group' => 'Reports',

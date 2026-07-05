@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AccountType;
 use App\Enums\ProductLogType;
 use App\Enums\PurchaseType;
+use App\Enums\SaleType;
 use App\Enums\VoucherType;
 use App\Models\Batch;
 use App\Models\Branch;
@@ -20,6 +21,7 @@ use App\Models\Purchase;
 use App\Models\PurchaseReturn;
 use App\Models\SaleReturn;
 use App\Models\Sell;
+use App\Models\SellProduct;
 use App\Models\StockDistribution;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
@@ -474,6 +476,54 @@ class ReportService
                 'quantity' => (int) $log->quantity,
                 'stock' => (int) $log->stock,
                 'remark' => $log->remark ?? '—',
+            ])
+            ->all();
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    public function salesSummary(
+        ?string $dateFrom,
+        ?string $dateTo,
+        int $minQuantity = 5,
+        ?int $productId = null,
+        ?int $filterBranchId = null,
+    ): array {
+        $effectiveBranchId = $this->resolveReportBranchFilter($filterBranchId);
+
+        return SellProduct::query()
+            ->select('sell_products.*')
+            ->join('sells', 'sell_products.sell_id', '=', 'sells.id')
+            ->where('sells.type', SaleType::Sale)
+            ->when($effectiveBranchId, fn (Builder $q, int $id) => $q->where('sells.branch_id', $id))
+            ->when($dateFrom, fn (Builder $q, string $d) => $q->whereDate('sells.date', '>=', $d))
+            ->when($dateTo, fn (Builder $q, string $d) => $q->whereDate('sells.date', '<=', $d))
+            ->when($productId, fn (Builder $q, int $id) => $q->where('sell_products.product_id', $id))
+            ->whereRaw('(sell_products.quantity + COALESCE(sell_products.free_quantity, 0)) >= ?', [$minQuantity])
+            ->with([
+                'sell:id,date,customer_id',
+                'sell.customer:id,name,phone',
+                'product:id,name,code',
+            ])
+            ->orderByDesc('sells.date')
+            ->orderByDesc('sells.id')
+            ->orderByDesc('sell_products.id')
+            ->limit(500)
+            ->get()
+            ->map(fn (SellProduct $line) => [
+                'id' => $line->id,
+                'date' => $line->sell->date->format('Y-m-d'),
+                'invoice' => $line->sell->invoice_number,
+                'customer_name' => $line->sell->customer?->name ?? 'Walk-in',
+                'customer_phone' => $line->sell->customer?->phone ?? '—',
+                'product' => $line->product?->name ?? '—',
+                'product_code' => $line->product?->code ?? '—',
+                'quantity' => (float) $line->quantity,
+                'free_quantity' => (float) $line->free_quantity,
+                'total_quantity' => round((float) $line->quantity + (float) $line->free_quantity, 2),
+                'unit_price' => (float) $line->unit_price,
+                'line_total' => round(((float) $line->quantity * (float) $line->unit_price) - (float) $line->discount, 2),
             ])
             ->all();
     }

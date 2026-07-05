@@ -83,6 +83,11 @@ function reportRoutes(): array
             'permission' => ReportController::PERMISSION_DAILY_SUMMARY,
             'component' => 'admin/reports/daily-summary',
         ],
+        'sales-summary' => [
+            'path' => '/report/sales-summary',
+            'permission' => ReportController::PERMISSION_SALES_SUMMARY,
+            'component' => 'admin/reports/sales-summary',
+        ],
         'account-ledger' => [
             'path' => '/report/account-ledger',
             'permission' => ReportController::PERMISSION_ACCOUNT_LEDGER,
@@ -201,6 +206,7 @@ test('reports navigation includes all report links for superadmin', function () 
         'Date Wise Stock',
         'Stock Ledger',
         'Daily Summary',
+        'Sales Summary',
         'Account Ledger',
         'A/C Transactions',
         'Balance Sheet',
@@ -943,4 +949,114 @@ test('stock ledger calculates opening balance before date range', function () {
             ->where('entries.0.out', 3)
             ->where('entries.0.balance', 7)
             ->where('totals.balance', 7));
+});
+
+test('sales summary shows large quantity sale lines with customer name and phone', function () {
+    $this->artisan('permissions:sync');
+
+    $date = '2026-07-01';
+    $branch = Branch::factory()->create();
+    $user = reportUser([ReportController::PERMISSION_SALES_SUMMARY]);
+    $user->update(['branch_id' => $branch->id]);
+    $customer = Customer::factory()->create([
+        'branch_id' => $branch->id,
+        'name' => 'Bulk Buyer',
+        'phone' => '01700000001',
+    ]);
+    $product = Product::factory()->create(['branch_id' => $branch->id, 'name' => 'Bulk Product']);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'customer_id' => $customer->id,
+        'type' => SaleType::Sale,
+        'date' => $date,
+        'gross_amount' => 5000,
+        'paid_amount' => 5000,
+    ]);
+
+    SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'quantity' => 10,
+        'free_quantity' => 2,
+        'unit_price' => 500,
+        'discount' => 0,
+        'batches' => [],
+    ]);
+
+    $smallSell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'customer_id' => $customer->id,
+        'type' => SaleType::Sale,
+        'date' => $date,
+        'gross_amount' => 200,
+        'paid_amount' => 200,
+    ]);
+
+    SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $smallSell->id,
+        'product_id' => $product->id,
+        'quantity' => 2,
+        'free_quantity' => 0,
+        'unit_price' => 100,
+        'discount' => 0,
+        'batches' => [],
+    ]);
+
+    $this->actingAs($user)
+        ->get('/report/sales-summary?date_from='.$date.'&date_to='.$date.'&min_quantity=5')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/sales-summary')
+            ->has('rows', 1)
+            ->where('rows.0.customer_name', 'Bulk Buyer')
+            ->where('rows.0.customer_phone', '01700000001')
+            ->where('rows.0.product', 'Bulk Product')
+            ->where('rows.0.total_quantity', 12)
+            ->where('rows.0.line_total', 5000));
+});
+
+test('branch user sales summary excludes other branch large quantity sales', function () {
+    $this->artisan('permissions:sync');
+
+    $date = '2026-07-02';
+    $branchA = Branch::factory()->create();
+    $branchB = Branch::factory()->create();
+    $userA = reportUser([ReportController::PERMISSION_SALES_SUMMARY]);
+    $userA->update(['branch_id' => $branchA->id]);
+    $product = Product::factory()->create();
+
+    foreach ([$branchA, $branchB] as $branch) {
+        $sell = Sell::factory()->create([
+            'branch_id' => $branch->id,
+            'user_id' => $userA->id,
+            'type' => SaleType::Sale,
+            'date' => $date,
+            'gross_amount' => 1000,
+            'paid_amount' => 1000,
+        ]);
+
+        SellProduct::query()->create([
+            'branch_id' => $branch->id,
+            'sell_id' => $sell->id,
+            'product_id' => $product->id,
+            'quantity' => 20,
+            'free_quantity' => 0,
+            'unit_price' => 50,
+            'discount' => 0,
+            'batches' => [],
+        ]);
+    }
+
+    $this->actingAs($userA)
+        ->get('/report/sales-summary?date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/sales-summary')
+            ->has('rows', 1)
+            ->where('rows.0.quantity', 20));
 });

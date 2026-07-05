@@ -31,6 +31,8 @@ class ReportController extends Controller
 
     public const PERMISSION_BALANCE_SHEET = 'report.balance-sheet.view';
 
+    public const PERMISSION_SALES_SUMMARY = 'report.sales-summary.view';
+
     public function __construct(private ReportService $reports) {}
 
     public function customerLedger(Request $request): Response
@@ -243,6 +245,49 @@ class ReportController extends Controller
                 $branchId,
                 $filters['date_from'] ?? null,
                 $filters['date_to'] ?? null,
+            ),
+        ]);
+    }
+
+    public function salesSummary(Request $request): Response
+    {
+        $this->authorize(self::PERMISSION_SALES_SUMMARY);
+
+        $filters = $request->validate([
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date'],
+            'min_quantity' => ['nullable', 'integer', 'min:1'],
+            'product_id' => ['nullable', 'integer', 'exists:products,id'],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+        ]);
+
+        if (! isset($filters['date_from']) && ! isset($filters['date_to'])) {
+            $filters['date_from'] = now()->startOfMonth()->format('Y-m-d');
+            $filters['date_to'] = now()->format('Y-m-d');
+        }
+
+        $minQuantity = isset($filters['min_quantity']) ? (int) $filters['min_quantity'] : 5;
+        $canFilterByBranch = $this->reports->canFilterByBranch();
+        $filterBranchId = $canFilterByBranch && isset($filters['branch_id']) ? (int) $filters['branch_id'] : null;
+        $productId = isset($filters['product_id']) ? (int) $filters['product_id'] : null;
+
+        return Inertia::render('admin/reports/sales-summary', [
+            'products' => $this->reports->productOptions(),
+            'branches' => $canFilterByBranch ? $this->reports->branchOptions() : [],
+            'isBranchScoped' => ! $canFilterByBranch,
+            'filters' => [
+                'date_from' => $filters['date_from'] ?? null,
+                'date_to' => $filters['date_to'] ?? null,
+                'min_quantity' => $minQuantity,
+                'product_id' => $filters['product_id'] ?? null,
+                'branch_id' => $filters['branch_id'] ?? null,
+            ],
+            'rows' => $this->reports->salesSummary(
+                $filters['date_from'] ?? null,
+                $filters['date_to'] ?? null,
+                $minQuantity,
+                $productId,
+                $filterBranchId,
             ),
         ]);
     }

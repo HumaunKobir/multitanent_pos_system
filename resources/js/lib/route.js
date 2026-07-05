@@ -222,6 +222,8 @@ const routes = {
     'report.stock-ledger': '/report/stock-ledger',
     'report.inventory-stock': '/report/inventory-stock',
     'report.daily-summary': '/report/daily-summary',
+    'report.sales-summary': '/report/sales-summary',
+    'report.products.search': '/report/products/search',
     'report.account-ledger': '/report/account-ledger',
     'report.account-transactions': '/report/account-transactions',
     'report.balance-sheet': '/report/balance-sheet',

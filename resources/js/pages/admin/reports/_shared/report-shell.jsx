@@ -1,6 +1,8 @@
 import { route } from '@/lib/route';
 import { router } from '@inertiajs/react';
-import { BarChart2, Calendar, RotateCcw, SlidersHorizontal } from 'lucide-react';
+import { BarChart2, Calendar, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -152,6 +154,240 @@ export function ReportDateInput({ value, onChange, className = '' }) {
                 className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-blue-900/70 dark:text-blue-300/80"
                 aria-hidden
             />
+        </div>
+    );
+}
+
+export function ReportProductSearch({
+    value,
+    onChange,
+    selectedProduct = null,
+    branchId = 'all',
+    searchRoute = 'report.products.search',
+    placeholder = 'Search product by name or code…',
+}) {
+    const containerRef = useRef(null);
+    const listboxRef = useRef(null);
+    const timerRef = useRef(null);
+    const [query, setQuery] = useState('');
+    const [results, setResults] = useState([]);
+    const [loading, setLoading] = useState(false);
+    const [open, setOpen] = useState(false);
+    const [selectedLabel, setSelectedLabel] = useState(selectedProduct?.label ?? '');
+    const [dropdownStyle, setDropdownStyle] = useState({ top: 0, left: 0, width: 0 });
+
+    const updateDropdownPosition = useCallback(() => {
+        const input = containerRef.current;
+
+        if (!input) {
+            return;
+        }
+
+        const rect = input.getBoundingClientRect();
+
+        setDropdownStyle({
+            top: rect.bottom + 4,
+            left: rect.left,
+            width: rect.width,
+        });
+    }, []);
+
+    useEffect(() => {
+        setSelectedLabel(selectedProduct?.label ?? '');
+    }, [selectedProduct?.id, selectedProduct?.label]);
+
+    useEffect(() => {
+        if (!open) {
+            return;
+        }
+
+        updateDropdownPosition();
+
+        window.addEventListener('scroll', updateDropdownPosition, true);
+        window.addEventListener('resize', updateDropdownPosition);
+
+        return () => {
+            window.removeEventListener('scroll', updateDropdownPosition, true);
+            window.removeEventListener('resize', updateDropdownPosition);
+        };
+    }, [open, updateDropdownPosition]);
+
+    async function fetchProducts(search, selectedId = null, activeBranchId = branchId) {
+        setLoading(true);
+
+        try {
+            const params = new URLSearchParams();
+
+            if (search) {
+                params.set('search', search);
+            }
+
+            if (selectedId) {
+                params.set('selected_id', String(selectedId));
+            }
+
+            if (activeBranchId && activeBranchId !== 'all') {
+                params.set('branch_id', String(activeBranchId));
+            }
+
+            const queryString = params.toString();
+            const url = route(searchRoute) + (queryString ? `?${queryString}` : '');
+            const response = await fetch(url, {
+                credentials: 'include',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+
+            if (!response.ok) {
+                setResults([]);
+
+                return;
+            }
+
+            const data = await response.json();
+            setResults(Array.isArray(data) ? data : []);
+        } catch {
+            setResults([]);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    useEffect(() => {
+        function handleClick(event) {
+            const target = event.target;
+
+            if (!(target instanceof Node)) {
+                return;
+            }
+
+            if (containerRef.current?.contains(target)) {
+                return;
+            }
+
+            if (listboxRef.current?.contains(target)) {
+                return;
+            }
+
+            setOpen(false);
+            setQuery('');
+        }
+
+        document.addEventListener('mousedown', handleClick);
+
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, []);
+
+    useEffect(() => {
+        if (!open) {
+            return;
+        }
+
+        fetchProducts(query, value && value !== 'all' ? value : null, branchId);
+    }, [branchId]);
+
+    function handleFocus() {
+        setOpen(true);
+        updateDropdownPosition();
+        fetchProducts(query, value && value !== 'all' ? value : null);
+    }
+
+    function handleChange(event) {
+        const next = event.target.value;
+        setQuery(next);
+        setOpen(true);
+        updateDropdownPosition();
+        clearTimeout(timerRef.current);
+        timerRef.current = setTimeout(() => fetchProducts(next), 350);
+    }
+
+    function selectProduct(product) {
+        onChange(String(product.id));
+        setSelectedLabel(product.label);
+        setOpen(false);
+        setQuery('');
+        setResults([]);
+    }
+
+    function clearSelection() {
+        onChange('all');
+        setSelectedLabel('');
+        setQuery('');
+        setResults([]);
+        setOpen(false);
+    }
+
+    const hasSelection = value && value !== 'all';
+    const displayValue = open ? query : hasSelection ? selectedLabel : '';
+
+    const dropdown =
+        open && typeof document !== 'undefined'
+            ? createPortal(
+                  <div
+                      ref={listboxRef}
+                      style={{
+                          position: 'fixed',
+                          top: dropdownStyle.top,
+                          left: dropdownStyle.left,
+                          width: dropdownStyle.width,
+                      }}
+                      className="z-100 max-h-56 overflow-y-auto rounded-md border border-border bg-popover shadow-md"
+                      onMouseDown={(event) => event.preventDefault()}
+                  >
+                      <button
+                          type="button"
+                          className="flex w-full px-3 py-2 text-left text-xs hover:bg-accent"
+                          onMouseDown={(event) => {
+                              event.preventDefault();
+                              clearSelection();
+                          }}
+                      >
+                          All products
+                      </button>
+                      {loading ? (
+                          <p className="px-3 py-2 text-xs text-muted-foreground">Searching…</p>
+                      ) : results.length === 0 ? (
+                          <p className="px-3 py-2 text-xs text-muted-foreground">No products found.</p>
+                      ) : (
+                          results.map((product) => (
+                              <button
+                                  key={product.id}
+                                  type="button"
+                                  className="flex w-full px-3 py-2 text-left text-xs hover:bg-accent"
+                                  onMouseDown={(event) => {
+                                      event.preventDefault();
+                                      selectProduct(product);
+                                  }}
+                              >
+                                  {product.label}
+                              </button>
+                          ))
+                      )}
+                  </div>,
+                  document.body,
+              )
+            : null;
+
+    return (
+        <div ref={containerRef} className="relative">
+            <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+                value={displayValue}
+                onChange={handleChange}
+                onFocus={handleFocus}
+                placeholder={hasSelection && !open ? selectedLabel : placeholder}
+                className="h-9 border-0 bg-transparent pr-8 pl-8 shadow-none focus-visible:ring-0"
+            />
+            {hasSelection && !open ? (
+                <button
+                    type="button"
+                    onClick={clearSelection}
+                    className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-0.5 text-muted-foreground hover:text-foreground"
+                    aria-label="Clear product filter"
+                >
+                    <X className="size-3.5" />
+                </button>
+            ) : null}
+            {dropdown}
         </div>
     );
 }

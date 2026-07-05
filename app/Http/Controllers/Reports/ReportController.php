@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Reports;
 
 use App\Http\Controllers\Controller;
 use App\Services\ReportService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -256,9 +257,10 @@ class ReportController extends Controller
         $filters = $request->validate([
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
-            'min_quantity' => ['nullable', 'integer', 'min:1'],
             'product_id' => ['nullable', 'integer', 'exists:products,id'],
             'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+            'sort' => ['nullable', 'in:desc,asc'],
+            'discount' => ['nullable', 'string', 'max:100'],
         ]);
 
         if (! isset($filters['date_from']) && ! isset($filters['date_to'])) {
@@ -266,30 +268,64 @@ class ReportController extends Controller
             $filters['date_to'] = now()->format('Y-m-d');
         }
 
-        $minQuantity = isset($filters['min_quantity']) ? (int) $filters['min_quantity'] : 5;
         $canFilterByBranch = $this->reports->canFilterByBranch();
         $filterBranchId = $canFilterByBranch && isset($filters['branch_id']) ? (int) $filters['branch_id'] : null;
         $productId = isset($filters['product_id']) ? (int) $filters['product_id'] : null;
+        $sort = $filters['sort'] ?? 'desc';
+        $discountFilter = isset($filters['discount']) && $filters['discount'] !== 'all'
+            ? $filters['discount']
+            : null;
+        $dateFrom = $filters['date_from'] ?? null;
+        $dateTo = $filters['date_to'] ?? null;
+
+        $report = $this->reports->salesSummary(
+            $dateFrom,
+            $dateTo,
+            $productId,
+            $filterBranchId,
+            $sort,
+            $discountFilter,
+        );
 
         return Inertia::render('admin/reports/sales-summary', [
-            'products' => $this->reports->productOptions(),
             'branches' => $canFilterByBranch ? $this->reports->branchOptions() : [],
+            'discounts' => $this->reports->salesSummaryDiscountOptions($dateFrom, $dateTo, $filterBranchId),
             'isBranchScoped' => ! $canFilterByBranch,
+            'selected_product' => $this->reports->selectedProductOption($productId, $filterBranchId),
             'filters' => [
-                'date_from' => $filters['date_from'] ?? null,
-                'date_to' => $filters['date_to'] ?? null,
-                'min_quantity' => $minQuantity,
-                'product_id' => $filters['product_id'] ?? null,
-                'branch_id' => $filters['branch_id'] ?? null,
+                'date_from' => $dateFrom,
+                'date_to' => $dateTo,
+                'product_id' => isset($filters['product_id']) ? (int) $filters['product_id'] : null,
+                'branch_id' => isset($filters['branch_id']) ? (int) $filters['branch_id'] : null,
+                'sort' => $sort,
+                'discount' => $filters['discount'] ?? 'all',
             ],
-            'rows' => $this->reports->salesSummary(
-                $filters['date_from'] ?? null,
-                $filters['date_to'] ?? null,
-                $minQuantity,
-                $productId,
+            'rows' => $report['rows'],
+            'discount_summary' => $report['discount_summary'],
+            'top_discount' => $report['top_discount'],
+        ]);
+    }
+
+    public function searchProducts(Request $request): JsonResponse
+    {
+        $this->authorize(self::PERMISSION_SALES_SUMMARY);
+
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:100'],
+            'selected_id' => ['nullable', 'integer', 'exists:products,id'],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+        ]);
+
+        $canFilterByBranch = $this->reports->canFilterByBranch();
+        $filterBranchId = $canFilterByBranch && isset($filters['branch_id']) ? (int) $filters['branch_id'] : null;
+
+        return response()->json(
+            $this->reports->searchProductOptions(
+                $filters['search'] ?? null,
+                isset($filters['selected_id']) ? (int) $filters['selected_id'] : null,
                 $filterBranchId,
             ),
-        ]);
+        );
     }
 
     public function balanceSheet(Request $request): Response

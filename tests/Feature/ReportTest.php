@@ -15,6 +15,7 @@ use App\Models\Damage;
 use App\Models\DamageProduct;
 use App\Models\Product;
 use App\Models\ProductExchange;
+use App\Models\Promotion;
 use App\Models\Purchase;
 use App\Models\PurchaseReturn;
 use App\Models\SaleReturn;
@@ -25,6 +26,7 @@ use App\Models\SupplierPayment;
 use App\Models\User;
 use App\Models\Voucher;
 use App\Support\AdminNavigation;
+use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -951,7 +953,7 @@ test('stock ledger calculates opening balance before date range', function () {
             ->where('totals.balance', 7));
 });
 
-test('sales summary shows large quantity sale lines with customer name and phone', function () {
+test('sales summary shows sale lines with customer name and phone sorted by quantity', function () {
     $this->artisan('permissions:sync');
 
     $date = '2026-07-01';
@@ -1008,19 +1010,112 @@ test('sales summary shows large quantity sale lines with customer name and phone
     ]);
 
     $this->actingAs($user)
-        ->get('/report/sales-summary?date_from='.$date.'&date_to='.$date.'&min_quantity=5')
+        ->get('/report/sales-summary?date_from='.$date.'&date_to='.$date)
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/reports/sales-summary')
-            ->has('rows', 1)
+            ->has('rows', 2)
             ->where('rows.0.customer_name', 'Bulk Buyer')
             ->where('rows.0.customer_phone', '01700000001')
             ->where('rows.0.product', 'Bulk Product')
             ->where('rows.0.total_quantity', 12)
-            ->where('rows.0.line_total', 5000));
+            ->where('rows.0.line_total', 5000)
+            ->where('rows.1.total_quantity', 2)
+            ->where('rows.1.line_total', 200)
+            ->has('discount_summary', 1)
+            ->where('rows.0.discount_label', 'Regular'));
+
+    $this->actingAs($user)
+        ->get('/report/sales-summary?date_from='.$date.'&date_to='.$date.'&sort=asc')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('rows.0.total_quantity', 2)
+            ->where('rows.1.total_quantity', 12));
 });
 
-test('branch user sales summary excludes other branch large quantity sales', function () {
+test('sales summary identifies promotion discount period with highest quantity sold', function () {
+    $this->artisan('permissions:sync');
+
+    $date = '2026-07-04';
+    $branch = Branch::factory()->create();
+    $user = reportUser([ReportController::PERMISSION_SALES_SUMMARY]);
+    $user->update(['branch_id' => $branch->id]);
+    $product = Product::factory()->create(['branch_id' => $branch->id]);
+    $promotion = Promotion::factory()->create([
+        'branch_id' => $branch->id,
+        'name' => 'July Mega Sale',
+        'starts_at' => '2026-07-01 00:00:00',
+        'ends_at' => '2026-07-31 23:59:59',
+    ]);
+
+    $promoSell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+        'date' => $date,
+        'gross_amount' => 3000,
+        'paid_amount' => 3000,
+        'promotion_discount_total' => 300,
+    ]);
+
+    SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $promoSell->id,
+        'product_id' => $product->id,
+        'promotion_id' => $promotion->id,
+        'quantity' => 15,
+        'free_quantity' => 0,
+        'unit_price' => 200,
+        'promotion_discount' => 300,
+        'discount' => 0,
+        'batches' => [],
+    ]);
+
+    $regularSell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+        'date' => $date,
+        'gross_amount' => 500,
+        'paid_amount' => 500,
+    ]);
+
+    SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $regularSell->id,
+        'product_id' => $product->id,
+        'quantity' => 3,
+        'free_quantity' => 0,
+        'unit_price' => 500,
+        'discount' => 0,
+        'batches' => [],
+    ]);
+
+    $this->actingAs($user)
+        ->get('/report/sales-summary?date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/sales-summary')
+            ->where('top_discount.label', 'July Mega Sale')
+            ->where('top_discount.total_quantity', 15)
+            ->where('discount_summary.0.key', 'promotion:'.$promotion->id)
+            ->where('rows.0.discount_label', 'July Mega Sale')
+            ->where('rows.0.discount_period', '2026-07-01 – 2026-07-31')
+            ->where('rows.0.discount_amount', 300));
+
+    $this->actingAs($user)
+        ->get('/report/sales-summary?date_from='.$date.'&date_to='.$date.'&discount=promotion:'.$promotion->id)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('rows', 1)
+            ->where('rows.0.total_quantity', 15)
+            ->where('filters.discount', 'promotion:'.$promotion->id)
+            ->where('discounts', fn ($options) => collect($options)->contains(
+                fn (array $option) => $option['value'] === 'promotion:'.$promotion->id
+            )));
+});
+
+test('branch user sales summary excludes other branch sales', function () {
     $this->artisan('permissions:sync');
 
     $date = '2026-07-02';
@@ -1059,4 +1154,184 @@ test('branch user sales summary excludes other branch large quantity sales', fun
             ->component('admin/reports/sales-summary')
             ->has('rows', 1)
             ->where('rows.0.quantity', 20));
+});
+
+test('sales summary filters by product and date range', function () {
+    $this->artisan('permissions:sync');
+
+    $date = '2026-07-03';
+    $otherDate = '2026-06-01';
+    $branch = Branch::factory()->create();
+    $user = reportUser([ReportController::PERMISSION_SALES_SUMMARY]);
+    $user->update(['branch_id' => $branch->id]);
+    $productA = Product::factory()->create(['branch_id' => $branch->id, 'name' => 'Product A']);
+    $productB = Product::factory()->create(['branch_id' => $branch->id, 'name' => 'Product B']);
+
+    foreach ([$productA, $productB] as $product) {
+        $sell = Sell::factory()->create([
+            'branch_id' => $branch->id,
+            'user_id' => $user->id,
+            'type' => SaleType::Sale,
+            'date' => $date,
+            'gross_amount' => 1000,
+            'paid_amount' => 1000,
+        ]);
+
+        SellProduct::query()->create([
+            'branch_id' => $branch->id,
+            'sell_id' => $sell->id,
+            'product_id' => $product->id,
+            'quantity' => 10,
+            'free_quantity' => 0,
+            'unit_price' => 100,
+            'discount' => 0,
+            'batches' => [],
+        ]);
+    }
+
+    $oldSell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+        'date' => $otherDate,
+        'gross_amount' => 500,
+        'paid_amount' => 500,
+    ]);
+
+    SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $oldSell->id,
+        'product_id' => $productA->id,
+        'quantity' => 50,
+        'free_quantity' => 0,
+        'unit_price' => 10,
+        'discount' => 0,
+        'batches' => [],
+    ]);
+
+    $this->actingAs($user)
+        ->get('/report/sales-summary?date_from='.$date.'&date_to='.$date.'&product_id='.$productA->id)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/sales-summary')
+            ->where('filters.product_id', $productA->id)
+            ->has('rows', 1)
+            ->where('rows.0.product', 'Product A')
+            ->where('rows.0.total_quantity', 10));
+
+    $this->actingAs($user)
+        ->get('/report/sales-summary?date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('rows', 2));
+});
+
+test('sales summary product search returns matching products', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = reportUser([ReportController::PERMISSION_SALES_SUMMARY]);
+    $user->update(['branch_id' => $branch->id]);
+    $unique = uniqid();
+    $match = Product::factory()->create([
+        'branch_id' => $branch->id,
+        'name' => 'Searchable Widget '.$unique,
+        'code' => 'SW-'.$unique,
+    ]);
+    Product::factory()->create([
+        'branch_id' => $branch->id,
+        'name' => 'Other Product '.$unique,
+        'code' => 'OP-'.$unique,
+    ]);
+
+    $this->actingAs($user)
+        ->getJson('/report/products/search?search='.urlencode('Searchable Widget '.$unique))
+        ->assertOk()
+        ->assertJsonFragment(['id' => $match->id])
+        ->assertJsonMissing(['label' => 'Other Product '.$unique.' (OP-'.$unique.')']);
+});
+
+test('sales summary product search scopes to selected branch in admin panel', function () {
+    $this->artisan('permissions:sync');
+
+    $unique = uniqid();
+    $branchA = Branch::factory()->create(['name' => 'Branch A '.$unique]);
+    $branchB = Branch::factory()->create(['name' => 'Branch B '.$unique]);
+    $admin = reportUser([ReportController::PERMISSION_SALES_SUMMARY]);
+    $admin->update(['branch_id' => null]);
+
+    $productA = Product::factory()->create([
+        'branch_id' => $branchA->id,
+        'name' => 'Shared Item '.$unique,
+        'code' => 'SH-'.$unique,
+    ]);
+    Product::factory()->create([
+        'branch_id' => $branchB->id,
+        'name' => 'Shared Item '.$unique,
+        'code' => 'SH-'.$unique,
+    ]);
+
+    $this->actingAs($admin)
+        ->getJson('/report/products/search?search='.urlencode('Shared Item '.$unique).'&branch_id='.$branchA->id)
+        ->assertOk()
+        ->assertJsonCount(1)
+        ->assertJsonFragment(['id' => $productA->id]);
+});
+
+test('sales summary product search deduplicates products across all branches', function () {
+    $this->artisan('permissions:sync');
+
+    $unique = uniqid();
+    $groupId = (string) Str::uuid();
+    $branchA = Branch::factory()->create();
+    $branchB = Branch::factory()->create();
+    $admin = reportUser([ReportController::PERMISSION_SALES_SUMMARY]);
+    $admin->update(['branch_id' => null]);
+
+    Product::factory()->create([
+        'branch_id' => $branchA->id,
+        'product_group_id' => $groupId,
+        'name' => 'Grouped Product '.$unique,
+        'code' => 'GP-'.$unique,
+    ]);
+    Product::factory()->create([
+        'branch_id' => $branchB->id,
+        'product_group_id' => $groupId,
+        'name' => 'Grouped Product '.$unique,
+        'code' => 'GP-'.$unique,
+    ]);
+
+    $response = $this->actingAs($admin)
+        ->getJson('/report/products/search?search='.urlencode('Grouped Product '.$unique))
+        ->assertOk()
+        ->json();
+
+    expect($response)->toHaveCount(1);
+});
+
+test('branch panel product search only returns own branch products', function () {
+    $this->artisan('permissions:sync');
+
+    $unique = uniqid();
+    $branchA = Branch::factory()->create();
+    $branchB = Branch::factory()->create();
+    $branchUser = reportUser([ReportController::PERMISSION_SALES_SUMMARY]);
+    $branchUser->update(['branch_id' => $branchA->id]);
+
+    $ownProduct = Product::factory()->create([
+        'branch_id' => $branchA->id,
+        'name' => 'Branch Own Product '.$unique,
+        'code' => 'OWN-'.$unique,
+    ]);
+    Product::factory()->create([
+        'branch_id' => $branchB->id,
+        'name' => 'Branch Own Product '.$unique,
+        'code' => 'OWN-'.$unique,
+    ]);
+
+    $this->actingAs($branchUser)
+        ->getJson('/report/products/search?search='.urlencode('Branch Own Product '.$unique))
+        ->assertOk()
+        ->assertJsonCount(1)
+        ->assertJsonFragment(['id' => $ownProduct->id]);
 });

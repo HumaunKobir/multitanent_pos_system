@@ -17,11 +17,13 @@ use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\ProductExchange;
 use App\Models\ProductInOutLog;
+use App\Models\Promotion;
 use App\Models\Purchase;
 use App\Models\PurchaseReturn;
 use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\SellProduct;
+use App\Models\SpecialDiscount;
 use App\Models\StockDistribution;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
@@ -31,6 +33,7 @@ use App\Models\Voucher;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 
 class ReportService
@@ -481,51 +484,299 @@ class ReportService
     }
 
     /**
-     * @return list<array<string, mixed>>
+     * @return array{
+     *     rows: list<array<string, mixed>>,
+     *     discount_summary: list<array<string, mixed>>,
+     *     top_discount: array<string, mixed>|null
+     * }
      */
     public function salesSummary(
         ?string $dateFrom,
         ?string $dateTo,
-        int $minQuantity = 5,
         ?int $productId = null,
         ?int $filterBranchId = null,
+        string $sort = 'desc',
+        ?string $discountFilter = null,
     ): array {
         $effectiveBranchId = $this->resolveReportBranchFilter($filterBranchId);
+        $sortDirection = $sort === 'asc' ? 'asc' : 'desc';
+        $productIds = $this->resolveReportProductIds($productId, $filterBranchId);
 
-        return SellProduct::query()
+        $lines = SellProduct::query()
             ->select('sell_products.*')
             ->join('sells', 'sell_products.sell_id', '=', 'sells.id')
             ->where('sells.type', SaleType::Sale)
             ->when($effectiveBranchId, fn (Builder $q, int $id) => $q->where('sells.branch_id', $id))
             ->when($dateFrom, fn (Builder $q, string $d) => $q->whereDate('sells.date', '>=', $d))
             ->when($dateTo, fn (Builder $q, string $d) => $q->whereDate('sells.date', '<=', $d))
-            ->when($productId, fn (Builder $q, int $id) => $q->where('sell_products.product_id', $id))
-            ->whereRaw('(sell_products.quantity + COALESCE(sell_products.free_quantity, 0)) >= ?', [$minQuantity])
+            ->when($productIds, fn (Builder $q, array $ids) => $q->whereIn('sell_products.product_id', $ids))
+            ->when(
+                $discountFilter && str_starts_with($discountFilter, 'promotion:'),
+                fn (Builder $q) => $q->where('sell_products.promotion_id', (int) substr($discountFilter, 10)),
+            )
+            ->when(
+                $discountFilter && str_starts_with($discountFilter, 'special:'),
+                fn (Builder $q) => $q
+                    ->whereNull('sell_products.promotion_id')
+                    ->where('sell_products.discount', '<=', 0)
+                    ->whereHas('sell', fn (Builder $sq) => $sq->where('special_discount_id', (int) substr($discountFilter, 8))),
+            )
+            ->when(
+                $discountFilter === 'line',
+                fn (Builder $q) => $q
+                    ->whereNull('sell_products.promotion_id')
+                    ->where('sell_products.discount', '>', 0),
+            )
+            ->when(
+                $discountFilter === 'invoice',
+                fn (Builder $q) => $q
+                    ->whereNull('sell_products.promotion_id')
+                    ->where('sell_products.discount', '<=', 0)
+                    ->whereHas('sell', fn (Builder $sq) => $sq
+                        ->whereNull('special_discount_id')
+                        ->where('discount', '>', 0)
+                        ->where('coin_discount_amount', '<=', 0)),
+            )
+            ->when(
+                $discountFilter === 'coin',
+                fn (Builder $q) => $q
+                    ->whereNull('sell_products.promotion_id')
+                    ->where('sell_products.discount', '<=', 0)
+                    ->whereHas('sell', fn (Builder $sq) => $sq
+                        ->whereNull('special_discount_id')
+                        ->where('discount', '<=', 0)
+                        ->where('coin_discount_amount', '>', 0)),
+            )
+            ->when(
+                $discountFilter === 'none',
+                fn (Builder $q) => $q
+                    ->whereNull('sell_products.promotion_id')
+                    ->where('sell_products.discount', '<=', 0)
+                    ->whereHas('sell', fn (Builder $sq) => $sq
+                        ->whereNull('special_discount_id')
+                        ->where('discount', '<=', 0)
+                        ->where('coin_discount_amount', '<=', 0)),
+            )
             ->with([
-                'sell:id,date,customer_id',
+                'sell:id,date,customer_id,special_discount_id,discount,coin_discount_amount',
                 'sell.customer:id,name,phone',
+                'sell.specialDiscount:id,name',
+                'promotion:id,name,starts_at,ends_at',
                 'product:id,name,code',
             ])
+            ->orderByRaw('(sell_products.quantity + COALESCE(sell_products.free_quantity, 0)) '.$sortDirection)
             ->orderByDesc('sells.date')
-            ->orderByDesc('sells.id')
             ->orderByDesc('sell_products.id')
             ->limit(500)
-            ->get()
-            ->map(fn (SellProduct $line) => [
-                'id' => $line->id,
-                'date' => $line->sell->date->format('Y-m-d'),
-                'invoice' => $line->sell->invoice_number,
-                'customer_name' => $line->sell->customer?->name ?? 'Walk-in',
-                'customer_phone' => $line->sell->customer?->phone ?? '—',
-                'product' => $line->product?->name ?? '—',
-                'product_code' => $line->product?->code ?? '—',
-                'quantity' => (float) $line->quantity,
-                'free_quantity' => (float) $line->free_quantity,
-                'total_quantity' => round((float) $line->quantity + (float) $line->free_quantity, 2),
-                'unit_price' => (float) $line->unit_price,
-                'line_total' => round(((float) $line->quantity * (float) $line->unit_price) - (float) $line->discount, 2),
-            ])
+            ->get();
+
+        $rows = $lines
+            ->map(function (SellProduct $line) {
+                $discount = $this->resolveSalesSummaryLineDiscount($line);
+
+                return [
+                    'id' => $line->id,
+                    'date' => $line->sell->date->format('Y-m-d'),
+                    'invoice' => $line->sell->invoice_number,
+                    'customer_name' => $line->sell->customer?->name ?? 'Walk-in',
+                    'customer_phone' => $line->sell->customer?->phone ?? '—',
+                    'product' => $line->product?->name ?? '—',
+                    'product_code' => $line->product?->code ?? '—',
+                    'quantity' => (float) $line->quantity,
+                    'free_quantity' => (float) $line->free_quantity,
+                    'total_quantity' => round((float) $line->quantity + (float) $line->free_quantity, 2),
+                    'unit_price' => (float) $line->unit_price,
+                    'line_total' => round(((float) $line->quantity * (float) $line->unit_price) - (float) $line->discount, 2),
+                    'discount_key' => $discount['key'],
+                    'discount_type' => $discount['type'],
+                    'discount_label' => $discount['label'],
+                    'discount_period' => $discount['period'],
+                    'discount_amount' => $discount['amount'],
+                ];
+            })
             ->all();
+
+        $discountSummary = collect($rows)
+            ->groupBy('discount_key')
+            ->map(function ($group, string $key) {
+                $first = $group->first();
+
+                return [
+                    'key' => $key,
+                    'type' => $first['discount_type'],
+                    'label' => $first['discount_label'],
+                    'period' => $first['discount_period'],
+                    'line_count' => $group->count(),
+                    'total_quantity' => round($group->sum(fn (array $row) => (float) $row['total_quantity']), 2),
+                    'total_amount' => round($group->sum(fn (array $row) => (float) $row['line_total']), 2),
+                    'total_discount' => round($group->sum(fn (array $row) => (float) $row['discount_amount']), 2),
+                ];
+            })
+            ->sortByDesc('total_quantity')
+            ->values()
+            ->all();
+
+        return [
+            'rows' => $rows,
+            'discount_summary' => $discountSummary,
+            'top_discount' => $discountSummary[0] ?? null,
+        ];
+    }
+
+    /**
+     * @return list<array{value: string, label: string}>
+     */
+    public function salesSummaryDiscountOptions(
+        ?string $dateFrom,
+        ?string $dateTo,
+        ?int $filterBranchId = null,
+    ): array {
+        $effectiveBranchId = $this->resolveReportBranchFilter($filterBranchId);
+
+        $promotionIds = SellProduct::query()
+            ->select('sell_products.promotion_id')
+            ->join('sells', 'sell_products.sell_id', '=', 'sells.id')
+            ->where('sells.type', SaleType::Sale)
+            ->whereNotNull('sell_products.promotion_id')
+            ->when($effectiveBranchId, fn (Builder $q, int $id) => $q->where('sells.branch_id', $id))
+            ->when($dateFrom, fn (Builder $q, string $d) => $q->whereDate('sells.date', '>=', $d))
+            ->when($dateTo, fn (Builder $q, string $d) => $q->whereDate('sells.date', '<=', $d))
+            ->distinct()
+            ->pluck('promotion_id');
+
+        $specialDiscountIds = Sell::query()
+            ->sale()
+            ->whereNotNull('special_discount_id')
+            ->when($effectiveBranchId, fn (Builder $q, int $id) => $q->where('branch_id', $id))
+            ->when($dateFrom, fn (Builder $q, string $d) => $q->whereDate('date', '>=', $d))
+            ->when($dateTo, fn (Builder $q, string $d) => $q->whereDate('date', '<=', $d))
+            ->distinct()
+            ->pluck('special_discount_id');
+
+        $options = [
+            ['value' => 'all', 'label' => 'All discounts'],
+            ['value' => 'none', 'label' => 'Regular (no discount)'],
+            ['value' => 'line', 'label' => 'Line discount'],
+            ['value' => 'invoice', 'label' => 'Invoice discount'],
+            ['value' => 'coin', 'label' => 'Coin discount'],
+        ];
+
+        Promotion::query()
+            ->whereIn('id', $promotionIds)
+            ->orderBy('name')
+            ->get(['id', 'name', 'starts_at', 'ends_at'])
+            ->each(function (Promotion $promotion) use (&$options) {
+                $period = $this->formatDiscountPeriod($promotion->starts_at, $promotion->ends_at);
+                $label = $period
+                    ? "{$promotion->name} ({$period})"
+                    : $promotion->name;
+
+                $options[] = [
+                    'value' => 'promotion:'.$promotion->id,
+                    'label' => $label,
+                ];
+            });
+
+        SpecialDiscount::query()
+            ->whereIn('id', $specialDiscountIds)
+            ->orderBy('name')
+            ->get(['id', 'name'])
+            ->each(function (SpecialDiscount $discount) use (&$options) {
+                $options[] = [
+                    'value' => 'special:'.$discount->id,
+                    'label' => $discount->name,
+                ];
+            });
+
+        return $options;
+    }
+
+    /**
+     * @return array{key: string, type: string, label: string, period: ?string, amount: float}
+     */
+    private function resolveSalesSummaryLineDiscount(SellProduct $line): array
+    {
+        $sell = $line->sell;
+
+        if ($line->promotion_id !== null) {
+            $promotion = $line->promotion;
+
+            return [
+                'key' => 'promotion:'.$line->promotion_id,
+                'type' => 'Promotion',
+                'label' => $promotion?->name ?? 'Promotion',
+                'period' => $this->formatDiscountPeriod($promotion?->starts_at, $promotion?->ends_at),
+                'amount' => round((float) $line->promotion_discount, 2),
+            ];
+        }
+
+        if ((float) $line->discount > 0) {
+            return [
+                'key' => 'line',
+                'type' => 'Line Discount',
+                'label' => 'Line discount',
+                'period' => null,
+                'amount' => round((float) $line->discount, 2),
+            ];
+        }
+
+        if ($sell->special_discount_id !== null) {
+            return [
+                'key' => 'special:'.$sell->special_discount_id,
+                'type' => 'Special Discount',
+                'label' => $sell->specialDiscount?->name ?? 'Special discount',
+                'period' => null,
+                'amount' => round((float) $sell->special_discount_amount, 2),
+            ];
+        }
+
+        if ((float) $sell->discount > 0) {
+            return [
+                'key' => 'invoice',
+                'type' => 'Invoice Discount',
+                'label' => 'Invoice discount',
+                'period' => null,
+                'amount' => round((float) $sell->discount, 2),
+            ];
+        }
+
+        if ((float) $sell->coin_discount_amount > 0) {
+            return [
+                'key' => 'coin',
+                'type' => 'Coin Discount',
+                'label' => 'Coin discount',
+                'period' => null,
+                'amount' => round((float) $sell->coin_discount_amount, 2),
+            ];
+        }
+
+        return [
+            'key' => 'none',
+            'type' => 'Regular',
+            'label' => 'Regular',
+            'period' => null,
+            'amount' => 0.0,
+        ];
+    }
+
+    private function formatDiscountPeriod(?\DateTimeInterface $startsAt, ?\DateTimeInterface $endsAt): ?string
+    {
+        $start = $startsAt ? Carbon::parse($startsAt)->format('Y-m-d') : null;
+        $end = $endsAt ? Carbon::parse($endsAt)->format('Y-m-d') : null;
+
+        if ($start && $end) {
+            return "{$start} – {$end}";
+        }
+
+        if ($start) {
+            return "From {$start}";
+        }
+
+        if ($end) {
+            return "Until {$end}";
+        }
+
+        return null;
     }
 
     /**
@@ -1275,6 +1526,169 @@ class ReportService
                 'label' => $p->name,
             ])
             ->all();
+    }
+
+    /**
+     * @return array{id: int, label: string}|null
+     */
+    public function selectedProductOption(?int $productId, ?int $filterBranchId = null): ?array
+    {
+        if ($productId === null) {
+            return null;
+        }
+
+        $effectiveBranchId = $this->resolveReportBranchFilter($filterBranchId);
+
+        $product = Product::query()
+            ->when($effectiveBranchId !== null, fn (Builder $q) => $q->where('branch_id', $effectiveBranchId))
+            ->whereKey($productId)
+            ->first(['id', 'name', 'code']);
+
+        if ($product === null) {
+            $product = Product::query()
+                ->whereKey($productId)
+                ->first(['id', 'name', 'code']);
+        }
+
+        if ($product === null) {
+            return null;
+        }
+
+        return [
+            'id' => $product->id,
+            'label' => $this->productSearchLabel($product),
+        ];
+    }
+
+    /**
+     * @return list<array{id: int, label: string}>
+     */
+    public function searchProductOptions(
+        ?string $search = null,
+        ?int $selectedId = null,
+        ?int $filterBranchId = null,
+    ): array {
+        $effectiveBranchId = $this->resolveReportBranchFilter($filterBranchId);
+
+        $products = Product::query()
+            ->when($effectiveBranchId !== null, fn (Builder $q) => $q->where('branch_id', $effectiveBranchId))
+            ->when($search, fn (Builder $q, string $term) => $q->where(function (Builder $inner) use ($term) {
+                $inner->where('name', 'like', "%{$term}%")
+                    ->orWhere('code', 'like', "%{$term}%");
+            }))
+            ->orderBy('name')
+            ->orderBy('id')
+            ->limit($effectiveBranchId !== null ? 20 : 120)
+            ->get(['id', 'name', 'code', 'product_group_id']);
+
+        $products = $this->deduplicateReportProducts($products);
+
+        if ($selectedId !== null && ! $products->contains('id', $selectedId)) {
+            $selected = Product::query()
+                ->when($effectiveBranchId !== null, fn (Builder $q) => $q->where('branch_id', $effectiveBranchId))
+                ->whereKey($selectedId)
+                ->first(['id', 'name', 'code', 'product_group_id']);
+
+            if ($selected !== null) {
+                $products->prepend($selected);
+                $products = $this->deduplicateReportProducts($products);
+            }
+        }
+
+        return $products
+            ->take(20)
+            ->map(fn (Product $product) => [
+                'id' => $product->id,
+                'label' => $this->productSearchLabel($product),
+            ])
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return list<int>|null
+     */
+    public function resolveReportProductIds(?int $productId, ?int $filterBranchId = null): ?array
+    {
+        if ($productId === null) {
+            return null;
+        }
+
+        $effectiveBranchId = $this->resolveReportBranchFilter($filterBranchId);
+
+        $product = Product::query()
+            ->when($effectiveBranchId !== null, fn (Builder $q) => $q->where('branch_id', $effectiveBranchId))
+            ->whereKey($productId)
+            ->first(['id', 'product_group_id', 'name', 'code']);
+
+        if ($product === null) {
+            return null;
+        }
+
+        if ($effectiveBranchId !== null) {
+            return [$product->id];
+        }
+
+        if ($product->product_group_id !== null) {
+            return Product::query()
+                ->where('product_group_id', $product->product_group_id)
+                ->pluck('id')
+                ->map(fn (int|string $id) => (int) $id)
+                ->unique()
+                ->values()
+                ->all();
+        }
+
+        return Product::query()
+            ->where('name', $product->name)
+            ->where('code', $product->code)
+            ->pluck('id')
+            ->map(fn (int|string $id) => (int) $id)
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @param  Collection<int, Product>  $products
+     * @return Collection<int, Product>
+     */
+    private function deduplicateReportProducts(Collection $products): Collection
+    {
+        $seenGroups = [];
+        $seenKeys = [];
+        $deduped = collect();
+
+        foreach ($products as $product) {
+            if ($product->product_group_id !== null) {
+                if (isset($seenGroups[$product->product_group_id])) {
+                    continue;
+                }
+
+                $seenGroups[$product->product_group_id] = true;
+                $deduped->push($product);
+
+                continue;
+            }
+
+            $key = mb_strtolower(trim($product->name)).'|'.mb_strtolower(trim((string) ($product->code ?? '')));
+
+            if (isset($seenKeys[$key])) {
+                continue;
+            }
+
+            $seenKeys[$key] = true;
+            $deduped->push($product);
+        }
+
+        return $deduped;
+    }
+
+    private function productSearchLabel(Product $product): string
+    {
+        return $product->code
+            ? "{$product->name} ({$product->code})"
+            : $product->name;
     }
 
     /**

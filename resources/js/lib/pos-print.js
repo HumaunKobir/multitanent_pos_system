@@ -1,5 +1,8 @@
 import { computeSellDisplayGross } from '@/lib/pos-discount';
+import { buildPosItemCode, buildPosItemDisplayName } from '@/lib/pos-print-items';
 import { formatBdDate, formatBdDateTime, formatBdTime } from '@/lib/format-bd-date';
+
+export { buildPosItemCode, buildPosItemDisplayName } from '@/lib/pos-print-items';
 
 const POS_PRINT_STYLES = `
 * {
@@ -108,8 +111,8 @@ body {
 
 .pos-item {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 16px 56px 62px;
-    column-gap: 6px;
+    grid-template-columns: minmax(0, 1fr) 34px 14px 44px 48px;
+    column-gap: 4px;
     align-items: start;
     margin-bottom: 3px;
     font-size: 9px;
@@ -123,7 +126,16 @@ body {
 .pos-item-name {
     min-width: 0;
     overflow-wrap: anywhere;
+    word-break: break-word;
     line-height: 1.15;
+}
+
+.pos-item-code {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+    line-height: 1.15;
+    font-size: 8px;
 }
 
 .pos-item-qty {
@@ -366,15 +378,6 @@ function formatQty(value) {
     return Number.isInteger(qty) ? String(qty) : qty.toFixed(2);
 }
 
-function truncateName(name, max = 22) {
-    const text = String(name ?? '').trim();
-    if (text.length <= max) {
-        return text;
-    }
-
-    return `${text.slice(0, max - 1)}…`;
-}
-
 function formatPosReceiptDate(value) {
     return formatBdDate(value).replace(', ', ' ');
 }
@@ -413,27 +416,6 @@ function groupItemsByVariant(items) {
     }
 
     return Array.from(groups.values());
-}
-
-function getVariantDisplayText(item) {
-    const variantId = item.variant_id ?? item.variation_id ?? null;
-
-    if (variantId == null || variantId === '') {
-        return '';
-    }
-
-    const variantLabel = (item.variant?.name ?? item.variant_label ?? item.variation?.variation_data?.label ?? '').trim();
-    const variantSku = (item.variant?.sku ?? item.variant_sku ?? item.variation?.sku_code ?? '').trim();
-
-    return variantLabel || variantSku;
-}
-
-function buildItemName(item) {
-    const baseName = truncateName(item.product?.name ?? item.name ?? '—');
-    const variantText = getVariantDisplayText(item);
-    const name = !variantText ? baseName : `${baseName} (Variant: ${variantText})`;
-
-    return item.is_free_row ? `${name} (FREE)` : name;
 }
 
 function totalRow(label, value) {
@@ -528,7 +510,9 @@ export function buildSellPosPrintPayload(sell, options = {}) {
             promotion_label: item.promotion?.name ?? item.promotion_label ?? null,
             product: {
                 name: item.product?.name ?? '—',
+                code: item.product?.code ?? item.product_code ?? '',
             },
+            product_code: item.product?.code ?? item.product_code ?? '',
             variant:
                 variationId && (variantLabel || variantSku)
                     ? {
@@ -662,6 +646,7 @@ function renderPosInvoice(data) {
         <div class="pos-items">
             <div class="pos-item pos-bold">
                 <div class="pos-item-name">Item</div>
+                <div class="pos-item-code">Code</div>
                 <div class="pos-item-qty">Qty</div>
                 <div class="pos-item-unit-price">U.Price</div>
                 <div class="pos-item-price">Price</div>
@@ -680,7 +665,8 @@ function renderPosInvoice(data) {
 
                     return `
                 <div class="pos-item">
-                    <div class="pos-item-name">${escapeHtml(buildItemName(item))}</div>
+                    <div class="pos-item-name">${escapeHtml(buildPosItemDisplayName(item))}</div>
+                    <div class="pos-item-code">${escapeHtml(buildPosItemCode(item))}</div>
                     <div class="pos-item-qty">${formatQty(item.quantity)}</div>
                     <div class="pos-item-unit-price">${formatMoneyAmount(unitPrice)}</div>
                     <div class="pos-item-price">${formatMoneyAmount(originalAmount)}</div>

@@ -68,6 +68,53 @@ test('customer can be created with phone only from admin form', function () {
     expect($customer->name)->toBeNull();
 });
 
+test('user with create permission can search customers by phone without view permission', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerManagementUser(['party.customer.create']);
+    $phone = fake()->unique()->numerify('01#########');
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'name' => 'POS Customer',
+        'phone' => $phone,
+        'is_default' => false,
+    ]);
+
+    $this->actingAs($user)
+        ->getJson('/api/customers?search='.$phone)
+        ->assertSuccessful()
+        ->assertJson([
+            ['id' => $customer->id, 'name' => 'POS Customer', 'phone' => $phone, 'is_default' => false],
+        ]);
+});
+
+test('user with create permission cannot browse customers without search term', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerManagementUser(['party.customer.create']);
+
+    Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'name' => 'Hidden Customer',
+    ]);
+
+    $this->actingAs($user)
+        ->getJson('/api/customers')
+        ->assertSuccessful()
+        ->assertJson([]);
+});
+
+test('user without customer permissions cannot search customers', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerManagementUser();
+
+    $this->actingAs($user)
+        ->getJson('/api/customers?search=01')
+        ->assertForbidden();
+});
+
 test('customer can be created with phone only from sales api', function () {
     $this->artisan('permissions:sync');
 

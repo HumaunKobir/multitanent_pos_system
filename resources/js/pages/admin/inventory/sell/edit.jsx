@@ -29,6 +29,7 @@ import { formatBdDate, toDateInputValue } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Save, Search, ShoppingCart, Trash2, User } from 'lucide-react';
+import { useCan } from '@/hooks/use-can';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { applyPromotionsToCart, canApplyManualLineDiscount } from '@/lib/pos-promotion';
 
@@ -90,6 +91,8 @@ function Field({ label, required, error, children }) {
 }
 
 function CustomerSearch({ initialCustomer, value, onChange, error }) {
+    const { can } = useCan();
+    const canBrowseCustomers = can('party.customer.view');
     const [open, setOpen] = useState(false);
     const [q, setQ] = useState('');
     const [results, setResults] = useState([]);
@@ -103,7 +106,17 @@ function CustomerSearch({ initialCustomer, value, onChange, error }) {
     const timerRef = useRef(null);
     const apiUrl = route('api.customers');
 
+    function canFetchCustomers(search) {
+        return canBrowseCustomers || search.trim().length > 0;
+    }
+
     async function fetchCustomers(search) {
+        if (!canFetchCustomers(search)) {
+            setResults([]);
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         try {
             const res = await fetch(`${apiUrl}?search=${encodeURIComponent(search)}`, {
@@ -121,13 +134,19 @@ function CustomerSearch({ initialCustomer, value, onChange, error }) {
 
     function handleFocus() {
         setOpen(true);
-        if (results.length === 0) fetchCustomers('');
+        if (canFetchCustomers('') && results.length === 0) {
+            fetchCustomers('');
+        }
     }
 
     function handleChange(e) {
         const val = e.target.value;
         setQ(val);
         clearTimeout(timerRef.current);
+        if (!canFetchCustomers(val)) {
+            setResults([]);
+            return;
+        }
         timerRef.current = setTimeout(() => fetchCustomers(val), 350);
     }
 
@@ -191,7 +210,7 @@ function CustomerSearch({ initialCustomer, value, onChange, error }) {
                 {selected ? (
                     <div
                         className={`flex min-h-8 cursor-pointer items-center justify-between rounded-md border bg-background px-3 py-1.5 text-xs shadow-xs transition-colors hover:border-primary/60 ${error ? 'border-destructive' : 'border-input'}`}
-                        onClick={() => { setOpen((p) => !p); if (results.length === 0) fetchCustomers(''); }}
+                        onClick={() => { setOpen((p) => !p); if (canFetchCustomers('') && results.length === 0) fetchCustomers(''); }}
                     >
                         <span>
                             {selected.name}{' '}
@@ -233,7 +252,7 @@ function CustomerSearch({ initialCustomer, value, onChange, error }) {
                                         {String(c.id) === String(value) && <Check className="size-3.5 shrink-0 text-primary" />}
                                     </li>
                                 ))}
-                                {q.trim() && (
+                                {q.trim() && !results.some((c) => c.phone === q.trim()) && (
                                     <li
                                         className="flex cursor-pointer items-center gap-1.5 border-t border-border px-3 py-2 text-xs font-medium text-primary hover:bg-accent"
                                         onClick={openModal}
@@ -243,7 +262,12 @@ function CustomerSearch({ initialCustomer, value, onChange, error }) {
                                     </li>
                                 )}
                                 {!q.trim() && results.length === 0 && (
-                                    <li className="px-3 py-2 text-xs text-muted-foreground">No customers found.</li>
+                                    <li className="px-3 py-2 text-xs text-muted-foreground">
+                                        {canBrowseCustomers ? 'No customers found.' : 'Type a name or phone to search.'}
+                                    </li>
+                                )}
+                                {q.trim() && results.length === 0 && !loading && (
+                                    <li className="px-3 py-2 text-xs text-muted-foreground">No matching customers.</li>
                                 )}
                             </ul>
                         )}

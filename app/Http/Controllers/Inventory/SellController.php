@@ -82,16 +82,17 @@ class SellController extends Controller
 
         $branchId = Auth::user()?->branch_id;
 
-        $defaultCustomer = Customer::where('is_default', true)
+        $defaultCustomer = Customer::query()
+            ->where('is_default', true)
             ->when($branchId, fn ($q) => $q->where('branch_id', $branchId))
-            ->first(['id', 'name', 'phone']);
+            ->first(['id', 'name', 'phone', 'is_default']);
 
         $resumedSell = null;
         if ($request->filled('paused')) {
             $pausedSell = $this->forCurrentBranchUser(Sell::query())
                 ->paused()
                 ->with([
-                    'customer:id,name,phone',
+                    'customer:id,name,phone,is_default',
                     'specialDiscount:id,name,discount_type,discount_value',
                     'products.product:id,name,code,sale_price,discount_price,category_id,brand_id',
                     'products.promotion:id,name',
@@ -103,9 +104,19 @@ class SellController extends Controller
             $resumedSell = $this->buildPosSellPayload($pausedSell, $branchId);
         }
 
+        $preselectDefaultCustomer = $defaultCustomer !== null && $defaultCustomer->is_default;
+
+        $initialCustomer = $resumedSell['customer'] ?? (
+            $preselectDefaultCustomer
+                ? $defaultCustomer->only(['id', 'name', 'phone', 'is_default'])
+                : null
+        );
+
         return Inertia::render('admin/inventory/sell/create', [
             'today' => now()->format('Y-m-d'),
             'defaultCustomer' => $defaultCustomer,
+            'initialCustomer' => $initialCustomer,
+            'preselectDefaultCustomer' => $preselectDefaultCustomer,
             'paymentAccounts' => $this->paymentAccounts(),
             'specialDiscounts' => $this->activeSpecialDiscounts($branchId),
             'promotions' => $this->promotionService->activeForBranch($branchId),

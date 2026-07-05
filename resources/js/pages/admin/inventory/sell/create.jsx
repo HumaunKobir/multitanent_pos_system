@@ -46,6 +46,7 @@ import {
     Trash2,
     User,
 } from 'lucide-react';
+import { useCan } from '@/hooks/use-can';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { applyPromotionsToCart, canApplyManualLineDiscount } from '@/lib/pos-promotion';
 
@@ -72,13 +73,30 @@ function Field({ label, required, error, hint, children }) {
     );
 }
 
+function customerDisplayLabel(customer) {
+    if (!customer) {
+        return '';
+    }
+
+    if (customer.name?.trim()) {
+        return customer.name;
+    }
+
+    if (customer.phone) {
+        return customer.phone;
+    }
+
+    return customer.is_default ? 'Default Customer' : 'Customer';
+}
+
 function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'default' }) {
+    const { can } = useCan();
+    const canBrowseCustomers = can('party.customer.view');
     const onDarkHeader = variant === 'header';
     const [open, setOpen] = useState(false);
     const [q, setQ] = useState('');
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [selected, setSelected] = useState(initialCustomer ?? null);
     const [modalOpen, setModalOpen] = useState(false);
     const [modalData, setModalData] = useState({ name: '', phone: '', email: '', address: '' });
     const [modalErrors, setModalErrors] = useState({});
@@ -87,7 +105,29 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
     const timerRef = useRef(null);
     const apiUrl = route('api.customers');
 
+    const activeCustomer = useMemo(() => {
+        if (!value) {
+            return null;
+        }
+
+        if (initialCustomer && String(initialCustomer.id) === String(value)) {
+            return initialCustomer;
+        }
+
+        return results.find((customer) => String(customer.id) === String(value)) ?? null;
+    }, [value, initialCustomer, results]);
+
+    function canFetchCustomers(search) {
+        return canBrowseCustomers || search.trim().length > 0;
+    }
+
     async function fetchCustomers(search) {
+        if (!canFetchCustomers(search)) {
+            setResults([]);
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         try {
             const res = await fetch(`${apiUrl}?search=${encodeURIComponent(search)}`, {
@@ -105,13 +145,19 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
 
     function handleFocus() {
         setOpen(true);
-        if (results.length === 0) fetchCustomers('');
+        if (canFetchCustomers('') && results.length === 0) {
+            fetchCustomers('');
+        }
     }
 
     function handleChange(e) {
         const val = e.target.value;
         setQ(val);
         clearTimeout(timerRef.current);
+        if (!canFetchCustomers(val)) {
+            setResults([]);
+            return;
+        }
         timerRef.current = setTimeout(() => fetchCustomers(val), 350);
     }
 
@@ -124,14 +170,12 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
     }, []);
 
     function selectCustomer(customer) {
-        setSelected(customer);
         onChange(String(customer.id));
         setOpen(false);
         setQ('');
     }
 
     function clear() {
-        setSelected(null);
         onChange('');
     }
 
@@ -172,7 +216,7 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
     return (
         <>
             <div ref={ref} className="relative">
-                {selected ? (
+                {activeCustomer ? (
                     <div
                         className={cn(
                             'flex min-h-8 cursor-pointer items-center justify-between rounded-none border px-2 py-1 text-xs transition-colors',
@@ -181,7 +225,7 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
                                 : 'border-border bg-muted/30 hover:border-primary/40',
                             error && 'border-destructive',
                         )}
-                        onClick={() => { setOpen((p) => !p); if (results.length === 0) fetchCustomers(''); }}
+                        onClick={() => { setOpen((p) => !p); if (canFetchCustomers('') && results.length === 0) fetchCustomers(''); }}
                     >
                         <div className="flex min-w-0 items-center gap-2">
                             <div
@@ -193,10 +237,12 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
                                 <User className="size-3.5" />
                             </div>
                             <div className="min-w-0 truncate">
-                                <span className={cn('font-medium', onDarkHeader ? 'text-blue-950' : 'text-foreground')}>{selected.name}</span>
-                                {selected.phone && (
+                                <span className={cn('font-medium', onDarkHeader ? 'text-blue-950' : 'text-foreground')}>
+                                    {customerDisplayLabel(activeCustomer)}
+                                </span>
+                                {activeCustomer.phone && activeCustomer.name?.trim() && (
                                     <span className={cn('ml-1.5', onDarkHeader ? 'text-slate-500' : 'text-muted-foreground')}>
-                                        ({selected.phone})
+                                        ({activeCustomer.phone})
                                     </span>
                                 )}
                             </div>
@@ -233,7 +279,7 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
 
                 {open && (
                     <div className="absolute z-50 mt-1.5 w-full overflow-hidden rounded-none border border-border bg-popover text-popover-foreground shadow-lg">
-                        {selected && (
+                        {activeCustomer && (
                             <div className="border-b border-border p-2">
                                 <Input autoFocus placeholder="Search customer…" value={q} onChange={(e) => { setQ(e.target.value); handleChange(e); }} className="h-9 text-sm" />
                             </div>
@@ -255,7 +301,7 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
                                         {String(c.id) === String(value) && <Check className="size-4 shrink-0 text-primary" />}
                                     </li>
                                 ))}
-                                {q.trim() && (
+                                {q.trim() && !results.some((c) => c.phone === q.trim()) && (
                                     <li
                                         className="flex cursor-pointer items-center gap-2 border-t border-border px-3 py-2.5 text-sm font-medium text-primary transition-colors hover:bg-accent"
                                         onClick={openModal}
@@ -265,7 +311,12 @@ function CustomerSearch({ value, onChange, error, initialCustomer, variant = 'de
                                     </li>
                                 )}
                                 {!q.trim() && results.length === 0 && (
-                                    <li className="px-3 py-3 text-sm text-muted-foreground">No customers found.</li>
+                                    <li className="px-3 py-3 text-sm text-muted-foreground">
+                                        {canBrowseCustomers ? 'No customers found.' : 'Type a name or phone to search.'}
+                                    </li>
+                                )}
+                                {q.trim() && results.length === 0 && !loading && (
+                                    <li className="px-3 py-3 text-sm text-muted-foreground">No matching customers.</li>
                                 )}
                             </ul>
                         )}
@@ -845,7 +896,7 @@ function clampLineDiscount(value, item) {
     return String(Math.min(parsed, lineGross(item)));
 }
 
-function buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAccounts }) {
+function buildInitialFormData({ today, resumedSell, paymentAccounts, initialCustomer }) {
     if (resumedSell) {
         return {
             customer_id: resumedSell.customer_id ? String(resumedSell.customer_id) : '',
@@ -866,7 +917,7 @@ function buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAcco
     }
 
     return {
-        customer_id: defaultCustomer ? String(defaultCustomer.id) : '',
+        customer_id: initialCustomer ? String(initialCustomer.id) : '',
         date: today,
         discount_type: 'flat',
         discount_value: '',
@@ -886,6 +937,8 @@ function buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAcco
 export default function SellCreate({
     today,
     defaultCustomer,
+    initialCustomer: serverInitialCustomer = null,
+    preselectDefaultCustomer = false,
     paymentAccounts = [],
     categories = [],
     specialDiscounts = [],
@@ -899,9 +952,9 @@ export default function SellCreate({
 }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
-    const initialCustomer = resumedSell?.customer ?? defaultCustomer;
+    const initialCustomer = resumedSell?.customer ?? serverInitialCustomer;
 
-    const form = useForm(buildInitialFormData({ today, defaultCustomer, resumedSell, paymentAccounts }));
+    const form = useForm(buildInitialFormData({ today, resumedSell, paymentAccounts, initialCustomer }));
     const isInitialCustomer =
         initialCustomer?.id != null && String(form.data.customer_id) === String(initialCustomer.id);
     const resetCoinsRedeemed = useCallback(() => {
@@ -1202,6 +1255,7 @@ export default function SellCreate({
                                     )}
                                 </div>
                                 <CustomerSearch
+                                    key={`${preselectDefaultCustomer}-${initialCustomer?.id ?? 'none'}`}
                                     value={form.data.customer_id}
                                     onChange={(v) => form.setData('customer_id', v)}
                                     error={form.errors.customer_id}

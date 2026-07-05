@@ -148,7 +148,47 @@ test('authenticated user can view sell create form', function () {
         ->assertInertia(fn (Assert $page) => $page->component('admin/inventory/sell/create')->has('today'));
 });
 
-// ── Store ─────────────────────────────────────────────────────────────────────
+test('sell create preselects default customer when user cannot view customers', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $walkIn = Customer::query()
+        ->where('branch_id', $branch->id)
+        ->where('is_default', true)
+        ->firstOrFail();
+    $user = sellUser(['inventory.sell.create']);
+    $user->update(['branch_id' => $branch->id]);
+
+    $this->actingAs($user)
+        ->get('/inventory/sell/create')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('preselectDefaultCustomer', true)
+            ->where('initialCustomer.id', $walkIn->id)
+            ->where('initialCustomer.is_default', true)
+            ->where('defaultCustomer.id', $walkIn->id));
+});
+
+test('sell create preselects default customer when user can view customers', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $walkIn = Customer::query()
+        ->where('branch_id', $branch->id)
+        ->where('is_default', true)
+        ->firstOrFail();
+    $user = sellUser(['inventory.sell.create', 'party.customer.view']);
+    $user->update(['branch_id' => $branch->id]);
+
+    $this->actingAs($user)
+        ->get('/inventory/sell/create')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('preselectDefaultCustomer', true)
+            ->where('initialCustomer.id', $walkIn->id)
+            ->where('initialCustomer.is_default', true)
+            ->has('defaultCustomer'));
+});
 
 test('authenticated user can create a sale and stock is deducted', function () {
     $user = sellUser();

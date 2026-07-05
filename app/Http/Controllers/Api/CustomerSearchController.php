@@ -41,20 +41,30 @@ class CustomerSearchController extends Controller
 
         $customer = Customer::create($data);
 
-        return response()->json($customer->only(['id', 'name', 'phone']), 201);
+        return response()->json($customer->only(['id', 'name', 'phone', 'is_default']), 201);
     }
 
     public function index(Request $request): JsonResponse
     {
-        $this->authorize('party.customer.view');
+        $search = trim((string) $request->string('search'));
+
+        if ($request->user()?->can('party.customer.view')) {
+            // Full customer list access for users with view permission.
+        } elseif ($request->user()?->can('party.customer.create')) {
+            if ($search === '') {
+                return response()->json([]);
+            }
+        } else {
+            abort(403);
+        }
 
         $customers = Customer::ownBranch()
-            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
-                $q->where('name', 'like', "%{$s}%")
-                    ->orWhere('phone', 'like', "%{$s}%");
+            ->when($search !== '', fn ($q) => $q->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('phone', 'like', "%{$search}%");
             }))
             ->limit(20)
-            ->get(['id', 'name', 'phone']);
+            ->get(['id', 'name', 'phone', 'is_default']);
 
         return response()->json($customers);
     }

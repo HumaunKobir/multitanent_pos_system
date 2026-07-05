@@ -59,9 +59,11 @@ class PurchaseReturnController extends Controller
     {
         $this->authorize('inventory.purchase-return.create');
 
+        $branchId = Auth::user()?->branch_id;
+
         return Inertia::render('admin/inventory/purchase-return/create', [
             'today' => now()->format('Y-m-d'),
-            'paymentAccounts' => $this->paymentAccounts(),
+            'paymentAccounts' => $this->paymentAccountsForBranch($branchId),
         ]);
     }
 
@@ -202,7 +204,7 @@ class PurchaseReturnController extends Controller
 
         return Inertia::render('admin/inventory/purchase-return/show', [
             'purchaseReturn' => $purchaseReturn,
-            'paymentAccounts' => $this->paymentAccounts(),
+            'paymentAccounts' => $this->paymentAccountsForBranch($purchaseReturn->branch_id),
             'today' => now()->format('Y-m-d'),
         ]);
     }
@@ -246,7 +248,7 @@ class PurchaseReturnController extends Controller
 
         return Inertia::render('admin/inventory/purchase-return/edit', [
             'today' => now()->format('Y-m-d'),
-            'paymentAccounts' => $this->paymentAccounts(),
+            'paymentAccounts' => $this->paymentAccountsForBranch($purchaseReturn->branch_id),
             'purchaseReturn' => [
                 'id' => $purchaseReturn->id,
                 'invoice_number' => $purchaseReturn->invoice_number,

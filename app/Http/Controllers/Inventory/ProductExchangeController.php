@@ -77,7 +77,7 @@ class ProductExchangeController extends Controller
 
         return Inertia::render('admin/inventory/product-exchange/create', [
             'today' => now()->format('Y-m-d'),
-            'paymentAccounts' => $this->paymentAccounts(),
+            'paymentAccounts' => $this->paymentAccountsForBranch($branchId),
             'promotions' => $this->promotionService->activeForBranch($branchId),
             'specialDiscounts' => $this->activeSpecialDiscounts($branchId),
         ]);
@@ -275,7 +275,7 @@ class ProductExchangeController extends Controller
         return Inertia::render('admin/inventory/product-exchange/edit', [
             'today' => now()->format('Y-m-d'),
             'paymentOnlyEdit' => $paymentOnlyEdit,
-            'paymentAccounts' => $this->paymentAccounts(),
+            'paymentAccounts' => $this->paymentAccountsForBranch($branchId),
             'promotions' => $this->promotionService->activeForBranch($branchId),
             'specialDiscounts' => $this->activeSpecialDiscounts($branchId),
             'totals' => $this->exchangeShowTotals($productExchange),

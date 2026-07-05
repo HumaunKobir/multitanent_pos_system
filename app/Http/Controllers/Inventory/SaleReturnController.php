@@ -66,9 +66,11 @@ class SaleReturnController extends Controller
     {
         $this->authorize('inventory.sale-return.create');
 
+        $branchId = Auth::user()?->branch_id;
+
         return Inertia::render('admin/inventory/sale-return/create', [
             'today' => now()->format('Y-m-d'),
-            'paymentAccounts' => $this->paymentAccounts(),
+            'paymentAccounts' => $this->paymentAccountsForBranch($branchId),
         ]);
     }
 
@@ -415,7 +417,7 @@ class SaleReturnController extends Controller
 
         return Inertia::render('admin/inventory/sale-return/edit', [
             'today' => now()->format('Y-m-d'),
-            'paymentAccounts' => $this->paymentAccounts(),
+            'paymentAccounts' => $this->paymentAccountsForBranch($parent->branch_id),
             'saleReturn' => [
                 'id' => $saleReturn->id,
                 'sell_id' => $saleReturn->sell_id,

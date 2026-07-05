@@ -5,6 +5,7 @@ use App\Enums\SaleType;
 use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Customer;
+use App\Models\CustomerCoinTransaction;
 use App\Models\Product;
 use App\Models\Promotion;
 use App\Models\PromotionTarget;
@@ -415,4 +416,128 @@ test('sale return net amount equals gross when sale had no invoice-level discoun
     expect((float) $saleReturn->gross_amount)->toBe(500.0);
     expect((float) $saleReturn->discount_amount)->toBe(0.0);
     expect((float) $saleReturn->net_amount)->toBe(500.0);
+});
+
+test('sale return reverses customer coin balance proportionally', function () {
+    $branch = Branch::factory()->create();
+    $user = saleReturnUser();
+    $user->update(['branch_id' => $branch->id]);
+    seedAccountingAccounts(user: $user, branchId: $branch->id);
+    ['product' => $product, 'batch' => $batch] = saleReturnProduct(10, $branch->id);
+    $customer = Customer::factory()->create([
+        'branch_id' => $branch->id,
+        'point' => 35,
+        'is_default' => false,
+    ]);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'customer_id' => $customer->id,
+        'gross_amount' => 1000,
+        'discount' => 0,
+        'vat' => 0,
+        'paid_amount' => 1000,
+        'coins_redeemed' => 20,
+        'coins_earned' => 5,
+        'coin_discount_amount' => 20,
+        'type' => SaleType::Sale,
+    ]);
+
+    $sellProduct = SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'quantity' => 2,
+        'unit_price' => 500,
+        'original_unit_price' => 500,
+        'discount' => 0,
+        'batches' => [(string) $batch->id => 2],
+    ]);
+
+    $response = $this->actingAs($user)
+        ->post('/inventory/sale-return', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            'paid_amount' => '500',
+            'payment_type' => '5',
+            'items' => [
+                ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
+            ],
+        ]);
+
+    $response->assertRedirect(route('inventory.sale-return.index'));
+
+    $saleReturn = SaleReturn::query()->latest('id')->first();
+
+    $customer->refresh();
+
+    expect((float) $customer->point)->toBe(42.5);
+    expect(CustomerCoinTransaction::query()
+        ->where('sell_id', $sell->id)
+        ->where('meta->sale_return_id', $saleReturn->id)
+        ->count())->toBe(2);
+});
+
+test('deleting a sale return restores customer coin balance', function () {
+    $branch = Branch::factory()->create();
+    $user = saleReturnUser();
+    $user->update(['branch_id' => $branch->id]);
+    seedAccountingAccounts(user: $user, branchId: $branch->id);
+    ['product' => $product, 'batch' => $batch] = saleReturnProduct(10, $branch->id);
+    $customer = Customer::factory()->create([
+        'branch_id' => $branch->id,
+        'point' => 35,
+        'is_default' => false,
+    ]);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'customer_id' => $customer->id,
+        'gross_amount' => 500,
+        'discount' => 0,
+        'vat' => 0,
+        'paid_amount' => 500,
+        'coins_redeemed' => 20,
+        'coins_earned' => 5,
+        'coin_discount_amount' => 20,
+        'type' => SaleType::Sale,
+    ]);
+
+    $sellProduct = SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'quantity' => 1,
+        'unit_price' => 500,
+        'original_unit_price' => 500,
+        'discount' => 0,
+        'batches' => [(string) $batch->id => 1],
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sale-return', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            'paid_amount' => '500',
+            'payment_type' => '5',
+            'items' => [
+                ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
+            ],
+        ])
+        ->assertRedirect(route('inventory.sale-return.index'));
+
+    $saleReturn = SaleReturn::query()->latest('id')->first();
+    $customer->refresh();
+
+    expect((float) $customer->point)->toBe(50.0);
+
+    $this->actingAs($user)
+        ->delete(route('inventory.sale-return.destroy', $saleReturn))
+        ->assertRedirect(route('inventory.sale-return.index'));
+
+    $customer->refresh();
+
+    expect((float) $customer->point)->toBe(35.0);
 });

@@ -12,6 +12,7 @@ use App\Models\Customer;
 use App\Models\Promotion;
 use App\Models\SaleReturn;
 use App\Models\Sell;
+use App\Services\CoinService;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
 use App\Services\InventoryStockService;
@@ -37,6 +38,7 @@ class SaleReturnController extends Controller
         private InventoryCostService $costService,
         private SaleReturnDiscountService $returnDiscounts,
         private PromotionService $promotionService,
+        private CoinService $coinService,
     ) {}
 
     public function index(Request $request): Response
@@ -95,13 +97,15 @@ class SaleReturnController extends Controller
         $branchId = Auth::user()?->branch_id;
 
         try {
-            DB::transaction(function () use ($request, $data, $branchId) {
+            DB::transaction(function () use ($request, $data, &$branchId) {
                 $parent = Sell::query()
                     ->ownBranchUser()
                     ->sale()
                     ->with(['products', 'customer'])
                     ->lockForUpdate()
                     ->findOrFail($data['sell_id']);
+
+                $branchId = $this->resolveSaleReturnBranchId($branchId, $parent);
 
                 if (SaleReturn::where('sell_id', $parent->id)->exists()) {
                     throw ValidationException::withMessages([
@@ -239,6 +243,13 @@ class SaleReturnController extends Controller
                         $netReturnAmount,
                         $paymentType,
                         $paidAmount,
+                    );
+                    $this->syncSaleReturnCustomerCoins(
+                        $parent,
+                        $saleReturn,
+                        $grossAmount,
+                        $returnLineDiscount,
+                        $returnPromotionDiscount,
                     );
                 }
 
@@ -476,7 +487,7 @@ class SaleReturnController extends Controller
         $branchId = Auth::user()?->branch_id;
 
         try {
-            DB::transaction(function () use ($request, $saleReturn, $data, $branchId) {
+            DB::transaction(function () use ($request, $saleReturn, $data, &$branchId) {
                 $this->accounting->reverseFor($saleReturn);
                 $saleReturn->load(['products']);
 
@@ -490,6 +501,8 @@ class SaleReturnController extends Controller
                     ->with(['products', 'customer'])
                     ->lockForUpdate()
                     ->findOrFail($saleReturn->sell_id);
+
+                $branchId = $this->resolveSaleReturnBranchId($branchId, $parent);
 
                 $returnedByLine = $this->returnedQuantities($parent->id, $saleReturn->id);
                 $grossAmount = 0.0;
@@ -618,6 +631,13 @@ class SaleReturnController extends Controller
                         $paymentType,
                         $paidAmount,
                     );
+                    $this->syncSaleReturnCustomerCoins(
+                        $parent,
+                        $saleReturn,
+                        $grossAmount,
+                        $returnLineDiscount,
+                        $returnPromotionDiscount,
+                    );
                 }
 
                 $this->syncSaleReturnPayments($saleReturn, $paymentLines);
@@ -683,7 +703,41 @@ class SaleReturnController extends Controller
 
         if ($saleReturn->customer_id) {
             $this->rollbackSaleReturnCustomerBalance($saleReturn);
+            $this->rollbackSaleReturnCustomerCoins($saleReturn);
         }
+    }
+
+    private function syncSaleReturnCustomerCoins(
+        Sell $parent,
+        SaleReturn $saleReturn,
+        float $returnGross,
+        float $returnLineDiscount,
+        float $returnPromotionDiscount,
+    ): void {
+        $proportion = $this->returnDiscounts->returnProportion(
+            $parent,
+            $returnGross,
+            $returnLineDiscount,
+            $returnPromotionDiscount,
+        );
+
+        $this->coinService->reverseProportionalForSaleReturn($parent, $saleReturn, $proportion);
+    }
+
+    private function rollbackSaleReturnCustomerCoins(SaleReturn $saleReturn): void
+    {
+        $parent = Sell::query()->find($saleReturn->sell_id);
+
+        if ($parent === null) {
+            return;
+        }
+
+        $this->coinService->restoreForSaleReturn($parent, $saleReturn);
+    }
+
+    private function resolveSaleReturnBranchId(?int $branchId, Sell $parent): ?int
+    {
+        return $branchId ?? $parent->branch_id ?? $parent->customer?->branch_id;
     }
 
     private function syncSaleReturnCustomerBalance(

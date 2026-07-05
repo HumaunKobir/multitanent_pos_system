@@ -13,6 +13,24 @@ class SaleReturnDiscountService
         private PromotionService $promotionService,
     ) {}
 
+    public function returnProportion(
+        Sell $parent,
+        float $returnGross,
+        float $returnLineDiscount,
+        float $returnPromotionDiscount,
+    ): float {
+        $parentGross = (float) $parent->gross_amount;
+        $parentLineDiscount = $parent->lineDiscountTotal();
+        $parentNetForProportion = $parentGross - $parentLineDiscount;
+        $taxableBase = round(max(0, $returnGross - $returnLineDiscount - $returnPromotionDiscount), 2);
+
+        if ($parentNetForProportion <= 0) {
+            return 0.0;
+        }
+
+        return min(1.0, round($taxableBase / $parentNetForProportion, 4));
+    }
+
     public function promotionClawback(SellProduct $line, float $returnQty, Sell $parent): float
     {
         $soldQty = (float) $line->quantity;

@@ -7,6 +7,7 @@ use App\Models\CoinSettings;
 use App\Models\Customer;
 use App\Models\CustomerCoinTransaction;
 use App\Models\ProductExchange;
+use App\Models\SaleReturn;
 use App\Models\Sell;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -215,6 +216,133 @@ class CoinService
         $customer->update(['point' => $balance]);
     }
 
+    public function reverseProportionalForSaleReturn(Sell $sell, SaleReturn $saleReturn, float $proportion): void
+    {
+        if ($sell->customer_id === null || $proportion <= 0) {
+            return;
+        }
+
+        $proportion = min(1.0, max(0.0, $proportion));
+        $coinsRedeemed = round((float) $sell->coins_redeemed * $proportion, 2);
+        $coinsEarned = round((float) $sell->coins_earned * $proportion, 2);
+
+        if ($coinsRedeemed <= 0 && $coinsEarned <= 0) {
+            return;
+        }
+
+        $customer = Customer::query()->lockForUpdate()->find($sell->customer_id);
+
+        if ($customer === null || $customer->is_default) {
+            return;
+        }
+
+        $branchId = $sell->branch_id ?? $saleReturn->branch_id ?? $customer->branch_id;
+
+        if ($branchId === null) {
+            return;
+        }
+
+        $balance = (float) $customer->point;
+
+        if ($coinsRedeemed > 0) {
+            $balance = round($balance + $coinsRedeemed, 2);
+
+            CustomerCoinTransaction::create([
+                'customer_id' => $customer->id,
+                'branch_id' => $branchId,
+                'sell_id' => $sell->id,
+                'type' => CoinTransactionType::ReverseRedeem,
+                'coins' => $coinsRedeemed,
+                'balance_after' => $balance,
+                'meta' => [
+                    'sale_return_id' => $saleReturn->id,
+                    'source' => 'sale_return',
+                ],
+            ]);
+        }
+
+        if ($coinsEarned > 0) {
+            $balance = round($balance - $coinsEarned, 2);
+
+            CustomerCoinTransaction::create([
+                'customer_id' => $customer->id,
+                'branch_id' => $branchId,
+                'sell_id' => $sell->id,
+                'type' => CoinTransactionType::ReverseEarn,
+                'coins' => -$coinsEarned,
+                'balance_after' => $balance,
+                'meta' => [
+                    'sale_return_id' => $saleReturn->id,
+                    'source' => 'sale_return',
+                ],
+            ]);
+        }
+
+        $customer->update(['point' => max(0, $balance)]);
+    }
+
+    public function restoreForSaleReturn(Sell $sell, SaleReturn $saleReturn): void
+    {
+        if ($sell->customer_id === null) {
+            return;
+        }
+
+        $reversedTransactionIds = $this->reversedSaleReturnTransactionIds($sell, $saleReturn);
+
+        $transactions = CustomerCoinTransaction::query()
+            ->where('sell_id', $sell->id)
+            ->whereIn('type', [CoinTransactionType::ReverseRedeem, CoinTransactionType::ReverseEarn])
+            ->where('meta->sale_return_id', $saleReturn->id)
+            ->when(
+                $reversedTransactionIds !== [],
+                fn ($query) => $query->whereNotIn('id', $reversedTransactionIds),
+            )
+            ->orderBy('id')
+            ->get();
+
+        if ($transactions->isEmpty()) {
+            return;
+        }
+
+        $customerId = $transactions->first()->customer_id ?? $sell->customer_id;
+        $customer = Customer::query()->lockForUpdate()->find($customerId);
+
+        if ($customer === null) {
+            return;
+        }
+
+        $balance = (float) $customer->point;
+
+        foreach ($transactions as $transaction) {
+            $balance = round($balance - (float) $transaction->coins, 2);
+
+            $restoreType = $transaction->type === CoinTransactionType::ReverseRedeem
+                ? CoinTransactionType::Redeem
+                : CoinTransactionType::Earn;
+
+            $branchId = $transaction->branch_id ?? $sell->branch_id ?? $saleReturn->branch_id ?? $customer->branch_id;
+
+            if ($branchId === null) {
+                continue;
+            }
+
+            CustomerCoinTransaction::create([
+                'customer_id' => $customer->id,
+                'branch_id' => $branchId,
+                'sell_id' => $sell->id,
+                'type' => $restoreType,
+                'coins' => -(float) $transaction->coins,
+                'balance_after' => $balance,
+                'meta' => [
+                    'reversed_transaction_id' => $transaction->id,
+                    'source' => 'sale_return_rollback',
+                ],
+            ]);
+        }
+
+        $customer->update(['point' => max(0, $balance)]);
+    }
+
     public function reverseForSell(Sell $sell): void
     {
         if ($sell->customer_id === null) {
@@ -344,6 +472,22 @@ class CoinService
         }
 
         $customer->update(['point' => max(0, $balance)]);
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function reversedSaleReturnTransactionIds(Sell $sell, SaleReturn $saleReturn): array
+    {
+        return CustomerCoinTransaction::query()
+            ->where('sell_id', $sell->id)
+            ->whereIn('type', [CoinTransactionType::Redeem, CoinTransactionType::Earn])
+            ->where('meta->source', 'sale_return_rollback')
+            ->get()
+            ->map(fn (CustomerCoinTransaction $transaction): ?int => $transaction->meta['reversed_transaction_id'] ?? null)
+            ->filter()
+            ->values()
+            ->all();
     }
 
     /**

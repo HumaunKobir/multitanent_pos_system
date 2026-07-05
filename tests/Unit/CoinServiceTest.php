@@ -4,7 +4,9 @@ use App\Models\Branch;
 use App\Models\CoinSettings;
 use App\Models\Customer;
 use App\Models\CustomerCoinTransaction;
+use App\Models\SaleReturn;
 use App\Models\Sell;
+use App\Models\User;
 use App\Services\CoinService;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
@@ -146,4 +148,73 @@ test('reverse for sell restores balance from sell snapshot when ledger rows are 
 
     expect((float) $customer->point)->toBe(64.0);
     expect(CustomerCoinTransaction::query()->where('sell_id', $sell->id)->count())->toBe(2);
+});
+
+test('reverse proportional for sale return adjusts customer balance', function () {
+    $branch = Branch::factory()->create();
+    $customer = Customer::factory()->create([
+        'branch_id' => $branch->id,
+        'point' => 35,
+        'is_default' => false,
+    ]);
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'customer_id' => $customer->id,
+        'coins_redeemed' => 20,
+        'coins_earned' => 5,
+        'coin_discount_amount' => 20,
+    ]);
+    $saleReturn = SaleReturn::query()->create([
+        'branch_id' => $branch->id,
+        'user_id' => User::factory()->create(['branch_id' => $branch->id])->id,
+        'sell_id' => $sell->id,
+        'customer_id' => $customer->id,
+        'date' => now(),
+        'gross_amount' => 500,
+        'vat_amount' => 0,
+        'discount_amount' => 0,
+        'paid_amount' => 500,
+        'payment_type' => 5,
+    ]);
+
+    $this->coinService->reverseProportionalForSaleReturn($sell, $saleReturn, 0.5);
+
+    $customer->refresh();
+
+    expect((float) $customer->point)->toBe(42.5);
+});
+
+test('restore for sale return rolls back proportional coin reversal', function () {
+    $branch = Branch::factory()->create();
+    $customer = Customer::factory()->create([
+        'branch_id' => $branch->id,
+        'point' => 35,
+        'is_default' => false,
+    ]);
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'customer_id' => $customer->id,
+        'coins_redeemed' => 20,
+        'coins_earned' => 5,
+        'coin_discount_amount' => 20,
+    ]);
+    $saleReturn = SaleReturn::query()->create([
+        'branch_id' => $branch->id,
+        'user_id' => User::factory()->create(['branch_id' => $branch->id])->id,
+        'sell_id' => $sell->id,
+        'customer_id' => $customer->id,
+        'date' => now(),
+        'gross_amount' => 500,
+        'vat_amount' => 0,
+        'discount_amount' => 0,
+        'paid_amount' => 500,
+        'payment_type' => 5,
+    ]);
+
+    $this->coinService->reverseProportionalForSaleReturn($sell, $saleReturn, 1.0);
+    $this->coinService->restoreForSaleReturn($sell, $saleReturn);
+
+    $customer->refresh();
+
+    expect((float) $customer->point)->toBe(35.0);
 });

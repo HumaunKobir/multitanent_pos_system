@@ -36,6 +36,9 @@ class Product extends Model
         'purchase_price',
         'sale_price',
         'discount_price',
+        'initial_stock_supplier_id',
+        'initial_stock_paid_amount',
+        'initial_stock_payment_account_id',
         'tags',
         'image',
         'youtube_link',
@@ -53,6 +56,7 @@ class Product extends Model
         'purchase_price' => 'decimal:2',
         'sale_price' => 'decimal:2',
         'discount_price' => 'decimal:2',
+        'initial_stock_paid_amount' => 'decimal:2',
     ];
 
     public function getRouteKeyName(): string
@@ -244,6 +248,16 @@ class Product extends Model
     public function initialStockRecord(): HasOne
     {
         return $this->hasOne(ProductInitialStock::class)->whereNull('product_variation_id');
+    }
+
+    public function initialStockSupplier(): BelongsTo
+    {
+        return $this->belongsTo(Supplier::class, 'initial_stock_supplier_id');
+    }
+
+    public function initialStockPaymentAccount(): BelongsTo
+    {
+        return $this->belongsTo(ChartOfAccount::class, 'initial_stock_payment_account_id');
     }
 
     public function resolveStockBranchId(?int $actingBranchId = null): int

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Data\InitialStockSettlement;
+use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
 use App\Http\Controllers\Concerns\ScopesProductStockListing;
 use App\Models\Barcode;
 use App\Models\Branch;
@@ -12,6 +14,7 @@ use App\Models\Product;
 use App\Models\ProductPhoto;
 use App\Models\ProductVariation;
 use App\Models\Size;
+use App\Models\Supplier;
 use App\Models\Tag;
 use App\Models\Unit;
 use App\Models\Warranty;
@@ -27,11 +30,13 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Unique;
+use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class ProductController extends Controller
 {
+    use ProvidesPaymentAccounts;
     use ScopesProductStockListing;
 
     public function __construct(
@@ -180,6 +185,9 @@ class ProductController extends Controller
             'sale_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric'],
             'initial_stock' => ['nullable', 'integer', 'min:0'],
+            'initial_stock_supplier_id' => ['nullable', 'integer', Rule::exists('suppliers', 'id')],
+            'initial_stock_paid_amount' => ['nullable', 'numeric', 'min:0'],
+            'initial_stock_payment_account_id' => ['nullable', 'integer', Rule::exists('chart_of_accounts', 'id')],
             'tags' => ['nullable', 'array'],
             'visible' => ['nullable', 'in:yes,no'],
             'status' => ['nullable', 'in:0,1'],
@@ -222,6 +230,26 @@ class ProductController extends Controller
         $mainInitialStock = (int) ($data['initial_stock'] ?? 0);
         unset($data['initial_stock']);
 
+        $settlement = InitialStockSettlement::fromRequest($data);
+        unset(
+            $data['initial_stock_supplier_id'],
+            $data['initial_stock_paid_amount'],
+            $data['initial_stock_payment_account_id'],
+        );
+
+        $initialStockValue = $this->initialStock->calculateInitialStockValueFromInput(
+            $hasVariations,
+            $combinations,
+            $mainInitialStock,
+            (float) $mainPurchasePrice,
+        );
+
+        $this->assertInitialStockSettlement(
+            $settlement,
+            $initialStockValue,
+            $this->resolveInitialStockBranchId($data),
+        );
+
         $data['selected_branch_id'] = filled($data['branch_id'] ?? null) ? (int) $data['branch_id'] : null;
 
         // For variation products, don't persist main prices on the product row
@@ -233,7 +261,7 @@ class ProductController extends Controller
             $data['code'] = null;
         }
 
-        DB::transaction(function () use ($request, $data, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock) {
+        DB::transaction(function () use ($request, $data, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock, $settlement, $initialStockValue) {
             if ($request->hasFile('image')) {
                 $data['image'] = $request->file('image')->store('products', 'public');
             }
@@ -258,14 +286,35 @@ class ProductController extends Controller
                 }
             }
 
-            $this->productReplication->createSingle(
+            $this->initialStock->usingSupplierAccounting($settlement->usesSupplier(), function () use (
                 $data,
                 $combinations,
                 $mainPurchasePrice,
                 $mainSalePrice,
                 $mainInitialStock,
                 $photoPaths,
-            );
+                $settlement,
+                $initialStockValue,
+            ) {
+                $products = $this->productReplication->createSingle(
+                    $data,
+                    $combinations,
+                    $mainPurchasePrice,
+                    $mainSalePrice,
+                    $mainInitialStock,
+                    $photoPaths,
+                );
+
+                if ($initialStockValue > 0 && $settlement->usesSupplier()) {
+                    foreach ($products as $product) {
+                        $this->initialStock->finalizeSettlement(
+                            $product->fresh(),
+                            $settlement,
+                            0.0,
+                        );
+                    }
+                }
+            });
         });
 
         return redirect()->route('product.index')
@@ -293,10 +342,13 @@ class ProductController extends Controller
     {
         $this->authorize('product.update');
 
-        $product->load('photos', 'variations', 'initialStockRecord', 'category', 'brand', 'unit', 'warranty');
+        $product->load('photos', 'variations', 'initialStockRecord', 'initialStockSupplier', 'initialStockPaymentAccount', 'category', 'brand', 'unit', 'warranty');
+
+        $paymentAccounts = $this->paymentAccountsForBranch((int) $product->branch_id);
 
         return Inertia::render('admin/product/edit', [
-            ...$this->formData(),
+            ...$this->formData((int) $product->branch_id),
+            'paymentAccounts' => $paymentAccounts,
             'product' => $product,
             'formBranchId' => $this->productReplication->resolveFormBranchSelection($product),
             'variantsLocked' => $this->variantsAreLocked($product),
@@ -360,6 +412,9 @@ class ProductController extends Controller
             'sale_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric'],
             'initial_stock' => ['nullable', 'integer', 'min:0'],
+            'initial_stock_supplier_id' => ['nullable', 'integer', Rule::exists('suppliers', 'id')],
+            'initial_stock_paid_amount' => ['nullable', 'numeric', 'min:0'],
+            'initial_stock_payment_account_id' => ['nullable', 'integer', Rule::exists('chart_of_accounts', 'id')],
             'tags' => ['nullable', 'array'],
             'visible' => ['nullable', 'in:yes,no'],
             'status' => ['nullable', 'in:0,1'],
@@ -403,6 +458,35 @@ class ProductController extends Controller
         $mainInitialStock = (int) ($data['initial_stock'] ?? 0);
         unset($data['initial_stock']);
 
+        $settlement = InitialStockSettlement::fromRequest($data);
+        unset(
+            $data['initial_stock_supplier_id'],
+            $data['initial_stock_paid_amount'],
+            $data['initial_stock_payment_account_id'],
+        );
+
+        $previousSettlement = InitialStockSettlement::fromRequest([
+            'initial_stock_supplier_id' => $product->initial_stock_supplier_id,
+            'initial_stock_paid_amount' => $product->initial_stock_paid_amount,
+            'initial_stock_payment_account_id' => $product->initial_stock_payment_account_id,
+        ]);
+
+        $initialStockValue = $this->initialStock->calculateInitialStockValueFromInput(
+            $hasVariations,
+            $combinations,
+            $mainInitialStock,
+            (float) $mainPurchasePrice,
+        );
+
+        $this->assertInitialStockSettlement(
+            $settlement,
+            $initialStockValue,
+            $this->resolveInitialStockBranchId($data, $product),
+        );
+
+        $previousTotalAmount = $this->initialStock->calculateProductInitialStockValue($product);
+        $useSupplierAccounting = $settlement->usesSupplier() || $previousSettlement->usesSupplier();
+
         if ($request->exists('branch_id')) {
             $data['selected_branch_id'] = filled($data['branch_id']) ? (int) $data['branch_id'] : null;
         }
@@ -417,112 +501,150 @@ class ProductController extends Controller
             $data['code'] = $product->code;
         }
 
-        DB::transaction(function () use ($request, $data, $product, $combinations, $hasVariations, $variantsLocked, $mainPurchasePrice, $mainSalePrice, $mainInitialStock) {
-            if ($request->hasFile('image')) {
-                if ($product->image) {
-                    Storage::disk('public')->delete($product->image);
-                }
-                $data['image'] = $request->file('image')->store('products', 'public');
-            } else {
-                unset($data['image']);
-            }
-
-            if ($request->hasFile('chest_size_image')) {
-                if ($product->chest_size_image) {
-                    Storage::disk('public')->delete($product->chest_size_image);
-                }
-                $data['chest_size_image'] = $request->file('chest_size_image')->store('products', 'public');
-            } else {
-                unset($data['chest_size_image']);
-            }
-
-            $data['visible'] = $this->resolveProductVisibility($data, $product);
-            $data['status'] = (int) ($data['status'] ?? 1);
-            $data['discount_price'] = $data['discount_price'] ?? 0;
-
-            $branchSelectionProvided = $request->exists('branch_id');
-            $selectedBranchId = filled($data['branch_id'] ?? null) ? (int) $data['branch_id'] : null;
-            $requestedAllBranches = $branchSelectionProvided && blank($data['branch_id'] ?? null);
-            $previousSelection = $this->productReplication->resolveStoredSelection($product);
-
-            if ($branchSelectionProvided) {
-                $data['selected_branch_id'] = $selectedBranchId;
-            }
-
-            $expandingToAllBranches = $requestedAllBranches
-                && $product->product_group_id === null
-                && $product->branch_id !== null
-                && $previousSelection === null
-                && ! Branch::isMainBranch((int) $product->branch_id);
-            $isBranchSelectionChange = $branchSelectionProvided
-                && ! $requestedAllBranches
-                && $selectedBranchId !== null
-                && $selectedBranchId !== $previousSelection;
-
-            unset($data['branch_id']);
-
-            if (! Branch::isMainBranch((int) $product->branch_id)) {
-                unset($data['selected_branch_id']);
-            }
-
-            $product->update($data);
-
-            if ($branchSelectionProvided && ! Branch::isMainBranch((int) $product->branch_id)) {
-                $this->productReplication->mainSiblingInGroup($product)?->update([
-                    'selected_branch_id' => $selectedBranchId,
-                ]);
-            }
-
-            if ($request->hasFile('photos')) {
-                foreach ($request->file('photos') as $photo) {
-                    $path = $photo->store('products/photos', 'public');
-                    ProductPhoto::create(['product_id' => $product->id, 'image' => $path]);
-                }
-            }
-
-            if ($requestedAllBranches) {
-                $anchorProduct = $this->productReplication->mainSiblingInGroup($product);
-
-                if ($anchorProduct === null && Branch::isMainBranch((int) $product->branch_id)) {
-                    $anchorProduct = $product;
+        DB::transaction(function () use ($request, $data, $product, $combinations, $hasVariations, $variantsLocked, $mainPurchasePrice, $mainSalePrice, $mainInitialStock, $settlement, $previousSettlement, $previousTotalAmount, $useSupplierAccounting) {
+            $this->initialStock->usingSupplierAccounting($useSupplierAccounting, function () use ($request, $data, $product, $combinations, $hasVariations, $variantsLocked, $mainPurchasePrice, $mainSalePrice, $mainInitialStock, $settlement, $previousSettlement, $previousTotalAmount) {
+                if ($request->hasFile('image')) {
+                    if ($product->image) {
+                        Storage::disk('public')->delete($product->image);
+                    }
+                    $data['image'] = $request->file('image')->store('products', 'public');
+                } else {
+                    unset($data['image']);
                 }
 
-                if ($anchorProduct !== null) {
-                    if (! $variantsLocked && $hasVariations) {
-                        $this->syncProductVariations($anchorProduct, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+                if ($request->hasFile('chest_size_image')) {
+                    if ($product->chest_size_image) {
+                        Storage::disk('public')->delete($product->chest_size_image);
+                    }
+                    $data['chest_size_image'] = $request->file('chest_size_image')->store('products', 'public');
+                } else {
+                    unset($data['chest_size_image']);
+                }
+
+                $data['visible'] = $this->resolveProductVisibility($data, $product);
+                $data['status'] = (int) ($data['status'] ?? 1);
+                $data['discount_price'] = $data['discount_price'] ?? 0;
+
+                $branchSelectionProvided = $request->exists('branch_id');
+                $selectedBranchId = filled($data['branch_id'] ?? null) ? (int) $data['branch_id'] : null;
+                $requestedAllBranches = $branchSelectionProvided && blank($data['branch_id'] ?? null);
+                $previousSelection = $this->productReplication->resolveStoredSelection($product);
+
+                if ($branchSelectionProvided) {
+                    $data['selected_branch_id'] = $selectedBranchId;
+                }
+
+                $expandingToAllBranches = $requestedAllBranches
+                    && $product->product_group_id === null
+                    && $product->branch_id !== null
+                    && $previousSelection === null
+                    && ! Branch::isMainBranch((int) $product->branch_id);
+                $isBranchSelectionChange = $branchSelectionProvided
+                    && ! $requestedAllBranches
+                    && $selectedBranchId !== null
+                    && $selectedBranchId !== $previousSelection;
+
+                unset($data['branch_id']);
+
+                if (! Branch::isMainBranch((int) $product->branch_id)) {
+                    unset($data['selected_branch_id']);
+                }
+
+                $product->update($data);
+
+                if ($branchSelectionProvided && ! Branch::isMainBranch((int) $product->branch_id)) {
+                    $this->productReplication->mainSiblingInGroup($product)?->update([
+                        'selected_branch_id' => $selectedBranchId,
+                    ]);
+                }
+
+                if ($request->hasFile('photos')) {
+                    foreach ($request->file('photos') as $photo) {
+                        $path = $photo->store('products/photos', 'public');
+                        ProductPhoto::create(['product_id' => $product->id, 'image' => $path]);
+                    }
+                }
+
+                if ($requestedAllBranches) {
+                    $anchorProduct = $this->productReplication->mainSiblingInGroup($product);
+
+                    if ($anchorProduct === null && Branch::isMainBranch((int) $product->branch_id)) {
+                        $anchorProduct = $product;
                     }
 
-                    $this->productReplication->expandGroupToAllBranches(
-                        $anchorProduct->fresh(),
-                        $data,
-                        $combinations,
-                        (float) $mainPurchasePrice,
-                        (float) $mainSalePrice,
-                        $mainInitialStock,
-                    );
+                    if ($anchorProduct !== null) {
+                        if (! $variantsLocked && $hasVariations) {
+                            $this->syncProductVariations($anchorProduct, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+                        }
 
-                    $this->productReplication->syncGroupCatalog($anchorProduct->fresh(), $data);
-
-                    if (! $variantsLocked && ! $hasVariations) {
-                        $this->initialStock->syncNonVariant(
+                        $this->productReplication->expandGroupToAllBranches(
                             $anchorProduct->fresh(),
-                            $mainInitialStock,
+                            $data,
+                            $combinations,
                             (float) $mainPurchasePrice,
+                            (float) $mainSalePrice,
+                            $mainInitialStock,
                         );
+
+                        $this->productReplication->syncGroupCatalog($anchorProduct->fresh(), $data);
+
+                        if (! $variantsLocked && ! $hasVariations) {
+                            $this->initialStock->syncNonVariant(
+                                $anchorProduct->fresh(),
+                                $mainInitialStock,
+                                (float) $mainPurchasePrice,
+                            );
+                        }
+
+                        $this->syncProductBarcode($anchorProduct->fresh(), $hasVariations);
+
+                        $this->completeInitialStockSettlement($anchorProduct->fresh(), $settlement, $previousTotalAmount, $previousSettlement, $variantsLocked);
+
+                        return;
                     }
 
-                    $this->syncProductBarcode($anchorProduct->fresh(), $hasVariations);
+                    if ($expandingToAllBranches) {
+                        if (! $variantsLocked && $hasVariations) {
+                            $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+                        }
+
+                        $this->productReplication->expandToAllBranches(
+                            $product->fresh(),
+                            $data,
+                            $combinations,
+                            (float) $mainPurchasePrice,
+                            (float) $mainSalePrice,
+                            $mainInitialStock,
+                        );
+
+                        $this->syncProductBarcode($product->fresh(), $hasVariations);
+
+                        $this->completeInitialStockSettlement($product->fresh(), $settlement, $previousTotalAmount, $previousSettlement, $variantsLocked);
+
+                        return;
+                    }
 
                     return;
                 }
 
-                if ($expandingToAllBranches) {
-                    if (! $variantsLocked && $hasVariations) {
+                if (! $variantsLocked) {
+                    if ($hasVariations) {
                         $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+                    } elseif ($product->variations()->exists()) {
+                        $this->clearProductVariations($product);
+                    } else {
+                        $this->initialStock->syncNonVariant(
+                            $product->fresh(),
+                            $mainInitialStock,
+                            (float) $mainPurchasePrice,
+                        );
                     }
+                }
 
-                    $this->productReplication->expandToAllBranches(
+                if ($isBranchSelectionChange) {
+                    $this->productReplication->applyBranchSelectionChange(
                         $product->fresh(),
+                        $selectedBranchId,
                         $data,
                         $combinations,
                         (float) $mainPurchasePrice,
@@ -532,43 +654,15 @@ class ProductController extends Controller
 
                     $this->syncProductBarcode($product->fresh(), $hasVariations);
 
+                    $this->completeInitialStockSettlement($product->fresh(), $settlement, $previousTotalAmount, $previousSettlement, $variantsLocked);
+
                     return;
                 }
 
-                return;
-            }
-
-            if (! $variantsLocked) {
-                if ($hasVariations) {
-                    $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
-                } elseif ($product->variations()->exists()) {
-                    $this->clearProductVariations($product);
-                } else {
-                    $this->initialStock->syncNonVariant(
-                        $product->fresh(),
-                        $mainInitialStock,
-                        (float) $mainPurchasePrice,
-                    );
-                }
-            }
-
-            if ($isBranchSelectionChange) {
-                $this->productReplication->applyBranchSelectionChange(
-                    $product->fresh(),
-                    $selectedBranchId,
-                    $data,
-                    $combinations,
-                    (float) $mainPurchasePrice,
-                    (float) $mainSalePrice,
-                    $mainInitialStock,
-                );
-
                 $this->syncProductBarcode($product->fresh(), $hasVariations);
 
-                return;
-            }
-
-            $this->syncProductBarcode($product->fresh(), $hasVariations);
+                $this->completeInitialStockSettlement($product->fresh(), $settlement, $previousTotalAmount, $previousSettlement, $variantsLocked);
+            });
         });
 
         return redirect()->route('product.index')
@@ -844,10 +938,13 @@ class ProductController extends Controller
     }
 
     /** @return array<string, mixed> */
-    private function formData(): array
+    private function formData(?int $paymentBranchId = null): array
     {
         $defaultCatalogBranchId = Branch::resolveAdminCatalogBranchId();
         $showBranchField = Auth::user()?->usesAdminPanel() ?? false;
+        $resolvedPaymentBranchId = $paymentBranchId
+            ?? Auth::user()?->branch_id
+            ?? $defaultCatalogBranchId;
 
         return [
             'defaultCatalogBranchId' => $defaultCatalogBranchId,
@@ -885,6 +982,73 @@ class ProductController extends Controller
                         : $tag->name,
                 ])
                 ->all(),
+            'suppliers' => Supplier::query()->ownBranch()->orderBy('name')->get(['id', 'name', 'company_name', 'phone']),
+            'paymentAccounts' => $this->paymentAccountsForBranch($resolvedPaymentBranchId),
+            'paymentBranchId' => $resolvedPaymentBranchId,
         ];
+    }
+
+    private function resolveInitialStockBranchId(array $data, ?Product $product = null): int
+    {
+        if ($product !== null) {
+            return (int) $product->branch_id;
+        }
+
+        if (Auth::user()?->branch_id !== null) {
+            return (int) Auth::user()->branch_id;
+        }
+
+        if (filled($data['branch_id'] ?? null)) {
+            return (int) $data['branch_id'];
+        }
+
+        return Branch::resolveAdminCatalogBranchId();
+    }
+
+    private function assertInitialStockSettlement(
+        InitialStockSettlement $settlement,
+        float $initialStockValue,
+        int $branchId,
+    ): void {
+        if ($initialStockValue <= 0) {
+            return;
+        }
+
+        if ($settlement->paidAmount > round($initialStockValue + 0.001, 2)) {
+            throw ValidationException::withMessages([
+                'initial_stock_paid_amount' => 'Paid amount cannot exceed the initial stock value.',
+            ]);
+        }
+
+        if ($settlement->paidAmount > 0 && $settlement->paymentAccountId === null) {
+            throw ValidationException::withMessages([
+                'initial_stock_payment_account_id' => 'Select a payment account when recording a paid amount.',
+            ]);
+        }
+
+        if ($settlement->paidAmount > 0 && ! $this->paymentAccountIsValidForBranch($settlement->paymentAccountId, $branchId)) {
+            throw ValidationException::withMessages([
+                'initial_stock_payment_account_id' => 'The selected payment account is not valid for this product branch.',
+            ]);
+        }
+    }
+
+    private function completeInitialStockSettlement(
+        Product $product,
+        InitialStockSettlement $settlement,
+        float $previousTotalAmount,
+        InitialStockSettlement $previousSettlement,
+        bool $variantsLocked,
+    ): void {
+        if ($variantsLocked) {
+            return;
+        }
+
+        $this->initialStock->finalizeSettlement(
+            $product->fresh(),
+            $settlement,
+            $previousTotalAmount,
+            $previousSettlement,
+        );
     }
 }

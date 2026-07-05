@@ -13,6 +13,7 @@ use App\Models\ProductInitialStock;
 use App\Models\ProductInOutLog;
 use App\Models\ProductVariation;
 use App\Models\Size;
+use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\Unit;
 use App\Models\User;
@@ -600,4 +601,59 @@ test('product store uses per-combination stock when provided for variations', fu
 
     expect($variation)->not->toBeNull()
         ->and($variation->stock)->toBe(7);
+});
+
+test('product store with supplier initial stock posts balanced purchase-style accounting', function () {
+    $admin = productStoreAdmin();
+    $cash = seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    $supplier = Supplier::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+
+    $payload = validProductPayload([
+        'initial_stock' => '20',
+        'purchase_price' => '80',
+        'initial_stock_supplier_id' => (string) $supplier->id,
+        'initial_stock_paid_amount' => '500',
+        'initial_stock_payment_account_id' => (string) $cash->id,
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('product.store'), $payload)
+        ->assertRedirect(route('product.index'));
+
+    $product = Product::query()->where('name', $payload['name'])->first();
+
+    expect($product)->not->toBeNull()
+        ->and($product->initial_stock_supplier_id)->toBe($supplier->id)
+        ->and((float) $product->initial_stock_paid_amount)->toBe(500.0)
+        ->and((float) $supplier->fresh()->balance)->toBe(1100.0);
+
+    $transaction = Transaction::query()
+        ->where('source_type', Product::class)
+        ->where('source_id', $product->id)
+        ->first();
+
+    expect($transaction)->not->toBeNull();
+
+    $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
+
+    expect(round($ledgers->sum('debit'), 2))->toBe(1600.0)
+        ->and(round($ledgers->sum('credit'), 2))->toBe(1600.0);
+});
+
+test('product store rejects initial stock paid amount above stock value', function () {
+    $admin = productStoreAdmin();
+    $cash = seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    $supplier = Supplier::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+
+    $payload = validProductPayload([
+        'initial_stock' => '10',
+        'purchase_price' => '50',
+        'initial_stock_supplier_id' => (string) $supplier->id,
+        'initial_stock_paid_amount' => '600',
+        'initial_stock_payment_account_id' => (string) $cash->id,
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('product.store'), $payload)
+        ->assertSessionHasErrors('initial_stock_paid_amount');
 });

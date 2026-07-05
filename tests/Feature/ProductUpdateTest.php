@@ -6,12 +6,14 @@ use App\Models\Branch;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Color;
+use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\ProductInitialStock;
 use App\Models\ProductVariation;
 use App\Models\Sell;
 use App\Models\SellProduct;
 use App\Models\Size;
+use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\Unit;
 use App\Models\User;
@@ -488,6 +490,167 @@ test('product update syncs non-variant initial stock with accounting', function 
         ->get();
 
     expect($transactions)->toHaveCount(2);
+});
+
+test('product update can add supplier settlement to existing initial stock', function () {
+    $admin = productUpdateAdmin();
+    $cash = seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    $supplier = Supplier::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+
+    $product = Product::factory()->create([
+        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+        'purchase_price' => 100,
+        'sale_price' => 150,
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), productUpdatePayload($product, [
+            'initial_stock' => '10',
+            'purchase_price' => '100',
+        ]))
+        ->assertRedirect(route('product.index'));
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), productUpdatePayload($product, [
+            'initial_stock' => '10',
+            'purchase_price' => '100',
+            'initial_stock_supplier_id' => (string) $supplier->id,
+            'initial_stock_paid_amount' => '400',
+            'initial_stock_payment_account_id' => (string) $cash->id,
+        ]))
+        ->assertRedirect(route('product.index'));
+
+    $product->refresh();
+
+    expect($product->initial_stock_supplier_id)->toBe($supplier->id)
+        ->and((float) $product->initial_stock_paid_amount)->toBe(400.0)
+        ->and((float) $supplier->fresh()->balance)->toBe(600.0);
+
+    $transaction = Transaction::query()
+        ->where('source_type', Product::class)
+        ->where('source_id', $product->id)
+        ->first();
+
+    expect($transaction)->not->toBeNull();
+});
+
+test('adding supplier settlement reverses all opening balance journals without double counting inventory', function () {
+    $admin = productUpdateAdmin();
+    $cash = seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    $supplier = Supplier::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+
+    $product = Product::factory()->create([
+        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+        'purchase_price' => 100,
+        'sale_price' => 150,
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), productUpdatePayload($product, [
+            'initial_stock' => '10',
+            'purchase_price' => '100',
+        ]))
+        ->assertRedirect(route('product.index'));
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), productUpdatePayload($product, [
+            'initial_stock' => '15',
+            'purchase_price' => '100',
+        ]))
+        ->assertRedirect(route('product.index'));
+
+    $record = ProductInitialStock::query()
+        ->where('product_id', $product->id)
+        ->whereNull('product_variation_id')
+        ->first();
+
+    expect(Transaction::query()
+        ->where('source_type', ProductInitialStock::class)
+        ->where('source_id', $record->id)
+        ->count())->toBe(2);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), productUpdatePayload($product, [
+            'initial_stock' => '15',
+            'purchase_price' => '100',
+            'initial_stock_supplier_id' => (string) $supplier->id,
+            'initial_stock_paid_amount' => '500',
+            'initial_stock_payment_account_id' => (string) $cash->id,
+        ]))
+        ->assertRedirect(route('product.index'));
+
+    expect(Transaction::query()
+        ->where('source_type', ProductInitialStock::class)
+        ->where('source_id', $record->id)
+        ->count())->toBe(0);
+
+    $transaction = Transaction::query()
+        ->where('source_type', Product::class)
+        ->where('source_id', $product->id)
+        ->sole();
+
+    $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
+
+    expect(round($ledgers->sum('debit'), 2))->toBe(1500.0)
+        ->and(round($ledgers->sum('credit'), 2))->toBe(1500.0)
+        ->and((float) $supplier->fresh()->balance)->toBe(1000.0);
+});
+
+test('supplier settlement edit replaces prior journal instead of duplicating inventory', function () {
+    $admin = productUpdateAdmin();
+    $cash = seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    $supplier = Supplier::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+
+    $product = Product::factory()->create([
+        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+        'purchase_price' => 100,
+        'sale_price' => 150,
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), productUpdatePayload($product, [
+            'initial_stock' => '10',
+            'purchase_price' => '100',
+            'initial_stock_supplier_id' => (string) $supplier->id,
+            'initial_stock_paid_amount' => '1000',
+            'initial_stock_payment_account_id' => (string) $cash->id,
+        ]))
+        ->assertRedirect(route('product.index'));
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), productUpdatePayload($product, [
+            'initial_stock' => '20',
+            'purchase_price' => '100',
+            'initial_stock_supplier_id' => (string) $supplier->id,
+            'initial_stock_paid_amount' => '1000',
+            'initial_stock_payment_account_id' => (string) $cash->id,
+        ]))
+        ->assertRedirect(route('product.index'));
+
+    $transactions = Transaction::query()
+        ->where('source_type', Product::class)
+        ->where('source_id', $product->id)
+        ->get();
+
+    expect($transactions)->toHaveCount(1);
+
+    $ledgers = Ledger::query()->where('transaction_id', $transactions->first()->id)->get();
+
+    expect(round($ledgers->sum('debit'), 2))->toBe(2000.0)
+        ->and(round($ledgers->sum('credit'), 2))->toBe(2000.0)
+        ->and((float) $supplier->fresh()->balance)->toBe(1000.0);
 });
 
 test('product update applies global initial stock to new variation without stock', function () {

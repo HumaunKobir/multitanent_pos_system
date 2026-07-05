@@ -3,16 +3,15 @@
 namespace App\Services;
 
 use App\Enums\AccountType;
-use App\Enums\CommonStatus;
 use App\Enums\ReceivedPaymentMethod;
 use App\Enums\SystemAccountKey;
-use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Models\Customer;
 use App\Models\CustomerPayment;
 use App\Models\Damage;
 use App\Models\Ledger;
 use App\Models\OnlineOrder;
+use App\Models\Product;
 use App\Models\ProductExchange;
 use App\Models\ProductInitialStock;
 use App\Models\Purchase;
@@ -900,12 +899,82 @@ class InventoryAccountingService
         );
     }
 
+    public function postProductInitialStockSupplierSettlement(
+        Product $product,
+        float $inventoryTotal,
+        float $paidAmount,
+        ?int $paymentAccountId,
+        string $supplierName,
+    ): ?Transaction {
+        if ($inventoryTotal <= 0) {
+            return null;
+        }
+
+        $inventoryTotal = round($inventoryTotal, 2);
+        $paidAmount = round(min(max(0, $paidAmount), $inventoryTotal), 2);
+        $dueAmount = round(max(0, $inventoryTotal - $paidAmount), 2);
+        $branchId = $product->branch_id;
+
+        $lines = [
+            $this->debitLine(SystemAccountKey::ProductInventory, $inventoryTotal, "Initial stock — {$product->name}", $branchId),
+        ];
+
+        if ($paidAmount > 0) {
+            $lines[] = $this->creditPaymentAccount($paymentAccountId, $paidAmount, "Cash paid — Initial stock {$product->name}", $branchId);
+        }
+
+        if ($dueAmount > 0) {
+            $lines[] = $this->creditLine(SystemAccountKey::SupplierPayables, $dueAmount, "Supplier payable — Initial stock {$product->name}, {$supplierName}", $branchId);
+        }
+
+        return $this->postJournal(
+            Product::class,
+            $product->id,
+            now()->format('Y-m-d'),
+            "Product initial stock — {$product->name}",
+            $lines,
+        );
+    }
+
+    public function postProductInitialStockOpeningBalance(
+        Product $product,
+        float $amount,
+    ): ?Transaction {
+        if ($amount <= 0) {
+            return null;
+        }
+
+        $amount = round($amount, 2);
+        $branchId = $product->branch_id;
+
+        $lines = [
+            $this->debitLine(SystemAccountKey::ProductInventory, $amount, "Initial stock — {$product->name}", $branchId),
+            $this->creditLine(SystemAccountKey::OpeningBalanceClearing, $amount, "Opening balance offset — Initial stock {$product->name}", $branchId),
+        ];
+
+        return $this->postJournal(
+            Product::class,
+            $product->id,
+            now()->format('Y-m-d'),
+            "Product initial stock — {$product->name}",
+            $lines,
+        );
+    }
+
     public function reverseFor(Model $source): void
     {
-        $transaction = $this->findTransactionFor($source);
+        $transactionIds = Transaction::query()
+            ->where('source_type', $source::class)
+            ->where('source_id', $source->getKey())
+            ->orderByDesc('id')
+            ->pluck('id');
 
-        if ($transaction !== null) {
-            TransactionService::reverseTransaction($transaction);
+        foreach ($transactionIds as $transactionId) {
+            $transaction = Transaction::query()->find($transactionId);
+
+            if ($transaction !== null) {
+                TransactionService::reverseTransaction($transaction);
+            }
         }
     }
 
@@ -914,6 +983,7 @@ class InventoryAccountingService
         return Transaction::query()
             ->where('source_type', $source::class)
             ->where('source_id', $source->getKey())
+            ->latest('id')
             ->first();
     }
 
@@ -1030,22 +1100,7 @@ class InventoryAccountingService
             throw new \RuntimeException('Payment account is required for cash settlement.');
         }
 
-        $query = ChartOfAccount::query()->whereKey($paymentAccountId);
-
-        if ($branchId !== null) {
-            $cashAndBankId = SystemAccountService::id(SystemAccountKey::CashAndBank, $branchId);
-
-            $query
-                ->where('source_type', Branch::class)
-                ->where('source_id', $branchId)
-                ->where('parent_id', $cashAndBankId)
-                ->where('type', AccountType::Asset)
-                ->where('status', CommonStatus::Active);
-        } else {
-            $query->paymentAccount();
-        }
-
-        $account = $query->first();
+        $account = BranchPaymentAccountService::find($paymentAccountId, $branchId);
 
         if ($account === null) {
             throw new \RuntimeException('Invalid payment account selected.');

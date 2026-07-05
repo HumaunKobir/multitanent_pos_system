@@ -2,15 +2,31 @@
 
 namespace App\Services;
 
+use App\Data\InitialStockSettlement;
 use App\Models\Batch;
 use App\Models\Product;
 use App\Models\ProductInitialStock;
 use App\Models\ProductVariation;
+use App\Models\Supplier;
 use RuntimeException;
 
 class ProductInitialStockService
 {
+    private bool $skipPerRecordAccounting = false;
+
     public function __construct(private InventoryAccountingService $accounting) {}
+
+    public function usingSupplierAccounting(bool $enabled, callable $callback): mixed
+    {
+        $previous = $this->skipPerRecordAccounting;
+        $this->skipPerRecordAccounting = $enabled;
+
+        try {
+            return $callback();
+        } finally {
+            $this->skipPerRecordAccounting = $previous;
+        }
+    }
 
     public function syncNonVariant(Product $product, int $newQuantity, float $unitCost): void
     {
@@ -56,7 +72,7 @@ class ProductInitialStockService
 
         if ($newQuantity === 0) {
             if ($record->exists) {
-                if ($delta !== 0) {
+                if ($delta !== 0 && ! $this->skipPerRecordAccounting) {
                     $this->accounting->postProductInitialStockMovement(
                         $record,
                         round(abs($delta) * $unitCost, 2),
@@ -79,7 +95,7 @@ class ProductInitialStockService
         ]);
         $record->save();
 
-        if ($delta !== 0) {
+        if ($delta !== 0 && ! $this->skipPerRecordAccounting) {
             $this->accounting->postProductInitialStockMovement(
                 $record,
                 round(abs($delta) * $unitCost, 2),
@@ -106,6 +122,10 @@ class ProductInitialStockService
             'unit_cost' => $unitCost,
         ]);
 
+        if ($this->skipPerRecordAccounting) {
+            return;
+        }
+
         $variation->loadMissing('product:id,name');
 
         $this->accounting->postProductInitialStockMovement(
@@ -123,7 +143,7 @@ class ProductInitialStockService
         float $unitCost,
         string $label,
     ): void {
-        if ($delta === 0) {
+        if ($delta === 0 || $this->skipPerRecordAccounting) {
             return;
         }
 
@@ -162,6 +182,166 @@ class ProductInitialStockService
         }
 
         return $mainInitialStock;
+    }
+
+    public function calculateProductInitialStockValue(Product $product): float
+    {
+        $product->loadMissing([
+            'initialStockRecord:id,product_id,quantity,unit_cost',
+            'variations:id,product_id,stock,purchase_price',
+        ]);
+
+        if ($product->variations->isNotEmpty()) {
+            return round($product->variations->sum(function (ProductVariation $variation): float {
+                return max(0, (int) $variation->stock) * (float) $variation->purchase_price;
+            }), 2);
+        }
+
+        $record = $product->initialStockRecord;
+
+        if ($record === null) {
+            return 0.0;
+        }
+
+        return round(max(0, (int) $record->quantity) * (float) $record->unit_cost, 2);
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $combinations
+     */
+    public function calculateInitialStockValueFromInput(
+        bool $hasVariations,
+        array $combinations,
+        int $mainInitialStock,
+        float $mainPurchasePrice,
+    ): float {
+        if ($mainInitialStock < 0) {
+            return 0.0;
+        }
+
+        if ($hasVariations) {
+            $total = 0.0;
+
+            foreach ($combinations as $combo) {
+                $stock = $this->resolveComboStock($combo, $mainInitialStock);
+
+                if ($stock <= 0) {
+                    continue;
+                }
+
+                $purchasePrice = (isset($combo['purchase_price']) && (string) $combo['purchase_price'] !== '')
+                    ? (float) $combo['purchase_price']
+                    : $mainPurchasePrice;
+
+                $total += $stock * $purchasePrice;
+            }
+
+            return round($total, 2);
+        }
+
+        if ($mainInitialStock <= 0) {
+            return 0.0;
+        }
+
+        return round($mainInitialStock * $mainPurchasePrice, 2);
+    }
+
+    public function finalizeSettlement(
+        Product $product,
+        InitialStockSettlement $settlement,
+        float $previousTotalAmount,
+        ?InitialStockSettlement $previousSettlement = null,
+    ): void {
+        $previousSettlement ??= InitialStockSettlement::fromRequest([
+            'initial_stock_supplier_id' => $product->initial_stock_supplier_id,
+            'initial_stock_paid_amount' => $product->initial_stock_paid_amount,
+            'initial_stock_payment_account_id' => $product->initial_stock_payment_account_id,
+        ]);
+
+        $newTotalAmount = $this->calculateProductInitialStockValue($product);
+
+        if ($previousSettlement->usesSupplier()) {
+            $previousDue = round(max(0, $previousTotalAmount - $previousSettlement->paidAmount), 2);
+
+            if ($previousDue > 0) {
+                Supplier::query()
+                    ->whereKey($previousSettlement->supplierId)
+                    ->decrement('balance', $previousDue);
+            }
+
+            $this->accounting->reverseFor($product);
+        }
+
+        if ($settlement->usesSupplier() && $newTotalAmount > 0) {
+            if (! $previousSettlement->usesSupplier()) {
+                $this->reverseAllInitialStockRecordJournals($product);
+            }
+
+            $paidAmount = round(min($settlement->paidAmount, $newTotalAmount), 2);
+            $dueAmount = round(max(0, $newTotalAmount - $paidAmount), 2);
+
+            $product->update([
+                'initial_stock_supplier_id' => $settlement->supplierId,
+                'initial_stock_paid_amount' => $paidAmount,
+                'initial_stock_payment_account_id' => $paidAmount > 0 ? $settlement->paymentAccountId : null,
+            ]);
+
+            if ($dueAmount > 0) {
+                Supplier::query()
+                    ->whereKey($settlement->supplierId)
+                    ->increment('balance', $dueAmount);
+            }
+
+            $product->loadMissing('initialStockSupplier:id,name');
+            $supplierName = $product->initialStockSupplier?->name ?? 'Supplier';
+
+            $this->accounting->postProductInitialStockSupplierSettlement(
+                $product,
+                $newTotalAmount,
+                $paidAmount,
+                $settlement->paymentAccountId,
+                $supplierName,
+            );
+
+            return;
+        }
+
+        $this->clearSettlementFields($product);
+
+        if ($previousSettlement->usesSupplier() && $newTotalAmount > 0) {
+            $this->accounting->postProductInitialStockOpeningBalance($product, $newTotalAmount);
+        }
+    }
+
+    public function clearSettlementFields(Product $product): void
+    {
+        if (
+            $product->initial_stock_supplier_id === null
+            && (float) $product->initial_stock_paid_amount === 0.0
+            && $product->initial_stock_payment_account_id === null
+        ) {
+            return;
+        }
+
+        $product->update([
+            'initial_stock_supplier_id' => null,
+            'initial_stock_paid_amount' => 0,
+            'initial_stock_payment_account_id' => null,
+        ]);
+    }
+
+    private function reverseAllInitialStockRecordJournals(Product $product): void
+    {
+        ProductInitialStock::query()
+            ->where('product_id', $product->id)
+            ->pluck('id')
+            ->each(function (int $recordId): void {
+                $record = ProductInitialStock::query()->find($recordId);
+
+                if ($record !== null) {
+                    $this->accounting->reverseFor($record);
+                }
+            });
     }
 
     private function variationLabel(ProductVariation $variation): string

@@ -70,6 +70,8 @@ export default function ProductEdit({
     colorOptions = [],
     sizeOptions = [],
     tagOptions = [],
+    suppliers = [],
+    paymentAccounts = [],
     ecommerceBranchId = null,
     defaultCatalogBranchId = null,
     showBranchField = false,
@@ -93,6 +95,11 @@ export default function ProductEdit({
         sale_price: sharedCombinationPrices?.sale_price ?? product.sale_price ?? '',
         discount_price: product.discount_price ?? '',
         initial_stock: product.initial_stock_record?.quantity != null ? String(product.initial_stock_record.quantity) : '',
+        initial_stock_supplier_id: product.initial_stock_supplier_id ? String(product.initial_stock_supplier_id) : '',
+        initial_stock_paid_amount: product.initial_stock_paid_amount != null && Number(product.initial_stock_paid_amount) > 0
+            ? String(product.initial_stock_paid_amount)
+            : '',
+        initial_stock_payment_account_id: product.initial_stock_payment_account_id ? String(product.initial_stock_payment_account_id) : '',
         tags: product.tags ?? [],
         visible: product.visible ?? 'yes',
         status: String(product.status ?? '1'),
@@ -158,6 +165,8 @@ export default function ProductEdit({
                             colorOptions={colorOptions}
                             sizeOptions={sizeOptions}
                             tagOptions={tagOptions}
+                            suppliers={suppliers}
+                            paymentAccounts={paymentAccounts}
                             ecommerceBranchId={ecommerceBranchId}
                             defaultCatalogBranchId={defaultCatalogBranchId}
                             showBranchField={showBranchField}

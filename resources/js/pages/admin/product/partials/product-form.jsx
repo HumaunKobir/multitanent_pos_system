@@ -18,6 +18,24 @@ import {
     getSharedCombinationPrices,
     someCombinationsMissingPrices,
 } from '@/lib/variation-utils';
+import { calculateInitialStockTotal } from '@/lib/initial-stock-settlement';
+
+function mapSupplierOptions(suppliers = []) {
+    return suppliers.map((supplier) => ({
+        value: String(supplier.id),
+        label: supplier.company_name
+            ? `${supplier.company_name} · ${supplier.name} · ${supplier.phone ?? ''}`
+            : `${supplier.name}${supplier.phone ? ` · ${supplier.phone}` : ''}`,
+    }));
+}
+
+function resolveDefaultPaymentAccountId(paymentAccountOptions = [], currentValue = '') {
+    if (currentValue) {
+        return String(currentValue);
+    }
+
+    return paymentAccountOptions[0]?.value ?? '';
+}
 
 function getXsrf() {
     return decodeURIComponent(document.cookie.split('; ').find((r) => r.startsWith('XSRF-TOKEN='))?.split('=')[1] ?? '');
@@ -790,6 +808,8 @@ const ProductForm = forwardRef(function ProductForm({
     colorOptions = [],
     sizeOptions = [],
     tagOptions = [],
+    suppliers = [],
+    paymentAccounts = [],
     ecommerceBranchId = null,
     defaultCatalogBranchId = null,
     showBranchField = false,
@@ -849,6 +869,81 @@ const ProductForm = forwardRef(function ProductForm({
     const priceFieldsRequired = hasVariations && combinations.length > 0 && (someCombosMissingPrices || !allCombosHavePrices);
     const stockFieldsDisabled = allCombosHaveStock;
     const showInitialStockField = !hasVariations || hasVariations;
+
+    const initialStockTotal = useMemo(
+        () => calculateInitialStockTotal({
+            hasVariations,
+            combinations,
+            mainInitialStock: form.data.initial_stock,
+            mainPurchasePrice: form.data.purchase_price,
+        }),
+        [hasVariations, combinations, form.data.initial_stock, form.data.purchase_price],
+    );
+
+    const showInitialStockSettlement = initialStockTotal > 0;
+    const initialStockPaidAmount = parseFloat(form.data.initial_stock_paid_amount || 0) || 0;
+    const initialStockDueAmount = Math.max(0, initialStockTotal - initialStockPaidAmount);
+
+    const supplierSelectOptions = useMemo(() => mapSupplierOptions(suppliers), [suppliers]);
+
+    const paymentAccountOptions = useMemo(
+        () => paymentAccounts.map((account) => ({
+            value: String(account.id),
+            label: account.label ?? `${account.code} — ${account.name}`,
+        })),
+        [paymentAccounts],
+    );
+
+    useEffect(() => {
+        if (!form.data.initial_stock_supplier_id || initialStockPaidAmount <= 0) {
+            return;
+        }
+
+        if (form.data.initial_stock_payment_account_id || paymentAccountOptions.length === 0) {
+            return;
+        }
+
+        form.setData(
+            'initial_stock_payment_account_id',
+            resolveDefaultPaymentAccountId(paymentAccountOptions),
+        );
+    }, [
+        form.data.initial_stock_supplier_id,
+        form.data.initial_stock_payment_account_id,
+        initialStockPaidAmount,
+        paymentAccountOptions,
+    ]);
+
+    function handleInitialStockPaidAmountChange(value) {
+        const paidAmount = parseFloat(value || 0) || 0;
+
+        form.setData((data) => ({
+            ...data,
+            initial_stock_paid_amount: value,
+            initial_stock_payment_account_id: paidAmount <= 0
+                ? ''
+                : resolveDefaultPaymentAccountId(paymentAccountOptions, data.initial_stock_payment_account_id),
+        }));
+    }
+
+    useEffect(() => {
+        if (showInitialStockSettlement) {
+            return;
+        }
+
+        if (
+            form.data.initial_stock_supplier_id
+            || form.data.initial_stock_paid_amount
+            || form.data.initial_stock_payment_account_id
+        ) {
+            form.setData((data) => ({
+                ...data,
+                initial_stock_supplier_id: '',
+                initial_stock_paid_amount: '',
+                initial_stock_payment_account_id: '',
+            }));
+        }
+    }, [showInitialStockSettlement]);
 
     const defaultCombinationPrices = useMemo(() => {
         const mainPurchase = String(form.data.purchase_price ?? '').trim();
@@ -969,6 +1064,23 @@ const ProductForm = forwardRef(function ProductForm({
 
                 if (mainPurchase === '' || mainSale === '') {
                     const message = 'Set purchase & sale price in the main fields, or enter a price for each combination.';
+                    toast.error(message);
+                    return { ok: false, error: message };
+                }
+            }
+
+            if (showInitialStockSettlement) {
+                const paidAmount = parseFloat(form.data.initial_stock_paid_amount || 0) || 0;
+
+                if (paidAmount > initialStockTotal + 0.001) {
+                    const message = 'Paid amount cannot exceed the initial stock value.';
+                    toast.error(message);
+                    return { ok: false, error: message };
+                }
+
+                if (paidAmount > 0 && !form.data.initial_stock_payment_account_id) {
+                    const message = 'Select a payment account when recording a paid amount.';
+                    form.setError('initial_stock_payment_account_id', message);
                     toast.error(message);
                     return { ok: false, error: message };
                 }
@@ -1123,6 +1235,94 @@ const ProductForm = forwardRef(function ProductForm({
                                     disabled={stockFieldsDisabled}
                                 />
                             </Field>
+                        )}
+
+                        {showInitialStockSettlement && (
+                            <>
+                                <Field label="Supplier (optional)" error={form.errors.initial_stock_supplier_id}>
+                                    <SmartSelect
+                                        options={supplierSelectOptions}
+                                        value={form.data.initial_stock_supplier_id ? String(form.data.initial_stock_supplier_id) : null}
+                                        onValueChange={(value) => {
+                                            form.setData((data) => {
+                                                const hasSupplier = Boolean(value);
+
+                                                return {
+                                                    ...data,
+                                                    initial_stock_supplier_id: value ?? '',
+                                                    initial_stock_paid_amount: hasSupplier ? data.initial_stock_paid_amount : '',
+                                                    initial_stock_payment_account_id: hasSupplier
+                                                        ? resolveDefaultPaymentAccountId(
+                                                            paymentAccountOptions,
+                                                            parseFloat(data.initial_stock_paid_amount || 0) > 0
+                                                                ? data.initial_stock_payment_account_id
+                                                                : '',
+                                                        )
+                                                        : '',
+                                                };
+                                            });
+                                        }}
+                                        placeholder="No supplier — opening balance"
+                                        triggerClassName="h-8 text-xs"
+                                        optionsClassName="max-h-52"
+                                    />
+                                    <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
+                                        Leave empty to record initial stock against opening balance instead of a supplier payable.
+                                    </p>
+                                </Field>
+
+                                <Field label="Stock Value">
+                                    <div className="flex h-8 items-center rounded-md border border-input bg-muted/20 px-3 text-xs font-medium tabular-nums">
+                                        ৳{initialStockTotal.toFixed(2)}
+                                    </div>
+                                </Field>
+
+                                <Field label="Paid Amount" error={form.errors.initial_stock_paid_amount}>
+                                    <Input
+                                        className="h-8 text-xs"
+                                        type="number"
+                                        min="0"
+                                        step="0.01"
+                                        value={form.data.initial_stock_paid_amount}
+                                        onChange={(e) => handleInitialStockPaidAmountChange(e.target.value)}
+                                        placeholder="0.00"
+                                        disabled={!form.data.initial_stock_supplier_id}
+                                    />
+                                    {!form.data.initial_stock_supplier_id && (
+                                        <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
+                                            Select a supplier to record payment and due.
+                                        </p>
+                                    )}
+                                </Field>
+
+                                {initialStockPaidAmount > 0 && (
+                                    <Field
+                                        label={<>Payment Account <RequiredMark /></>}
+                                        error={form.errors.initial_stock_payment_account_id}
+                                    >
+                                        <SmartSelect
+                                            options={paymentAccountOptions}
+                                            value={form.data.initial_stock_payment_account_id ? String(form.data.initial_stock_payment_account_id) : null}
+                                            onValueChange={(value) => form.setData('initial_stock_payment_account_id', value ?? '')}
+                                            placeholder={paymentAccountOptions.length > 0 ? 'Select cash / bank account' : 'No payment accounts configured'}
+                                            triggerClassName="h-8 text-xs"
+                                            optionsClassName="max-h-52"
+                                            disabled={paymentAccountOptions.length === 0}
+                                        />
+                                        <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
+                                            Required when paid amount is entered — records which cash/bank account was used.
+                                        </p>
+                                    </Field>
+                                )}
+
+                                {form.data.initial_stock_supplier_id && (
+                                    <Field label="Due Amount">
+                                        <div className="flex h-8 items-center rounded-md border border-destructive/30 bg-destructive/5 px-3 text-xs font-semibold text-destructive tabular-nums">
+                                            ৳{initialStockDueAmount.toFixed(2)}
+                                        </div>
+                                    </Field>
+                                )}
+                            </>
                         )}
 
                         <Field label="YouTube Link" error={form.errors.youtube_link}>

@@ -14,6 +14,8 @@ export default function ProductCreate({
     colorOptions = [],
     sizeOptions = [],
     tagOptions = [],
+    suppliers = [],
+    paymentAccounts = [],
     ecommerceBranchId = null,
     defaultCatalogBranchId = null,
     showBranchField = false,
@@ -30,6 +32,9 @@ export default function ProductCreate({
         sale_price: '',
         discount_price: '',
         initial_stock: '',
+        initial_stock_supplier_id: '',
+        initial_stock_paid_amount: '',
+        initial_stock_payment_account_id: '',
         tags: [],
         visible: 'no',
         status: '1',
@@ -93,6 +98,8 @@ export default function ProductCreate({
                         colorOptions={colorOptions}
                         sizeOptions={sizeOptions}
                         tagOptions={tagOptions}
+                        suppliers={suppliers}
+                        paymentAccounts={paymentAccounts}
                         ecommerceBranchId={ecommerceBranchId}
                         defaultCatalogBranchId={defaultCatalogBranchId}
                         showBranchField={showBranchField}

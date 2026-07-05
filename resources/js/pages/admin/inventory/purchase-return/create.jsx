@@ -159,7 +159,7 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
                     <InventoryCard title="Source Purchase" icon={CalendarDays}>
                         <InvoiceLookupField
                             label="Purchase Invoice"
-                            placeholder="INVP00000001 or purchase ID"
+                            placeholder="INVP00000001 or 1"
                             value={invoiceQuery}
                             onChange={setInvoiceQuery}
                             onSearch={lookupPurchase}

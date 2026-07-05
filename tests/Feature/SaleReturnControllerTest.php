@@ -23,6 +23,8 @@ function saleReturnUser(array $permissions = [
 ]): User
 {
     $user = User::factory()->create();
+    $branch = Branch::factory()->create();
+    $user->update(['branch_id' => $branch->id]);
 
     foreach ($permissions as $permission) {
         Permission::findOrCreate($permission, 'web');

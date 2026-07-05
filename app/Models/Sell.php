@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\DiscountType;
 use App\Enums\SaleType;
+use App\Traits\HasBranchInvoiceNumber;
 use App\Traits\HasBranchUser;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -14,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Sell extends Model
 {
-    use HasBranchUser, HasFactory;
+    use HasBranchInvoiceNumber, HasBranchUser, HasFactory;
 
     protected $fillable = [
         'branch_id',
@@ -102,9 +103,14 @@ class Sell extends Model
             - $this->lineDiscountTotal();
     }
 
-    public function getInvoiceNumberAttribute(): string
+    public function shouldAssignInvoiceSequence(): bool
     {
-        return 'INVS'.str_pad((string) $this->id, 8, '0', STR_PAD_LEFT);
+        return $this->type !== SaleType::Paused;
+    }
+
+    public static function invoicePrefix(): string
+    {
+        return 'INVS';
     }
 
     public function customer(): BelongsTo

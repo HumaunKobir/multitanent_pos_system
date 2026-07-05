@@ -63,7 +63,8 @@ class SellController extends Controller
             ->withSum('products as line_discount_total', 'discount')
             ->with('customer:id,name,phone')
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
-                $q->where('id', 'like', "%{$s}%")
+                $q->where('invoice_sequence', 'like', "%{$s}%")
+                    ->orWhere('id', 'like', "%{$s}%")
                     ->orWhereHas('customer', fn ($q) => $q->where('name', 'like', "%{$s}%")->orWhere('phone', 'like', "%{$s}%"));
             }))
             ->latest()
@@ -501,7 +502,7 @@ class SellController extends Controller
                 'payments' => $this->allocations->sellPaymentLinesForEdit($sell),
                 'collection_payments' => $this->allocations->collectionPaymentLinesForSell($sell),
                 'comment' => $sell->comment,
-                'invoice_number' => 'INVS'.str_pad($sell->id, 8, '0', STR_PAD_LEFT),
+                'invoice_number' => $sell->invoice_number,
                 'items' => $items,
             ],
             'paymentAccounts' => $this->paymentAccounts(),

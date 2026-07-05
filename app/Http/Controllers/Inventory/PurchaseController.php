@@ -47,7 +47,8 @@ class PurchaseController extends Controller
             ->purchase()
             ->with('supplier:id,name,company_name,phone')
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
-                $q->where('serial', 'like', "%{$s}%")
+                $q->where('invoice_sequence', 'like', "%{$s}%")
+                    ->orWhere('serial', 'like', "%{$s}%")
                     ->orWhereHas('supplier', fn ($q) => $q
                         ->where('name', 'like', "%{$s}%")
                         ->orWhere('company_name', 'like', "%{$s}%")
@@ -214,7 +215,6 @@ class PurchaseController extends Controller
                     'due_amount' => $dueAmount,
                     'purchase_type' => PurchaseType::Purchase,
                     'comment' => $data['comment'] ?? null,
-                    'serial' => 'INVP'.str_pad(Purchase::max('id') + 1, 8, '0', STR_PAD_LEFT),
                 ]);
 
                 foreach ($purchaseProductsData as $lineItem) {

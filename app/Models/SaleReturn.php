@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\ReceivedPaymentMethod;
+use App\Traits\HasBranchInvoiceNumber;
 use App\Traits\HasBranchUser;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SaleReturn extends Model
 {
-    use HasBranchUser;
+    use HasBranchInvoiceNumber, HasBranchUser;
 
     protected $appends = ['invoice_number', 'net_amount'];
 
@@ -50,9 +51,9 @@ class SaleReturn extends Model
         return round(max(0, (float) $this->gross_amount + (float) $this->vat_amount - (float) $this->discount_amount), 2);
     }
 
-    public function getInvoiceNumberAttribute(): string
+    public static function invoicePrefix(): string
     {
-        return 'INVSR'.str_pad((string) $this->id, 8, '0', STR_PAD_LEFT);
+        return 'INVSR';
     }
 
     public function branch(): BelongsTo

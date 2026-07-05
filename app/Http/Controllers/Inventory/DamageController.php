@@ -31,8 +31,12 @@ class DamageController extends Controller
         $this->authorize('inventory.damage.view');
 
         $damages = Damage::query()->ownBranchUser()
-            ->when($request->search, fn ($q, $s) => $q->where('id', 'like', "%{$s}%")
-                ->orWhere('comment', 'like', "%{$s}%"))
+            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
+                $q->where('invoice_sequence', 'like', "%{$s}%")
+                    ->orWhere('serial', 'like', "%{$s}%")
+                    ->orWhere('id', 'like', "%{$s}%")
+                    ->orWhere('comment', 'like', "%{$s}%");
+            }))
             ->latest()
             ->paginate(20)
             ->withQueryString();
@@ -111,7 +115,6 @@ class DamageController extends Controller
                     'user_id' => $this->currentUserId(),
                     'date' => $data['date'],
                     'comment' => $data['comment'] ?? null,
-                    'serial' => 'INVD'.str_pad((string) (Damage::max('id') + 1), 8, '0', STR_PAD_LEFT),
                 ]);
 
                 foreach ($lines as $line) {
@@ -158,7 +161,7 @@ class DamageController extends Controller
             'today' => now()->format('Y-m-d'),
             'damage' => [
                 'id' => $damage->id,
-                'invoice_number' => $damage->serial ?? ('INVD'.str_pad((string) $damage->id, 8, '0', STR_PAD_LEFT)),
+                'invoice_number' => $damage->invoice_number,
                 'date' => optional($damage->date)->format('Y-m-d'),
                 'comment' => $damage->comment,
                 'items' => $damage->products->map(fn ($line) => [

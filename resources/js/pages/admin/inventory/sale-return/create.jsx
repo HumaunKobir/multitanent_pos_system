@@ -194,7 +194,7 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                     <InventoryCard title="Source Sale" icon={CalendarDays}>
                         <InvoiceLookupField
                             label="Sale Invoice"
-                            placeholder="INVS00000001 or sale ID"
+                            placeholder="INVS00000001 or 1"
                             value={invoiceQuery}
                             onChange={setInvoiceQuery}
                             onSearch={lookupSale}

@@ -32,7 +32,6 @@ class PurchaseReturnFactory extends Factory
             'due_amount' => 0,
             'payment_type' => PurchaseReceivedPayment::Cash,
             'comment' => null,
-            'serial' => 'INVPR'.str_pad((string) (PurchaseReturn::max('id') + 1), 8, '0', STR_PAD_LEFT),
         ];
     }
 

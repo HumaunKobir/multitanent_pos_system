@@ -102,19 +102,15 @@ class PurchaseLookupController extends Controller
 
     private function resolvePurchaseId(string $invoice): ?int
     {
-        if (preg_match('/(\d+)$/', $invoice, $matches)) {
-            $purchase = Purchase::query()->ownBranch()->purchase()->whereKey((int) $matches[1])->first();
-            if ($purchase) {
-                return $purchase->id;
-            }
+        $query = Purchase::query()
+            ->ownBranch()
+            ->purchase()
+            ->forInvoiceSequence($invoice);
+
+        if ($query->count() > 1) {
+            return null;
         }
 
-        if (ctype_digit($invoice)) {
-            $purchase = Purchase::query()->ownBranch()->purchase()->whereKey((int) $invoice)->first();
-
-            return $purchase?->id;
-        }
-
-        return null;
+        return $query->value('id');
     }
 }

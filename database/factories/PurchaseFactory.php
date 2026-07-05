@@ -32,7 +32,6 @@ class PurchaseFactory extends Factory
             'purchase_type' => PurchaseType::Purchase,
             'payment_type' => PurchaseReceivedPayment::Cash,
             'comment' => null,
-            'serial' => 'INVP'.str_pad((string) (Purchase::max('id') + 1), 8, '0', STR_PAD_LEFT),
         ];
     }
 

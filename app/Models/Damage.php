@@ -2,13 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\HasBranchInvoiceNumber;
 use App\Traits\HasBranchUser;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Damage extends Model
 {
-    use HasBranchUser;
+    use HasBranchInvoiceNumber, HasBranchUser;
 
     protected $appends = ['invoice_number'];
 
@@ -24,9 +25,9 @@ class Damage extends Model
         'date' => 'date',
     ];
 
-    public function getInvoiceNumberAttribute(): string
+    public static function invoicePrefix(): string
     {
-        return 'INVD'.str_pad((string) $this->id, 8, '0', STR_PAD_LEFT);
+        return 'INVD';
     }
 
     public function products(): HasMany

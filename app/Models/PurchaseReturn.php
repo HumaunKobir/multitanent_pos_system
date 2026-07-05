@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\PurchaseReceivedPayment;
+use App\Traits\HasBranchInvoiceNumber;
 use App\Traits\HasBranchUser;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -11,8 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PurchaseReturn extends Model
 {
-    use HasBranchUser;
-    use HasFactory;
+    use HasBranchInvoiceNumber, HasBranchUser, HasFactory;
 
     protected $appends = ['invoice_number', 'net_amount', 'vat_percent'];
 
@@ -47,9 +47,9 @@ class PurchaseReturn extends Model
         'payment_type' => PurchaseReceivedPayment::class,
     ];
 
-    public function getInvoiceNumberAttribute(): string
+    public static function invoicePrefix(): string
     {
-        return 'INVPR'.str_pad((string) $this->id, 8, '0', STR_PAD_LEFT);
+        return 'INVPR';
     }
 
     public function getNetAmountAttribute(): float

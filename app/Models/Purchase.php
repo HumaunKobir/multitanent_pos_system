@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\PurchaseReceivedPayment;
 use App\Enums\PurchaseType;
+use App\Traits\HasBranchInvoiceNumber;
 use App\Traits\HasBranchUser;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -14,8 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Purchase extends Model
 {
-    use HasBranchUser;
-    use HasFactory;
+    use HasBranchInvoiceNumber, HasBranchUser, HasFactory;
 
     protected $fillable = [
         'branch_id',
@@ -52,9 +52,9 @@ class Purchase extends Model
         return (float) $this->gross_amount + (float) $this->vat - (float) $this->discount;
     }
 
-    public function getInvoiceNumberAttribute(): string
+    public static function invoicePrefix(): string
     {
-        return 'INVP'.str_pad((string) $this->id, 8, '0', STR_PAD_LEFT);
+        return 'INVP';
     }
 
     public function branch(): HasOne

@@ -39,7 +39,9 @@ class PurchaseReturnController extends Controller
         $returns = PurchaseReturn::query()->ownBranchUser()
             ->with(['supplier:id,name,company_name', 'purchase:id'])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
-                $q->where('id', 'like', "%{$s}%")
+                $q->where('invoice_sequence', 'like', "%{$s}%")
+                    ->orWhere('serial', 'like', "%{$s}%")
+                    ->orWhere('id', 'like', "%{$s}%")
                     ->orWhereHas('supplier', fn ($q) => $q->where('name', 'like', "%{$s}%")
                         ->orWhere('company_name', 'like', "%{$s}%"));
             }))
@@ -161,7 +163,6 @@ class PurchaseReturnController extends Controller
                     'payment_type' => $payment['payment_type'],
                     'payment_account_id' => $payment['payment_account_id'],
                     'comment' => $data['comment'] ?? null,
-                    'serial' => 'INVPR'.str_pad((string) (PurchaseReturn::max('id') + 1), 8, '0', STR_PAD_LEFT),
                 ]);
 
                 foreach ($lines as $line) {

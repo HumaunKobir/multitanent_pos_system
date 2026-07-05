@@ -58,8 +58,6 @@ function purchaseReturnPurchase(User $user, Supplier $supplier, array $amounts):
         ->withAmounts(...$amounts)
         ->create();
 
-    $purchase->update(['serial' => 'INVP'.str_pad((string) $purchase->id, 8, '0', STR_PAD_LEFT)]);
-
     return $purchase;
 }
 

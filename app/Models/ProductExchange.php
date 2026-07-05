@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\DiscountType;
 use App\Enums\ReceivedPaymentMethod;
+use App\Traits\HasBranchInvoiceNumber;
 use App\Traits\HasBranchUser;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProductExchange extends Model
 {
-    use HasBranchUser;
+    use HasBranchInvoiceNumber, HasBranchUser;
 
     protected $appends = ['invoice_number'];
 
@@ -62,9 +63,9 @@ class ProductExchange extends Model
         'payment_type' => ReceivedPaymentMethod::class,
     ];
 
-    public function getInvoiceNumberAttribute(): string
+    public static function invoicePrefix(): string
     {
-        return 'INVX'.str_pad((string) $this->id, 8, '0', STR_PAD_LEFT);
+        return 'INVX';
     }
 
     public function sell(): BelongsTo

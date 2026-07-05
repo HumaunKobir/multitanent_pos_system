@@ -50,7 +50,7 @@ export default function SellIndex({ sells, filters }) {
             header: 'Invoice',
             render: (row) => (
                 <span className="font-mono text-xs font-semibold text-primary">
-                    {'INVS' + String(row.id).padStart(8, '0')}
+                    {row.invoice_number ?? `INVS${String(row.id).padStart(8, '0')}`}
                 </span>
             ),
         },

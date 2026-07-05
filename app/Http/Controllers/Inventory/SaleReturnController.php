@@ -48,7 +48,8 @@ class SaleReturnController extends Controller
         $returns = SaleReturn::query()->ownBranchUser()
             ->with(['customer:id,name', 'sell:id'])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
-                $q->where('id', 'like', "%{$s}%")
+                $q->where('invoice_sequence', 'like', "%{$s}%")
+                    ->orWhere('id', 'like', "%{$s}%")
                     ->orWhereHas('customer', fn ($q) => $q->where('name', 'like', "%{$s}%"));
             }))
             ->latest()

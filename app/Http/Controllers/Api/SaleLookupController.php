@@ -151,19 +151,15 @@ class SaleLookupController extends Controller
 
     private function resolveSaleId(string $invoice): ?int
     {
-        if (preg_match('/(\d+)$/', $invoice, $matches)) {
-            $sell = Sell::query()->ownBranch()->sale()->whereKey((int) $matches[1])->first();
-            if ($sell) {
-                return $sell->id;
-            }
+        $query = Sell::query()
+            ->ownBranch()
+            ->sale()
+            ->forInvoiceSequence($invoice);
+
+        if ($query->count() > 1) {
+            return null;
         }
 
-        if (ctype_digit($invoice)) {
-            $sell = Sell::query()->ownBranch()->sale()->whereKey((int) $invoice)->first();
-
-            return $sell?->id;
-        }
-
-        return null;
+        return $query->value('id');
     }
 }

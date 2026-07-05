@@ -12,8 +12,11 @@ import { Link } from '@inertiajs/react';
 import { AlignLeft, DollarSign, GitBranch, ImagePlus, Images, Info, Plus, Settings, Trash2, X } from 'lucide-react';
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
+    allCombinationsHavePrices,
     buildCombinationsFromVariantRows,
     buildVariationBuilderState,
+    getSharedCombinationPrices,
+    someCombinationsMissingPrices,
 } from '@/lib/variation-utils';
 
 function getXsrf() {
@@ -424,6 +427,7 @@ const VariationBuilder = forwardRef(function VariationBuilder({
     sizeOptions = [],
     initialVariations = [],
     locked = false,
+    defaultCombinationPrices = null,
     onChange,
     onEnabledChange,
     errors = {},
@@ -463,7 +467,11 @@ const VariationBuilder = forwardRef(function VariationBuilder({
     }
 
     function syncCombinationsFromRows(currentRows, existingCombinations = combinationsRef.current) {
-        const { combinations: next, error } = buildCombinationsFromVariantRows(currentRows, existingCombinations);
+        const { combinations: next, error } = buildCombinationsFromVariantRows(
+            currentRows,
+            existingCombinations,
+            defaultCombinationPrices,
+        );
 
         if (error) {
             setBuildError(error);
@@ -828,19 +836,90 @@ const ProductForm = forwardRef(function ProductForm({
     );
 
     const combinations = form.data.combinations || [];
-    const allCombosHavePrices =
-        hasVariations &&
-        combinations.length > 0 &&
-        combinations.every((c) => String(c.sale_price ?? '').trim() !== '' && String(c.purchase_price ?? '').trim() !== '');
+    const sharedComboPrices = useMemo(() => getSharedCombinationPrices(combinations), [combinations]);
+    const allCombosHavePrices = hasVariations && allCombinationsHavePrices(combinations);
+    const someCombosMissingPrices = hasVariations && someCombinationsMissingPrices(combinations);
 
     const allCombosHaveStock =
         hasVariations &&
         combinations.length > 0 &&
         combinations.every((c) => String(c.stock ?? '').trim() !== '');
 
-    const priceFieldsDisabled = allCombosHavePrices;
+    const priceFieldsDisabled = hasVariations && allCombosHavePrices && sharedComboPrices === null;
+    const priceFieldsRequired = hasVariations && combinations.length > 0 && (someCombosMissingPrices || !allCombosHavePrices);
     const stockFieldsDisabled = allCombosHaveStock;
     const showInitialStockField = !hasVariations || hasVariations;
+
+    const defaultCombinationPrices = useMemo(() => {
+        const mainPurchase = String(form.data.purchase_price ?? '').trim();
+        const mainSale = String(form.data.sale_price ?? '').trim();
+
+        if (mainPurchase !== '' || mainSale !== '') {
+            return {
+                purchase_price: mainPurchase,
+                sale_price: mainSale,
+            };
+        }
+
+        return sharedComboPrices;
+    }, [form.data.purchase_price, form.data.sale_price, sharedComboPrices]);
+
+    useEffect(() => {
+        if (!hasVariations || combinations.length === 0 || !sharedComboPrices) {
+            return;
+        }
+
+        const nextPurchase = sharedComboPrices.purchase_price;
+        const nextSale = sharedComboPrices.sale_price;
+
+        if (form.data.purchase_price === nextPurchase && form.data.sale_price === nextSale) {
+            return;
+        }
+
+        form.setData((data) => ({
+            ...data,
+            purchase_price: nextPurchase,
+            sale_price: nextSale,
+        }));
+    }, [hasVariations, combinations, sharedComboPrices]);
+
+    function handleMainPurchasePriceChange(value) {
+        form.setData((data) => {
+            const combos = data.combinations ?? [];
+            const shared = getSharedCombinationPrices(combos);
+
+            return {
+                ...data,
+                purchase_price: value,
+                combinations: hasVariations && combos.length > 0
+                    ? combos.map((combo) => (
+                        shared !== null || String(combo.purchase_price ?? '').trim() === ''
+                            ? { ...combo, purchase_price: value }
+                            : combo
+                    ))
+                    : combos,
+            };
+        });
+    }
+
+    function handleMainSalePriceChange(value) {
+        form.setData((data) => {
+            const combos = data.combinations ?? [];
+            const shared = getSharedCombinationPrices(combos);
+
+            return {
+                ...data,
+                sale_price: value,
+                combinations: hasVariations && combos.length > 0
+                    ? combos.map((combo) => (
+                        shared !== null || String(combo.sale_price ?? '').trim() === ''
+                            ? { ...combo, sale_price: value }
+                            : combo
+                    ))
+                    : combos,
+            };
+        });
+    }
 
     const effectiveBranchId = form.data.branch_id != null && form.data.branch_id !== ''
         ? String(form.data.branch_id)
@@ -877,13 +956,25 @@ const ProductForm = forwardRef(function ProductForm({
 
     useImperativeHandle(ref, () => ({
         validateBeforeSubmit() {
-            const result = variationBuilderRef.current?.validateBeforeSubmit?.() ?? { ok: true };
+            const variationResult = variationBuilderRef.current?.validateBeforeSubmit?.() ?? { ok: true };
 
-            if (!result.ok) {
-                toast.error(result.error ?? 'Complete the variation setup before saving.');
+            if (!variationResult.ok) {
+                toast.error(variationResult.error ?? 'Complete the variation setup before saving.');
+                return variationResult;
             }
 
-            return result;
+            if (hasVariations && combinations.length > 0 && someCombosMissingPrices) {
+                const mainPurchase = String(form.data.purchase_price ?? '').trim();
+                const mainSale = String(form.data.sale_price ?? '').trim();
+
+                if (mainPurchase === '' || mainSale === '') {
+                    const message = 'Set purchase & sale price in the main fields, or enter a price for each combination.';
+                    toast.error(message);
+                    return { ok: false, error: message };
+                }
+            }
+
+            return { ok: true };
         },
     }));
 
@@ -1082,6 +1173,7 @@ const ProductForm = forwardRef(function ProductForm({
                         sizeOptions={branchSizeOptions}
                         initialVariations={initialVariations}
                         locked={variantsLocked}
+                        defaultCombinationPrices={defaultCombinationPrices}
                         onChange={(combos) => form.setData('combinations', combos)}
                         onEnabledChange={handleVariationsToggle}
                         errors={form.errors}
@@ -1091,26 +1183,31 @@ const ProductForm = forwardRef(function ProductForm({
                 {/* Price & Stock */}
                 <Card title="Price & Stock" icon={DollarSign}>
                     <div className="grid grid-cols-3 gap-3">
-                        <Field label="Purchase Price" required={!priceFieldsDisabled} error={form.errors.purchase_price}>
-                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.purchase_price} onChange={(e) => form.setData('purchase_price', e.target.value)} placeholder="0.00" disabled={priceFieldsDisabled} />
+                        <Field label="Purchase Price" required={priceFieldsRequired || (!hasVariations && !priceFieldsDisabled)} error={form.errors.purchase_price}>
+                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.purchase_price} onChange={(e) => handleMainPurchasePriceChange(e.target.value)} placeholder="0.00" disabled={priceFieldsDisabled} />
                         </Field>
 
-                        <Field label="Sale Price" required={!priceFieldsDisabled} error={form.errors.sale_price}>
-                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.sale_price} onChange={(e) => form.setData('sale_price', e.target.value)} placeholder="0.00" disabled={priceFieldsDisabled} />
+                        <Field label="Sale Price" required={priceFieldsRequired || (!hasVariations && !priceFieldsDisabled)} error={form.errors.sale_price}>
+                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.sale_price} onChange={(e) => handleMainSalePriceChange(e.target.value)} placeholder="0.00" disabled={priceFieldsDisabled} />
                         </Field>
 
                         <Field label="Discount Price" error={form.errors.discount_price}>
                             <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.discount_price} onChange={(e) => form.setData('discount_price', e.target.value)} placeholder="0.00" />
                         </Field>
                     </div>
-                    {hasVariations && !allCombosHavePrices && combinations.length > 0 && (
+                    {hasVariations && someCombosMissingPrices && combinations.length > 0 && (
                         <p className="mt-2 text-xs text-amber-600">
-                            Some combinations are missing prices — this purchase &amp; sale price will be applied to those.
+                            Some combinations are missing prices — set purchase &amp; sale price above, or enter a price on each combination row.
                         </p>
                     )}
-                    {allCombosHavePrices && (
+                    {hasVariations && sharedComboPrices && (
                         <p className="mt-2 text-xs text-muted-foreground">
-                            All combinations have their own prices — these fields are not required.
+                            All combinations share the same price — shown above. Change it here to update every combination.
+                        </p>
+                    )}
+                    {priceFieldsDisabled && (
+                        <p className="mt-2 text-xs text-muted-foreground">
+                            Each combination has its own price — use the combination rows below.
                         </p>
                     )}
                     {hasVariations && !allCombosHaveStock && combinations.length > 0 && (

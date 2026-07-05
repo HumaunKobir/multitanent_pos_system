@@ -243,6 +243,65 @@ export function buildVariationDataFromRows(parsedRows, comboValues) {
 const VARIANT_ROW_ORDER = ['Color', 'Size'];
 
 /**
+ * @param {{ sale_price?: string, purchase_price?: string }} combo
+ */
+export function combinationPriceValue(combo, field) {
+    return String(combo[field] ?? '').trim();
+}
+
+/**
+ * @param {Array<{ sale_price?: string, purchase_price?: string }>} combinations
+ */
+export function allCombinationsHavePrices(combinations = []) {
+    return combinations.length > 0
+        && combinations.every(
+            (combo) => combinationPriceValue(combo, 'purchase_price') !== ''
+                && combinationPriceValue(combo, 'sale_price') !== '',
+        );
+}
+
+/**
+ * @param {Array<{ sale_price?: string, purchase_price?: string }>} combinations
+ */
+export function someCombinationsMissingPrices(combinations = []) {
+    return combinations.some(
+        (combo) => combinationPriceValue(combo, 'purchase_price') === ''
+            || combinationPriceValue(combo, 'sale_price') === '',
+    );
+}
+
+/**
+ * @param {Array<{ sale_price?: string, purchase_price?: string }>} combinations
+ * @returns {{ purchase_price: string, sale_price: string } | null}
+ */
+export function getSharedCombinationPrices(combinations = []) {
+    if (!combinations.length) {
+        return null;
+    }
+
+    const purchasePrice = combinationPriceValue(combinations[0], 'purchase_price');
+    const salePrice = combinationPriceValue(combinations[0], 'sale_price');
+
+    if (purchasePrice === '' || salePrice === '') {
+        return null;
+    }
+
+    const allMatch = combinations.every(
+        (combo) => combinationPriceValue(combo, 'purchase_price') === purchasePrice
+            && combinationPriceValue(combo, 'sale_price') === salePrice,
+    );
+
+    if (!allMatch) {
+        return null;
+    }
+
+    return {
+        purchase_price: purchasePrice,
+        sale_price: salePrice,
+    };
+}
+
+/**
  * @param {Array<{ name: string, values: string[] }>} rows
  */
 export function sortParsedVariantRows(rows) {
@@ -271,9 +330,10 @@ export function sortParsedVariantRows(rows) {
  *
  * @param {Array<{ name?: string, values?: string[] }>} rows
  * @param {Array<{ variant?: string, variation_data?: Record<string, string>, sale_price?: string, purchase_price?: string, sku?: string, stock?: string, id?: number }>} existingCombinations
+ * @param {{ purchase_price?: string, sale_price?: string } | null} defaultPrices
  * @returns {{ combinations: typeof existingCombinations, error: string | null }}
  */
-export function buildCombinationsFromVariantRows(rows, existingCombinations = []) {
+export function buildCombinationsFromVariantRows(rows, existingCombinations = [], defaultPrices = null) {
     const namedRows = rows.filter((row) => String(row.name ?? '').trim());
     const missingValues = namedRows.filter((row) => (row.values ?? []).length === 0);
 
@@ -310,8 +370,8 @@ export function buildCombinationsFromVariantRows(rows, existingCombinations = []
             return {
                 variant: variantText,
                 variation_data,
-                sale_price: '',
-                purchase_price: '',
+                sale_price: String(defaultPrices?.sale_price ?? '').trim(),
+                purchase_price: String(defaultPrices?.purchase_price ?? '').trim(),
                 sku: '',
                 stock: '',
             };

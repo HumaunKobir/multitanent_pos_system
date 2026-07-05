@@ -3,6 +3,7 @@ import { ArrowLeft, PackagePlus, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { route } from '@/lib/route';
+import { getSharedCombinationPrices } from '@/lib/variation-utils';
 import ProductForm from './partials/product-form';
 
 function PhotosSection({ product }) {
@@ -77,6 +78,9 @@ export default function ProductEdit({
     variantsLocked = false,
     formBranchId = '',
 }) {
+    const initialCombinations = mapVariationsToCombinations(product.variations);
+    const sharedCombinationPrices = getSharedCombinationPrices(initialCombinations);
+
     const form = useForm({
         branch_id: formBranchId,
         category_id: String(product.category_id ?? ''),
@@ -85,8 +89,8 @@ export default function ProductEdit({
         warranty_id: product.warranty_id ? String(product.warranty_id) : null,
         name: product.name ?? '',
         code: (product.variations?.length ?? 0) > 0 ? '' : (product.code ?? ''),
-        purchase_price: product.purchase_price ?? '',
-        sale_price: product.sale_price ?? '',
+        purchase_price: sharedCombinationPrices?.purchase_price ?? product.purchase_price ?? '',
+        sale_price: sharedCombinationPrices?.sale_price ?? product.sale_price ?? '',
         discount_price: product.discount_price ?? '',
         initial_stock: product.initial_stock_record?.quantity != null ? String(product.initial_stock_record.quantity) : '',
         tags: product.tags ?? [],
@@ -97,7 +101,7 @@ export default function ProductEdit({
         youtube_link: product.youtube_link ?? '',
         image: null,
         photos: [],
-        combinations: mapVariationsToCombinations(product.variations),
+        combinations: initialCombinations,
         color_ids: (product.colors ?? []).map(String),
         size_ids: (product.sizes ?? []).map(String),
         has_variants: (product.variations?.length ?? 0) > 0,

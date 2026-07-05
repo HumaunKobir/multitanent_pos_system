@@ -218,18 +218,20 @@ test('reports navigation includes all report links for superadmin', function () 
 test('branch user daily summary only includes their branch sales', function () {
     $this->artisan('permissions:sync');
 
-    $date = '2026-06-04';
+    $date = sprintf('2099-07-%02d', (hexdec(substr(md5(uniqid('', true)), 0, 4)) % 28) + 1);
     $branchA = Branch::factory()->create();
     $branchB = Branch::factory()->create();
     $userA = reportUser([ReportController::PERMISSION_DAILY_SUMMARY]);
     $userA->update(['branch_id' => $branchA->id]);
+    $grossOwn = 1000 + random_int(1, 99);
+    $grossPeer = 3000 + random_int(1, 99);
 
     Sell::factory()->create([
         'branch_id' => $branchA->id,
         'user_id' => $userA->id,
         'type' => SaleType::Sale,
         'date' => $date,
-        'gross_amount' => 1000,
+        'gross_amount' => $grossOwn,
         'paid_amount' => 200,
     ]);
 
@@ -238,15 +240,17 @@ test('branch user daily summary only includes their branch sales', function () {
         'user_id' => User::factory()->create(['branch_id' => $branchA->id])->id,
         'type' => SaleType::Sale,
         'date' => $date,
-        'gross_amount' => 3000,
+        'gross_amount' => $grossPeer,
         'paid_amount' => 0,
     ]);
+
+    $grossOtherBranch = 5000 + random_int(1, 99);
 
     Sell::factory()->create([
         'branch_id' => $branchB->id,
         'type' => SaleType::Sale,
         'date' => $date,
-        'gross_amount' => 5000,
+        'gross_amount' => $grossOtherBranch,
         'paid_amount' => 0,
     ]);
 
@@ -255,34 +259,37 @@ test('branch user daily summary only includes their branch sales', function () {
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/reports/daily-summary')
-            ->where('summary.sales.count', 1)
-            ->where('summary.sales.gross', 1000)
-            ->where('summary.sales.paid', 200));
+            ->where('summary.sales.gross', $grossOwn + $grossPeer)
+            ->where('summary.sales.paid', 200)
+            ->where('summary.staff_breakdown', []));
 
-    $admin = User::factory()->create(['branch_id' => null]);
+    $admin = reportUser([ReportController::PERMISSION_DAILY_SUMMARY]);
+    $admin->update(['branch_id' => null]);
 
     $this->actingAs($admin)
-        ->get('/report/daily-summary?date='.$date)
+        ->get('/report/daily-summary?date='.$date.'&branch_id='.$branchA->id)
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->where('summary.sales.count', 2)
-            ->where('summary.sales.gross', 6000));
+            ->where('summary.sales.gross', $grossOwn + $grossPeer));
 });
 
 test('branch user daily summary only includes their branch expenses', function () {
     $this->artisan('permissions:sync');
 
-    $date = '2026-06-05';
+    $date = sprintf('2099-08-%02d', (hexdec(substr(md5(uniqid('', true)), 0, 4)) % 28) + 1);
     $branchA = Branch::factory()->create();
     $branchB = Branch::factory()->create();
     $userA = reportUser([ReportController::PERMISSION_DAILY_SUMMARY]);
     $userA->update(['branch_id' => $branchA->id]);
+    $expenseOwn = 300 + random_int(1, 99);
+    $expenseOtherBranch = 1200 + random_int(1, 99);
 
     Voucher::query()->create([
         'type' => VoucherType::Expense,
         'voucher_no' => 'EXP-TEST-'.uniqid(),
         'date' => $date,
-        'total_amount' => 300,
+        'total_amount' => $expenseOwn,
         'branch_id' => $branchA->id,
         'created_by' => $userA->id,
     ]);
@@ -291,7 +298,7 @@ test('branch user daily summary only includes their branch expenses', function (
         'type' => VoucherType::Expense,
         'voucher_no' => 'EXP-TEST-'.uniqid(),
         'date' => $date,
-        'total_amount' => 1200,
+        'total_amount' => $expenseOtherBranch,
         'branch_id' => $branchB->id,
         'created_by' => $userA->id,
     ]);
@@ -302,16 +309,17 @@ test('branch user daily summary only includes their branch expenses', function (
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/reports/daily-summary')
             ->where('summary.expenses.count', 1)
-            ->where('summary.expenses.amount', 300));
+            ->where('summary.expenses.amount', $expenseOwn));
 
-    $admin = User::factory()->create(['branch_id' => null]);
+    $admin = reportUser([ReportController::PERMISSION_DAILY_SUMMARY]);
+    $admin->update(['branch_id' => null]);
 
     $this->actingAs($admin)
         ->get('/report/daily-summary?date='.$date)
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->where('summary.expenses.count', 2)
-            ->where('summary.expenses.amount', 1500));
+            ->where('summary.expenses.amount', $expenseOwn + $expenseOtherBranch));
 });
 
 test('main branch user sees branch and user filters on daily summary', function () {
@@ -383,13 +391,18 @@ test('daily summary includes branch and user wise sales and purchase breakdown',
             ->where('isBranchScoped', false)
             ->has('branches')
             ->has('users')
-            ->where('summary.staff_breakdown', function ($rows) use ($branchA, $staffA, $staffB, $grossA, $grossB, $purchaseA): bool {
+            ->where('summary.staff_breakdown', []));
+
+    $this->actingAs($admin)
+        ->get('/report/daily-summary?date='.$date.'&branch_id='.$branchA->id)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('summary.staff_breakdown', function ($rows) use ($branchA, $staffA, $grossA, $purchaseA): bool {
                 $byUser = collect($rows)->keyBy('user_id');
 
-                return isset($byUser[$staffA->id], $byUser[$staffB->id])
+                return isset($byUser[$staffA->id])
                     && (float) $byUser[$staffA->id]['sales']['gross'] === (float) $grossA
                     && (float) $byUser[$staffA->id]['purchases']['gross'] === (float) $purchaseA
-                    && (float) $byUser[$staffB->id]['sales']['gross'] === (float) $grossB
                     && (int) $byUser[$staffA->id]['branch_id'] === $branchA->id
                     && count($byUser[$staffA->id]['sales_items'] ?? []) === 1
                     && count($byUser[$staffA->id]['purchases_items'] ?? []) === 1
@@ -447,7 +460,7 @@ test('main branch admin can filter daily summary by branch and user', function (
             ->where('summary.staff_breakdown.0.user_id', $staffB->id));
 });
 
-test('branch user daily summary staff breakdown only includes their own sales', function () {
+test('branch user daily summary shows branch totals without user breakdown', function () {
     $this->artisan('permissions:sync');
 
     $date = '2026-06-08';
@@ -481,7 +494,8 @@ test('branch user daily summary staff breakdown only includes their own sales', 
         ->assertInertia(fn (Assert $page) => $page
             ->where('isBranchScoped', true)
             ->where('branches', [])
-            ->where('summary.sales.count', 0)
+            ->where('summary.sales.count', 1)
+            ->where('summary.sales.gross', 1200)
             ->where('summary.staff_breakdown', []));
 
     Sell::factory()->create([
@@ -497,10 +511,9 @@ test('branch user daily summary staff breakdown only includes their own sales', 
         ->get('/report/daily-summary?date='.$date)
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->has('summary.staff_breakdown', 1)
-            ->where('summary.staff_breakdown.0.user_id', $branchUser->id)
-            ->where('summary.staff_breakdown.0.sales.gross', 550)
-            ->where('summary.staff_breakdown.0.sales.count', 1));
+            ->where('summary.sales.count', 2)
+            ->where('summary.sales.gross', 1750)
+            ->where('summary.staff_breakdown', []));
 });
 
 test('branch user daily summary shows all branch supplier payments and customer collections', function () {

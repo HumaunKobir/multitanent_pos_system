@@ -908,8 +908,19 @@ class ReportService
                     ->whereDate('date', $date)
                     ->count(),
             ],
-            'staff_breakdown' => $this->dailyStaffBreakdown($date, $effectiveBranchId, $effectiveUserId),
+            'staff_breakdown' => $this->shouldShowDailyStaffBreakdown($filterBranchId, $filterUserId)
+                ? $this->dailyStaffBreakdown($date, $effectiveBranchId, $effectiveUserId)
+                : [],
         ];
+    }
+
+    private function shouldShowDailyStaffBreakdown(?int $filterBranchId, ?int $filterUserId): bool
+    {
+        if (! $this->canFilterByBranch()) {
+            return false;
+        }
+
+        return $filterBranchId !== null || $filterUserId !== null;
     }
 
     /**
@@ -1728,9 +1739,7 @@ class ReportService
             return $filterUserId;
         }
 
-        $userId = Auth::id();
-
-        return $userId !== null ? (int) $userId : null;
+        return null;
     }
 
     private function branchId(): ?int

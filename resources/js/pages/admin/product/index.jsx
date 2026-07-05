@@ -373,18 +373,20 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                         <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
                             <Trash2 className="size-3.5 text-white" />
                         </div>
-                        <h2 className="text-sm font-semibold text-white">Delete Product</h2>
+                        <h2 className="text-sm font-semibold text-white">Remove Product</h2>
                     </div>
                     <div className="px-5 pb-5 pt-4">
                         <p className="text-sm text-muted-foreground">
-                            Are you sure you want to delete <strong>{deleting?.name}</strong>? All photos and variations will also be deleted.
+                            Are you sure you want to remove <strong>{deleting?.name}</strong>?
+                            {' '}Products with no transaction history are deleted permanently.
+                            {' '}Products linked to purchases, sales, returns, damages, or exchanges are archived instead so history stays intact.
                         </p>
                         <DialogFooter className="mt-4">
                             <DialogClose asChild>
                                 <Button variant="outline">Cancel</Button>
                             </DialogClose>
                             <Button variant="destructive" onClick={handleDelete}>
-                                Delete
+                                Remove
                             </Button>
                         </DialogFooter>
                     </div>

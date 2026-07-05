@@ -4,14 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ScopesProductStockListing;
 use App\Models\Barcode;
-use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Color;
 use App\Models\Product;
-use App\Models\ProductInitialStock;
-use App\Models\ProductInOutLog;
 use App\Models\ProductPhoto;
 use App\Models\ProductVariation;
 use App\Models\Size;
@@ -21,6 +18,7 @@ use App\Models\Warranty;
 use App\Services\BarcodeService;
 use App\Services\EcommerceBranchService;
 use App\Services\ProductBranchReplicationService;
+use App\Services\ProductDeletionService;
 use App\Services\ProductInitialStockService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -38,6 +36,7 @@ class ProductController extends Controller
 
     public function __construct(
         private ProductBranchReplicationService $productReplication,
+        private ProductDeletionService $productDeletion,
         private ProductInitialStockService $initialStock,
         private BarcodeService $barcodes,
     ) {}
@@ -580,40 +579,17 @@ class ProductController extends Controller
     {
         $this->authorize('product.delete');
 
-        if ($product->purchaseProducts()->exists()) {
-            return back()->with('error', 'Cannot delete product with purchase history.');
+        try {
+            $result = $this->productDeletion->delete($product);
+        } catch (\Throwable $e) {
+            return back()->with(
+                'error',
+                $e instanceof \RuntimeException ? $e->getMessage() : 'Unable to remove product.',
+            );
         }
-
-        if ($product->sellProducts()->exists()) {
-            return back()->with('error', 'Cannot delete product with sales history.');
-        }
-
-        DB::transaction(function () use ($product): void {
-            $product->loadMissing('photos');
-
-            ProductInOutLog::query()->where('product_id', $product->id)->delete();
-            ProductInitialStock::query()->where('product_id', $product->id)->delete();
-            Batch::query()->where('product_id', $product->id)->delete();
-            Barcode::query()->where('product_id', $product->id)->delete();
-            ProductVariation::query()->where('product_id', $product->id)->delete();
-
-            foreach ($product->photos as $photo) {
-                Storage::disk('public')->delete($photo->image);
-            }
-
-            if ($product->image) {
-                Storage::disk('public')->delete($product->image);
-            }
-
-            if ($product->chest_size_image) {
-                Storage::disk('public')->delete($product->chest_size_image);
-            }
-
-            $product->delete();
-        });
 
         return redirect()->route('product.index')
-            ->with('success', 'Product deleted successfully.');
+            ->with('success', $result['message']);
     }
 
     private function variantsAreLocked(Product $product): bool

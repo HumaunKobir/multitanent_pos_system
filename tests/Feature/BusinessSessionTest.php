@@ -149,7 +149,7 @@ test('transactions created during active session receive business session id', f
     expect(Transaction::query()->whereKey($transaction->id)->value('business_session_id'))->not->toBeNull();
 });
 
-test('branch cannot start second active session', function () {
+test('user cannot start second active session', function () {
     $branch = Branch::factory()->create();
     $user = businessSessionUser($branch->id);
     grantBusinessSessionPermissions($user);
@@ -159,6 +159,75 @@ test('branch cannot start second active session', function () {
     $this->actingAs($user)
         ->post(route('accounts.daily-sessions.store'))
         ->assertSessionHasErrors();
+});
+
+test('two users in the same branch can each start their own session', function () {
+    $branch = Branch::factory()->create();
+    $userA = businessSessionUser($branch->id);
+    $userB = businessSessionUser($branch->id);
+    grantBusinessSessionPermissions($userA);
+    grantBusinessSessionPermissions($userB);
+
+    app(BusinessSessionService::class)->start($userA, BusinessSessionOpeningMethod::ManualFromPanel);
+    app(BusinessSessionService::class)->start($userB, BusinessSessionOpeningMethod::ManualFromPanel);
+
+    expect(BusinessSession::query()
+        ->where('branch_id', $branch->id)
+        ->whereIn('status', [
+            BusinessSessionStatus::Open,
+            BusinessSessionStatus::Reopened,
+            BusinessSessionStatus::ClosingPending,
+        ])
+        ->count())->toBe(2);
+
+    expect(app(BusinessSessionService::class)->activeSessionForUser($userA))->not->toBeNull()
+        ->and(app(BusinessSessionService::class)->activeSessionForUser($userB))->not->toBeNull()
+        ->and(app(BusinessSessionService::class)->activeSessionForUser($userA)->id)
+        ->not->toBe(app(BusinessSessionService::class)->activeSessionForUser($userB)->id);
+});
+
+test('user only sees their own sessions in history', function () {
+    $branch = Branch::factory()->create();
+    $userA = businessSessionUser($branch->id, [BusinessSessionController::PERMISSION_VIEW]);
+    $userB = businessSessionUser($branch->id);
+
+    BusinessSession::factory()->forBranch($branch)->create([
+        'started_by_user_id' => $userA->id,
+        'session_number' => 'BR-USER-A-'.fake()->unique()->numerify('######'),
+    ]);
+
+    BusinessSession::factory()->forBranch($branch)->create([
+        'started_by_user_id' => $userB->id,
+        'session_number' => 'BR-USER-B-'.fake()->unique()->numerify('######'),
+    ]);
+
+    $userASessionNumber = BusinessSession::query()
+        ->where('started_by_user_id', $userA->id)
+        ->value('session_number');
+
+    $this->actingAs($userA)
+        ->get(route('accounts.daily-sessions.index'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/accounts/daily-sessions/index')
+            ->has('sessions.data', 1)
+            ->where('sessions.data.0.session_number', $userASessionNumber));
+});
+
+test('user cannot access another users session report', function () {
+    $branch = Branch::factory()->create();
+    $userA = businessSessionUser($branch->id, [BusinessSessionController::PERMISSION_VIEW]);
+    $userB = businessSessionUser($branch->id, [BusinessSessionController::PERMISSION_VIEW]);
+
+    $session = BusinessSession::factory()->forBranch($branch)->closed()->create([
+        'started_by_user_id' => $userB->id,
+        'session_number' => 'BR-OTHER-'.fake()->unique()->numerify('######'),
+        'report_snapshot' => ['session' => ['session_number' => 'BR-OTHER-001']],
+    ]);
+
+    $this->actingAs($userA)
+        ->getJson(route('accounts.daily-sessions.report', $session))
+        ->assertForbidden();
 });
 
 test('daily sessions history page requires permission', function () {
@@ -175,7 +244,7 @@ test('authorized user can view daily sessions history', function () {
 
     BusinessSession::factory()->forBranch($branch)->create([
         'started_by_user_id' => $user->id,
-        'session_number' => 'BR-TEST-001',
+        'session_number' => 'BR-TEST-'.fake()->unique()->numerify('######'),
     ]);
 
     $this->actingAs($user)
@@ -303,7 +372,7 @@ test('closing pending session can reopen close modal', function () {
     app(BusinessSessionService::class)->buildClosingPreview($session, $user);
 
     $this->actingAs($user)
-        ->get(route('dashboard'))
+        ->get(route('branch-panel.dashboard'))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->where('businessSession.active', true)

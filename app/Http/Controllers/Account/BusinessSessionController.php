@@ -189,9 +189,7 @@ class BusinessSessionController extends Controller
 
     private function authorizeSessionAccess(Request $request, BusinessSession $session): void
     {
-        $userBranchId = $this->sessions->resolveBranchIdForUser($request->user());
-
-        if ($userBranchId !== $session->branch_id) {
+        if ($session->started_by_user_id !== $request->user()->id) {
             abort(403);
         }
     }

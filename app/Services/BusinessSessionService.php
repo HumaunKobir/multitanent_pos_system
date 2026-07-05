@@ -33,13 +33,8 @@ class BusinessSessionService
             return null;
         }
 
-        return $this->activeSessionForBranch($this->resolveBranchIdForUser($user));
-    }
-
-    public function activeSessionForBranch(?int $branchId): ?BusinessSession
-    {
         return BusinessSession::query()
-            ->where('branch_id', $branchId)
+            ->where('started_by_user_id', $user->id)
             ->whereIn('status', [
                 BusinessSessionStatus::Open,
                 BusinessSessionStatus::Reopened,
@@ -104,9 +99,9 @@ class BusinessSessionService
 
         $branchId = $this->resolveBranchIdForUser($user);
 
-        if ($this->activeSessionForBranch($branchId) !== null) {
+        if ($this->activeSessionForUser($user) !== null) {
             throw ValidationException::withMessages([
-                'session' => 'An active business session already exists for this scope.',
+                'session' => 'An active business session already exists for this user.',
             ]);
         }
 
@@ -116,7 +111,7 @@ class BusinessSessionService
             $totalOpening = round($accounts->sum(fn (ChartOfAccount $account) => (float) $account->current_balance), 2);
 
             $session = BusinessSession::query()->create([
-                'session_number' => $this->generateSessionNumber($branchId),
+                'session_number' => $this->generateSessionNumber($branchId, $user->id),
                 'session_date' => $now->toDateString(),
                 'branch_id' => $branchId,
                 'started_by_user_id' => $user->id,
@@ -244,9 +239,19 @@ class BusinessSessionService
             ]);
         }
 
-        if ($this->activeSessionForBranch($session->branch_id) !== null) {
+        $hasActiveSession = BusinessSession::query()
+            ->where('started_by_user_id', $session->started_by_user_id)
+            ->where('id', '!=', $session->id)
+            ->whereIn('status', [
+                BusinessSessionStatus::Open,
+                BusinessSessionStatus::Reopened,
+                BusinessSessionStatus::ClosingPending,
+            ])
+            ->exists();
+
+        if ($hasActiveSession) {
             throw ValidationException::withMessages([
-                'session' => 'Another active session exists for this branch.',
+                'session' => 'An active business session already exists for this user.',
             ]);
         }
 
@@ -266,13 +271,7 @@ class BusinessSessionService
      */
     public function scopeForUser(Builder $query, User $user): Builder
     {
-        $branchId = $this->resolveBranchIdForUser($user);
-
-        if ($branchId === null) {
-            return $query;
-        }
-
-        return $query->where('branch_id', $branchId);
+        return $query->where('started_by_user_id', $user->id);
     }
 
     private function authorizeStart(User $user): void
@@ -288,7 +287,7 @@ class BusinessSessionService
             abort(403);
         }
 
-        if ($this->resolveBranchIdForUser($user) !== $session->branch_id) {
+        if ($session->started_by_user_id !== $user->id) {
             abort(403);
         }
     }
@@ -309,17 +308,17 @@ class BusinessSessionService
         return $query->orderBy('code')->get();
     }
 
-    private function generateSessionNumber(?int $branchId): string
+    private function generateSessionNumber(?int $branchId, int $userId): string
     {
         $prefix = $branchId === null ? 'HO' : 'BR'.$branchId;
         $datePart = now()->format('Ymd');
 
         $lastNumber = BusinessSession::query()
-            ->where('branch_id', $branchId)
+            ->where('started_by_user_id', $userId)
             ->whereDate('session_date', now()->toDateString())
             ->count();
 
-        return sprintf('%s-%s-%03d', $prefix, $datePart, $lastNumber + 1);
+        return sprintf('%s-U%d-%s-%03d', $prefix, $userId, $datePart, $lastNumber + 1);
     }
 
     /**

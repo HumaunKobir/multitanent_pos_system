@@ -6,6 +6,7 @@ use App\Enums\AccountType;
 use App\Enums\ProductLogType;
 use App\Enums\PurchaseType;
 use App\Enums\SaleType;
+use App\Enums\SystemAccountKey;
 use App\Enums\VoucherType;
 use App\Models\Batch;
 use App\Models\Branch;
@@ -16,7 +17,9 @@ use App\Models\Damage;
 use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\ProductExchange;
+use App\Models\ProductInitialStock;
 use App\Models\ProductInOutLog;
+use App\Models\ProductVariation;
 use App\Models\Promotion;
 use App\Models\Purchase;
 use App\Models\PurchaseReturn;
@@ -24,21 +27,21 @@ use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\SellProduct;
 use App\Models\SpecialDiscount;
-use App\Models\StockDistribution;
-use App\Models\Supplier;
 use App\Models\SupplierPayment;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Voucher;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 
 class ReportService
 {
-    public function __construct(private InventoryCostService $costService) {}
+    public function __construct(
+        private InventoryCostService $costService,
+        private BusinessSessionTransactionScope $transactionScope,
+    ) {}
 
     /**
      * @return array{customer: array<string, mixed>|null, entries: list<array<string, mixed>>, totals: array<string, float>}
@@ -836,6 +839,7 @@ class ReportService
         $purchaseNet = $purchases->sum(fn (Purchase $p) => $p->net_amount);
         $purchasePaid = $purchases->sum(fn (Purchase $p) => (float) $p->paid_amount);
         $expenseVouchers = $vouchers->where('type', VoucherType::Expense);
+        $initialStock = $this->dailyInitialStockSummary($date, $effectiveBranchId, $effectiveUserId);
 
         return [
             'date' => $date,
@@ -885,6 +889,7 @@ class ReportService
                 'count' => $damages->count(),
                 'amount' => round($damages->sum(fn (Damage $damage) => $this->costService->costForDamage($damage)), 2),
             ],
+            'initial_stock' => $initialStock,
             'vouchers' => [
                 'income' => [
                     'count' => $vouchers->where('type', VoucherType::Income)->count(),
@@ -921,6 +926,136 @@ class ReportService
         }
 
         return $filterBranchId !== null || $filterUserId !== null;
+    }
+
+    /**
+     * @return array{count: int, gross: float, paid: float, due: float}
+     */
+    private function dailyInitialStockSummary(string $date, ?int $branchId, ?int $userId): array
+    {
+        $transactions = $this->initialStockTransactionQuery($date, $branchId, $userId)->get();
+
+        if ($transactions->isEmpty()) {
+            return [
+                'count' => 0,
+                'gross' => 0.0,
+                'paid' => 0.0,
+                'due' => 0.0,
+            ];
+        }
+
+        $productIdsWithConsolidatedJournal = $transactions
+            ->where('source_type', Product::class)
+            ->pluck('source_id')
+            ->map(fn ($id) => (int) $id);
+
+        $recordProductMap = ProductInitialStock::query()
+            ->whereIn('id', $transactions
+                ->where('source_type', ProductInitialStock::class)
+                ->pluck('source_id'))
+            ->pluck('product_id', 'id');
+
+        $transactions = $transactions->filter(function (Transaction $transaction) use ($productIdsWithConsolidatedJournal, $recordProductMap): bool {
+            if ($transaction->source_type !== ProductInitialStock::class) {
+                return true;
+            }
+
+            $productId = (int) ($recordProductMap[$transaction->source_id] ?? 0);
+
+            return ! $productIdsWithConsolidatedJournal->contains($productId);
+        })->values();
+
+        if ($transactions->isEmpty()) {
+            return [
+                'count' => 0,
+                'gross' => 0.0,
+                'paid' => 0.0,
+                'due' => 0.0,
+            ];
+        }
+
+        $ledgersByTransaction = Ledger::query()
+            ->whereIn('transaction_id', $transactions->pluck('id'))
+            ->get()
+            ->groupBy('transaction_id');
+
+        $gross = 0.0;
+        $paid = 0.0;
+        $due = 0.0;
+
+        foreach ($transactions as $transaction) {
+            $transactionBranchId = $this->resolveInitialStockTransactionBranchId($transaction);
+            $gross += (float) $transaction->amount;
+
+            foreach ($ledgersByTransaction->get($transaction->id, collect()) as $ledger) {
+                if ((float) $ledger->credit <= 0) {
+                    continue;
+                }
+
+                if (BranchPaymentAccountService::find($ledger->account_id, $transactionBranchId) !== null) {
+                    $paid += (float) $ledger->credit;
+
+                    continue;
+                }
+
+                SystemAccountService::ensureConfigured($transactionBranchId);
+
+                if ($ledger->account_id === SystemAccountService::id(SystemAccountKey::SupplierPayables, $transactionBranchId)) {
+                    $due += (float) $ledger->credit;
+                }
+            }
+        }
+
+        return [
+            'count' => $transactions->count(),
+            'gross' => round($gross, 2),
+            'paid' => round($paid, 2),
+            'due' => round($due, 2),
+        ];
+    }
+
+    /**
+     * @return Builder<Transaction>
+     */
+    private function initialStockTransactionQuery(string $date, ?int $branchId, ?int $userId): Builder
+    {
+        return $this->scopeTransactionForBranch(Transaction::query())
+            ->whereDate('date', $date)
+            ->when($userId !== null, fn (Builder $query) => $query
+                ->where('performed_by_type', User::class)
+                ->where('performed_by_id', $userId))
+            ->where(function (Builder $query) use ($branchId) {
+                $query->where(function (Builder $inner) use ($branchId) {
+                    $inner->where('source_type', Product::class)
+                        ->whereIn(
+                            'source_id',
+                            Product::query()
+                                ->when($branchId !== null, fn (Builder $productQuery) => $productQuery->where('branch_id', $branchId))
+                                ->select('id'),
+                        );
+                })->orWhere(function (Builder $inner) use ($branchId) {
+                    $inner->where('source_type', ProductInitialStock::class)
+                        ->whereIn(
+                            'source_id',
+                            ProductInitialStock::query()
+                                ->when($branchId !== null, fn (Builder $recordQuery) => $recordQuery->where('branch_id', $branchId))
+                                ->select('id'),
+                        );
+                });
+            });
+    }
+
+    private function resolveInitialStockTransactionBranchId(Transaction $transaction): ?int
+    {
+        if ($transaction->source_type === Product::class) {
+            return Product::query()->whereKey($transaction->source_id)->value('branch_id');
+        }
+
+        if ($transaction->source_type === ProductInitialStock::class) {
+            return ProductInitialStock::query()->whereKey($transaction->source_id)->value('branch_id');
+        }
+
+        return $this->branchId();
     }
 
     /**
@@ -1753,39 +1888,7 @@ class ReportService
      */
     private function scopeLedgerForBranch(Builder $query): Builder
     {
-        $branchId = $this->branchId();
-
-        if ($branchId === null) {
-            return $query;
-        }
-
-        return $query->where(function (Builder $q) use ($branchId) {
-            $q->where(function (Builder $inner) use ($branchId) {
-                $inner->where('source_type', Voucher::class)
-                    ->whereIn(
-                        'source_id',
-                        Voucher::query()->where('branch_id', $branchId)->select('id'),
-                    );
-            });
-
-            foreach ($this->branchScopedSourceMap() as $sourceType => $modelClass) {
-                $q->orWhere(function (Builder $inner) use ($branchId, $sourceType, $modelClass) {
-                    $inner->where('source_type', $sourceType)
-                        ->whereIn(
-                            'source_id',
-                            $modelClass::query()->where('branch_id', $branchId)->select('id'),
-                        );
-                });
-            }
-
-            $q->orWhere(function (Builder $inner) use ($branchId) {
-                $inner->where('source_type', StockDistribution::class)
-                    ->whereIn(
-                        'source_id',
-                        StockDistribution::query()->where('to_branch_id', $branchId)->select('id'),
-                    );
-            });
-        });
+        return $this->transactionScope->scopeLedgerForBranch($query, $this->branchId());
     }
 
     /**
@@ -1799,57 +1902,12 @@ class ReportService
             return $query;
         }
 
-        return $query->where(function (Builder $q) use ($branchId) {
-            $q->where(function (Builder $inner) use ($branchId) {
-                $inner->where('source_type', Voucher::class)
-                    ->whereIn(
-                        'source_id',
-                        Voucher::query()->where('branch_id', $branchId)->select('id'),
-                    );
-            });
-
-            foreach ($this->branchScopedSourceMap() as $sourceType => $modelClass) {
-                $q->orWhere(function (Builder $inner) use ($branchId, $sourceType, $modelClass) {
-                    $inner->where('source_type', $sourceType)
-                        ->whereIn(
-                            'source_id',
-                            $modelClass::query()->where('branch_id', $branchId)->select('id'),
-                        );
-                });
-            }
-
-            $q->orWhere(function (Builder $inner) use ($branchId) {
-                $inner->where('source_type', StockDistribution::class)
-                    ->whereIn(
-                        'source_id',
-                        StockDistribution::query()->where('to_branch_id', $branchId)->select('id'),
-                    );
-            });
-        });
-    }
-
-    /**
-     * @return array<class-string, class-string<Model>>
-     */
-    private function branchScopedSourceMap(): array
-    {
-        return [
-            Purchase::class => Purchase::class,
-            Sell::class => Sell::class,
-            SaleReturn::class => SaleReturn::class,
-            Damage::class => Damage::class,
-            StockDistribution::class => StockDistribution::class,
-            SupplierPayment::class => SupplierPayment::class,
-            CustomerPayment::class => CustomerPayment::class,
-            ProductExchange::class => ProductExchange::class,
-            Supplier::class => Supplier::class,
-            Customer::class => Customer::class,
-        ];
+        return $this->transactionScope->scopeForBranch($query, $branchId);
     }
 
     private function stockLedgerLogQuery(?int $branchId, ?int $productId, ?string $dateFrom, ?string $dateTo): Builder
     {
-        $allowedTypes = $this->stockLedgerAllowedTypes();
+        $allowedTypes = $this->stockLedgerAllowedTypes($branchId);
 
         return ProductInOutLog::query()
             ->when($branchId !== null, fn (Builder $q) => $this->scopeProductInOutLogForBranch($q, $branchId))
@@ -1860,9 +1918,11 @@ class ReportService
     }
 
     /** @return list<ProductLogType> */
-    private function stockLedgerAllowedTypes(): array
+    private function stockLedgerAllowedTypes(?int $scopeBranchId = null): array
     {
-        if ($this->branchId() === null) {
+        $scopeBranchId ??= $this->branchId();
+
+        if ($scopeBranchId === null) {
             return [
                 ProductLogType::Purchase,
                 ProductLogType::InitialStock,
@@ -1872,6 +1932,23 @@ class ReportService
         }
 
         return [
+            ProductLogType::InitialStock,
+            ProductLogType::Distribution_In,
+            ProductLogType::Sale,
+            ProductLogType::Sale_Return,
+            ProductLogType::Damage,
+            ProductLogType::Exchange,
+        ];
+    }
+
+    /** @return list<ProductLogType> */
+    private function allStockMovementTypes(): array
+    {
+        return [
+            ProductLogType::Purchase,
+            ProductLogType::InitialStock,
+            ProductLogType::Purchase_Return,
+            ProductLogType::Distribution_Out,
             ProductLogType::Distribution_In,
             ProductLogType::Sale,
             ProductLogType::Sale_Return,
@@ -1882,6 +1959,16 @@ class ReportService
 
     private function productCurrentStock(int $productId, ?int $branchId): float
     {
+        $variationQuery = ProductVariation::query()->where('product_id', $productId);
+
+        if ($branchId !== null) {
+            $variationQuery->where('branch_id', $branchId);
+        }
+
+        if ($variationQuery->exists()) {
+            return (float) $variationQuery->sum('stock');
+        }
+
         $query = Batch::query()->where('product_id', $productId);
 
         if ($branchId === null) {
@@ -1909,7 +1996,7 @@ class ReportService
     private function productStockBalanceBeforeAllBranches(int $productId, string $dateFrom): float
     {
         $balance = 0.0;
-        $allowedTypes = array_map(fn ($t) => $t->value, $this->stockLedgerAllowedTypes());
+        $allowedTypes = array_map(fn ($t) => $t->value, $this->allStockMovementTypes());
 
         ProductInOutLog::query()
             ->where('product_id', $productId)
@@ -1934,7 +2021,7 @@ class ReportService
     private function productStockBalanceBefore(int $productId, int $branchId, string $dateFrom): float
     {
         $balance = 0.0;
-        $allowedTypes = array_map(fn ($t) => $t->value, $this->stockLedgerAllowedTypes());
+        $allowedTypes = array_map(fn ($t) => $t->value, $this->stockLedgerAllowedTypes($branchId));
 
         $this->scopeProductInOutLogForBranch(ProductInOutLog::query(), $branchId)
             ->where('product_id', $productId)

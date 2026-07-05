@@ -3,9 +3,11 @@
 namespace App\Services;
 
 use App\Data\InitialStockSettlement;
+use App\Enums\ProductLogType;
 use App\Models\Batch;
 use App\Models\Product;
 use App\Models\ProductInitialStock;
+use App\Models\ProductInOutLog;
 use App\Models\ProductVariation;
 use App\Models\Supplier;
 use RuntimeException;
@@ -122,11 +124,18 @@ class ProductInitialStockService
             'unit_cost' => $unitCost,
         ]);
 
+        $variation->loadMissing('product:id,name,branch_id');
+        $this->logVariationInitialStock(
+            $variation->product,
+            $variation,
+            $quantity,
+            true,
+            $this->variationLabel($variation),
+        );
+
         if ($this->skipPerRecordAccounting) {
             return;
         }
-
-        $variation->loadMissing('product:id,name');
 
         $this->accounting->postProductInitialStockMovement(
             $record,
@@ -143,7 +152,7 @@ class ProductInitialStockService
         float $unitCost,
         string $label,
     ): void {
-        if ($delta === 0 || $this->skipPerRecordAccounting) {
+        if ($delta === 0) {
             return;
         }
 
@@ -162,6 +171,21 @@ class ProductInitialStockService
 
         if ((float) $record->unit_cost !== round($unitCost, 2)) {
             $record->update(['unit_cost' => $unitCost]);
+        }
+
+        if ($variation !== null) {
+            $variation->refresh();
+            $this->logVariationInitialStock(
+                $product,
+                $variation,
+                abs($delta),
+                $delta > 0,
+                $label,
+            );
+        }
+
+        if ($this->skipPerRecordAccounting) {
+            return;
         }
 
         $this->accounting->postProductInitialStockMovement(
@@ -393,5 +417,42 @@ class ProductInitialStockService
         $batch->decrement('available', $amount);
         $batch->refresh();
         $batch->initialStock(-$amount);
+    }
+
+    private function logVariationInitialStock(
+        Product $product,
+        ProductVariation $variation,
+        int $quantity,
+        bool $increase,
+        string $label,
+    ): void {
+        if ($quantity === 0) {
+            return;
+        }
+
+        $branchId = $product->resolveStockBranchId($product->branch_id);
+        $batch = Batch::query()->firstOrCreate(
+            [
+                'product_id' => $product->id,
+                'branch_id' => $branchId,
+            ],
+            [
+                'purchase_price' => $variation->purchase_price,
+                'available' => 0,
+            ],
+        );
+
+        ProductInOutLog::create([
+            'batch_id' => $batch->id,
+            'branch_id' => $product->branch_id,
+            'product_id' => $product->id,
+            'quantity' => $increase ? $quantity : -$quantity,
+            'type' => ProductLogType::InitialStock->value,
+            'stock' => (int) ProductVariation::query()
+                ->where('product_id', $product->id)
+                ->where('branch_id', $variation->branch_id)
+                ->sum('stock'),
+            'remark' => 'InitialStock — '.$label,
+        ]);
     }
 }

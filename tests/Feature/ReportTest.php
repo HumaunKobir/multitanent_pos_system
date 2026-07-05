@@ -2,12 +2,15 @@
 
 use App\Enums\AccountType;
 use App\Enums\CommonStatus;
+use App\Enums\ProductLogType;
 use App\Enums\PurchaseType;
 use App\Enums\SaleType;
 use App\Enums\VoucherType;
 use App\Http\Controllers\Reports\ReportController;
 use App\Models\Batch;
 use App\Models\Branch;
+use App\Models\Brand;
+use App\Models\Category;
 use App\Models\ChartOfAccount;
 use App\Models\Customer;
 use App\Models\CustomerPayment;
@@ -15,6 +18,8 @@ use App\Models\Damage;
 use App\Models\DamageProduct;
 use App\Models\Product;
 use App\Models\ProductExchange;
+use App\Models\ProductInOutLog;
+use App\Models\ProductVariation;
 use App\Models\Promotion;
 use App\Models\Purchase;
 use App\Models\PurchaseReturn;
@@ -23,8 +28,11 @@ use App\Models\Sell;
 use App\Models\SellProduct;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
+use App\Models\Transaction;
+use App\Models\Unit;
 use App\Models\User;
 use App\Models\Voucher;
+use App\Services\ReportService;
 use App\Support\AdminNavigation;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -1347,4 +1355,211 @@ test('branch panel product search only returns own branch products', function ()
         ->assertOk()
         ->assertJsonCount(1)
         ->assertJsonFragment(['id' => $ownProduct->id]);
+});
+
+test('branch stock ledger includes initial stock movements', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = reportUser([ReportController::PERMISSION_STOCK_LEDGER]);
+    $user->update(['branch_id' => $branch->id]);
+
+    $product = Product::factory()->create(['branch_id' => $branch->id]);
+    $date = now()->format('Y-m-d');
+    $batch = Batch::factory()->for($product)->withStock(0)->create(['branch_id' => $branch->id]);
+
+    $this->travelTo($date.' 10:00:00');
+    $batch->increment('available', 12);
+    $batch->initialStock(12);
+    $this->travelBack();
+
+    $this->actingAs($user)
+        ->get('/report/stock-ledger?product_id='.$product->id.'&date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('mode', 'ledger')
+            ->where('product.current_stock', 12)
+            ->has('entries', 1)
+            ->where('entries.0.type', 'InitialStock')
+            ->where('entries.0.in', 12));
+});
+
+test('daily summary includes initial stock settlements from product accounting', function () {
+    $this->artisan('permissions:sync');
+
+    Permission::findOrCreate('product.update', 'web');
+    $admin = User::factory()->create(['branch_id' => null]);
+    $admin->givePermissionTo('product.update');
+
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    $cash = seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    $supplier = Supplier::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    $reportAdmin = User::factory()->create(['branch_id' => null]);
+    Permission::findOrCreate(ReportController::PERMISSION_DAILY_SUMMARY, 'web');
+    $reportAdmin->givePermissionTo(ReportController::PERMISSION_DAILY_SUMMARY);
+
+    $product = Product::factory()->create([
+        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+        'purchase_price' => 50,
+        'sale_price' => 80,
+    ]);
+
+    $date = '2026-07-15';
+
+    $this->travelTo($date.' 10:00:00');
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), [
+            'category_id' => (string) $product->category_id,
+            'brand_id' => (string) $product->brand_id,
+            'unit_id' => (string) $product->unit_id,
+            'name' => $product->name,
+            'code' => $product->code,
+            'purchase_price' => '50',
+            'sale_price' => '80',
+            'initial_stock' => '10',
+            'initial_stock_supplier_id' => (string) $supplier->id,
+            'initial_stock_paid_amount' => '200',
+            'initial_stock_payment_account_id' => (string) $cash->id,
+            'visible' => 'yes',
+            'status' => '1',
+        ])
+        ->assertRedirect(route('product.index'));
+
+    $this->travelBack();
+
+    $productTransaction = Transaction::query()
+        ->whereDate('date', $date)
+        ->where('source_type', Product::class)
+        ->where('source_id', $product->id)
+        ->sole();
+
+    expect((float) $productTransaction->amount)->toBe(500.0);
+
+    $this->actingAs($reportAdmin)
+        ->get('/report/daily-summary?date='.$date.'&branch_id='.Branch::MAIN_BRANCH_ID)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/daily-summary')
+            ->where('summary.initial_stock.gross', fn ($value) => (float) $value >= 500.0)
+            ->where('summary.initial_stock.paid', fn ($value) => (float) $value >= 200.0)
+            ->where('summary.initial_stock.due', fn ($value) => (float) $value >= 300.0)
+            ->where('summary.initial_stock.count', fn ($value) => (int) $value >= 1));
+});
+
+test('branch daily transactions include product initial stock accounting', function () {
+    $this->artisan('permissions:sync');
+
+    Permission::findOrCreate('product.update', 'web');
+    $admin = User::factory()->create(['branch_id' => null]);
+    $admin->givePermissionTo('product.update');
+
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    $cash = seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    $supplier = Supplier::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+
+    $product = Product::factory()->create([
+        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+        'purchase_price' => 50,
+        'sale_price' => 80,
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), [
+            'category_id' => (string) $product->category_id,
+            'brand_id' => (string) $product->brand_id,
+            'unit_id' => (string) $product->unit_id,
+            'name' => $product->name,
+            'code' => $product->code,
+            'purchase_price' => '50',
+            'sale_price' => '80',
+            'initial_stock' => '10',
+            'initial_stock_supplier_id' => (string) $supplier->id,
+            'initial_stock_paid_amount' => '200',
+            'initial_stock_payment_account_id' => (string) $cash->id,
+            'visible' => 'yes',
+            'status' => '1',
+        ])
+        ->assertRedirect(route('product.index'));
+
+    $date = now()->format('Y-m-d');
+    $mainBranchUser = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    $this->actingAs($mainBranchUser);
+
+    $entries = app(ReportService::class)->dailyTransactions($date, $date);
+
+    expect(collect($entries)->pluck('reference')->contains('Product #'.$product->id))->toBeTrue();
+});
+
+test('variant initial stock creates stock movement logs for reports', function () {
+    Permission::findOrCreate('product.create', 'web');
+
+    $admin = User::factory()->create(['branch_id' => null]);
+    $admin->givePermissionTo('product.create');
+
+    seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    $sku = fake()->unique()->numerify('########');
+    $productName = 'Variant Report Stock '.fake()->unique()->numerify('######');
+
+    $this->actingAs($admin)
+        ->post(route('product.store'), [
+            'branch_id' => (string) Branch::MAIN_BRANCH_ID,
+            'category_id' => (string) Category::factory()->create(['status' => 1])->id,
+            'brand_id' => (string) Brand::factory()->create(['status' => 1])->id,
+            'unit_id' => (string) Unit::query()->create([
+                'branch_id' => Branch::MAIN_BRANCH_ID,
+                'name' => 'Unit '.fake()->unique()->numerify('####'),
+                'status' => 1,
+            ])->id,
+            'name' => $productName,
+            'purchase_price' => '0',
+            'sale_price' => '0',
+            'initial_stock' => '9',
+            'visible' => 'yes',
+            'status' => '1',
+            'combinations' => [
+                [
+                    'variant' => 'Blue-L',
+                    'variation_data' => ['label' => 'Blue-L', 'Color' => 'Blue', 'Size' => 'L'],
+                    'sale_price' => '200',
+                    'purchase_price' => '120',
+                    'sku' => $sku,
+                    'stock' => '',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('product.index'));
+
+    $product = Product::query()->where('name', $productName)->first();
+
+    expect(
+        ProductInOutLog::query()
+            ->where('product_id', $product->id)
+            ->where('type', ProductLogType::InitialStock->value)
+            ->exists(),
+    )->toBeTrue();
+
+    expect(ProductVariation::query()->where('product_id', $product->id)->value('stock'))->toBe(9);
 });

@@ -8,6 +8,8 @@ use App\Models\ChartOfAccount;
 use App\Models\Customer;
 use App\Models\CustomerPayment;
 use App\Models\Damage;
+use App\Models\Ledger;
+use App\Models\Product;
 use App\Models\ProductExchange;
 use App\Models\ProductInitialStock;
 use App\Models\Purchase;
@@ -40,12 +42,56 @@ class BusinessSessionTransactionScope
             SupplierPayment::class => SupplierPayment::class,
             CustomerPayment::class => CustomerPayment::class,
             ProductExchange::class => ProductExchange::class,
+            Product::class => Product::class,
             Supplier::class => Supplier::class,
             Customer::class => Customer::class,
             ChartOfAccount::class => ChartOfAccount::class,
             ProductInitialStock::class => ProductInitialStock::class,
             User::class => User::class,
         ];
+    }
+
+    /**
+     * @param  Builder<Ledger>  $query
+     * @return Builder<Ledger>
+     */
+    public function scopeLedgerForBranch(Builder $query, ?int $branchId): Builder
+    {
+        if ($branchId === null) {
+            return $query;
+        }
+
+        $branchAccountIds = $this->branchAccountIdsSubquery($branchId);
+
+        return $query->where(function (Builder $branchQuery) use ($branchId, $branchAccountIds) {
+            $branchQuery->where(function (Builder $inner) use ($branchId) {
+                $inner->where('source_type', Voucher::class)
+                    ->whereIn(
+                        'source_id',
+                        Voucher::query()->where('branch_id', $branchId)->select('id'),
+                    );
+            });
+
+            foreach ($this->branchScopedSourceMap() as $sourceType => $modelClass) {
+                $branchQuery->orWhere(function (Builder $inner) use ($branchId, $sourceType, $modelClass) {
+                    $inner->where('source_type', $sourceType)
+                        ->whereIn(
+                            'source_id',
+                            $this->branchSourceIdsSubquery($modelClass, $branchId),
+                        );
+                });
+            }
+
+            $branchQuery->orWhere(function (Builder $inner) use ($branchId) {
+                $inner->where('source_type', StockDistribution::class)
+                    ->whereIn(
+                        'source_id',
+                        StockDistribution::query()->where('to_branch_id', $branchId)->select('id'),
+                    );
+            });
+
+            $branchQuery->orWhereIn('account_id', $branchAccountIds);
+        });
     }
 
     /**

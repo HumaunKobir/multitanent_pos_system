@@ -10,6 +10,7 @@ import {
     ChevronDown,
     CircleDollarSign,
     HandCoins,
+    Package,
     Receipt,
     ReceiptText,
     Repeat,
@@ -158,6 +159,21 @@ const sections = [
         ],
     },
     {
+        key: 'initial_stock',
+        title: 'Initial Stock',
+        icon: Package,
+        headerClass: 'bg-sky-600',
+        bodyClass: 'from-sky-50/90 to-white dark:from-sky-950/30 dark:to-card',
+        accentClass: 'text-sky-800 dark:text-sky-300',
+        ringClass: 'ring-sky-500/20',
+        rows: (s) => [
+            { label: 'Settlements', value: s.initial_stock?.count ?? 0, plain: true },
+            { label: 'Stock value', value: <MoneyCell value={s.initial_stock?.gross} /> },
+            { label: 'Paid', value: <MoneyCell value={s.initial_stock?.paid} /> },
+            { label: 'Supplier due', value: <MoneyCell value={s.initial_stock?.due} />, highlight: true },
+        ],
+    },
+    {
         key: 'vouchers',
         title: 'Vouchers',
         icon: Receipt,
@@ -195,7 +211,7 @@ const sections = [
 const sectionByKey = Object.fromEntries(sections.map((section) => [section.key, section]));
 
 const salesGroupKeys = ['sales', 'sale_returns', 'product_exchanges'];
-const purchaseGroupKeys = ['purchases', 'purchase_returns', 'damages'];
+const purchaseGroupKeys = ['purchases', 'purchase_returns', 'damages', 'initial_stock'];
 const groupedKeys = new Set([...salesGroupKeys, ...purchaseGroupKeys]);
 
 const salesGroup = salesGroupKeys.map((key) => sectionByKey[key]);

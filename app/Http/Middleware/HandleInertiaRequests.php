@@ -152,10 +152,6 @@ class HandleInertiaRequests extends Middleware
             return false;
         }
 
-        if ($user->can('dashboard.view')) {
-            return in_array($path, ['dashboard', 'branch-panel'], true);
-        }
-
-        return $path === trim($user->defaultLandingPath(), '/');
+        return in_array($path, ['dashboard', 'branch-panel'], true);
     }
 }

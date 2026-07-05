@@ -20,7 +20,7 @@ class BranchDashboardController extends Controller
         $user = Auth::user();
 
         if (! $user?->can('dashboard.view')) {
-            return redirect($user->defaultLandingUrl());
+            return Inertia::render('branch-panel/dashboard', $this->dashboard->welcomeOverview($user));
         }
 
         $period = DashboardSalesPeriod::tryFromInput($request->input('period'));

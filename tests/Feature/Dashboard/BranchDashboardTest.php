@@ -16,12 +16,13 @@ function branchDashboardUser(?int $branchId = null, array $permissions = []): Us
 
     $user = User::factory()->create(['branch_id' => $branch->id]);
 
-    if ($permissions !== []) {
-        test()->artisan('permissions:sync');
-        $role = Role::create(['name' => 'Branch Dashboard '.uniqid(), 'guard_name' => 'web']);
-        $role->givePermissionTo($permissions);
-        $user->assignRole($role);
-    }
+    test()->artisan('permissions:sync');
+
+    $permissions = $permissions === [] ? ['dashboard.view'] : $permissions;
+
+    $role = Role::create(['name' => 'Branch Dashboard '.uniqid(), 'guard_name' => 'web']);
+    $role->givePermissionTo($permissions);
+    $user->assignRole($role);
 
     return $user;
 }
@@ -53,7 +54,7 @@ test('super admin is redirected from branch dashboard', function () {
 test('branch dashboard includes purchases section with permission', function () {
     $this->artisan('permissions:sync');
     $branch = Branch::factory()->create();
-    $user = branchDashboardUser($branch->id, ['inventory.purchase.view']);
+    $user = branchDashboardUser($branch->id, ['dashboard.view', 'inventory.purchase.view']);
 
     $this->actingAs($user)
         ->get('/branch-panel')
@@ -70,7 +71,7 @@ test('branch dashboard includes purchases section with permission', function () 
 test('branch dashboard includes reports link with permission', function () {
     $this->artisan('permissions:sync');
     $branch = Branch::factory()->create();
-    $user = branchDashboardUser($branch->id, ['report.daily-summary.view']);
+    $user = branchDashboardUser($branch->id, ['dashboard.view', 'report.daily-summary.view']);
 
     $this->actingAs($user)
         ->get('/branch-panel')
@@ -89,7 +90,7 @@ test('branch dashboard includes expenses section with permission', function () {
     $date = '2099-04-20';
     $branch = Branch::factory()->create();
     $otherBranch = Branch::factory()->create();
-    $user = branchDashboardUser($branch->id, ['accounts.view']);
+    $user = branchDashboardUser($branch->id, ['dashboard.view', 'accounts.view']);
 
     Voucher::query()->create([
         'type' => VoucherType::Expense,
@@ -127,6 +128,24 @@ test('branch dashboard includes expenses section with permission', function () {
     $user->delete();
     $branch->delete();
     $otherBranch->delete();
+});
+
+test('branch user without dashboard permission sees welcome page', function () {
+    $branch = Branch::factory()->create();
+    $user = branchDashboardUser($branch->id, ['inventory.purchase.view']);
+
+    $this->actingAs($user)
+        ->get('/branch-panel')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('branch-panel/dashboard')
+            ->where('limitedAccess', true)
+            ->where('userName', $user->name)
+            ->where('branchName', $branch->name)
+            ->has('branchLogoUrl'));
+
+    $user->delete();
+    $branch->delete();
 });
 
 test('branch user is redirected from admin dashboard route', function () {

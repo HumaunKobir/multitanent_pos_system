@@ -100,14 +100,16 @@ class User extends Authenticatable
 
     public function defaultLandingUrl(): string
     {
+        if (! $this->can('dashboard.view')) {
+            return $this->usesBranchPanel()
+                ? route('branch-panel.dashboard')
+                : route('dashboard');
+        }
+
         $navigation = app(AdminNavigation::class)->build($this);
 
         foreach ($navigation as $section) {
             if (($section['single'] ?? false) && ! empty($section['href'])) {
-                if (($section['title'] ?? '') === 'Dashboard' && ! $this->can('dashboard.view')) {
-                    continue;
-                }
-
                 return $section['href'];
             }
 

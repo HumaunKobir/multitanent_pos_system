@@ -49,7 +49,7 @@ test('panel guide uses admin panel wording for main branch users', function () {
     $user->delete();
 });
 
-test('user without dashboard permission lands on first accessible module', function () {
+test('user without dashboard permission lands on welcome page', function () {
     $this->artisan('permissions:sync');
 
     $user = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
@@ -57,11 +57,17 @@ test('user without dashboard permission lands on first accessible module', funct
     $role->givePermissionTo('inventory.purchase.view');
     $user->assignRole($role);
 
-    expect($user->defaultLandingUrl())->toBe(url('/inventory/purchase'));
+    expect($user->defaultLandingUrl())->toBe(url('/dashboard'));
 
     $this->actingAs($user)
         ->get('/dashboard')
-        ->assertRedirect('/inventory/purchase');
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/dashboard')
+            ->where('limitedAccess', true)
+            ->where('userName', $user->name)
+            ->has('branchName')
+            ->has('branchLogoUrl'));
 
     $user->delete();
 });
@@ -111,11 +117,12 @@ test('panel guide button shows on dashboard and landing page but not on guide pa
     $limitedUser->assignRole($role);
 
     $this->actingAs($limitedUser)
-        ->get('/inventory/purchase')
+        ->get('/dashboard')
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->where('showPanelGuideButton', true)
-            ->where('hasPanelGuide', true));
+            ->where('hasPanelGuide', true)
+            ->where('limitedAccess', true));
 
     $this->actingAs($limitedUser)
         ->get('/party/supplier')

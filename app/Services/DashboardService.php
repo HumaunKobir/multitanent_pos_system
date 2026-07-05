@@ -6,6 +6,7 @@ use App\Enums\DashboardSalesPeriod;
 use App\Enums\PurchaseType;
 use App\Enums\VoucherType;
 use App\Models\Branch;
+use App\Models\ConfigDictionary;
 use App\Models\Customer;
 use App\Models\CustomerPayment;
 use App\Models\Purchase;
@@ -14,6 +15,7 @@ use App\Models\Sell;
 use App\Models\SupplierPayment;
 use App\Models\User;
 use App\Models\Voucher;
+use App\Support\StorageUrl;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 
@@ -129,6 +131,30 @@ class DashboardService
             'branch_sales' => $this->branchSalesBreakdown($today, $monthStart),
             'sales_trend' => $this->salesTrend($trendStart, $today),
             'collection' => $this->collectionMetrics($monthSales),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function welcomeOverview(User $user): array
+    {
+        $branch = $user->branch;
+
+        if ($user->usesBranchPanel()) {
+            $branchName = $branch?->name ?? 'Branch';
+            $logoPath = $branch?->logo;
+        } else {
+            $branchName = $branch?->name ?? config('app.name');
+            $logoPath = $branch?->logo ?? ConfigDictionary::get('logo');
+        }
+
+        return [
+            'today' => Carbon::today()->format('Y-m-d'),
+            'limitedAccess' => true,
+            'userName' => $user->name,
+            'branchName' => $branchName,
+            'branchLogoUrl' => StorageUrl::public($logoPath),
         ];
     }
 

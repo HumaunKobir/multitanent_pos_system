@@ -2,6 +2,7 @@ import { Can } from '@/components/can';
 import { CollectionRateGauge } from '@/components/dashboard/collection-rate-gauge';
 import { DashboardShell } from '@/components/dashboard/dashboard-shell';
 import { ModuleWidget } from '@/components/dashboard/module-widget';
+import { PanelWelcome } from '@/components/dashboard/panel-welcome';
 import { QuickActions } from '@/components/dashboard/quick-actions';
 import { SalesTrendChart } from '@/components/dashboard/sales-trend-chart';
 import { SellReportPanel } from '@/components/dashboard/sell-report-panel';
@@ -27,7 +28,19 @@ function formatExpenseSub(kpi) {
     return `${kpi?.count ?? 0} voucher(s)`;
 }
 
-export default function BranchDashboard({ today, branchName, branchLogoUrl, sections }) {
+export default function BranchDashboard({ today, branchName, branchLogoUrl, sections, limitedAccess, userName }) {
+    if (limitedAccess) {
+        return (
+            <>
+                <Head title="Welcome" />
+
+                <DashboardShell title="Welcome" subtitle={branchName} today={today}>
+                    <PanelWelcome userName={userName} branchName={branchName} branchLogoUrl={branchLogoUrl} />
+                </DashboardShell>
+            </>
+        );
+    }
+
     const hasSections = sections && Object.keys(sections).length > 0;
     const sales = sections?.sales;
 

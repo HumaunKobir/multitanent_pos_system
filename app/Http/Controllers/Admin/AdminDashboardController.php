@@ -19,7 +19,7 @@ class AdminDashboardController extends Controller
         $user = $request->user();
 
         if (! $user?->can('dashboard.view')) {
-            return redirect($user->defaultLandingUrl());
+            return Inertia::render('admin/dashboard', $this->dashboard->welcomeOverview($user));
         }
 
         $period = DashboardSalesPeriod::tryFromInput($request->input('period'));

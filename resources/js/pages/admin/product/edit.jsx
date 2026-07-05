@@ -1,6 +1,6 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 import { ArrowLeft, PackagePlus, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { route } from '@/lib/route';
 import ProductForm from './partials/product-form';
@@ -100,11 +100,21 @@ export default function ProductEdit({
         combinations: mapVariationsToCombinations(product.variations),
         color_ids: (product.colors ?? []).map(String),
         size_ids: (product.sizes ?? []).map(String),
+        has_variants: (product.variations?.length ?? 0) > 0,
         _existing_image: product.image ?? null,
     });
 
+    const productFormRef = useRef(null);
+
     function handleSubmit(e) {
         e.preventDefault();
+
+        const validation = productFormRef.current?.validateBeforeSubmit?.();
+
+        if (validation && !validation.ok) {
+            return;
+        }
+
         form.patch(route('product.update', { product: product.slug }));
     }
 
@@ -134,6 +144,7 @@ export default function ProductEdit({
                 <div className="space-y-6">
                     <form onSubmit={handleSubmit} encType="multipart/form-data">
                         <ProductForm
+                            ref={productFormRef}
                             form={form}
                             categories={categories}
                             brands={brands}

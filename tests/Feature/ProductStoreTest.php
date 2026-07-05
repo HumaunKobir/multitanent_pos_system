@@ -52,6 +52,21 @@ function validProductPayload(array $overrides = []): array
     ], $overrides);
 }
 
+test('product store rejects variants flag without combinations', function () {
+    $admin = productStoreAdmin();
+
+    $payload = validProductPayload([
+        'has_variants' => true,
+        'combinations' => [],
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('product.store'), $payload)
+        ->assertSessionHasErrors('combinations');
+
+    expect(Product::query()->where('name', $payload['name'])->exists())->toBeFalse();
+});
+
 test('product without manual code gets auto-generated code and barcode', function () {
     $admin = productStoreAdmin();
     $payload = validProductPayload(['code' => '']);

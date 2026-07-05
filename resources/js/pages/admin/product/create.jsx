@@ -1,6 +1,7 @@
-import { Button } from '@/components/ui/button';
 import { Head, Link, useForm } from '@inertiajs/react';
 import { ArrowLeft, PackagePlus } from 'lucide-react';
+import { useRef } from 'react';
+import { Button } from '@/components/ui/button';
 import { route } from '@/lib/route';
 import ProductForm from './partials/product-form';
 
@@ -40,10 +41,20 @@ export default function ProductCreate({
         combinations: [],
         color_ids: [],
         size_ids: [],
+        has_variants: false,
     });
+
+    const productFormRef = useRef(null);
 
     function handleSubmit(e) {
         e.preventDefault();
+
+        const validation = productFormRef.current?.validateBeforeSubmit?.();
+
+        if (validation && !validation.ok) {
+            return;
+        }
+
         form.post(route('product.store'));
     }
 
@@ -72,6 +83,7 @@ export default function ProductCreate({
 
                 <form onSubmit={handleSubmit} encType="multipart/form-data">
                     <ProductForm
+                        ref={productFormRef}
                         form={form}
                         categories={categories}
                         brands={brands}

@@ -10,8 +10,11 @@ import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
 import { Link } from '@inertiajs/react';
 import { AlignLeft, DollarSign, GitBranch, ImagePlus, Images, Info, Plus, Settings, Trash2, X } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { buildVariationBuilderState, buildVariationDataFromRows } from '@/lib/variation-utils';
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import {
+    buildCombinationsFromVariantRows,
+    buildVariationBuilderState,
+} from '@/lib/variation-utils';
 
 function getXsrf() {
     return decodeURIComponent(document.cookie.split('; ').find((r) => r.startsWith('XSRF-TOKEN='))?.split('=')[1] ?? '');
@@ -409,29 +412,6 @@ const VARIANT_NAME_OPTIONS = [
     { value: 'Size', label: 'Size' },
 ];
 
-const VARIANT_ROW_ORDER = ['Color', 'Size'];
-
-function sortParsedVariantRows(rows) {
-    return [...rows].sort((a, b) => {
-        const aIndex = VARIANT_ROW_ORDER.indexOf(a.name);
-        const bIndex = VARIANT_ROW_ORDER.indexOf(b.name);
-
-        if (aIndex === -1 && bIndex === -1) {
-            return 0;
-        }
-
-        if (aIndex === -1) {
-            return 1;
-        }
-
-        if (bIndex === -1) {
-            return -1;
-        }
-
-        return aIndex - bIndex;
-    });
-}
-
 function formatVariantSummary(variationData = {}) {
     return Object.entries(variationData)
         .filter(([key]) => key !== 'label')
@@ -439,7 +419,7 @@ function formatVariantSummary(variationData = {}) {
         .join(' · ');
 }
 
-function VariationBuilder({
+const VariationBuilder = forwardRef(function VariationBuilder({
     colorOptions = [],
     sizeOptions = [],
     initialVariations = [],
@@ -447,7 +427,7 @@ function VariationBuilder({
     onChange,
     onEnabledChange,
     errors = {},
-}) {
+}, ref) {
     const initialState = useMemo(() => buildVariationBuilderState(initialVariations), []);
     const [enabled, setEnabled] = useState(initialState.enabled);
     const [varOptions, setVarOptions] = useState(() => {
@@ -463,6 +443,11 @@ function VariationBuilder({
     const [rows, setRows] = useState(() => initialState.rows);
     const [combinations, setCombinations] = useState(() => initialState.combinations);
     const [buildError, setBuildError] = useState('');
+    const combinationsRef = useRef(combinations);
+
+    useEffect(() => {
+        combinationsRef.current = combinations;
+    }, [combinations]);
 
     useEffect(() => {
         if (initialVariations.length > 0) {
@@ -470,6 +455,61 @@ function VariationBuilder({
             onChange(initialState.combinations);
         }
     }, []);
+
+    function applyBuiltCombinations(next, error = '') {
+        setBuildError(error);
+        setCombinations(next);
+        onChange(next);
+    }
+
+    function syncCombinationsFromRows(currentRows, existingCombinations = combinationsRef.current) {
+        const { combinations: next, error } = buildCombinationsFromVariantRows(currentRows, existingCombinations);
+
+        if (error) {
+            setBuildError(error);
+            return { ok: false, error };
+        }
+
+        applyBuiltCombinations(next);
+        setBuildError('');
+
+        return { ok: true, combinations: next };
+    }
+
+    useImperativeHandle(ref, () => ({
+        validateBeforeSubmit() {
+            if (!enabled) {
+                return { ok: true };
+            }
+
+            const namedRows = rows.filter((row) => String(row.name ?? '').trim());
+
+            if (namedRows.length === 0) {
+                return {
+                    ok: false,
+                    error: 'Add at least one variation name or turn off "Item has variants".',
+                };
+            }
+
+            const missingValues = namedRows.filter((row) => (row.values ?? []).length === 0);
+
+            if (missingValues.length > 0) {
+                return {
+                    ok: false,
+                    error: `Add values for: ${missingValues.map((row) => row.name).join(', ')}`,
+                };
+            }
+
+            if (combinationsRef.current.length === 0) {
+                return {
+                    ok: false,
+                    error: 'Click "Build Combinations" before saving.',
+                };
+            }
+
+            return { ok: true };
+        },
+    }));
 
     function toggleEnabled(val) {
         if (locked) {
@@ -505,15 +545,12 @@ function VariationBuilder({
     }
 
     function getValueOptions(name) {
-        if (name === 'Color') {
-            return colorOptions;
-        }
+        const source = name === 'Color' ? colorOptions : name === 'Size' ? sizeOptions : [];
 
-        if (name === 'Size') {
-            return sizeOptions;
-        }
-
-        return [];
+        return source.map((option) => ({
+            value: String(option.value ?? option.id ?? option.label),
+            label: option.label ?? String(option.value ?? option.id),
+        }));
     }
 
     function usesPresetValues(name) {
@@ -525,67 +562,15 @@ function VariationBuilder({
             return;
         }
 
-        setBuildError('');
+        const result = syncCombinationsFromRows(rows);
 
-        const namedRows = rows.filter((r) => r.name.trim());
-        const missingValues = namedRows.filter((r) => r.values.length === 0);
-
-        if (missingValues.length > 0) {
-            setBuildError(`Add values for: ${missingValues.map((r) => r.name).join(', ')}`);
+        if (!result.ok) {
             return;
         }
 
-        const parsed = sortParsedVariantRows(
-            namedRows.map((r) => ({ name: r.name.trim(), values: r.values })),
-        );
-
-        if (!parsed.length) {
-            return;
+        if ((result.combinations ?? []).length === 0) {
+            setBuildError('Add at least one variation row with values.');
         }
-
-        const cartesian = parsed.map((r) => r.values).reduce((acc, cur) => {
-            const res = [];
-            acc.forEach((a) => cur.forEach((b) => res.push([...a, b])));
-
-            return res;
-        }, [[]]);
-
-        const newCombos = cartesian.map((combo) => {
-            const variation_data = buildVariationDataFromRows(parsed, combo);
-            const variantText = variation_data.label ?? combo.join('-');
-
-            return {
-                variant: variantText,
-                variation_data,
-                sale_price: '',
-                purchase_price: '',
-                sku: '',
-                stock: '',
-            };
-        });
-
-        setCombinations((prev) => {
-            const prevMap = new Map(prev.map((combo) => [combo.variant, combo]));
-            const next = newCombos.map((combo) => {
-                const existing = prevMap.get(combo.variant);
-
-                if (!existing) {
-                    return combo;
-                }
-
-                return {
-                    ...combo,
-                    sale_price: existing.sale_price ?? '',
-                    purchase_price: existing.purchase_price ?? '',
-                    sku: existing.sku || combo.sku,
-                    stock: existing.stock ?? combo.stock,
-                };
-            });
-
-            onChange(next);
-
-            return next;
-        });
     }
 
     function updateCombo(idx, field, val) {
@@ -711,6 +696,10 @@ function VariationBuilder({
                         <p className="text-xs text-destructive">{buildError}</p>
                     )}
 
+                    {errors.combinations && (
+                        <p className="text-xs text-destructive">{errors.combinations}</p>
+                    )}
+
                     {combinations.length > 0 && (
                         <div className="overflow-x-auto rounded border">
                             <table className="w-full text-xs">
@@ -781,9 +770,9 @@ function VariationBuilder({
             )}
         </div>
     );
-}
+});
 
-export default function ProductForm({
+const ProductForm = forwardRef(function ProductForm({
     form,
     categories,
     brands,
@@ -805,7 +794,7 @@ export default function ProductForm({
     isEditing = false,
     processing = false,
     cancelHref = '',
-}) {
+}, ref) {
     const { can } = useCan();
 
     const branchSelectOptions = useMemo(
@@ -825,6 +814,7 @@ export default function ProductForm({
     const [branchSizeOptions, setBranchSizeOptions] = useState(() => mergePresetOptions(sizeOptions, selectedSizes));
 
     const toast = useAppToast();
+    const variationBuilderRef = useRef(null);
     const [hasVariations, setHasVariations] = useState(isEditing && initialVariations.length > 0);
 
     const colorSelectOptions = useMemo(
@@ -871,6 +861,7 @@ export default function ProductForm({
 
     function handleVariationsToggle(val) {
         setHasVariations(val);
+        form.setData('has_variants', val);
 
         if (val) {
             form.setData((data) => ({
@@ -879,8 +870,22 @@ export default function ProductForm({
                 color_ids: [],
                 size_ids: [],
             }));
+        } else {
+            form.setData('combinations', []);
         }
     }
+
+    useImperativeHandle(ref, () => ({
+        validateBeforeSubmit() {
+            const result = variationBuilderRef.current?.validateBeforeSubmit?.() ?? { ok: true };
+
+            if (!result.ok) {
+                toast.error(result.error ?? 'Complete the variation setup before saving.');
+            }
+
+            return result;
+        },
+    }));
 
     const visibleOn = form.data.visible === 'yes';
 
@@ -1072,6 +1077,7 @@ export default function ProductForm({
                 {/* Variations */}
                 <Card title="Variations" icon={GitBranch}>
                     <VariationBuilder
+                        ref={variationBuilderRef}
                         colorOptions={branchColorOptions}
                         sizeOptions={branchSizeOptions}
                         initialVariations={initialVariations}
@@ -1178,4 +1184,6 @@ export default function ProductForm({
             </div>
         </div>
     );
-}
+});
+
+export default ProductForm;

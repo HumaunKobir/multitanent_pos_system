@@ -4,11 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ScopesProductStockListing;
 use App\Models\Barcode;
+use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Color;
 use App\Models\Product;
+use App\Models\ProductInitialStock;
+use App\Models\ProductInOutLog;
 use App\Models\ProductPhoto;
 use App\Models\ProductVariation;
 use App\Models\Size;
@@ -148,6 +151,7 @@ class ProductController extends Controller
 
         $rawCombinations = $request->input('combinations', []);
         $hasVariations = ! empty($rawCombinations);
+        $variantsRequested = $request->boolean('has_variants');
 
         $allCombosHavePrices = $hasVariations && collect($rawCombinations)
             ->every(fn ($c) => isset($c['sale_price']) && (string) $c['sale_price'] !== ''
@@ -156,6 +160,7 @@ class ProductController extends Controller
         $priceRequired = ! $hasVariations || ! $allCombosHavePrices;
 
         $data = $request->validate([
+            'has_variants' => ['nullable', 'boolean'],
             'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')],
             'category_id' => ['required', Rule::exists('categories', 'id')],
             'brand_id' => ['required', Rule::exists('brands', 'id')],
@@ -186,7 +191,12 @@ class ProductController extends Controller
             'chest_size_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
             'photos' => ['nullable', 'array'],
             'photos.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
-            'combinations' => ['nullable', 'array'],
+            'combinations' => [
+                Rule::requiredIf($variantsRequested),
+                'nullable',
+                'array',
+                Rule::when($variantsRequested, ['min:1']),
+            ],
             'combinations.*.variant' => ['required_with:combinations', 'string', 'max:255'],
             'combinations.*.variation_data' => ['nullable', 'array'],
             'combinations.*.sale_price' => ['nullable', 'numeric', 'min:0'],
@@ -195,8 +205,16 @@ class ProductController extends Controller
             'combinations.*.stock' => ['nullable', 'integer', 'min:0'],
         ]);
 
+        if ($variantsRequested && empty($data['combinations'] ?? [])) {
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'combinations' => 'Click "Build Combinations" before saving.',
+                ]);
+        }
+
         $combinations = $data['combinations'] ?? [];
-        unset($data['combinations']);
+        unset($data['combinations'], $data['has_variants']);
 
         $data = $this->normalizeProductColorAndSizeIds($data);
 
@@ -313,6 +331,7 @@ class ProductController extends Controller
         $variantsLocked = $this->variantsAreLocked($product);
         $rawCombinations = $variantsLocked ? [] : $request->input('combinations', []);
         $hasVariations = ! empty($rawCombinations);
+        $variantsRequested = ! $variantsLocked && $request->boolean('has_variants');
 
         $allCombosHavePrices = $hasVariations && collect($rawCombinations)
             ->every(fn ($c) => isset($c['sale_price']) && (string) $c['sale_price'] !== ''
@@ -321,6 +340,7 @@ class ProductController extends Controller
         $priceRequired = ! $hasVariations || ! $allCombosHavePrices;
 
         $data = $request->validate([
+            'has_variants' => ['nullable', 'boolean'],
             'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')],
             'category_id' => ['required', Rule::exists('categories', 'id')],
             'brand_id' => ['required', Rule::exists('brands', 'id')],
@@ -351,7 +371,12 @@ class ProductController extends Controller
             'chest_size_image' => ['nullable', 'image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
             'photos' => ['nullable', 'array'],
             'photos.*' => ['image', 'mimes:jpg,jpeg,png,webp', 'max:3072'],
-            'combinations' => $variantsLocked ? ['nullable'] : ['nullable', 'array'],
+            'combinations' => $variantsLocked ? ['nullable'] : [
+                Rule::requiredIf($variantsRequested),
+                'nullable',
+                'array',
+                Rule::when($variantsRequested, ['min:1']),
+            ],
             'combinations.*.id' => ['nullable', 'integer'],
             'combinations.*.variant' => ['required_with:combinations', 'string', 'max:255'],
             'combinations.*.variation_data' => ['nullable', 'array'],
@@ -361,8 +386,16 @@ class ProductController extends Controller
             'combinations.*.stock' => ['nullable', 'integer', 'min:0'],
         ]);
 
+        if ($variantsRequested && empty($data['combinations'] ?? [])) {
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'combinations' => 'Click "Build Combinations" before saving.',
+                ]);
+        }
+
         $combinations = $variantsLocked ? [] : ($data['combinations'] ?? []);
-        unset($data['combinations']);
+        unset($data['combinations'], $data['has_variants']);
 
         $data = $this->normalizeProductColorAndSizeIds($data);
 
@@ -547,10 +580,6 @@ class ProductController extends Controller
     {
         $this->authorize('product.delete');
 
-        if ($product->batches()->exists()) {
-            return back()->with('error', 'Cannot delete product with existing batches.');
-        }
-
         if ($product->purchaseProducts()->exists()) {
             return back()->with('error', 'Cannot delete product with purchase history.');
         }
@@ -559,19 +588,29 @@ class ProductController extends Controller
             return back()->with('error', 'Cannot delete product with sales history.');
         }
 
-        foreach ($product->photos as $photo) {
-            Storage::disk('public')->delete($photo->image);
-        }
+        DB::transaction(function () use ($product): void {
+            $product->loadMissing('photos');
 
-        if ($product->image) {
-            Storage::disk('public')->delete($product->image);
-        }
+            ProductInOutLog::query()->where('product_id', $product->id)->delete();
+            ProductInitialStock::query()->where('product_id', $product->id)->delete();
+            Batch::query()->where('product_id', $product->id)->delete();
+            Barcode::query()->where('product_id', $product->id)->delete();
+            ProductVariation::query()->where('product_id', $product->id)->delete();
 
-        if ($product->chest_size_image) {
-            Storage::disk('public')->delete($product->chest_size_image);
-        }
+            foreach ($product->photos as $photo) {
+                Storage::disk('public')->delete($photo->image);
+            }
 
-        $product->delete();
+            if ($product->image) {
+                Storage::disk('public')->delete($product->image);
+            }
+
+            if ($product->chest_size_image) {
+                Storage::disk('public')->delete($product->chest_size_image);
+            }
+
+            $product->delete();
+        });
 
         return redirect()->route('product.index')
             ->with('success', 'Product deleted successfully.');

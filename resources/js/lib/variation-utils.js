@@ -239,3 +239,94 @@ export function buildVariationDataFromRows(parsedRows, comboValues) {
 
     return variation_data;
 }
+
+const VARIANT_ROW_ORDER = ['Color', 'Size'];
+
+/**
+ * @param {Array<{ name: string, values: string[] }>} rows
+ */
+export function sortParsedVariantRows(rows) {
+    return [...rows].sort((a, b) => {
+        const aIndex = VARIANT_ROW_ORDER.indexOf(a.name);
+        const bIndex = VARIANT_ROW_ORDER.indexOf(b.name);
+
+        if (aIndex === -1 && bIndex === -1) {
+            return 0;
+        }
+
+        if (aIndex === -1) {
+            return 1;
+        }
+
+        if (bIndex === -1) {
+            return -1;
+        }
+
+        return aIndex - bIndex;
+    });
+}
+
+/**
+ * Build combination rows from variation builder rows, preserving existing prices/stock/sku.
+ *
+ * @param {Array<{ name?: string, values?: string[] }>} rows
+ * @param {Array<{ variant?: string, variation_data?: Record<string, string>, sale_price?: string, purchase_price?: string, sku?: string, stock?: string, id?: number }>} existingCombinations
+ * @returns {{ combinations: typeof existingCombinations, error: string | null }}
+ */
+export function buildCombinationsFromVariantRows(rows, existingCombinations = []) {
+    const namedRows = rows.filter((row) => String(row.name ?? '').trim());
+    const missingValues = namedRows.filter((row) => (row.values ?? []).length === 0);
+
+    if (missingValues.length > 0) {
+        return {
+            combinations: existingCombinations,
+            error: `Add values for: ${missingValues.map((row) => row.name).join(', ')}`,
+        };
+    }
+
+    const parsed = sortParsedVariantRows(
+        namedRows.map((row) => ({ name: String(row.name).trim(), values: row.values ?? [] })),
+    );
+
+    if (!parsed.length) {
+        return { combinations: [], error: null };
+    }
+
+    const cartesian = parsed.map((row) => row.values).reduce((acc, cur) => {
+        const res = [];
+        acc.forEach((a) => cur.forEach((b) => res.push([...a, b])));
+
+        return res;
+    }, [[]]);
+
+    const prevMap = new Map((existingCombinations ?? []).map((combo) => [combo.variant, combo]));
+
+    const combinations = cartesian.map((combo) => {
+        const variation_data = buildVariationDataFromRows(parsed, combo);
+        const variantText = variation_data.label ?? combo.join('-');
+        const existing = prevMap.get(variantText);
+
+        if (!existing) {
+            return {
+                variant: variantText,
+                variation_data,
+                sale_price: '',
+                purchase_price: '',
+                sku: '',
+                stock: '',
+            };
+        }
+
+        return {
+            ...existing,
+            variant: variantText,
+            variation_data,
+            sale_price: existing.sale_price ?? '',
+            purchase_price: existing.purchase_price ?? '',
+            sku: existing.sku ?? '',
+            stock: existing.stock ?? '',
+        };
+    });
+
+    return { combinations, error: null };
+}

@@ -11,9 +11,9 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
 
-class CustomerReportCollectionsSheet implements FromCollection, ShouldAutoSize, WithEvents, WithHeadings, WithTitle
+class CustomerReportBulkCollectionsSheet implements FromCollection, ShouldAutoSize, WithEvents, WithHeadings, WithTitle
 {
-    private const COLUMN_COUNT = 5;
+    private const COLUMN_COUNT = 7;
 
     /**
      * @param  list<array<string, mixed>>  $collections
@@ -36,6 +36,8 @@ class CustomerReportCollectionsSheet implements FromCollection, ShouldAutoSize, 
     public function headings(): array
     {
         return [
+            'Customer',
+            'Phone',
             'Date',
             'Invoice #',
             'Amount',
@@ -47,6 +49,8 @@ class CustomerReportCollectionsSheet implements FromCollection, ShouldAutoSize, 
     public function collection(): Collection
     {
         $rows = collect($this->collections)->map(fn (array $collection) => [
+            $collection['customer'],
+            $collection['phone'],
             $collection['date'],
             $collection['invoice_number'],
             $collection['amount'],
@@ -56,6 +60,8 @@ class CustomerReportCollectionsSheet implements FromCollection, ShouldAutoSize, 
 
         if ($rows->isNotEmpty()) {
             $rows->push([
+                '',
+                '',
                 '',
                 'Total Collected',
                 $this->totals['collections'],
@@ -85,7 +91,7 @@ class CustomerReportCollectionsSheet implements FromCollection, ShouldAutoSize, 
                 );
 
                 $headerRow = 4;
-                $lastColumn = 'E';
+                $lastColumn = 'G';
                 $highestRow = $sheet->getHighestRow();
 
                 CustomerReportSheetStyles::applyTableHeader($sheet, "A{$headerRow}:{$lastColumn}{$headerRow}");
@@ -104,7 +110,7 @@ class CustomerReportCollectionsSheet implements FromCollection, ShouldAutoSize, 
                         $headerRow + 1,
                         $dataEndRow,
                         self::COLUMN_COUNT,
-                        currencyColumns: [3],
+                        currencyColumns: [5],
                     );
                 }
 
@@ -113,7 +119,7 @@ class CustomerReportCollectionsSheet implements FromCollection, ShouldAutoSize, 
                         $sheet,
                         $totalRows,
                         self::COLUMN_COUNT,
-                        currencyColumns: [3],
+                        currencyColumns: [5],
                     );
                 }
 

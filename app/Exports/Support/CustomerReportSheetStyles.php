@@ -229,16 +229,51 @@ class CustomerReportSheetStyles
         $sheet->freezePane('A'.($headerRow + 1));
     }
 
-    public static function subtitle(string $customerName): string
+    public static function subtitle(string $customerName, ?string $dateFrom = null, ?string $dateTo = null): string
     {
         $appName = (string) config('app.name', 'Coolness Point');
-
-        return sprintf(
-            '%s · Customer: %s · Generated on %s',
+        $parts = [
             $appName,
-            $customerName,
-            now()->format('M d, Y h:i A'),
-        );
+            'Customer: '.$customerName,
+        ];
+
+        if ($dateFrom !== null || $dateTo !== null) {
+            $parts[] = self::dateRangeLabel($dateFrom, $dateTo);
+        }
+
+        $parts[] = 'Generated on '.now()->format('M d, Y h:i A');
+
+        return implode(' · ', $parts);
+    }
+
+    public static function bulkSubtitle(int $customerCount, ?string $dateFrom = null, ?string $dateTo = null): string
+    {
+        $appName = (string) config('app.name', 'Coolness Point');
+        $parts = [
+            $appName,
+            $customerCount.' customers',
+        ];
+
+        if ($dateFrom !== null || $dateTo !== null) {
+            $parts[] = self::dateRangeLabel($dateFrom, $dateTo);
+        }
+
+        $parts[] = 'Generated on '.now()->format('M d, Y h:i A');
+
+        return implode(' · ', $parts);
+    }
+
+    public static function dateRangeLabel(?string $dateFrom, ?string $dateTo): string
+    {
+        if ($dateFrom !== null && $dateTo !== null) {
+            return "Period: {$dateFrom} to {$dateTo}";
+        }
+
+        if ($dateFrom !== null) {
+            return "From: {$dateFrom}";
+        }
+
+        return "Until: {$dateTo}";
     }
 
     /**

@@ -174,6 +174,76 @@ test('duplicate phone is rejected within the same branch', function () {
         ->assertSessionHasErrors('phone');
 });
 
+test('customer list can be filtered by sales or collection activity date range', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerManagementUser(['party.customer.view']);
+
+    $activeCustomer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'name' => 'Active Customer',
+    ]);
+    $inactiveCustomer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'name' => 'Inactive Customer',
+    ]);
+
+    Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'customer_id' => $activeCustomer->id,
+        'type' => SaleType::Sale,
+        'date' => '2026-02-10',
+    ]);
+
+    Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'customer_id' => $inactiveCustomer->id,
+        'type' => SaleType::Sale,
+        'date' => '2026-01-05',
+    ]);
+
+    $this->actingAs($user)
+        ->get('/party/customer?date_from=2026-02-01&date_to=2026-02-28')
+        ->assertSuccessful()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/inventory/customer/index')
+            ->has('customers.data', 1)
+            ->where('customers.data.0.id', $activeCustomer->id)
+            ->where('filters.date_from', '2026-02-01')
+            ->where('filters.date_to', '2026-02-28'));
+});
+
+test('customer list includes customers with due collections in date range', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerManagementUser(['party.customer.view']);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'name' => 'Collection Customer',
+    ]);
+    $otherCustomer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'name' => 'No Activity Customer',
+    ]);
+
+    CustomerPayment::query()->create([
+        'branch_id' => $user->branch_id,
+        'customer_id' => $customer->id,
+        'date' => '2026-03-15',
+        'amount' => 500,
+        'created_by' => $user->id,
+    ]);
+
+    $this->actingAs($user)
+        ->get('/party/customer?date_from=2026-03-01&date_to=2026-03-31')
+        ->assertSuccessful()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/inventory/customer/index')
+            ->has('customers.data', 1)
+            ->where('customers.data.0.id', $customer->id));
+});
+
 test('user without permission cannot download customer report', function () {
     $this->artisan('permissions:sync');
 
@@ -216,6 +286,92 @@ test('user can download customer excel report', function () {
         ->get(route('party.customer.report', $customer))
         ->assertSuccessful()
         ->assertDownload('customer-report-report-customer-'.now()->format('Y-m-d').'.xlsx');
+});
+
+test('user can download customer excel report with date filter', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerManagementUser(['party.customer.view']);
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'name' => 'Filtered Customer',
+    ]);
+
+    Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'customer_id' => $customer->id,
+        'type' => SaleType::Sale,
+        'date' => '2026-01-15',
+        'gross_amount' => 1000,
+        'paid_amount' => 1000,
+    ]);
+
+    Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'customer_id' => $customer->id,
+        'type' => SaleType::Sale,
+        'date' => '2026-02-15',
+        'gross_amount' => 2000,
+        'paid_amount' => 500,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('party.customer.report', [
+            'customer' => $customer,
+            'date_from' => '2026-02-01',
+            'date_to' => '2026-02-28',
+        ]))
+        ->assertSuccessful()
+        ->assertDownload('customer-report-filtered-customer-'.now()->format('Y-m-d').'.xlsx');
+});
+
+test('user can download bulk customer excel report for selected customers', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerManagementUser(['party.customer.view']);
+    $customerA = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'name' => 'Bulk Customer A',
+    ]);
+    $customerB = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'name' => 'Bulk Customer B',
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('party.customer.bulk-report', [
+            'customer_ids' => [$customerA->id, $customerB->id],
+            'date_from' => '2026-01-01',
+            'date_to' => '2026-03-31',
+        ]))
+        ->assertSuccessful()
+        ->assertDownload('customers-report-'.now()->format('Y-m-d').'.xlsx');
+});
+
+test('bulk customer report rejects customers from another branch', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerManagementUser(['party.customer.view']);
+    $otherBranch = Branch::factory()->create();
+    $customer = Customer::factory()->create(['branch_id' => $otherBranch->id]);
+
+    $this->actingAs($user)
+        ->get(route('party.customer.bulk-report', [
+            'customer_ids' => [$customer->id],
+        ]))
+        ->assertNotFound();
+});
+
+test('bulk customer report requires at least one customer', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerManagementUser(['party.customer.view']);
+
+    $this->actingAs($user)
+        ->get(route('party.customer.bulk-report', [
+            'customer_ids' => [],
+        ]))
+        ->assertSessionHasErrors('customer_ids');
 });
 
 test('branch user cannot download report for customer from another branch', function () {

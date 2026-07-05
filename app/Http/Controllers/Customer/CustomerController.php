@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Customer;
 use App\Enums\CommonStatus;
 use App\Enums\CustomerRegistrationType;
 use App\Exports\CustomerReportExport;
+use App\Exports\CustomersBulkReportExport;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Services\CustomerReportService;
@@ -27,20 +28,52 @@ class CustomerController extends Controller
     {
         $this->authorize('party.customer.view');
 
-        $customers = Customer::with('branch')
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+        ]);
+
+        $dateFrom = $validated['date_from'] ?? null;
+        $dateTo = $validated['date_to'] ?? null;
+
+        $customers = Customer::query()
             ->ownBranch()
-            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
+            ->when($validated['search'] ?? null, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('name', 'like', "%{$s}%")
                     ->orWhere('phone', 'like', "%{$s}%")
                     ->orWhere('email', 'like', "%{$s}%");
             }))
+            ->when($dateFrom !== null || $dateTo !== null, function ($query) use ($dateFrom, $dateTo) {
+                $query->where(function ($query) use ($dateFrom, $dateTo) {
+                    $query->whereHas('sells', function ($sellQuery) use ($dateFrom, $dateTo) {
+                        $sellQuery->sale();
+
+                        if ($dateFrom !== null) {
+                            $sellQuery->whereDate('date', '>=', $dateFrom);
+                        }
+
+                        if ($dateTo !== null) {
+                            $sellQuery->whereDate('date', '<=', $dateTo);
+                        }
+                    })->orWhereHas('payments', function ($paymentQuery) use ($dateFrom, $dateTo) {
+                        if ($dateFrom !== null) {
+                            $paymentQuery->whereDate('date', '>=', $dateFrom);
+                        }
+
+                        if ($dateTo !== null) {
+                            $paymentQuery->whereDate('date', '<=', $dateTo);
+                        }
+                    });
+                });
+            })
             ->latest()
             ->paginate(20)
             ->withQueryString();
 
         return Inertia::render('admin/inventory/customer/index', [
             'customers' => $customers,
-            'filters' => $request->only('search'),
+            'filters' => $request->only('search', 'date_from', 'date_to'),
             'statuses' => collect(CommonStatus::cases())->map(fn ($s) => ['value' => $s->value, 'name' => $s->name]),
         ]);
     }
@@ -123,7 +156,7 @@ class CustomerController extends Controller
         return back()->with('success', 'Customer updated successfully.');
     }
 
-    public function report(Customer $customer, CustomerReportService $reportService): BinaryFileResponse
+    public function report(Request $request, Customer $customer, CustomerReportService $reportService): BinaryFileResponse
     {
         $this->authorize('party.customer.view');
 
@@ -133,11 +166,54 @@ class CustomerController extends Controller
             abort(404);
         }
 
-        $data = $reportService->build($customer);
+        $validated = $request->validate([
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+        ]);
+
+        $data = $reportService->build(
+            $customer,
+            $validated['date_from'] ?? null,
+            $validated['date_to'] ?? null,
+        );
         $slug = Str::slug($customer->name ?: $customer->phone);
         $filename = "customer-report-{$slug}-".now()->format('Y-m-d').'.xlsx';
 
         return Excel::download(new CustomerReportExport($data), $filename);
+    }
+
+    public function bulkReport(Request $request, CustomerReportService $reportService): BinaryFileResponse
+    {
+        $this->authorize('party.customer.view');
+
+        $validated = $request->validate([
+            'customer_ids' => ['required', 'array', 'min:1'],
+            'customer_ids.*' => ['required', 'integer'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+        ]);
+
+        $branchId = auth()->user()?->branch_id;
+
+        $customerIds = Customer::query()
+            ->whereIn('id', $validated['customer_ids'])
+            ->when($branchId !== null, fn ($query) => $query->where('branch_id', $branchId))
+            ->pluck('id')
+            ->all();
+
+        if (count($customerIds) !== count(array_unique($validated['customer_ids']))) {
+            abort(404);
+        }
+
+        $data = $reportService->buildBulk(
+            $customerIds,
+            $validated['date_from'] ?? null,
+            $validated['date_to'] ?? null,
+        );
+
+        $filename = 'customers-report-'.now()->format('Y-m-d').'.xlsx';
+
+        return Excel::download(new CustomersBulkReportExport($data), $filename);
     }
 
     public function destroy(Customer $customer): RedirectResponse

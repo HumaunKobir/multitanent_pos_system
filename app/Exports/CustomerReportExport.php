@@ -6,6 +6,7 @@ use App\Exports\Sheets\CustomerReportCollectionsSheet;
 use App\Exports\Sheets\CustomerReportCurrentDueSheet;
 use App\Exports\Sheets\CustomerReportInfoSheet;
 use App\Exports\Sheets\CustomerReportSalesSheet;
+use App\Exports\Support\CustomerReportSheetStyles;
 use Maatwebsite\Excel\Concerns\WithMultipleSheets;
 
 class CustomerReportExport implements WithMultipleSheets
@@ -27,12 +28,15 @@ class CustomerReportExport implements WithMultipleSheets
     public function sheets(): array
     {
         $customerName = (string) ($this->data['customer']['name'] ?? 'Customer');
+        $dateFrom = $this->data['date_from'] ?? null;
+        $dateTo = $this->data['date_to'] ?? null;
+        $subtitle = CustomerReportSheetStyles::subtitle($customerName, $dateFrom, $dateTo);
 
         return [
-            new CustomerReportInfoSheet($this->data['customer']),
-            new CustomerReportSalesSheet($this->data['sales'], $this->data['totals'], $customerName),
-            new CustomerReportCollectionsSheet($this->data['collections'], $this->data['totals'], $customerName),
-            new CustomerReportCurrentDueSheet($this->data['due_sales'], $this->data['totals'], $customerName),
+            new CustomerReportInfoSheet($this->data['customer'], $subtitle),
+            new CustomerReportSalesSheet($this->data['sales'], $this->data['totals'], $subtitle),
+            new CustomerReportCollectionsSheet($this->data['collections'], $this->data['totals'], $subtitle),
+            new CustomerReportCurrentDueSheet($this->data['due_sales'], $this->data['totals'], $subtitle),
         ];
     }
 }

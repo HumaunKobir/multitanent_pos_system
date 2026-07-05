@@ -1,12 +1,13 @@
 import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
 import { Head, router, useForm, usePage } from '@inertiajs/react';
-import { FileSpreadsheet, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { FileSpreadsheet, Pencil, Plus, RotateCcw, Search, Trash2, Users } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { FormField } from '@/components/form-field';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { DataTable } from '@/components/ui/data-table';
 import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -38,6 +39,38 @@ function editCustomerFormDefaults() {
         is_default: '0',
         status: 1,
     };
+}
+
+function buildCustomerReportUrl(customerId, dateFrom, dateTo) {
+    const params = new URLSearchParams();
+
+    if (dateFrom) {
+        params.set('date_from', dateFrom);
+    }
+
+    if (dateTo) {
+        params.set('date_to', dateTo);
+    }
+
+    const base = route('party.customer.report', { customer: customerId });
+
+    return params.toString() ? `${base}?${params.toString()}` : base;
+}
+
+function buildBulkReportUrl(selectedIds, dateFrom, dateTo) {
+    const params = new URLSearchParams();
+
+    selectedIds.forEach((id) => params.append('customer_ids[]', String(id)));
+
+    if (dateFrom) {
+        params.set('date_from', dateFrom);
+    }
+
+    if (dateTo) {
+        params.set('date_to', dateTo);
+    }
+
+    return `${route('party.customer.bulk-report')}?${params.toString()}`;
 }
 
 function CustomerForm({ form, onSubmit, onCancel, isEditing, statuses }) {
@@ -167,6 +200,9 @@ export default function CustomerIndex({ customers, filters, statuses }) {
     const toast = useAppToast();
     const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
+    const [dateFrom, setDateFrom] = useState(filters.date_from ?? '');
+    const [dateTo, setDateTo] = useState(filters.date_to ?? '');
+    const [selectedIds, setSelectedIds] = useState([]);
     const [creating, setCreating] = useState(false);
     const [editing, setEditing] = useState(null);
     const [deleting, setDeleting] = useState(null);
@@ -174,19 +210,69 @@ export default function CustomerIndex({ customers, filters, statuses }) {
     const createForm = useForm(createCustomerFormDefaults());
     const editForm = useForm(editCustomerFormDefaults());
 
+    const rows = customers.data ?? [];
+    const pageIds = useMemo(() => rows.map((row) => Number(row.id)), [rows]);
+    const allPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
+    const hasActiveFilters = Boolean(search || dateFrom || dateTo);
+
     useEffect(() => {
         if (flash.success) toast.success(flash.success);
         if (flash.error) toast.error(flash.error);
     }, [flash.success, flash.error]);
 
+    useEffect(() => {
+        setSelectedIds([]);
+    }, [filters.search, filters.date_from, filters.date_to, customers.current_page]);
+
     useDebouncedEffect(
         () => {
-            router.get(route('party.customer.index'), { search: search || undefined }, { preserveState: true, replace: true });
+            router.get(
+                route('party.customer.index'),
+                {
+                    search: search || undefined,
+                    date_from: dateFrom || undefined,
+                    date_to: dateTo || undefined,
+                },
+                { preserveState: true, replace: true },
+            );
         },
-        [search],
+        [search, dateFrom, dateTo],
         350,
         { skipFirstRun: true },
     );
+
+    function toggleSelectAllOnPage(checked) {
+        if (checked) {
+            setSelectedIds((current) => [...new Set([...current, ...pageIds])]);
+            return;
+        }
+
+        setSelectedIds((current) => current.filter((id) => !pageIds.includes(id)));
+    }
+
+    function toggleRowSelection(id, checked) {
+        const numericId = Number(id);
+
+        setSelectedIds((current) => (
+            checked ? [...new Set([...current, numericId])] : current.filter((value) => value !== numericId)
+        ));
+    }
+
+    function handleBulkExport() {
+        if (selectedIds.length === 0) {
+            toast.error('Select at least one customer to export.');
+            return;
+        }
+
+        window.location.href = buildBulkReportUrl(selectedIds, dateFrom, dateTo);
+    }
+
+    function handleReset() {
+        setSearch('');
+        setDateFrom('');
+        setDateTo('');
+        setSelectedIds([]);
+    }
 
     function openEdit(customer) {
         editForm.setData({
@@ -234,6 +320,25 @@ export default function CustomerIndex({ customers, filters, statuses }) {
     }
 
     const columns = [
+        ...(can('party.customer.view')
+            ? [{
+                id: 'select',
+                header: (
+                    <Checkbox
+                        checked={allPageSelected}
+                        onCheckedChange={(checked) => toggleSelectAllOnPage(checked === true)}
+                        aria-label="Select all customers on this page"
+                    />
+                ),
+                render: (row) => (
+                    <Checkbox
+                        checked={selectedIds.includes(Number(row.id))}
+                        onCheckedChange={(checked) => toggleRowSelection(row.id, checked === true)}
+                        aria-label={`Select ${row.name ?? row.phone}`}
+                    />
+                ),
+            }]
+            : []),
         { id: 'num', header: '#', render: (_, i) => (customers.from ?? 0) + i },
         {
             id: 'customer', header: 'Customer', render: (row) => (
@@ -284,7 +389,7 @@ export default function CustomerIndex({ customers, filters, statuses }) {
                             asChild
                         >
                             <a
-                                href={route('party.customer.report', row.id)}
+                                href={buildCustomerReportUrl(row.id, dateFrom, dateTo)}
                                 aria-label={`Download report for ${row.name ?? row.phone}`}
                                 title="Download Excel report"
                             >
@@ -326,8 +431,8 @@ export default function CustomerIndex({ customers, filters, statuses }) {
                     />
                 </div>
 
-                <div className="mb-4 flex gap-2">
-                    <div className="relative max-w-xs flex-1">
+                <div className="mb-4 flex flex-wrap items-end gap-2">
+                    <div className="relative max-w-xs flex-1 min-w-[200px]">
                         <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
                             value={search}
@@ -336,9 +441,60 @@ export default function CustomerIndex({ customers, filters, statuses }) {
                             className="pl-9"
                         />
                     </div>
+                    <div className="flex flex-wrap items-end gap-2">
+                        <FormField label="From" name="date_from" className="space-y-1">
+                            <Input
+                                id="date_from"
+                                type="date"
+                                value={dateFrom}
+                                onChange={(e) => setDateFrom(e.target.value)}
+                                className="w-[160px]"
+                            />
+                        </FormField>
+                        <FormField label="To" name="date_to" className="space-y-1">
+                            <Input
+                                id="date_to"
+                                type="date"
+                                value={dateTo}
+                                onChange={(e) => setDateTo(e.target.value)}
+                                className="w-[160px]"
+                            />
+                        </FormField>
+                    </div>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="lg"
+                        onClick={handleReset}
+                        disabled={!hasActiveFilters}
+                        title="Reset filters"
+                        className="shrink-0"
+                    >
+                        <RotateCcw className="size-4" />
+                        Reset
+                    </Button>
+                    {can('party.customer.view') && (
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="lg"
+                            disabled={selectedIds.length === 0}
+                            onClick={handleBulkExport}
+                            className="shrink-0"
+                        >
+                            <FileSpreadsheet className="size-4" />
+                            Export Excel{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+                        </Button>
+                    )}
                 </div>
 
-                <DataTable columns={columns} rows={customers.data} rowKey="id" emptyMessage="No customers found." />
+                {selectedIds.length > 0 && (
+                    <p className="mb-3 text-sm text-muted-foreground">
+                        {selectedIds.length} customer{selectedIds.length !== 1 ? 's' : ''} selected
+                    </p>
+                )}
+
+                <DataTable columns={columns} rows={rows} rowKey="id" emptyMessage="No customers found." />
 
                 {customers.links?.length > 3 && (
                     <div className="mt-4 flex flex-wrap gap-1">

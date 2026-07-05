@@ -11,23 +11,25 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
 
-class CustomerReportCollectionsSheet implements FromCollection, ShouldAutoSize, WithEvents, WithHeadings, WithTitle
+class CustomerReportBulkCurrentDueSheet implements FromCollection, ShouldAutoSize, WithEvents, WithHeadings, WithTitle
 {
-    private const COLUMN_COUNT = 5;
+    private const COLUMN_COUNT = 7;
+
+    private const CURRENCY_COLUMNS = [5, 6, 7];
 
     /**
-     * @param  list<array<string, mixed>>  $collections
+     * @param  list<array<string, mixed>>  $dueSales
      * @param  array<string, float>  $totals
      */
     public function __construct(
-        private array $collections,
+        private array $dueSales,
         private array $totals,
         private string $subtitle,
     ) {}
 
     public function title(): string
     {
-        return 'Due Collections';
+        return 'Current Due';
     }
 
     /**
@@ -36,33 +38,47 @@ class CustomerReportCollectionsSheet implements FromCollection, ShouldAutoSize, 
     public function headings(): array
     {
         return [
+            'Customer',
+            'Phone',
             'Date',
             'Invoice #',
-            'Amount',
-            'Comment',
-            'Collected By',
+            'Net Amount',
+            'Paid Amount',
+            'Due Amount',
         ];
     }
 
     public function collection(): Collection
     {
-        $rows = collect($this->collections)->map(fn (array $collection) => [
-            $collection['date'],
-            $collection['invoice_number'],
-            $collection['amount'],
-            $collection['comment'],
-            $collection['created_by'],
+        $rows = collect($this->dueSales)->map(fn (array $sale) => [
+            $sale['customer'],
+            $sale['phone'],
+            $sale['date'],
+            $sale['invoice_number'],
+            $sale['net_amount'],
+            $sale['paid_amount'],
+            $sale['due_amount'],
         ]);
 
-        if ($rows->isNotEmpty()) {
-            $rows->push([
-                '',
-                'Total Collected',
-                $this->totals['collections'],
-                '',
-                '',
-            ]);
-        }
+        $rows->push([
+            '',
+            '',
+            '',
+            'Outstanding Invoice Due',
+            '',
+            '',
+            $this->totals['current_due'],
+        ]);
+
+        $rows->push([
+            '',
+            '',
+            '',
+            'Total Account Due Balance',
+            '',
+            '',
+            $this->totals['account_balance'],
+        ]);
 
         return $rows;
     }
@@ -79,24 +95,19 @@ class CustomerReportCollectionsSheet implements FromCollection, ShouldAutoSize, 
 
                 CustomerReportSheetStyles::applyReportHeader(
                     $sheet,
-                    'Due Collections',
+                    'Current Due',
                     $this->subtitle,
                     self::COLUMN_COUNT,
                 );
 
                 $headerRow = 4;
-                $lastColumn = 'E';
+                $lastColumn = 'G';
                 $highestRow = $sheet->getHighestRow();
 
                 CustomerReportSheetStyles::applyTableHeader($sheet, "A{$headerRow}:{$lastColumn}{$headerRow}");
 
-                $dataEndRow = $highestRow;
-                $totalRows = [];
-
-                if ($highestRow > $headerRow && collect($this->collections)->isNotEmpty()) {
-                    $dataEndRow = $highestRow - 1;
-                    $totalRows[] = $highestRow;
-                }
+                $totalRows = [$highestRow - 1, $highestRow];
+                $dataEndRow = $highestRow - 2;
 
                 if ($dataEndRow > $headerRow) {
                     CustomerReportSheetStyles::applyDataTable(
@@ -104,18 +115,16 @@ class CustomerReportCollectionsSheet implements FromCollection, ShouldAutoSize, 
                         $headerRow + 1,
                         $dataEndRow,
                         self::COLUMN_COUNT,
-                        currencyColumns: [3],
+                        self::CURRENCY_COLUMNS,
                     );
                 }
 
-                if ($totalRows !== []) {
-                    CustomerReportSheetStyles::applyTotalRows(
-                        $sheet,
-                        $totalRows,
-                        self::COLUMN_COUNT,
-                        currencyColumns: [3],
-                    );
-                }
+                CustomerReportSheetStyles::applyTotalRows(
+                    $sheet,
+                    $totalRows,
+                    self::COLUMN_COUNT,
+                    [7],
+                );
 
                 CustomerReportSheetStyles::freezeBelowHeader($sheet, $headerRow);
             },

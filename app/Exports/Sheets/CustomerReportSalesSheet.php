@@ -24,7 +24,7 @@ class CustomerReportSalesSheet implements FromCollection, ShouldAutoSize, WithEv
     public function __construct(
         private array $sales,
         private array $totals,
-        private string $customerName,
+        private string $subtitle,
     ) {}
 
     public function title(): string
@@ -94,7 +94,7 @@ class CustomerReportSalesSheet implements FromCollection, ShouldAutoSize, WithEv
                 CustomerReportSheetStyles::applyReportHeader(
                     $sheet,
                     'Sales History',
-                    CustomerReportSheetStyles::subtitle($this->customerName),
+                    $this->subtitle,
                     self::COLUMN_COUNT,
                 );
 

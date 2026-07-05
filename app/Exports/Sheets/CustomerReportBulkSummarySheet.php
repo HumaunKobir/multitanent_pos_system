@@ -11,25 +11,23 @@ use Maatwebsite\Excel\Concerns\WithHeadings;
 use Maatwebsite\Excel\Concerns\WithTitle;
 use Maatwebsite\Excel\Events\AfterSheet;
 
-class CustomerReportCurrentDueSheet implements FromCollection, ShouldAutoSize, WithEvents, WithHeadings, WithTitle
+class CustomerReportBulkSummarySheet implements FromCollection, ShouldAutoSize, WithEvents, WithHeadings, WithTitle
 {
-    private const COLUMN_COUNT = 5;
+    private const COLUMN_COUNT = 7;
 
-    private const CURRENCY_COLUMNS = [3, 4, 5];
+    private const CURRENCY_COLUMNS = [5, 6];
 
     /**
-     * @param  list<array<string, mixed>>  $dueSales
-     * @param  array<string, float>  $totals
+     * @param  list<array<string, mixed>>  $customers
      */
     public function __construct(
-        private array $dueSales,
-        private array $totals,
+        private array $customers,
         private string $subtitle,
     ) {}
 
     public function title(): string
     {
-        return 'Current Due';
+        return 'Customers';
     }
 
     /**
@@ -38,41 +36,27 @@ class CustomerReportCurrentDueSheet implements FromCollection, ShouldAutoSize, W
     public function headings(): array
     {
         return [
-            'Date',
-            'Invoice #',
-            'Net Amount',
-            'Paid Amount',
-            'Due Amount',
+            'Name',
+            'Phone',
+            'Email',
+            'Address',
+            'Coin Balance',
+            'Due Balance',
+            'Status',
         ];
     }
 
     public function collection(): Collection
     {
-        $rows = collect($this->dueSales)->map(fn (array $sale) => [
-            $sale['date'],
-            $sale['invoice_number'],
-            $sale['net_amount'],
-            $sale['paid_amount'],
-            $sale['due_amount'],
+        return collect($this->customers)->map(fn (array $customer) => [
+            $customer['name'] ?? '—',
+            $customer['phone'] ?? '—',
+            $customer['email'] ?? '—',
+            $customer['address'] ?? '—',
+            $customer['coin_balance'] ?? 0,
+            $customer['due_balance'] ?? 0,
+            $customer['status'] ?? '—',
         ]);
-
-        $rows->push([
-            '',
-            'Outstanding Invoice Due',
-            '',
-            '',
-            $this->totals['current_due'],
-        ]);
-
-        $rows->push([
-            '',
-            'Account Due Balance',
-            '',
-            '',
-            $this->totals['account_balance'],
-        ]);
-
-        return $rows;
     }
 
     /**
@@ -87,36 +71,26 @@ class CustomerReportCurrentDueSheet implements FromCollection, ShouldAutoSize, W
 
                 CustomerReportSheetStyles::applyReportHeader(
                     $sheet,
-                    'Current Due',
+                    'Customer Summary',
                     $this->subtitle,
                     self::COLUMN_COUNT,
                 );
 
                 $headerRow = 4;
-                $lastColumn = 'E';
+                $lastColumn = 'G';
                 $highestRow = $sheet->getHighestRow();
 
                 CustomerReportSheetStyles::applyTableHeader($sheet, "A{$headerRow}:{$lastColumn}{$headerRow}");
 
-                $totalRows = [$highestRow - 1, $highestRow];
-                $dataEndRow = $highestRow - 2;
-
-                if ($dataEndRow > $headerRow) {
+                if ($highestRow > $headerRow) {
                     CustomerReportSheetStyles::applyDataTable(
                         $sheet,
                         $headerRow + 1,
-                        $dataEndRow,
+                        $highestRow,
                         self::COLUMN_COUNT,
                         self::CURRENCY_COLUMNS,
                     );
                 }
-
-                CustomerReportSheetStyles::applyTotalRows(
-                    $sheet,
-                    $totalRows,
-                    self::COLUMN_COUNT,
-                    [5],
-                );
 
                 CustomerReportSheetStyles::freezeBelowHeader($sheet, $headerRow);
             },

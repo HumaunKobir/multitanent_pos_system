@@ -18,7 +18,10 @@ class CustomerReportInfoSheet implements FromArray, ShouldAutoSize, WithEvents, 
     /**
      * @param  array<string, mixed>  $customer
      */
-    public function __construct(private array $customer) {}
+    public function __construct(
+        private array $customer,
+        private string $subtitle,
+    ) {}
 
     public function title(): string
     {
@@ -30,11 +33,9 @@ class CustomerReportInfoSheet implements FromArray, ShouldAutoSize, WithEvents, 
      */
     public function array(): array
     {
-        $name = $this->customer['name'] ?? '—';
-
         return [
             ['Customer Report'],
-            [CustomerReportSheetStyles::subtitle($name !== '—' ? (string) $name : 'Unknown')],
+            [$this->subtitle],
             ['', ''],
             ['Customer Details'],
             ['Field', 'Value'],
@@ -42,7 +43,6 @@ class CustomerReportInfoSheet implements FromArray, ShouldAutoSize, WithEvents, 
             ['Phone', $this->customer['phone'] ?? '—'],
             ['Email', $this->customer['email'] ?? '—'],
             ['Address', $this->customer['address'] ?? '—'],
-            ['Branch', $this->customer['branch'] ?? '—'],
             ['Status', $this->customer['status'] ?? '—'],
             ['Registration Type', $this->customer['registration_type'] ?? '—'],
             ['Coin Balance', $this->customer['coin_balance'] ?? 0],
@@ -59,25 +59,24 @@ class CustomerReportInfoSheet implements FromArray, ShouldAutoSize, WithEvents, 
         return [
             AfterSheet::class => function (AfterSheet $event): void {
                 $sheet = $event->sheet->getDelegate();
-                $customerName = (string) ($this->customer['name'] ?? 'Customer');
 
                 CustomerReportSheetStyles::applyReportHeader(
                     $sheet,
                     'Customer Report',
-                    CustomerReportSheetStyles::subtitle($customerName),
+                    $this->subtitle,
                     2,
                 );
 
                 CustomerReportSheetStyles::applySectionTitle($sheet, 4, 'Customer Details', 2);
 
-                $dataEndRow = self::DATA_START_ROW + 9;
+                $dataEndRow = self::DATA_START_ROW + 8;
 
                 CustomerReportSheetStyles::applyLabelValueTable(
                     $sheet,
                     self::HEADER_ROW,
                     self::DATA_START_ROW,
                     $dataEndRow,
-                    currencyRows: [13, 14],
+                    currencyRows: [12, 13],
                 );
             },
         ];

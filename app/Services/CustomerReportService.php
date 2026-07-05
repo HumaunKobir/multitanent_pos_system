@@ -20,14 +20,14 @@ class CustomerReportService
      *     totals: array<string, float>
      * }
      */
-    public function build(Customer $customer): array
+    public function build(Customer $customer, ?string $dateFrom = null, ?string $dateTo = null): array
     {
-        $customer->loadMissing('branch:id,name');
-
         $sales = Sell::query()
             ->sale()
             ->where('customer_id', $customer->id)
             ->when($this->branchId(), fn ($query, int $branchId) => $query->where('branch_id', $branchId))
+            ->when($dateFrom, fn ($query, string $from) => $query->whereDate('date', '>=', $from))
+            ->when($dateTo, fn ($query, string $to) => $query->whereDate('date', '<=', $to))
             ->with('products:id,sell_id,discount')
             ->orderBy('date')
             ->orderBy('id')
@@ -36,6 +36,8 @@ class CustomerReportService
         $collections = CustomerPayment::query()
             ->where('customer_id', $customer->id)
             ->when($this->branchId(), fn ($query, int $branchId) => $query->where('branch_id', $branchId))
+            ->when($dateFrom, fn ($query, string $from) => $query->whereDate('date', '>=', $from))
+            ->when($dateTo, fn ($query, string $to) => $query->whereDate('date', '<=', $to))
             ->with('createdBy:id,name')
             ->orderBy('date')
             ->orderBy('id')
@@ -54,7 +56,6 @@ class CustomerReportService
                 'phone' => $customer->phone,
                 'email' => $customer->email,
                 'address' => $customer->address,
-                'branch' => $customer->branch?->name,
                 'status' => $customer->status->name,
                 'registration_type' => $customer->registration_type->name,
                 'coin_balance' => (float) $customer->point,
@@ -93,6 +94,81 @@ class CustomerReportService
                 'current_due' => $currentDueTotal,
                 'account_balance' => (float) $customer->balance,
             ],
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
+        ];
+    }
+
+    /**
+     * @param  list<int>  $customerIds
+     * @return array{
+     *     customers: list<array<string, mixed>>,
+     *     sales: list<array<string, mixed>>,
+     *     collections: list<array<string, mixed>>,
+     *     due_sales: list<array<string, mixed>>,
+     *     totals: array<string, float>,
+     *     date_from: string|null,
+     *     date_to: string|null
+     * }
+     */
+    public function buildBulk(array $customerIds, ?string $dateFrom = null, ?string $dateTo = null): array
+    {
+        $customers = Customer::query()
+            ->whereIn('id', $customerIds)
+            ->when($this->branchId(), fn ($query, int $branchId) => $query->where('branch_id', $branchId))
+            ->orderBy('name')
+            ->orderBy('phone')
+            ->get();
+
+        $reports = $customers->map(fn (Customer $customer) => $this->build($customer, $dateFrom, $dateTo));
+
+        $customerLabel = fn (array $customer): string => (string) ($customer['name'] ?: $customer['phone']);
+
+        $sales = $reports->flatMap(function (array $report) use ($customerLabel) {
+            $label = $customerLabel($report['customer']);
+
+            return collect($report['sales'])->map(fn (array $sale) => [
+                ...$sale,
+                'customer' => $label,
+                'phone' => $report['customer']['phone'],
+            ]);
+        })->values()->all();
+
+        $collections = $reports->flatMap(function (array $report) use ($customerLabel) {
+            $label = $customerLabel($report['customer']);
+
+            return collect($report['collections'])->map(fn (array $collection) => [
+                ...$collection,
+                'customer' => $label,
+                'phone' => $report['customer']['phone'],
+            ]);
+        })->values()->all();
+
+        $dueSales = $reports->flatMap(function (array $report) use ($customerLabel) {
+            $label = $customerLabel($report['customer']);
+
+            return collect($report['due_sales'])->map(fn (array $sale) => [
+                ...$sale,
+                'customer' => $label,
+                'phone' => $report['customer']['phone'],
+            ]);
+        })->values()->all();
+
+        return [
+            'customers' => $reports->map(fn (array $report) => $report['customer'])->values()->all(),
+            'sales' => $sales,
+            'collections' => $collections,
+            'due_sales' => $dueSales,
+            'totals' => [
+                'sales_net' => round(collect($sales)->sum(fn (array $sale) => (float) $sale['net_amount']), 2),
+                'sales_paid' => round(collect($sales)->sum(fn (array $sale) => (float) $sale['paid_amount']), 2),
+                'sales_due' => round(collect($sales)->sum(fn (array $sale) => (float) $sale['due_amount']), 2),
+                'collections' => round(collect($collections)->sum(fn (array $collection) => (float) $collection['amount']), 2),
+                'current_due' => round(collect($dueSales)->sum(fn (array $sale) => (float) $sale['due_amount']), 2),
+                'account_balance' => round($reports->sum(fn (array $report) => (float) $report['totals']['account_balance']), 2),
+            ],
+            'date_from' => $dateFrom,
+            'date_to' => $dateTo,
         ];
     }
 

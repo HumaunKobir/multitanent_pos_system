@@ -729,16 +729,19 @@ class PurchaseController extends Controller
 
     private function adjustPurchaseVariationStock(int $variationId, float $quantity): void
     {
-        $mainVariation = ProductVariation::mainWarehouseFor($variationId);
+        $variation = ProductVariation::query()
+            ->whereKey($variationId)
+            ->lockForUpdate()
+            ->first();
 
-        if (! $mainVariation) {
+        if (! $variation) {
             return;
         }
 
         if ($quantity >= 0) {
-            $mainVariation->increment('stock', (int) $quantity);
+            $variation->increment('stock', (int) $quantity);
         } else {
-            $mainVariation->decrement('stock', (int) abs($quantity));
+            $variation->decrement('stock', (int) abs($quantity));
         }
     }
 

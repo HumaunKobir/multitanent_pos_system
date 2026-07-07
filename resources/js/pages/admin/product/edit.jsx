@@ -2,6 +2,7 @@ import { Head, Link, useForm } from '@inertiajs/react';
 import { ArrowLeft, PackagePlus, Trash2 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
+import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
 import { getSharedCombinationPrices } from '@/lib/variation-utils';
 import ProductForm from './partials/product-form';
@@ -116,6 +117,7 @@ export default function ProductEdit({
     });
 
     const productFormRef = useRef(null);
+    const toast = useAppToast();
 
     function handleSubmit(e) {
         e.preventDefault();
@@ -126,7 +128,13 @@ export default function ProductEdit({
             return;
         }
 
-        form.patch(route('product.update', { product: product.slug }));
+        form.patch(route('product.update', { product: product.slug }), {
+            onError: (errors) => {
+                if (errors.initial_stock_payment_account_id) {
+                    toast.warning(errors.initial_stock_payment_account_id);
+                }
+            },
+        });
     }
 
     return (

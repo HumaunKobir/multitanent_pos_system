@@ -46,6 +46,21 @@ class ProductController extends Controller
         private BarcodeService $barcodes,
     ) {}
 
+    /**
+     * Convert an initial-stock payment "insufficient balance" failure into a
+     * validation error so the form shows a warning toast instead of a 500 page.
+     */
+    private function rethrowInitialStockPaymentFailure(\Throwable $exception): never
+    {
+        if (str_contains($exception->getMessage(), 'Insufficient balance')) {
+            throw ValidationException::withMessages([
+                'initial_stock_payment_account_id' => 'Insufficient balance in the selected payment account.',
+            ]);
+        }
+
+        throw $exception;
+    }
+
     public function index(Request $request): Response
     {
         $this->authorize('product.view');
@@ -57,8 +72,11 @@ class ProductController extends Controller
         $mainBranchId = Branch::resolveMainBranchId();
         $showSelectedBranchColumn = $canFilterProductsByBranch && ($listBranchId === null || $listBranchId === $mainBranchId);
 
+        $statusFilter = $request->input('status', 'active');
+
         $products = Product::query()
-            ->active()
+            ->when($statusFilter === 'active', fn ($q) => $q->where('status', 1))
+            ->when($statusFilter === 'inactive', fn ($q) => $q->where('status', 0))
             ->when($listBranchId !== null, fn ($q) => $q->where('branch_id', $listBranchId))
             ->when($usesAdminPanel, fn ($q) => $q->visibleInMainCatalog())
             ->with([
@@ -120,6 +138,7 @@ class ProductController extends Controller
             'showSelectedBranchColumn' => $showSelectedBranchColumn,
             'filters' => array_merge(
                 $request->only('search', 'category_id', 'brand_id', 'tag'),
+                ['status' => $statusFilter],
                 $canFilterProductsByBranch ? [
                     'branch_id' => $request->input('branch_id', (string) $mainBranchId),
                 ] : [],
@@ -261,61 +280,65 @@ class ProductController extends Controller
             $data['code'] = null;
         }
 
-        DB::transaction(function () use ($request, $data, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock, $settlement, $initialStockValue) {
-            if ($request->hasFile('image')) {
-                $data['image'] = $request->file('image')->store('products', 'public');
-            }
-
-            if ($request->hasFile('chest_size_image')) {
-                $data['chest_size_image'] = $request->file('chest_size_image')->store('products', 'public');
-            }
-
-            $data['visible'] = $this->resolveProductVisibility($data);
-            $data['status'] = (int) ($data['status'] ?? 1);
-            $data['discount_price'] = $data['discount_price'] ?? 0;
-
-            if (blank(trim((string) ($data['code'] ?? '')))) {
-                $data['code'] = null;
-            }
-
-            $photoPaths = [];
-
-            if ($request->hasFile('photos')) {
-                foreach ($request->file('photos') as $photo) {
-                    $photoPaths[] = $photo->store('products/photos', 'public');
+        try {
+            DB::transaction(function () use ($request, $data, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock, $settlement, $initialStockValue) {
+                if ($request->hasFile('image')) {
+                    $data['image'] = $request->file('image')->store('products', 'public');
                 }
-            }
 
-            $this->initialStock->usingSupplierAccounting($settlement->usesSupplier(), function () use (
-                $data,
-                $combinations,
-                $mainPurchasePrice,
-                $mainSalePrice,
-                $mainInitialStock,
-                $photoPaths,
-                $settlement,
-                $initialStockValue,
-            ) {
-                $products = $this->productReplication->createSingle(
+                if ($request->hasFile('chest_size_image')) {
+                    $data['chest_size_image'] = $request->file('chest_size_image')->store('products', 'public');
+                }
+
+                $data['visible'] = $this->resolveProductVisibility($data);
+                $data['status'] = (int) ($data['status'] ?? 1);
+                $data['discount_price'] = $data['discount_price'] ?? 0;
+
+                if (blank(trim((string) ($data['code'] ?? '')))) {
+                    $data['code'] = null;
+                }
+
+                $photoPaths = [];
+
+                if ($request->hasFile('photos')) {
+                    foreach ($request->file('photos') as $photo) {
+                        $photoPaths[] = $photo->store('products/photos', 'public');
+                    }
+                }
+
+                $this->initialStock->usingSupplierAccounting($settlement->usesSupplier(), function () use (
                     $data,
                     $combinations,
                     $mainPurchasePrice,
                     $mainSalePrice,
                     $mainInitialStock,
                     $photoPaths,
-                );
+                    $settlement,
+                    $initialStockValue,
+                ) {
+                    $products = $this->productReplication->createSingle(
+                        $data,
+                        $combinations,
+                        $mainPurchasePrice,
+                        $mainSalePrice,
+                        $mainInitialStock,
+                        $photoPaths,
+                    );
 
-                if ($initialStockValue > 0 && $settlement->usesSupplier()) {
-                    foreach ($products as $product) {
-                        $this->initialStock->finalizeSettlement(
-                            $product->fresh(),
-                            $settlement,
-                            0.0,
-                        );
+                    if ($initialStockValue > 0 && $settlement->usesSupplier()) {
+                        foreach ($products as $product) {
+                            $this->initialStock->finalizeSettlement(
+                                $product->fresh(),
+                                $settlement,
+                                0.0,
+                            );
+                        }
                     }
-                }
+                });
             });
-        });
+        } catch (\Throwable $exception) {
+            $this->rethrowInitialStockPaymentFailure($exception);
+        }
 
         return redirect()->route('product.index')
             ->with('success', 'Product created successfully.');
@@ -501,115 +524,151 @@ class ProductController extends Controller
             $data['code'] = $product->code;
         }
 
-        DB::transaction(function () use ($request, $data, $product, $combinations, $hasVariations, $variantsLocked, $mainPurchasePrice, $mainSalePrice, $mainInitialStock, $settlement, $previousSettlement, $previousTotalAmount, $useSupplierAccounting) {
-            $this->initialStock->usingSupplierAccounting($useSupplierAccounting, function () use ($request, $data, $product, $combinations, $hasVariations, $variantsLocked, $mainPurchasePrice, $mainSalePrice, $mainInitialStock, $settlement, $previousSettlement, $previousTotalAmount) {
-                if ($request->hasFile('image')) {
-                    if ($product->image) {
-                        Storage::disk('public')->delete($product->image);
-                    }
-                    $data['image'] = $request->file('image')->store('products', 'public');
-                } else {
-                    unset($data['image']);
-                }
-
-                if ($request->hasFile('chest_size_image')) {
-                    if ($product->chest_size_image) {
-                        Storage::disk('public')->delete($product->chest_size_image);
-                    }
-                    $data['chest_size_image'] = $request->file('chest_size_image')->store('products', 'public');
-                } else {
-                    unset($data['chest_size_image']);
-                }
-
-                $data['visible'] = $this->resolveProductVisibility($data, $product);
-                $data['status'] = (int) ($data['status'] ?? 1);
-                $data['discount_price'] = $data['discount_price'] ?? 0;
-
-                $branchSelectionProvided = $request->exists('branch_id');
-                $selectedBranchId = filled($data['branch_id'] ?? null) ? (int) $data['branch_id'] : null;
-                $requestedAllBranches = $branchSelectionProvided && blank($data['branch_id'] ?? null);
-                $previousSelection = $this->productReplication->resolveStoredSelection($product);
-
-                if ($branchSelectionProvided) {
-                    $data['selected_branch_id'] = $selectedBranchId;
-                }
-
-                $expandingToAllBranches = $requestedAllBranches
-                    && $product->product_group_id === null
-                    && $product->branch_id !== null
-                    && $previousSelection === null
-                    && ! Branch::isMainBranch((int) $product->branch_id);
-                $isBranchSelectionChange = $branchSelectionProvided
-                    && ! $requestedAllBranches
-                    && $selectedBranchId !== null
-                    && $selectedBranchId !== $previousSelection;
-
-                unset($data['branch_id']);
-
-                if (! Branch::isMainBranch((int) $product->branch_id)) {
-                    unset($data['selected_branch_id']);
-                }
-
-                $product->update($data);
-
-                if ($branchSelectionProvided && ! Branch::isMainBranch((int) $product->branch_id)) {
-                    $this->productReplication->mainSiblingInGroup($product)?->update([
-                        'selected_branch_id' => $selectedBranchId,
-                    ]);
-                }
-
-                if ($request->hasFile('photos')) {
-                    foreach ($request->file('photos') as $photo) {
-                        $path = $photo->store('products/photos', 'public');
-                        ProductPhoto::create(['product_id' => $product->id, 'image' => $path]);
-                    }
-                }
-
-                if ($requestedAllBranches) {
-                    $anchorProduct = $this->productReplication->mainSiblingInGroup($product);
-
-                    if ($anchorProduct === null && Branch::isMainBranch((int) $product->branch_id)) {
-                        $anchorProduct = $product;
+        try {
+            DB::transaction(function () use ($request, $data, $product, $combinations, $hasVariations, $variantsLocked, $mainPurchasePrice, $mainSalePrice, $mainInitialStock, $settlement, $previousSettlement, $previousTotalAmount, $useSupplierAccounting) {
+                $this->initialStock->usingSupplierAccounting($useSupplierAccounting, function () use ($request, $data, $product, $combinations, $hasVariations, $variantsLocked, $mainPurchasePrice, $mainSalePrice, $mainInitialStock, $settlement, $previousSettlement, $previousTotalAmount) {
+                    if ($request->hasFile('image')) {
+                        if ($product->image) {
+                            Storage::disk('public')->delete($product->image);
+                        }
+                        $data['image'] = $request->file('image')->store('products', 'public');
+                    } else {
+                        unset($data['image']);
                     }
 
-                    if ($anchorProduct !== null) {
-                        if (! $variantsLocked && $hasVariations) {
-                            $this->syncProductVariations($anchorProduct, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+                    if ($request->hasFile('chest_size_image')) {
+                        if ($product->chest_size_image) {
+                            Storage::disk('public')->delete($product->chest_size_image);
+                        }
+                        $data['chest_size_image'] = $request->file('chest_size_image')->store('products', 'public');
+                    } else {
+                        unset($data['chest_size_image']);
+                    }
+
+                    $data['visible'] = $this->resolveProductVisibility($data, $product);
+                    $data['status'] = (int) ($data['status'] ?? 1);
+                    $data['discount_price'] = $data['discount_price'] ?? 0;
+
+                    $branchSelectionProvided = $request->exists('branch_id');
+                    $selectedBranchId = filled($data['branch_id'] ?? null) ? (int) $data['branch_id'] : null;
+                    $requestedAllBranches = $branchSelectionProvided && blank($data['branch_id'] ?? null);
+                    $previousSelection = $this->productReplication->resolveStoredSelection($product);
+
+                    if ($branchSelectionProvided) {
+                        $data['selected_branch_id'] = $selectedBranchId;
+                    }
+
+                    $expandingToAllBranches = $requestedAllBranches
+                        && $product->product_group_id === null
+                        && $product->branch_id !== null
+                        && $previousSelection === null
+                        && ! Branch::isMainBranch((int) $product->branch_id);
+                    $isBranchSelectionChange = $branchSelectionProvided
+                        && ! $requestedAllBranches
+                        && $selectedBranchId !== null
+                        && $selectedBranchId !== $previousSelection;
+
+                    unset($data['branch_id']);
+
+                    if (! Branch::isMainBranch((int) $product->branch_id)) {
+                        unset($data['selected_branch_id']);
+                    }
+
+                    $product->update($data);
+
+                    if ($branchSelectionProvided && ! Branch::isMainBranch((int) $product->branch_id)) {
+                        $this->productReplication->mainSiblingInGroup($product)?->update([
+                            'selected_branch_id' => $selectedBranchId,
+                        ]);
+                    }
+
+                    if ($request->hasFile('photos')) {
+                        foreach ($request->file('photos') as $photo) {
+                            $path = $photo->store('products/photos', 'public');
+                            ProductPhoto::create(['product_id' => $product->id, 'image' => $path]);
+                        }
+                    }
+
+                    if ($requestedAllBranches) {
+                        $anchorProduct = $this->productReplication->mainSiblingInGroup($product);
+
+                        if ($anchorProduct === null && Branch::isMainBranch((int) $product->branch_id)) {
+                            $anchorProduct = $product;
                         }
 
-                        $this->productReplication->expandGroupToAllBranches(
-                            $anchorProduct->fresh(),
-                            $data,
-                            $combinations,
-                            (float) $mainPurchasePrice,
-                            (float) $mainSalePrice,
-                            $mainInitialStock,
-                        );
+                        if ($anchorProduct !== null) {
+                            if (! $variantsLocked && $hasVariations) {
+                                $this->syncProductVariations($anchorProduct, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+                            }
 
-                        $this->productReplication->syncGroupCatalog($anchorProduct->fresh(), $data);
-
-                        if (! $variantsLocked && ! $hasVariations) {
-                            $this->initialStock->syncNonVariant(
+                            $this->productReplication->expandGroupToAllBranches(
                                 $anchorProduct->fresh(),
-                                $mainInitialStock,
+                                $data,
+                                $combinations,
                                 (float) $mainPurchasePrice,
+                                (float) $mainSalePrice,
+                                $mainInitialStock,
                             );
+
+                            $this->productReplication->syncGroupCatalog($anchorProduct->fresh(), $data);
+
+                            if (! $variantsLocked && ! $hasVariations) {
+                                $this->initialStock->syncNonVariant(
+                                    $anchorProduct->fresh(),
+                                    $mainInitialStock,
+                                    (float) $mainPurchasePrice,
+                                );
+                            }
+
+                            $this->syncProductBarcode($anchorProduct->fresh(), $hasVariations);
+
+                            $this->completeInitialStockSettlement($anchorProduct->fresh(), $settlement, $previousTotalAmount, $previousSettlement, $variantsLocked);
+
+                            return;
                         }
 
-                        $this->syncProductBarcode($anchorProduct->fresh(), $hasVariations);
+                        if ($expandingToAllBranches) {
+                            if (! $variantsLocked && $hasVariations) {
+                                $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+                            }
 
-                        $this->completeInitialStockSettlement($anchorProduct->fresh(), $settlement, $previousTotalAmount, $previousSettlement, $variantsLocked);
+                            $this->productReplication->expandToAllBranches(
+                                $product->fresh(),
+                                $data,
+                                $combinations,
+                                (float) $mainPurchasePrice,
+                                (float) $mainSalePrice,
+                                $mainInitialStock,
+                            );
+
+                            $this->syncProductBarcode($product->fresh(), $hasVariations);
+
+                            $this->completeInitialStockSettlement($product->fresh(), $settlement, $previousTotalAmount, $previousSettlement, $variantsLocked);
+
+                            return;
+                        }
 
                         return;
                     }
 
-                    if ($expandingToAllBranches) {
-                        if (! $variantsLocked && $hasVariations) {
+                    if (! $variantsLocked) {
+                        if ($hasVariations) {
                             $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+                        } elseif ($product->variations()->exists()) {
+                            $this->clearProductVariations($product);
+                        } else {
+                            $this->initialStock->syncNonVariant(
+                                $product->fresh(),
+                                $mainInitialStock,
+                                (float) $mainPurchasePrice,
+                            );
                         }
+                    }
 
-                        $this->productReplication->expandToAllBranches(
+                    if ($isBranchSelectionChange) {
+                        $this->productReplication->applyBranchSelectionChange(
                             $product->fresh(),
+                            $selectedBranchId,
                             $data,
                             $combinations,
                             (float) $mainPurchasePrice,
@@ -624,46 +683,14 @@ class ProductController extends Controller
                         return;
                     }
 
-                    return;
-                }
-
-                if (! $variantsLocked) {
-                    if ($hasVariations) {
-                        $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
-                    } elseif ($product->variations()->exists()) {
-                        $this->clearProductVariations($product);
-                    } else {
-                        $this->initialStock->syncNonVariant(
-                            $product->fresh(),
-                            $mainInitialStock,
-                            (float) $mainPurchasePrice,
-                        );
-                    }
-                }
-
-                if ($isBranchSelectionChange) {
-                    $this->productReplication->applyBranchSelectionChange(
-                        $product->fresh(),
-                        $selectedBranchId,
-                        $data,
-                        $combinations,
-                        (float) $mainPurchasePrice,
-                        (float) $mainSalePrice,
-                        $mainInitialStock,
-                    );
-
                     $this->syncProductBarcode($product->fresh(), $hasVariations);
 
                     $this->completeInitialStockSettlement($product->fresh(), $settlement, $previousTotalAmount, $previousSettlement, $variantsLocked);
-
-                    return;
-                }
-
-                $this->syncProductBarcode($product->fresh(), $hasVariations);
-
-                $this->completeInitialStockSettlement($product->fresh(), $settlement, $previousTotalAmount, $previousSettlement, $variantsLocked);
+                });
             });
-        });
+        } catch (\Throwable $exception) {
+            $this->rethrowInitialStockPaymentFailure($exception);
+        }
 
         return redirect()->route('product.index')
             ->with('success', 'Product updated successfully.');

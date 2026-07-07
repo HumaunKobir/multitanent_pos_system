@@ -133,9 +133,18 @@ export function SmartMultiSelect({
                                         {option.label}
                                         <button
                                             type="button"
-                                            onClick={(event) => {
+                                            onMouseDown={(event) => {
+                                                event.preventDefault();
                                                 event.stopPropagation();
                                                 removeValue(option.value);
+                                            }}
+                                            onClick={(event) => {
+                                                // Keyboard activation (Enter/Space) fires click without a
+                                                // preceding mousedown — detail === 0 identifies that case.
+                                                if (event.detail === 0) {
+                                                    event.stopPropagation();
+                                                    removeValue(option.value);
+                                                }
                                             }}
                                             className="opacity-80 hover:opacity-100"
                                             aria-label={`Remove ${option.label}`}

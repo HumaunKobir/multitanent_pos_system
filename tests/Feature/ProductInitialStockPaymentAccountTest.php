@@ -61,3 +61,24 @@ test('product store accepts branch payment account resolved for main branch prod
     expect(round($ledgers->sum('debit'), 2))->toBe(1000.0)
         ->and(round($ledgers->sum('credit'), 2))->toBe(1000.0);
 });
+
+test('product store returns validation warning when payment account balance is insufficient', function () {
+    $admin = productStoreAdmin();
+    $cash = seedAccountingAccounts(minimumBalance: 100, branchId: Branch::MAIN_BRANCH_ID);
+    $supplier = Supplier::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+
+    $payload = validProductPayload([
+        'initial_stock' => '10',
+        'purchase_price' => '100',
+        'initial_stock_supplier_id' => (string) $supplier->id,
+        'initial_stock_paid_amount' => '1000',
+        'initial_stock_payment_account_id' => (string) $cash->id,
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('product.store'), $payload)
+        ->assertRedirect()
+        ->assertSessionHasErrors('initial_stock_payment_account_id');
+
+    expect(Product::query()->where('name', $payload['name'])->exists())->toBeFalse();
+});

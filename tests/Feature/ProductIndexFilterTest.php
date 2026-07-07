@@ -422,6 +422,124 @@ test('admin product index shows distributed branch stock for filtered branch', f
             ->where('products.data.0.batches_sum_available', '12.00'));
 });
 
+test('product index shows only active products by default', function () {
+    productIndexMainBranch();
+    $admin = productIndexAdmin();
+    $category = Category::factory()->create(['status' => 1, 'branch_id' => Branch::resolveMainBranchId()]);
+    $sharedPrefix = 'Status Default Product '.fake()->unique()->numerify('######');
+    $activeName = $sharedPrefix.' Active';
+
+    Product::factory()->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'category_id' => $category->id,
+        'name' => $activeName,
+        'status' => 1,
+    ]);
+    Product::factory()->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'category_id' => $category->id,
+        'name' => $sharedPrefix.' Inactive',
+        'status' => 0,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('product.index', ['search' => $sharedPrefix]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/product/index')
+            ->where('filters.status', 'active')
+            ->has('products.data', 1)
+            ->where('products.data.0.name', $activeName));
+});
+
+test('product index status all shows both active and inactive products', function () {
+    productIndexMainBranch();
+    $admin = productIndexAdmin();
+    $category = Category::factory()->create(['status' => 1, 'branch_id' => Branch::resolveMainBranchId()]);
+    $sharedPrefix = 'Status All Product '.fake()->unique()->numerify('######');
+
+    Product::factory()->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'category_id' => $category->id,
+        'name' => $sharedPrefix.' Active',
+        'status' => 1,
+    ]);
+    Product::factory()->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'category_id' => $category->id,
+        'name' => $sharedPrefix.' Inactive',
+        'status' => 0,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('product.index', ['search' => $sharedPrefix, 'status' => 'all']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/product/index')
+            ->where('filters.status', 'all')
+            ->has('products.data', 2));
+});
+
+test('product index can filter to active products only', function () {
+    productIndexMainBranch();
+    $admin = productIndexAdmin();
+    $category = Category::factory()->create(['status' => 1, 'branch_id' => Branch::resolveMainBranchId()]);
+    $sharedPrefix = 'Status Active Product '.fake()->unique()->numerify('######');
+    $activeName = $sharedPrefix.' Active';
+
+    Product::factory()->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'category_id' => $category->id,
+        'name' => $activeName,
+        'status' => 1,
+    ]);
+    Product::factory()->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'category_id' => $category->id,
+        'name' => $sharedPrefix.' Inactive',
+        'status' => 0,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('product.index', ['search' => $sharedPrefix, 'status' => 'active']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/product/index')
+            ->where('filters.status', 'active')
+            ->has('products.data', 1)
+            ->where('products.data.0.name', $activeName));
+});
+
+test('product index can filter to inactive products only', function () {
+    productIndexMainBranch();
+    $admin = productIndexAdmin();
+    $category = Category::factory()->create(['status' => 1, 'branch_id' => Branch::resolveMainBranchId()]);
+    $sharedPrefix = 'Status Inactive Product '.fake()->unique()->numerify('######');
+    $inactiveName = $sharedPrefix.' Inactive';
+
+    Product::factory()->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'category_id' => $category->id,
+        'name' => $sharedPrefix.' Active',
+        'status' => 1,
+    ]);
+    Product::factory()->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'category_id' => $category->id,
+        'name' => $inactiveName,
+        'status' => 0,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('product.index', ['search' => $sharedPrefix, 'status' => 'inactive']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/product/index')
+            ->where('filters.status', 'inactive')
+            ->has('products.data', 1)
+            ->where('products.data.0.name', $inactiveName));
+});
+
 test('branch user product index shows own branch distributed stock', function () {
     productIndexMainBranch();
 

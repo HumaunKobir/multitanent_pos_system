@@ -34,6 +34,7 @@ export default function ProductIndex({ products, filters, categories, brands, ta
     const [categoryId, setCategoryId] = useState(filters.category_id ?? '__all');
     const [brandId, setBrandId] = useState(filters.brand_id ?? '__all');
     const [tag, setTag] = useState(filters.tag ?? '__all');
+    const [status, setStatus] = useState(filters.status ?? 'active');
     const [branchId, setBranchId] = useState(filters.branch_id ?? defaultBranchId);
     const [deleting, setDeleting] = useState(null);
 
@@ -51,12 +52,13 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                     category_id: categoryId === '__all' ? undefined : categoryId,
                     brand_id: brandId === '__all' ? undefined : brandId,
                     tag: tag === '__all' ? undefined : tag,
+                    status: status === 'active' ? undefined : status,
                     ...(isSuperAdmin ? { branch_id: branchId } : {}),
                 },
                 { preserveState: true, replace: true },
             );
         },
-        [search, categoryId, brandId, tag, branchId, isSuperAdmin],
+        [search, categoryId, brandId, tag, status, branchId, isSuperAdmin],
         350,
         { skipFirstRun: true },
     );
@@ -66,6 +68,7 @@ export default function ProductIndex({ products, filters, categories, brands, ta
         setCategoryId('__all');
         setBrandId('__all');
         setTag('__all');
+        setStatus('active');
         if (isSuperAdmin) {
             setBranchId(defaultBranchId);
         }
@@ -348,6 +351,16 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                                     {opt.label}
                                 </SelectItem>
                             ))}
+                        </SelectContent>
+                    </Select>
+                    <Select value={status} onValueChange={(v) => setStatus(v)}>
+                        <SelectTrigger className="w-48">
+                            <SelectValue placeholder="All statuses" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="active">Active</SelectItem>
+                            <SelectItem value="inactive">Inactive</SelectItem>
+                            <SelectItem value="all">All statuses</SelectItem>
                         </SelectContent>
                     </Select>
                     <Button variant="outline" size="icon" onClick={handleReset} title="Reset filters">

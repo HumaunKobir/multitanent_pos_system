@@ -2,6 +2,7 @@ import { Head, Link, useForm } from '@inertiajs/react';
 import { ArrowLeft, PackagePlus } from 'lucide-react';
 import { useRef } from 'react';
 import { Button } from '@/components/ui/button';
+import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
 import ProductForm from './partials/product-form';
 
@@ -50,6 +51,7 @@ export default function ProductCreate({
     });
 
     const productFormRef = useRef(null);
+    const toast = useAppToast();
 
     function handleSubmit(e) {
         e.preventDefault();
@@ -60,7 +62,13 @@ export default function ProductCreate({
             return;
         }
 
-        form.post(route('product.store'));
+        form.post(route('product.store'), {
+            onError: (errors) => {
+                if (errors.initial_stock_payment_account_id) {
+                    toast.warning(errors.initial_stock_payment_account_id);
+                }
+            },
+        });
     }
 
     return (

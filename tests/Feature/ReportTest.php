@@ -1056,7 +1056,7 @@ test('sales summary shows sale lines with customer name and phone sorted by quan
             ->where('rows.1.total_quantity', 12));
 });
 
-test('sales summary shows product colors and sizes for non-variant lines and variation attributes for variant lines', function () {
+test('sales summary shows product colors and sizes for non-variant lines and variant label for variant lines', function () {
     $this->artisan('permissions:sync');
 
     $date = '2026-07-06';
@@ -1134,8 +1134,9 @@ test('sales summary shows product colors and sizes for non-variant lines and var
             ->where('rows.0.colors', ['Report Red', 'Report Green'])
             ->where('rows.0.sizes', ['Report M'])
             ->where('rows.1.product', 'Variant Product')
-            ->where('rows.1.colors', ['Blue'])
-            ->where('rows.1.sizes', ['L']));
+            ->where('rows.1.variant', 'Blue / L')
+            ->where('rows.1.colors', [])
+            ->where('rows.1.sizes', []));
 });
 
 test('sales summary identifies promotion discount period with highest quantity sold', function () {

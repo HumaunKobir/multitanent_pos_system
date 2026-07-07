@@ -582,7 +582,7 @@ class ReportService
         $rows = $lines
             ->map(function (SellProduct $line) use ($colorNames, $sizeNames) {
                 $discount = $this->resolveSalesSummaryLineDiscount($line);
-                [$colors, $sizes] = $this->resolveSalesSummaryVariantAttributes($line, $colorNames, $sizeNames);
+                $attributes = $this->resolveSalesSummaryLineAttributes($line, $colorNames, $sizeNames);
 
                 return [
                     'id' => $line->id,
@@ -592,8 +592,9 @@ class ReportService
                     'customer_phone' => $line->sell->customer?->phone ?? '—',
                     'product' => $line->product?->name ?? '—',
                     'product_code' => $line->product?->code ?? '—',
-                    'colors' => $colors,
-                    'sizes' => $sizes,
+                    'variant' => $attributes['variant'],
+                    'colors' => $attributes['colors'],
+                    'sizes' => $attributes['sizes'],
                     'quantity' => (float) $line->quantity,
                     'free_quantity' => (float) $line->free_quantity,
                     'total_quantity' => round((float) $line->quantity + (float) $line->free_quantity, 2),
@@ -686,36 +687,25 @@ class ReportService
     }
 
     /**
-     * Resolve the color and size labels for a sale line.
+     * Resolve variant, color, and size labels for a sale line.
      *
-     * Variation lines use the color/size stored on the variation. Lines without a
-     * variation fall back to the colors and sizes configured on the product itself.
+     * Variation lines show the variant label only. Lines without a variation fall
+     * back to the colors and sizes configured on the product itself.
      *
      * @param  array<int, string>  $colorNames
      * @param  array<int, string>  $sizeNames
-     * @return array{0: list<string>, 1: list<string>}
+     * @return array{variant: ?string, colors: list<string>, sizes: list<string>}
      */
-    private function resolveSalesSummaryVariantAttributes(SellProduct $line, array $colorNames, array $sizeNames): array
+    private function resolveSalesSummaryLineAttributes(SellProduct $line, array $colorNames, array $sizeNames): array
     {
         $variationData = $line->variation?->variation_data;
 
-        if (is_array($variationData) && $variationData !== []) {
-            $colors = [];
-            $sizes = [];
-
-            foreach ($variationData as $key => $value) {
-                if ($value === null || $value === '' || strcasecmp((string) $key, 'label') === 0) {
-                    continue;
-                }
-
-                if (strcasecmp((string) $key, 'color') === 0) {
-                    $colors[] = (string) $value;
-                } elseif (strcasecmp((string) $key, 'size') === 0) {
-                    $sizes[] = (string) $value;
-                }
-            }
-
-            return [$colors, $sizes];
+        if ($line->variation_id !== null && is_array($variationData) && $variationData !== []) {
+            return [
+                'variant' => $this->salesSummaryVariationLabel($variationData),
+                'colors' => [],
+                'sizes' => [],
+            ];
         }
 
         $colors = collect($line->product?->colors ?? [])
@@ -730,7 +720,35 @@ class ReportService
             ->values()
             ->all();
 
-        return [$colors, $sizes];
+        return [
+            'variant' => null,
+            'colors' => $colors,
+            'sizes' => $sizes,
+        ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $variationData
+     */
+    private function salesSummaryVariationLabel(array $variationData): string
+    {
+        $label = $variationData['label'] ?? null;
+
+        if (is_string($label) && $label !== '') {
+            return $label;
+        }
+
+        $parts = [];
+
+        foreach ($variationData as $key => $value) {
+            if ($value === null || $value === '' || strcasecmp((string) $key, 'label') === 0) {
+                continue;
+            }
+
+            $parts[] = (string) $value;
+        }
+
+        return $parts !== [] ? implode(' · ', $parts) : '—';
     }
 
     /**

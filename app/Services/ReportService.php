@@ -1109,7 +1109,8 @@ class ReportService
                 'count' => $sales->count(),
                 'gross' => round($salesNet, 2),
                 'paid' => round($salesPaid, 2),
-                'due' => round(max(0, $salesNet - $salesPaid), 2),
+                'due' => $this->exchangeOverlay->sumEffectiveDue($sales),
+                'refund_due' => $this->exchangeOverlay->sumEffectiveRefundDue($sales),
             ],
             'purchases' => [
                 'count' => $purchases->count(),
@@ -1444,7 +1445,8 @@ class ReportService
                         'count' => $sales->count(),
                         'gross' => round($salesGross, 2),
                         'paid' => round($salesPaid, 2),
-                        'due' => round(max(0, $salesGross - $salesPaid), 2),
+                        'due' => $this->exchangeOverlay->sumEffectiveDue($sales),
+                        'refund_due' => $this->exchangeOverlay->sumEffectiveRefundDue($sales),
                     ],
                     'purchases' => [
                         'count' => $purchases->count(),

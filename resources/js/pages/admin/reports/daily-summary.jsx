@@ -43,6 +43,15 @@ const sections = [
             { label: 'Gross', value: <MoneyCell value={s.sales?.gross} /> },
             { label: 'Collected', value: <MoneyCell value={s.sales?.paid} /> },
             { label: 'Due', value: <MoneyCell value={s.sales?.due} />, highlight: true },
+            ...((s.sales?.refund_due ?? 0) > 0
+                ? [
+                      {
+                          label: 'Refund due',
+                          value: <MoneyCell value={s.sales?.refund_due} />,
+                          highlight: true,
+                      },
+                  ]
+                : []),
         ],
     },
     {

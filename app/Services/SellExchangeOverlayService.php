@@ -246,6 +246,32 @@ class SellExchangeOverlayService
     }
 
     /**
+     * Signed outstanding balance for the sale after any exchange overlay.
+     * Positive means the customer still owes the shop; negative means the shop
+     * owes the customer a refund (e.g. a customer-account exchange refund).
+     */
+    public function effectiveOutstanding(Sell $sell): float
+    {
+        return round($this->effectiveNetAmount($sell) - $this->effectivePaidAmount($sell), 2);
+    }
+
+    /**
+     * @param  Collection<int, Sell>  $sales
+     */
+    public function sumEffectiveDue(Collection $sales): float
+    {
+        return round($sales->sum(fn (Sell $sell) => max(0, $this->effectiveOutstanding($sell))), 2);
+    }
+
+    /**
+     * @param  Collection<int, Sell>  $sales
+     */
+    public function sumEffectiveRefundDue(Collection $sales): float
+    {
+        return round($sales->sum(fn (Sell $sell) => max(0, -$this->effectiveOutstanding($sell))), 2);
+    }
+
+    /**
      * @param  array<string, mixed>  $overrides
      * @return array<string, mixed>
      */

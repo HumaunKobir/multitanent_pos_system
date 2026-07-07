@@ -73,10 +73,12 @@ class PurchaseController extends Controller
     {
         $this->authorize('inventory.purchase.create');
 
+        $branchId = Auth::user()?->branch_id;
+
         return Inertia::render('admin/inventory/purchase/create', [
             'suppliers' => Supplier::query()->ownBranch()->orderBy('name', 'asc')->get(['id', 'name', 'company_name', 'phone']),
             'today' => now()->format('Y-m-d'),
-            'paymentAccounts' => $this->paymentAccounts(),
+            'paymentAccounts' => $this->paymentAccountsForBranch($branchId),
             'canDistribute' => $this->canDistributeFromPurchase(),
             'branches' => $this->canDistributeFromPurchase()
                 ? Branch::query()->operating()->active()->orderBy('name')->get(['id', 'name'])
@@ -259,7 +261,7 @@ class PurchaseController extends Controller
             $purchase->branch->logo_url = StorageUrl::public($purchase->branch->logo);
         }
 
-        $paymentAccountLabels = collect($this->paymentAccounts())->keyBy('id');
+        $paymentAccountLabels = collect($this->paymentAccountsForBranch($purchase->branch_id))->keyBy('id');
 
         $returnedQtyByLine = PurchaseReturn::where('purchase_id', $purchase->id)
             ->with('products')
@@ -405,7 +407,7 @@ class PurchaseController extends Controller
                 'items' => $items,
             ],
             'suppliers' => Supplier::query()->ownBranch()->orderBy('name', 'asc')->get(['id', 'name', 'company_name', 'phone']),
-            'paymentAccounts' => $this->paymentAccounts(),
+            'paymentAccounts' => $this->paymentAccountsForBranch($purchase->branch_id),
             'canDistribute' => $this->canDistributeFromPurchase(),
             'branches' => $this->canDistributeFromPurchase()
                 ? Branch::query()->operating()->active()->orderBy('name')->get(['id', 'name'])

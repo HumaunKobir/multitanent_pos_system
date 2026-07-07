@@ -31,6 +31,8 @@ class CustomerDueCollectionController extends Controller
     {
         $this->authorize('party.customer-due-collection.view');
 
+        $branchId = Auth::user()?->branch_id;
+
         $payments = CustomerPayment::query()
             ->ownBranch()
             ->with([
@@ -52,7 +54,7 @@ class CustomerDueCollectionController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        $paymentAccounts = $this->paymentAccounts();
+        $paymentAccounts = $this->paymentAccountsForBranch($branchId);
         $paymentAccountLabels = collect($paymentAccounts)->keyBy('id');
 
         $payments->through(function (CustomerPayment $payment) use ($paymentAccountLabels) {

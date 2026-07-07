@@ -31,6 +31,8 @@ class SupplierPaymentController extends Controller
     {
         $this->authorize('party.supplier-payment.view');
 
+        $branchId = Auth::user()?->branch_id;
+
         $payments = SupplierPayment::query()
             ->ownBranch()
             ->with([
@@ -54,7 +56,7 @@ class SupplierPaymentController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        $paymentAccounts = $this->paymentAccounts();
+        $paymentAccounts = $this->paymentAccountsForBranch($branchId);
         $paymentAccountLabels = collect($paymentAccounts)->keyBy('id');
 
         $payments->through(function (SupplierPayment $payment) use ($paymentAccountLabels) {

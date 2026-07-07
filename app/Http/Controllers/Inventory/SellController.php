@@ -118,7 +118,7 @@ class SellController extends Controller
             'defaultCustomer' => $defaultCustomer,
             'initialCustomer' => $initialCustomer,
             'preselectDefaultCustomer' => $preselectDefaultCustomer,
-            'paymentAccounts' => $this->paymentAccounts(),
+            'paymentAccounts' => $this->paymentAccountsForBranch($branchId),
             'specialDiscounts' => $this->activeSpecialDiscounts($branchId),
             'promotions' => $this->promotionService->activeForBranch($branchId),
             'discountTypes' => collect(DiscountType::cases())->map(fn (DiscountType $type) => [
@@ -367,7 +367,7 @@ class SellController extends Controller
             $sell->branch->logo_url = StorageUrl::public($sell->branch->logo);
         }
 
-        $paymentAccountLabels = collect($this->paymentAccounts())->keyBy('id');
+        $paymentAccountLabels = collect($this->paymentAccountsForBranch($sell->branch_id))->keyBy('id');
 
         return Inertia::render('admin/inventory/sell/show', [
             'sell' => [
@@ -505,7 +505,7 @@ class SellController extends Controller
                 'invoice_number' => $sell->invoice_number,
                 'items' => $items,
             ],
-            'paymentAccounts' => $this->paymentAccounts(),
+            'paymentAccounts' => $this->paymentAccountsForBranch($branchId),
             'specialDiscounts' => $this->activeSpecialDiscounts($branchId),
             'promotions' => $this->promotionService->activeForBranch($branchId),
             'discountTypes' => collect(DiscountType::cases())->map(fn (DiscountType $type) => [

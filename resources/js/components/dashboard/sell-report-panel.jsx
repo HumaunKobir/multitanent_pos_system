@@ -10,13 +10,20 @@ import { CircleDollarSign } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 function formatCountSub(summary) {
-    return `${summary?.count ?? 0} invoices · Due ৳${parseFloat(summary?.due ?? 0).toFixed(2)}`;
+    const parts = [`${summary?.count ?? 0} invoices`, `Due ৳${parseFloat(summary?.due ?? 0).toFixed(2)}`];
+
+    if ((summary?.refund_due ?? 0) > 0) {
+        parts.push(`Refund due ৳${parseFloat(summary.refund_due).toFixed(2)}`);
+    }
+
+    return parts.join(' · ');
 }
 
 export function SellReportPanel({ sellReport, routeName, showBranchBreakdown = true }) {
     const summary = sellReport?.summary ?? {};
     const periods = sellReport?.periods ?? [];
     const activePeriod = sellReport?.period ?? 'current_month';
+    const showBranchRefundDue = (sellReport?.branch_breakdown ?? []).some((row) => (row.refund_due ?? 0) > 0);
     const [customDateFrom, setCustomDateFrom] = useState(
         activePeriod === 'custom' ? (sellReport?.date_from ?? '') : '',
     );
@@ -138,7 +145,11 @@ export function SellReportPanel({ sellReport, routeName, showBranchBreakdown = t
                 <StatTile
                     label="Due"
                     value={<MoneyCell value={summary.due} />}
-                    sub="Outstanding for period"
+                    sub={
+                        (summary.refund_due ?? 0) > 0
+                            ? `Refund due ৳${parseFloat(summary.refund_due).toFixed(2)}`
+                            : 'Outstanding for period'
+                    }
                     accentClass="border-l-amber-600"
                 />
                 <CollectionRateGauge collection={sellReport?.collection} />
@@ -154,6 +165,11 @@ export function SellReportPanel({ sellReport, routeName, showBranchBreakdown = t
                                 <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Gross</th>
                                 <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Collected</th>
                                 <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Due</th>
+                                {showBranchRefundDue ? (
+                                    <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">
+                                        Refund due
+                                    </th>
+                                ) : null}
                                 <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Rate</th>
                             </tr>
                         </thead>
@@ -171,6 +187,11 @@ export function SellReportPanel({ sellReport, routeName, showBranchBreakdown = t
                                     <td className="px-4 py-2.5 font-mono tabular-nums text-amber-700 dark:text-amber-400">
                                         <MoneyCell value={row.due} />
                                     </td>
+                                    {showBranchRefundDue ? (
+                                        <td className="px-4 py-2.5 font-mono tabular-nums text-rose-700 dark:text-rose-400">
+                                            <MoneyCell value={row.refund_due} />
+                                        </td>
+                                    ) : null}
                                     <td className="px-4 py-2.5 font-mono tabular-nums">{row.collection_rate}%</td>
                                 </tr>
                             ))}

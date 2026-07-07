@@ -21,7 +21,13 @@ import {
 } from 'lucide-react';
 
 function formatCountSub(kpi) {
-    return `${kpi?.count ?? 0} invoices · Due ৳${parseFloat(kpi?.due ?? 0).toFixed(2)}`;
+    const parts = [`${kpi?.count ?? 0} invoices`, `Due ৳${parseFloat(kpi?.due ?? 0).toFixed(2)}`];
+
+    if ((kpi?.refund_due ?? 0) > 0) {
+        parts.push(`Refund due ৳${parseFloat(kpi.refund_due).toFixed(2)}`);
+    }
+
+    return parts.join(' · ');
 }
 
 function formatExpenseSub(kpi) {

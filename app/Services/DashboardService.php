@@ -18,10 +18,15 @@ use App\Models\Voucher;
 use App\Support\StorageUrl;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 
 class DashboardService
 {
     private const string NET_AMOUNT_SQL = '(gross_amount + vat - discount)';
+
+    public function __construct(
+        private SellExchangeOverlayService $exchangeOverlay,
+    ) {}
 
     /**
      * @return array<string, mixed>
@@ -34,7 +39,7 @@ class DashboardService
     ): array {
         if ($period === DashboardSalesPeriod::CustomRange) {
             if (blank($customDateFrom) || blank($customDateTo)) {
-                $emptySummary = ['count' => 0, 'gross' => 0.0, 'paid' => 0.0, 'due' => 0.0];
+                $emptySummary = ['count' => 0, 'gross' => 0.0, 'paid' => 0.0, 'due' => 0.0, 'refund_due' => 0.0];
 
                 return [
                     'period' => $period->value,
@@ -275,25 +280,18 @@ class DashboardService
     }
 
     /**
-     * @return array{count: int, gross: float, paid: float, due: float}
+     * @return array{count: int, gross: float, paid: float, due: float, refund_due: float}
      */
     private function aggregateSales(Builder $query): array
     {
-        $netSql = self::NET_AMOUNT_SQL;
-        $row = (clone $query)->selectRaw("
-            COUNT(*) as invoice_count,
-            COALESCE(SUM({$netSql}), 0) as gross_total,
-            COALESCE(SUM(paid_amount), 0) as paid_total
-        ")->first();
-
-        $gross = round((float) $row->gross_total, 2);
-        $paid = round((float) $row->paid_total, 2);
+        $sales = $this->loadSalesForOverlay($query);
 
         return [
-            'count' => (int) $row->invoice_count,
-            'gross' => $gross,
-            'paid' => $paid,
-            'due' => round(max(0, $gross - $paid), 2),
+            'count' => $sales->count(),
+            'gross' => $this->exchangeOverlay->sumEffectiveNet($sales),
+            'paid' => $this->exchangeOverlay->sumEffectivePaid($sales),
+            'due' => $this->exchangeOverlay->sumEffectiveDue($sales),
+            'refund_due' => $this->exchangeOverlay->sumEffectiveRefundDue($sales),
         ];
     }
 
@@ -341,39 +339,38 @@ class DashboardService
      */
     private function branchSalesBreakdown(Carbon $today, Carbon $monthStart): array
     {
-        $netSql = self::NET_AMOUNT_SQL;
         $branches = Branch::query()->operating()->orderBy('name')->get(['id', 'name']);
 
-        $todayByBranch = $this->excludeMainBranchSales(
-            Sell::query()->sale()->whereDate('date', $today),
-        )
-            ->selectRaw("branch_id, COALESCE(SUM({$netSql}), 0) as gross_total, COALESCE(SUM(paid_amount), 0) as paid_total")
-            ->groupBy('branch_id')
-            ->get()
-            ->keyBy('branch_id');
+        $todaySales = $this->loadSalesForOverlay(
+            $this->excludeMainBranchSales(
+                Sell::query()->sale()->whereDate('date', $today),
+            ),
+        );
 
-        $monthByBranch = $this->excludeMainBranchSales(
-            Sell::query()->sale()->whereBetween('date', [$monthStart->toDateString(), $today->toDateString()]),
-        )
-            ->selectRaw("branch_id, COALESCE(SUM({$netSql}), 0) as gross_total, COALESCE(SUM(paid_amount), 0) as paid_total")
-            ->groupBy('branch_id')
-            ->get()
-            ->keyBy('branch_id');
+        $monthSales = $this->loadSalesForOverlay(
+            $this->excludeMainBranchSales(
+                Sell::query()->sale()->whereBetween('date', [$monthStart->toDateString(), $today->toDateString()]),
+            ),
+        );
+
+        $todayByBranch = $todaySales->groupBy('branch_id');
+        $monthByBranch = $monthSales->groupBy('branch_id');
 
         return $branches->map(function (Branch $branch) use ($todayByBranch, $monthByBranch) {
-            $todayRow = $todayByBranch->get($branch->id);
-            $monthRow = $monthByBranch->get($branch->id);
-            $monthGross = round((float) ($monthRow->gross_total ?? 0), 2);
-            $monthPaid = round((float) ($monthRow->paid_total ?? 0), 2);
-            $todayGross = round((float) ($todayRow->gross_total ?? 0), 2);
+            $todayGroup = collect($todayByBranch->get($branch->id, []));
+            $monthGroup = collect($monthByBranch->get($branch->id, []));
+            $monthGross = $this->exchangeOverlay->sumEffectiveNet($monthGroup);
+            $monthPaid = $this->exchangeOverlay->sumEffectivePaid($monthGroup);
+            $todayGross = $this->exchangeOverlay->sumEffectiveNet($todayGroup);
 
             return [
                 'branch_id' => $branch->id,
                 'branch_name' => $branch->name,
-                'today_gross' => $todayGross,
-                'month_gross' => $monthGross,
-                'month_paid' => $monthPaid,
-                'month_due' => round(max(0, $monthGross - $monthPaid), 2),
+                'today_gross' => round($todayGross, 2),
+                'month_gross' => round($monthGross, 2),
+                'month_paid' => round($monthPaid, 2),
+                'month_due' => $this->exchangeOverlay->sumEffectiveDue($monthGroup),
+                'month_refund_due' => $this->exchangeOverlay->sumEffectiveRefundDue($monthGroup),
                 'collection_rate' => $monthGross > 0 ? round($monthPaid / $monthGross * 100, 1) : 0.0,
             ];
         })
@@ -387,29 +384,29 @@ class DashboardService
      */
     private function branchSalesBreakdownForPeriod(Carbon $from, Carbon $to): array
     {
-        $netSql = self::NET_AMOUNT_SQL;
         $branches = Branch::query()->operating()->orderBy('name')->get(['id', 'name']);
 
-        $byBranch = $this->excludeMainBranchSales(
-            Sell::query()->sale()->whereBetween('date', [$from->toDateString(), $to->toDateString()]),
-        )
-            ->selectRaw("branch_id, COUNT(*) as invoice_count, COALESCE(SUM({$netSql}), 0) as gross_total, COALESCE(SUM(paid_amount), 0) as paid_total")
-            ->groupBy('branch_id')
-            ->get()
-            ->keyBy('branch_id');
+        $sales = $this->loadSalesForOverlay(
+            $this->excludeMainBranchSales(
+                Sell::query()->sale()->whereBetween('date', [$from->toDateString(), $to->toDateString()]),
+            ),
+        );
+
+        $byBranch = $sales->groupBy('branch_id');
 
         return $branches->map(function (Branch $branch) use ($byBranch) {
-            $row = $byBranch->get($branch->id);
-            $gross = round((float) ($row->gross_total ?? 0), 2);
-            $paid = round((float) ($row->paid_total ?? 0), 2);
+            $group = collect($byBranch->get($branch->id, []));
+            $gross = $this->exchangeOverlay->sumEffectiveNet($group);
+            $paid = $this->exchangeOverlay->sumEffectivePaid($group);
 
             return [
                 'branch_id' => $branch->id,
                 'branch_name' => $branch->name,
-                'invoice_count' => (int) ($row->invoice_count ?? 0),
+                'invoice_count' => $group->count(),
                 'gross' => $gross,
                 'paid' => $paid,
-                'due' => round(max(0, $gross - $paid), 2),
+                'due' => $this->exchangeOverlay->sumEffectiveDue($group),
+                'refund_due' => $this->exchangeOverlay->sumEffectiveRefundDue($group),
                 'collection_rate' => $gross > 0 ? round($paid / $gross * 100, 1) : 0.0,
             ];
         })
@@ -423,30 +420,27 @@ class DashboardService
      */
     private function salesTrend(Carbon $from, Carbon $to, ?int $branchId = null): array
     {
-        $netSql = self::NET_AMOUNT_SQL;
+        $sales = $this->loadSalesForOverlay(
+            Sell::query()->sale()
+                ->when($branchId !== null, fn (Builder $q) => $q->where('branch_id', $branchId))
+                ->when($branchId === null, fn (Builder $q) => $q->where('branch_id', '!=', Branch::MAIN_BRANCH_ID))
+                ->whereBetween('date', [$from->toDateString(), $to->toDateString()]),
+        );
 
-        $rows = Sell::query()->sale()
-            ->when($branchId !== null, fn (Builder $q) => $q->where('branch_id', $branchId))
-            ->when($branchId === null, fn (Builder $q) => $q->where('branch_id', '!=', Branch::MAIN_BRANCH_ID))
-            ->whereBetween('date', [$from->toDateString(), $to->toDateString()])
-            ->selectRaw("date, COUNT(*) as invoice_count, COALESCE(SUM({$netSql}), 0) as gross_total, COALESCE(SUM(paid_amount), 0) as paid_total")
-            ->groupBy('date')
-            ->orderBy('date')
-            ->get()
-            ->keyBy(fn ($row) => Carbon::parse($row->date)->format('Y-m-d'));
+        $rows = $sales->groupBy(fn (Sell $sell) => Carbon::parse($sell->date)->format('Y-m-d'));
 
         $result = [];
         $cursor = $from->copy();
 
         while ($cursor->lte($to)) {
             $key = $cursor->format('Y-m-d');
-            $row = $rows->get($key);
+            $daySales = collect($rows->get($key, []));
 
             $result[] = [
                 'date' => $key,
-                'gross' => round((float) ($row->gross_total ?? 0), 2),
-                'paid' => round((float) ($row->paid_total ?? 0), 2),
-                'count' => (int) ($row->invoice_count ?? 0),
+                'gross' => $this->exchangeOverlay->sumEffectiveNet($daySales),
+                'paid' => $this->exchangeOverlay->sumEffectivePaid($daySales),
+                'count' => $daySales->count(),
             ];
 
             $cursor->addDay();
@@ -466,8 +460,8 @@ class DashboardService
     }
 
     /**
-     * @param  array{gross: float, paid: float, due: float}  $sales
-     * @return array{gross: float, paid: float, due: float, rate: float}
+     * @param  array{gross: float, paid: float, due: float, refund_due?: float}  $sales
+     * @return array{gross: float, paid: float, due: float, refund_due: float, rate: float}
      */
     private function collectionMetrics(array $sales): array
     {
@@ -478,7 +472,31 @@ class DashboardService
             'gross' => $gross,
             'paid' => $paid,
             'due' => $sales['due'],
+            'refund_due' => $sales['refund_due'] ?? 0.0,
             'rate' => $gross > 0 ? round($paid / $gross * 100, 1) : 0.0,
         ];
+    }
+
+    /**
+     * @return EloquentCollection<int, Sell>
+     */
+    private function loadSalesForOverlay(Builder $query): EloquentCollection
+    {
+        return (clone $query)->with([
+            'products:id,sell_id,discount',
+            'productExchange:id,sell_id,price_difference,paid_amount',
+        ])->get([
+            'id',
+            'branch_id',
+            'date',
+            'gross_amount',
+            'vat',
+            'discount',
+            'special_discount_amount',
+            'promotion_discount_total',
+            'coin_discount_amount',
+            'round_off_amount',
+            'paid_amount',
+        ]);
     }
 }

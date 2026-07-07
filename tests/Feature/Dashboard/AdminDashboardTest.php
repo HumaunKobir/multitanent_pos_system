@@ -3,7 +3,11 @@
 use App\Enums\SaleType;
 use App\Enums\VoucherType;
 use App\Models\Branch;
+use App\Models\Product;
+use App\Models\ProductExchange;
+use App\Models\ProductExchangeProduct;
 use App\Models\Sell;
+use App\Models\SellProduct;
 use App\Models\User;
 use App\Models\Voucher;
 use App\Support\AdminNavigation;
@@ -390,4 +394,87 @@ test('branch dashboard only includes own branch sales data', function () {
     $userA->delete();
     $branchA->delete();
     $branchB->delete();
+});
+
+test('admin dashboard reflects exchange-adjusted sales due and refund due', function () {
+    $date = '2199-03-20';
+    $branch = Branch::factory()->create(['name' => 'Exchange Dashboard Branch '.uniqid()]);
+    $admin = dashboardSuperAdmin();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+
+    $product = Product::factory()->create(['branch_id' => $branch->id]);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+        'date' => $date,
+        'gross_amount' => 1500,
+        'paid_amount' => 1500,
+        'vat' => 0,
+        'discount' => 0,
+    ]);
+
+    $sellProduct = SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'quantity' => 3,
+        'unit_price' => 500,
+        'discount' => 0,
+        'batches' => [],
+    ]);
+
+    $exchange = ProductExchange::query()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'sell_id' => $sell->id,
+        'date' => $date,
+        'gross_amount' => 0,
+        'net_amount' => 0,
+        'paid_amount' => 0,
+        'price_difference' => -1000,
+        'return_refund_amount' => 1000,
+    ]);
+
+    ProductExchangeProduct::query()->create([
+        'branch_id' => $branch->id,
+        'product_exchange_id' => $exchange->id,
+        'sell_product_id' => $sellProduct->id,
+        'old_product_id' => $product->id,
+        'old_quantity' => 0,
+        'old_unit_price' => 500,
+        'return_quantity' => 2,
+        'return_unit_price' => 500,
+        'return_refund_amount' => 1000,
+        'new_product_id' => $product->id,
+        'new_quantity' => 0,
+        'new_unit_price' => 0,
+        'new_line_discount' => 0,
+    ]);
+
+    Carbon::setTestNow($date);
+
+    $this->actingAs($admin)
+        ->get(route('dashboard'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('kpis.today_sales.count', 1)
+            ->where('kpis.today_sales.gross', 500)
+            ->where('kpis.today_sales.paid', 1500)
+            ->where('kpis.today_sales.due', 0)
+            ->where('kpis.today_sales.refund_due', 1000)
+            ->where('kpis.month_sales.refund_due', 1000)
+            ->where('collection.refund_due', 1000)
+            ->where('branchSales.0.month_refund_due', 1000));
+
+    Carbon::setTestNow();
+
+    ProductExchangeProduct::query()->where('product_exchange_id', $exchange->id)->delete();
+    $exchange->delete();
+    $sellProduct->delete();
+    $sell->delete();
+    $product->delete();
+    $user->delete();
+    $admin->delete();
 });

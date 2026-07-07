@@ -10,7 +10,13 @@ import { Head } from '@inertiajs/react';
 import { Building2, CircleDollarSign, ReceiptText, TrendingUp } from 'lucide-react';
 
 function formatCountSub(kpi) {
-    return `${kpi?.count ?? 0} invoices · Due ৳${parseFloat(kpi?.due ?? 0).toFixed(2)}`;
+    const parts = [`${kpi?.count ?? 0} invoices`, `Due ৳${parseFloat(kpi?.due ?? 0).toFixed(2)}`];
+
+    if ((kpi?.refund_due ?? 0) > 0) {
+        parts.push(`Refund due ৳${parseFloat(kpi.refund_due).toFixed(2)}`);
+    }
+
+    return parts.join(' · ');
 }
 
 function formatExpenseSub(kpi) {
@@ -45,6 +51,7 @@ export default function AdminDashboard({
     const monthSales = kpis?.month_sales ?? {};
     const todayExpenses = kpis?.today_expenses ?? {};
     const monthExpenses = kpis?.month_expenses ?? {};
+    const showBranchRefundDue = (branchSales ?? []).some((row) => (row.month_refund_due ?? 0) > 0);
 
     return (
         <>
@@ -118,13 +125,18 @@ export default function AdminDashboard({
                                     <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Month</th>
                                     <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Collected</th>
                                     <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Due</th>
+                                    {showBranchRefundDue ? (
+                                        <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">
+                                            Refund due
+                                        </th>
+                                    ) : null}
                                     <th className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-widest">Rate</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {(branchSales ?? []).length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                                        <td colSpan={showBranchRefundDue ? 7 : 6} className="px-4 py-8 text-center text-muted-foreground">
                                             No branches found
                                         </td>
                                     </tr>
@@ -144,6 +156,11 @@ export default function AdminDashboard({
                                             <td className="px-4 py-2.5 font-mono tabular-nums text-amber-700 dark:text-amber-400">
                                                 <MoneyCell value={row.month_due} />
                                             </td>
+                                            {showBranchRefundDue ? (
+                                                <td className="px-4 py-2.5 font-mono tabular-nums text-rose-700 dark:text-rose-400">
+                                                    <MoneyCell value={row.month_refund_due} />
+                                                </td>
+                                            ) : null}
                                             <td className="px-4 py-2.5 font-mono tabular-nums">{row.collection_rate}%</td>
                                         </tr>
                                     ))

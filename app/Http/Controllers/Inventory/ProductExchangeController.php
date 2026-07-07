@@ -101,10 +101,11 @@ class ProductExchangeController extends Controller
             'coins_redeemed' => ['nullable', 'numeric', 'min:0'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
-            'items.*.product_id' => ['required', 'exists:products,id'],
+            'items.*.product_id' => ['nullable', 'exists:products,id'],
             'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
-            'items.*.unit_price' => ['required', 'numeric', 'min:0'],
-            'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.unit_price' => ['nullable', 'numeric', 'min:0'],
+            'items.*.quantity' => ['nullable', 'integer', 'min:0'],
+            'items.*.return_quantity' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $branchId = Auth::user()?->branch_id;
@@ -131,7 +132,16 @@ class ProductExchangeController extends Controller
                 $lines = $processed['lines'];
                 $oldTotal = $processed['old_total'];
                 $grossAmount = $processed['gross_amount'];
-                $signedSettlement = $this->resolveExchangeSignedSettlement($totals, $oldTotal, $grossAmount);
+                $returnRefund = $processed['return_refund'];
+
+                if ($lines === []) {
+                    throw new \RuntimeException('Add an exchange or return quantity for at least one line.');
+                }
+
+                $signedSettlement = round(
+                    $this->resolveExchangeSignedSettlement($totals, $oldTotal, $grossAmount) - $returnRefund,
+                    2,
+                );
                 $priceDifference = $signedSettlement;
                 $customerAccountEffect = $signedSettlement;
                 $payment = $this->exchangeDiscounts->resolvePayment($data, $signedSettlement, (int) $data['payment_type']);
@@ -143,6 +153,7 @@ class ProductExchangeController extends Controller
                     'customer_id' => $parent->customer_id,
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
+                    'return_refund_amount' => $returnRefund,
                     'special_discount_id' => $totals['special_discount_id'],
                     'special_discount_amount' => $totals['special_discount_amount'],
                     'promotion_discount_total' => $totals['promotion_discount_total'],
@@ -251,11 +262,12 @@ class ProductExchangeController extends Controller
             'old_product_name' => $line->oldProduct?->name,
             'old_product_code' => $line->oldProduct?->code,
             'old_unit_price' => (float) $line->old_unit_price,
-            'sold_quantity' => (int) $line->old_quantity,
-            'quantity' => (string) (int) $line->new_quantity,
-            'new_product_id' => $line->new_product_id,
-            'new_product_name' => $line->newProduct?->name,
-            'new_product_code' => $line->newProduct?->code,
+            'sold_quantity' => (int) ($parent->products->firstWhere('id', $line->sell_product_id)?->quantity ?? $line->old_quantity),
+            'quantity' => (string) (int) $line->old_quantity,
+            'return_quantity' => (string) (int) $line->return_quantity,
+            'new_product_id' => (float) $line->old_quantity > 0 ? $line->new_product_id : '',
+            'new_product_name' => (float) $line->old_quantity > 0 ? $line->newProduct?->name : '',
+            'new_product_code' => (float) $line->old_quantity > 0 ? $line->newProduct?->code : null,
             'new_variation_id' => $line->new_variation_id,
             'new_variation_label' => $line->newVariation?->variation_data['label'] ?? null,
             'new_unit_price' => (string) $line->new_unit_price,
@@ -348,10 +360,11 @@ class ProductExchangeController extends Controller
             'coins_redeemed' => ['nullable', 'numeric', 'min:0'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
-            'items.*.product_id' => ['required', 'exists:products,id'],
+            'items.*.product_id' => ['nullable', 'exists:products,id'],
             'items.*.variation_id' => ['nullable', 'exists:product_variations,id'],
-            'items.*.unit_price' => ['required', 'numeric', 'min:0'],
-            'items.*.quantity' => ['required', 'integer', 'min:1'],
+            'items.*.unit_price' => ['nullable', 'numeric', 'min:0'],
+            'items.*.quantity' => ['nullable', 'integer', 'min:0'],
+            'items.*.return_quantity' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $branchId = Auth::user()?->branch_id;
@@ -381,18 +394,24 @@ class ProductExchangeController extends Controller
                 $lines = $processed['lines'];
                 $oldTotal = $processed['old_total'];
                 $grossAmount = $processed['gross_amount'];
-                $signedSettlement = $this->resolveExchangeSignedSettlement($totals, $oldTotal, $grossAmount);
+                $returnRefund = $processed['return_refund'];
+
+                if ($lines === []) {
+                    throw new \RuntimeException('Add an exchange or return quantity for at least one line.');
+                }
+
+                $signedSettlement = round(
+                    $this->resolveExchangeSignedSettlement($totals, $oldTotal, $grossAmount) - $returnRefund,
+                    2,
+                );
                 $priceDifference = $signedSettlement;
                 $customerAccountEffect = $signedSettlement;
                 $payment = $this->exchangeDiscounts->resolvePayment($data, $signedSettlement, (int) $data['payment_type']);
 
-                if ($lines === []) {
-                    throw new \RuntimeException('At least one line with exchange quantity greater than zero is required.');
-                }
-
                 $productExchange->update([
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
+                    'return_refund_amount' => $returnRefund,
                     'special_discount_id' => $totals['special_discount_id'],
                     'special_discount_amount' => $totals['special_discount_amount'],
                     'promotion_discount_total' => $totals['promotion_discount_total'],
@@ -566,29 +585,45 @@ class ProductExchangeController extends Controller
         $parent->load('products');
 
         foreach ($productExchange->products as $line) {
-            $qty = (float) $line->new_quantity;
+            // Undo the replacement deduction (swap-in).
+            $newQty = (float) $line->new_quantity;
 
-            if ($line->new_variation_id) {
-                $this->stock->restoreVariation((int) $line->new_variation_id, $qty);
-            } else {
-                $this->stock->restoreFromBatchMap(
-                    $line->new_batches ?? [],
-                    fn (Batch $batch, float $batchQty) => $batch->saleReturnStock($batchQty)
-                );
+            if ($newQty > 0) {
+                if ($line->new_variation_id) {
+                    $this->stock->restoreVariation(
+                        (int) $line->new_variation_id,
+                        $newQty + (float) $line->new_free_quantity,
+                    );
+                } else {
+                    $this->stock->restoreFromBatchMap(
+                        $line->new_batches ?? [],
+                        fn (Batch $batch, float $batchQty) => $batch->saleReturnStock($batchQty)
+                    );
+                }
             }
-        }
 
-        foreach ($parent->products as $oldLine) {
-            $qty = (float) $oldLine->quantity;
-            $batchMap = $oldLine->batches ?? [];
+            // Undo the swapped-out restore (swap-out went back to stock, take it out again).
+            if ((float) $line->old_quantity > 0) {
+                if (! empty($line->old_batches)) {
+                    $this->stock->deductFromBatchMap(
+                        $line->old_batches,
+                        fn (Batch $batch, float $batchQty) => $batch->outStock($batchQty)
+                    );
+                } elseif ($line->old_variation_id) {
+                    $this->stock->deductVariation((int) $line->old_variation_id, (float) $line->old_quantity);
+                }
+            }
 
-            if ($batchMap !== []) {
-                $this->stock->deductFromBatchMap(
-                    $batchMap,
-                    fn (Batch $batch, float $batchQty) => $batch->outStock($batchQty)
-                );
-            } elseif ($oldLine->variation_id) {
-                $this->stock->deductVariation((int) $oldLine->variation_id, $qty);
+            // Undo the returned quantity restore.
+            if ((float) $line->return_quantity > 0) {
+                if (! empty($line->return_batches)) {
+                    $this->stock->deductFromBatchMap(
+                        $line->return_batches,
+                        fn (Batch $batch, float $batchQty) => $batch->outStock($batchQty)
+                    );
+                } elseif ($line->old_variation_id) {
+                    $this->stock->deductVariation((int) $line->old_variation_id, (float) $line->return_quantity);
+                }
             }
         }
 
@@ -602,6 +637,54 @@ class ProductExchangeController extends Controller
                 Customer::whereKey($productExchange->customer_id)->decrement('balance', abs($priceDifference));
             }
         }
+    }
+
+    /**
+     * Split a sold-line batch map between a swap quantity and a return quantity,
+     * without attributing more than was originally taken from any single batch.
+     *
+     * @param  array<int|string, float>  $batches
+     * @return array{0: array<int|string, float>, 1: array<int|string, float>}
+     */
+    private function splitBatchMap(array $batches, float $swapQty, float $returnQty): array
+    {
+        if ($batches === []) {
+            return [[], []];
+        }
+
+        $swapMap = [];
+        $returnMap = [];
+        $remainingSwap = $swapQty;
+        $remainingReturn = $returnQty;
+
+        foreach ($batches as $batchId => $soldQty) {
+            $available = (float) $soldQty;
+
+            if ($remainingSwap > 0 && $available > 0) {
+                $take = min($available, $remainingSwap);
+
+                if ($take > 0) {
+                    $swapMap[$batchId] = $take;
+                    $remainingSwap -= $take;
+                    $available -= $take;
+                }
+            }
+
+            if ($remainingReturn > 0 && $available > 0) {
+                $take = min($available, $remainingReturn);
+
+                if ($take > 0) {
+                    $returnMap[$batchId] = $take;
+                    $remainingReturn -= $take;
+                }
+            }
+
+            if ($remainingSwap <= 0 && $remainingReturn <= 0) {
+                break;
+            }
+        }
+
+        return [$swapMap, $returnMap];
     }
 
     /**
@@ -643,8 +726,13 @@ class ProductExchangeController extends Controller
      */
     private function processExchangeLines(array $data, Sell $parent, ?int $branchId): array
     {
-        $promotionResult = $this->exchangeDiscounts->resolvePromotions(
+        $swapItems = array_values(array_filter(
             $data['items'],
+            fn (array $item) => (int) ($item['quantity'] ?? 0) > 0,
+        ));
+
+        $promotionResult = $this->exchangeDiscounts->resolvePromotions(
+            $swapItems,
             $parent,
             $branchId,
             $data['date'],
@@ -655,12 +743,14 @@ class ProductExchangeController extends Controller
         $grossAmount = 0.0;
         $oldTotal = 0.0;
         $lineDiscountTotal = 0.0;
+        $returnRefundTotal = 0.0;
         $lines = [];
 
         foreach ($data['items'] as $item) {
-            $qty = (int) $item['quantity'];
+            $qty = (int) ($item['quantity'] ?? 0);
+            $returnQty = (int) ($item['return_quantity'] ?? 0);
 
-            if ($qty <= 0) {
+            if ($qty <= 0 && $returnQty <= 0) {
                 continue;
             }
 
@@ -671,57 +761,95 @@ class ProductExchangeController extends Controller
                 throw new \RuntimeException('Invalid sale line.');
             }
 
-            if ($qty > (float) $sellProduct->quantity) {
-                throw new \RuntimeException('Exchange quantity exceeds sold quantity.');
+            if ($qty + $returnQty > (float) $sellProduct->quantity) {
+                throw new \RuntimeException('Exchange and return quantity exceeds sold quantity.');
             }
-
-            $oldBatchMap = $this->scaleBatchMapForQty($sellProduct->batches ?? [], $qty);
-
-            if ($oldBatchMap !== []) {
-                $this->stock->restoreFromBatchMap(
-                    $oldBatchMap,
-                    fn (Batch $batch, float $batchQty) => $batch->saleReturnStock($batchQty)
-                );
-            } elseif ($sellProduct->variation_id) {
-                $this->stock->restoreVariation((int) $sellProduct->variation_id, $qty);
-            }
-
-            $newProductId = (int) $item['product_id'];
-            $newVariationId = $item['variation_id'] ? (int) $item['variation_id'] : null;
-            $catalogPrice = (float) $item['unit_price'];
-            $promoLine = $promoLineMap[$sellProduct->id] ?? null;
-            $promoUnitPrice = $promoLine ? (float) $promoLine['unit_price'] : $catalogPrice;
-            $newUnitPrice = min($catalogPrice, $promoUnitPrice);
-            $freeQty = $promoLine ? (float) ($promoLine['free_quantity'] ?? 0) : 0;
-            $totalPhysical = $qty + $freeQty;
-            $lineGross = $qty * $newUnitPrice;
-
-            $newBatchMap = [];
-
-            if ($newVariationId) {
-                $this->stock->deductVariation($newVariationId, $totalPhysical);
-            } else {
-                $newBatchMap = $this->stock->deductFifo(
-                    $branchId,
-                    $newProductId,
-                    $totalPhysical,
-                    fn (Batch $batch, float $deductQty) => $batch->exchangeStock($deductQty)
-                );
-            }
-
-            $lineDiscount = $this->exchangeDiscounts->resolveLineDiscount(
-                $sellProduct,
-                $newProductId,
-                $newVariationId,
-                $qty,
-                $lineGross,
-            );
 
             $lineOldCatalogPrice = (float) ($sellProduct->original_unit_price ?? $sellProduct->unit_price);
-            $lineOldTotal = $qty * $lineOldCatalogPrice;
-            $oldTotal += $lineOldTotal;
-            $grossAmount += $lineGross;
-            $lineDiscountTotal += $lineDiscount;
+
+            [$oldBatchMap, $returnBatchMap] = $this->splitBatchMap(
+                $sellProduct->batches ?? [],
+                $qty,
+                $returnQty,
+            );
+
+            // Restore the swapped-out quantity to inventory.
+            if ($qty > 0) {
+                if ($oldBatchMap !== []) {
+                    $this->stock->restoreFromBatchMap(
+                        $oldBatchMap,
+                        fn (Batch $batch, float $batchQty) => $batch->saleReturnStock($batchQty)
+                    );
+                } elseif ($sellProduct->variation_id) {
+                    $this->stock->restoreVariation((int) $sellProduct->variation_id, $qty);
+                }
+            }
+
+            // Restore the returned (refunded, no replacement) quantity to inventory.
+            if ($returnQty > 0) {
+                if ($returnBatchMap !== []) {
+                    $this->stock->restoreFromBatchMap(
+                        $returnBatchMap,
+                        fn (Batch $batch, float $batchQty) => $batch->saleReturnStock($batchQty)
+                    );
+                } elseif ($sellProduct->variation_id) {
+                    $this->stock->restoreVariation((int) $sellProduct->variation_id, $returnQty);
+                }
+            }
+
+            $returnRefundLine = $returnQty > 0
+                ? $this->exchangeDiscounts->resolveOldNetTotal($parent, $returnQty * $lineOldCatalogPrice)
+                : 0.0;
+            $returnRefundTotal += $returnRefundLine;
+
+            // Swap replacement (only when an exchange quantity was requested).
+            $newProductId = $sellProduct->product_id;
+            $newVariationId = $sellProduct->variation_id;
+            $newUnitPrice = 0.0;
+            $newCatalogPrice = 0.0;
+            $freeQty = 0.0;
+            $lineDiscount = 0.0;
+            $newBatchMap = [];
+            $promoLine = null;
+
+            if ($qty > 0) {
+                if (empty($item['product_id'])) {
+                    throw new \RuntimeException('Select a replacement product for each exchange line.');
+                }
+
+                $newProductId = (int) $item['product_id'];
+                $newVariationId = ! empty($item['variation_id']) ? (int) $item['variation_id'] : null;
+                $newCatalogPrice = (float) ($item['unit_price'] ?? 0);
+                $promoLine = $promoLineMap[$sellProduct->id] ?? null;
+                $promoUnitPrice = $promoLine ? (float) $promoLine['unit_price'] : $newCatalogPrice;
+                $newUnitPrice = min($newCatalogPrice, $promoUnitPrice);
+                $freeQty = $promoLine ? (float) ($promoLine['free_quantity'] ?? 0) : 0;
+                $totalPhysical = $qty + $freeQty;
+                $lineGross = $qty * $newUnitPrice;
+
+                if ($newVariationId) {
+                    $this->stock->deductVariation($newVariationId, $totalPhysical);
+                } else {
+                    $newBatchMap = $this->stock->deductFifo(
+                        $branchId,
+                        $newProductId,
+                        $totalPhysical,
+                        fn (Batch $batch, float $deductQty) => $batch->exchangeStock($deductQty)
+                    );
+                }
+
+                $lineDiscount = $this->exchangeDiscounts->resolveLineDiscount(
+                    $sellProduct,
+                    $newProductId,
+                    $newVariationId,
+                    $qty,
+                    $lineGross,
+                );
+
+                $oldTotal += $qty * $lineOldCatalogPrice;
+                $grossAmount += $lineGross;
+                $lineDiscountTotal += $lineDiscount;
+            }
 
             $lines[] = [
                 'branch_id' => $branchId,
@@ -731,13 +859,17 @@ class ProductExchangeController extends Controller
                 'old_quantity' => $qty,
                 'old_unit_price' => $lineOldCatalogPrice,
                 'old_batches' => $oldBatchMap,
+                'return_quantity' => $returnQty,
+                'return_unit_price' => $lineOldCatalogPrice,
+                'return_refund_amount' => round($returnRefundLine, 2),
+                'return_batches' => $returnBatchMap,
                 'new_product_id' => $newProductId,
                 'new_variation_id' => $newVariationId,
                 'new_quantity' => $qty,
                 'new_unit_price' => $newUnitPrice,
                 'new_line_discount' => $lineDiscount,
                 'new_promotion_id' => $promoLine['promotion_id'] ?? null,
-                'new_original_unit_price' => $catalogPrice,
+                'new_original_unit_price' => $newCatalogPrice,
                 'new_free_quantity' => $freeQty,
                 'new_promotion_discount' => (float) ($promoLine['promotion_discount'] ?? 0),
                 'new_promotion_meta' => $promoLine['promotion_meta'] ?? null,
@@ -760,6 +892,7 @@ class ProductExchangeController extends Controller
             'totals' => $totals,
             'gross_amount' => $grossAmount,
             'old_total' => $oldTotal,
+            'return_refund' => round($returnRefundTotal, 2),
         ];
     }
 
@@ -843,6 +976,8 @@ class ProductExchangeController extends Controller
         $oldTotal = round($exchange->products->sum(
             fn ($line) => (float) $line->old_quantity * (float) $line->old_unit_price
         ), 2);
+        $returnRefund = round((float) $exchange->return_refund_amount, 2);
+        $returnQuantity = (float) $exchange->products->sum(fn ($line) => (float) $line->return_quantity);
         $soldLineTotal = round($exchange->products->sum(function ($line) use ($exchange) {
             $sellLine = $exchange->sell?->products->firstWhere('id', $line->sell_product_id);
             $soldQty = $sellLine ? (float) $sellLine->quantity : (float) $line->old_quantity;
@@ -884,6 +1019,8 @@ class ProductExchangeController extends Controller
             'coins_earned' => (float) $exchange->coins_earned,
             'round_off' => (float) $exchange->round_off_amount,
             'net' => $netAmount,
+            'return_refund' => $returnRefund,
+            'return_quantity' => $returnQuantity,
             'settlement' => $settlementAmount,
             'is_refund' => $signedSettlement < 0,
             'paid' => (float) $exchange->paid_amount,

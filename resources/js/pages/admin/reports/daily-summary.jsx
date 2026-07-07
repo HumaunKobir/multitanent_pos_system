@@ -13,7 +13,6 @@ import {
     Package,
     Receipt,
     ReceiptText,
-    Repeat,
     Undo2,
     User,
     Wallet,
@@ -131,21 +130,6 @@ const sections = [
         ],
     },
     {
-        key: 'product_exchanges',
-        title: 'Product Exchanges',
-        icon: Repeat,
-        headerClass: 'bg-fuchsia-600',
-        bodyClass: 'from-fuchsia-50/90 to-white dark:from-fuchsia-950/30 dark:to-card',
-        accentClass: 'text-fuchsia-700 dark:text-fuchsia-300',
-        ringClass: 'ring-fuchsia-500/20',
-        rows: (s) => [
-            { label: 'Exchanges', value: s.product_exchanges?.count ?? 0, plain: true },
-            { label: 'Net', value: <MoneyCell value={s.product_exchanges?.amount} /> },
-            { label: 'Collected', value: <MoneyCell value={s.product_exchanges?.paid} /> },
-            { label: 'Price diff', value: <MoneyCell value={s.product_exchanges?.difference} />, highlight: true },
-        ],
-    },
-    {
         key: 'damages',
         title: 'Damage',
         icon: AlertTriangle,
@@ -210,7 +194,7 @@ const sections = [
 
 const sectionByKey = Object.fromEntries(sections.map((section) => [section.key, section]));
 
-const salesGroupKeys = ['sales', 'sale_returns', 'product_exchanges'];
+const salesGroupKeys = ['sales', 'sale_returns'];
 const purchaseGroupKeys = ['purchases', 'purchase_returns', 'damages', 'initial_stock'];
 const groupedKeys = new Set([...salesGroupKeys, ...purchaseGroupKeys]);
 
@@ -336,14 +320,12 @@ function AmountCell({ amount, accentClass, borderClass = '' }) {
 function useStaffBreakdownItems(row) {
     const salesItems = row.sales_items ?? [];
     const saleReturnItems = row.sale_returns_items ?? [];
-    const exchangeItems = row.product_exchanges_items ?? [];
     const purchaseItems = row.purchases_items ?? [];
     const purchaseReturnItems = row.purchase_returns_items ?? [];
     const damageItems = row.damages_items ?? [];
     const hasDetails =
         salesItems.length > 0
         || saleReturnItems.length > 0
-        || exchangeItems.length > 0
         || purchaseItems.length > 0
         || purchaseReturnItems.length > 0
         || damageItems.length > 0;
@@ -351,7 +333,6 @@ function useStaffBreakdownItems(row) {
     return {
         salesItems,
         saleReturnItems,
-        exchangeItems,
         purchaseItems,
         purchaseReturnItems,
         damageItems,
@@ -404,7 +385,6 @@ function StaffBreakdownAmountMetric({ label, amount, accentClass }) {
 function StaffBreakdownDetails({
     salesItems,
     saleReturnItems,
-    exchangeItems,
     purchaseItems,
     purchaseReturnItems,
     damageItems,
@@ -422,12 +402,6 @@ function StaffBreakdownDetails({
                 items={saleReturnItems}
                 showRoute="inventory.sale-return.show"
                 accentClass="text-amber-700 dark:text-amber-300"
-            />
-            <TransactionItems
-                title="Product exchanges"
-                items={exchangeItems}
-                showRoute="inventory.product-exchange.show"
-                accentClass="text-fuchsia-700 dark:text-fuchsia-300"
             />
             <TransactionItems
                 title="Purchase orders"
@@ -458,7 +432,6 @@ function StaffBreakdownCard({ row }) {
     const {
         salesItems,
         saleReturnItems,
-        exchangeItems,
         purchaseItems,
         purchaseReturnItems,
         damageItems,
@@ -496,12 +469,6 @@ function StaffBreakdownCard({ row }) {
                             count={row.sale_returns?.count}
                             amount={row.sale_returns?.amount}
                             accentClass="text-amber-700 dark:text-amber-400"
-                        />
-                        <StaffBreakdownMetric
-                            label="Exchanges"
-                            count={row.product_exchanges?.count}
-                            amount={row.product_exchanges?.amount}
-                            accentClass="text-fuchsia-700 dark:text-fuchsia-400"
                         />
                         <StaffBreakdownAmountMetric
                             label="Collected"
@@ -548,7 +515,6 @@ function StaffBreakdownCard({ row }) {
                     <StaffBreakdownDetails
                         salesItems={salesItems}
                         saleReturnItems={saleReturnItems}
-                        exchangeItems={exchangeItems}
                         purchaseItems={purchaseItems}
                         purchaseReturnItems={purchaseReturnItems}
                         damageItems={damageItems}
@@ -564,7 +530,6 @@ function StaffBreakdownRow({ row }) {
     const {
         salesItems,
         saleReturnItems,
-        exchangeItems,
         purchaseItems,
         purchaseReturnItems,
         damageItems,
@@ -595,7 +560,6 @@ function StaffBreakdownRow({ row }) {
                     borderClass="border-l border-black/5 dark:border-white/10"
                 />
                 <ModuleCell count={row.sale_returns?.count} amount={row.sale_returns?.amount} accentClass="text-amber-700 dark:text-amber-400" />
-                <ModuleCell count={row.product_exchanges?.count} amount={row.product_exchanges?.amount} accentClass="text-fuchsia-700 dark:text-fuchsia-400" />
                 <AmountCell amount={row.customer_collections?.amount} accentClass="text-teal-700 dark:text-teal-400" />
 
                 {/* Purchase-related modules */}
@@ -611,11 +575,10 @@ function StaffBreakdownRow({ row }) {
             </tr>
             {expanded && hasDetails ? (
                 <tr key={`${rowKey}-details`} className="border-b bg-muted/10 last:border-b-0">
-                    <td colSpan={10} className="px-4 py-3">
+                    <td colSpan={9} className="px-4 py-3">
                         <StaffBreakdownDetails
                             salesItems={salesItems}
                             saleReturnItems={saleReturnItems}
-                            exchangeItems={exchangeItems}
                             purchaseItems={purchaseItems}
                             purchaseReturnItems={purchaseReturnItems}
                             damageItems={damageItems}
@@ -803,7 +766,7 @@ export default function DailySummaryReport({
                                         <th className="px-4 py-2 text-[10px] font-semibold uppercase tracking-widest" rowSpan={2}>User</th>
                                         <th
                                             className="border-l border-black/5 bg-emerald-50/60 px-3 py-2 text-center text-[10px] font-semibold uppercase tracking-widest text-emerald-800 dark:border-white/10 dark:bg-emerald-950/30 dark:text-emerald-300"
-                                            colSpan={4}
+                                            colSpan={3}
                                         >
                                             Sales related
                                         </th>
@@ -817,7 +780,6 @@ export default function DailySummaryReport({
                                     <tr className="border-b bg-muted/20 text-left">
                                         <th className="border-l border-black/5 px-3 py-2 text-[10px] font-semibold uppercase tracking-widest dark:border-white/10">Sales</th>
                                         <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest">Sale returns</th>
-                                        <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest">Exchanges</th>
                                         <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest">Collected</th>
                                         <th className="border-l border-black/5 px-3 py-2 text-[10px] font-semibold uppercase tracking-widest dark:border-white/10">Purchases</th>
                                         <th className="px-3 py-2 text-[10px] font-semibold uppercase tracking-widest">Purch. returns</th>

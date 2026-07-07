@@ -723,12 +723,20 @@ class InventoryAccountingService
         $newCost = 0.0;
 
         foreach ($exchange->products as $line) {
-            $oldGross += (float) $line->old_quantity * (float) $line->old_unit_price;
+            // The reversal (old) side covers everything taken back from the sale:
+            // the swapped-out quantity and any returned/refunded quantity.
+            $takenBackQty = (float) $line->old_quantity + (float) $line->return_quantity;
+            $oldGross += $takenBackQty * (float) $line->old_unit_price;
             $newGross += (float) $line->new_quantity * (float) $line->new_unit_price;
             $oldCost += $this->costService->costForLine(
                 $line->old_variation_id ? (int) $line->old_variation_id : null,
                 (float) $line->old_quantity,
                 $line->old_batches ?? [],
+            );
+            $oldCost += $this->costService->costForLine(
+                $line->old_variation_id ? (int) $line->old_variation_id : null,
+                (float) $line->return_quantity,
+                $line->return_batches ?? [],
             );
             $newCost += $this->costService->costForLine(
                 $line->new_variation_id ? (int) $line->new_variation_id : null,

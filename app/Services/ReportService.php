@@ -18,6 +18,7 @@ use App\Models\Damage;
 use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\ProductExchange;
+use App\Models\ProductExchangeProduct;
 use App\Models\ProductInitialStock;
 use App\Models\ProductInOutLog;
 use App\Models\ProductVariation;
@@ -43,6 +44,7 @@ class ReportService
     public function __construct(
         private InventoryCostService $costService,
         private BusinessSessionTransactionScope $transactionScope,
+        private SellExchangeOverlayService $exchangeOverlay,
     ) {}
 
     /**
@@ -566,6 +568,11 @@ class ReportService
                 'sell:id,date,customer_id,special_discount_id,discount,coin_discount_amount',
                 'sell.customer:id,name,phone',
                 'sell.specialDiscount:id,name',
+                'sell.productExchange:id,sell_id',
+                'sell.productExchange.products:id,product_exchange_id,sell_product_id,old_quantity,return_quantity,new_product_id,new_variation_id,new_quantity,new_unit_price,new_line_discount,new_promotion_id',
+                'sell.productExchange.products.newProduct:id,name,code,colors,sizes',
+                'sell.productExchange.products.newVariation:id,variation_data',
+                'sell.productExchange.products.newPromotion:id,name,starts_at,ends_at',
                 'promotion:id,name,starts_at,ends_at',
                 'product:id,name,code,colors,sizes',
                 'variation:id,variation_data',
@@ -576,30 +583,36 @@ class ReportService
             ->limit(500)
             ->get();
 
-        $colorNames = $this->salesSummaryColorNames($lines);
-        $sizeNames = $this->salesSummarySizeNames($lines);
+        $units = $this->buildSalesSummaryUnits($lines);
+        $colorNames = $this->salesSummaryColorNames(collect($units)->pluck('product'));
+        $sizeNames = $this->salesSummarySizeNames(collect($units)->pluck('product'));
 
-        $rows = $lines
-            ->map(function (SellProduct $line) use ($colorNames, $sizeNames) {
-                $discount = $this->resolveSalesSummaryLineDiscount($line);
-                $attributes = $this->resolveSalesSummaryLineAttributes($line, $colorNames, $sizeNames);
+        $rows = collect($units)
+            ->map(function (array $unit) use ($colorNames, $sizeNames) {
+                $discount = $unit['discount_meta'];
+                $attributes = $this->resolveSalesSummaryAttributes(
+                    $unit['product'],
+                    $unit['variation'],
+                    $colorNames,
+                    $sizeNames,
+                );
 
                 return [
-                    'id' => $line->id,
-                    'date' => $line->sell->date->format('Y-m-d'),
-                    'invoice' => $line->sell->invoice_number,
-                    'customer_name' => $line->sell->customer?->name ?? 'Walk-in',
-                    'customer_phone' => $line->sell->customer?->phone ?? '—',
-                    'product' => $line->product?->name ?? '—',
-                    'product_code' => $line->product?->code ?? '—',
+                    'id' => $unit['id'],
+                    'date' => $unit['sell']->date->format('Y-m-d'),
+                    'invoice' => $unit['sell']->invoice_number,
+                    'customer_name' => $unit['sell']->customer?->name ?? 'Walk-in',
+                    'customer_phone' => $unit['sell']->customer?->phone ?? '—',
+                    'product' => $unit['product']?->name ?? '—',
+                    'product_code' => $unit['product']?->code ?? '—',
                     'variant' => $attributes['variant'],
                     'colors' => $attributes['colors'],
                     'sizes' => $attributes['sizes'],
-                    'quantity' => (float) $line->quantity,
-                    'free_quantity' => (float) $line->free_quantity,
-                    'total_quantity' => round((float) $line->quantity + (float) $line->free_quantity, 2),
-                    'unit_price' => (float) $line->unit_price,
-                    'line_total' => round(((float) $line->quantity * (float) $line->unit_price) - (float) $line->discount, 2),
+                    'quantity' => $unit['quantity'],
+                    'free_quantity' => $unit['free_quantity'],
+                    'total_quantity' => round($unit['quantity'] + $unit['free_quantity'], 2),
+                    'unit_price' => $unit['unit_price'],
+                    'line_total' => round(($unit['quantity'] * $unit['unit_price']) - $unit['discount'], 2),
                     'discount_key' => $discount['key'],
                     'discount_type' => $discount['type'],
                     'discount_label' => $discount['label'],
@@ -637,15 +650,126 @@ class ReportService
     }
 
     /**
-     * Map of color id => name for every color referenced by the given sale lines' products.
+     * Flatten sale lines into effective display units, applying product exchanges as
+     * in-place sale edits: an exchanged quantity is shown as the replacement product,
+     * while any remaining original quantity keeps its original product.
      *
      * @param  Collection<int, SellProduct>  $lines
+     * @return list<array<string, mixed>>
+     */
+    private function buildSalesSummaryUnits(Collection $lines): array
+    {
+        $units = [];
+
+        foreach ($lines as $line) {
+            $exchangeLine = $line->sell?->productExchange?->products
+                ->firstWhere('sell_product_id', $line->id);
+
+            if (! $exchangeLine) {
+                $units[] = [
+                    'id' => $line->id,
+                    'sell' => $line->sell,
+                    'product' => $line->product,
+                    'variation' => $line->variation,
+                    'quantity' => (float) $line->quantity,
+                    'free_quantity' => (float) $line->free_quantity,
+                    'unit_price' => (float) $line->unit_price,
+                    'discount' => (float) $line->discount,
+                    'discount_meta' => $this->resolveSalesSummaryLineDiscount($line),
+                ];
+
+                continue;
+            }
+
+            $soldQty = (float) $line->quantity;
+            $exchangedQty = (float) $exchangeLine->old_quantity;
+            $returnedQty = (float) $exchangeLine->return_quantity;
+            // Returned quantity is refunded and dropped from the sale, so it is not
+            // reported as a sold unit.
+            $remainingQty = round($soldQty - $exchangedQty - $returnedQty, 2);
+
+            if ($remainingQty > 0.001) {
+                $proportion = $soldQty > 0 ? $remainingQty / $soldQty : 0;
+                $units[] = [
+                    'id' => $line->id,
+                    'sell' => $line->sell,
+                    'product' => $line->product,
+                    'variation' => $line->variation,
+                    'quantity' => $remainingQty,
+                    'free_quantity' => round((float) $line->free_quantity * $proportion, 2),
+                    'unit_price' => (float) $line->unit_price,
+                    'discount' => round((float) $line->discount * $proportion, 2),
+                    'discount_meta' => $this->resolveSalesSummaryLineDiscount($line),
+                ];
+            }
+
+            // A pure return has no replacement unit to report.
+            if ((float) $exchangeLine->new_quantity <= 0) {
+                continue;
+            }
+
+            $units[] = [
+                'id' => 'x'.$exchangeLine->id,
+                'sell' => $line->sell,
+                'product' => $exchangeLine->newProduct,
+                'variation' => $exchangeLine->newVariation,
+                'quantity' => (float) $exchangeLine->new_quantity,
+                'free_quantity' => 0.0,
+                'unit_price' => (float) $exchangeLine->new_unit_price,
+                'discount' => (float) $exchangeLine->new_line_discount,
+                'discount_meta' => $this->resolveExchangeUnitDiscount($exchangeLine),
+            ];
+        }
+
+        return $units;
+    }
+
+    /**
+     * @return array{key: string, type: string, label: string, period: ?string, amount: float}
+     */
+    private function resolveExchangeUnitDiscount(ProductExchangeProduct $exchangeLine): array
+    {
+        if ($exchangeLine->new_promotion_id !== null) {
+            $promotion = $exchangeLine->newPromotion;
+
+            return [
+                'key' => 'promotion:'.$exchangeLine->new_promotion_id,
+                'type' => 'Promotion',
+                'label' => $promotion?->name ?? 'Promotion',
+                'period' => $this->formatDiscountPeriod($promotion?->starts_at, $promotion?->ends_at),
+                'amount' => round((float) $exchangeLine->new_promotion_discount, 2),
+            ];
+        }
+
+        if ((float) $exchangeLine->new_line_discount > 0) {
+            return [
+                'key' => 'line',
+                'type' => 'Line Discount',
+                'label' => 'Line discount',
+                'period' => null,
+                'amount' => round((float) $exchangeLine->new_line_discount, 2),
+            ];
+        }
+
+        return [
+            'key' => 'none',
+            'type' => 'Regular',
+            'label' => 'Regular',
+            'period' => null,
+            'amount' => 0.0,
+        ];
+    }
+
+    /**
+     * Map of color id => name for every color referenced by the given products.
+     *
+     * @param  Collection<int, Product|null>  $products
      * @return array<int, string>
      */
-    private function salesSummaryColorNames($lines): array
+    private function salesSummaryColorNames($products): array
     {
-        $ids = $lines
-            ->flatMap(fn (SellProduct $line): array => $line->product?->colors ?? [])
+        $ids = $products
+            ->flatMap(fn ($product): array => $product?->colors ?? [])
             ->filter()
             ->unique()
             ->values()
@@ -662,15 +786,15 @@ class ReportService
     }
 
     /**
-     * Map of size id => name for every size referenced by the given sale lines' products.
+     * Map of size id => name for every size referenced by the given products.
      *
-     * @param  Collection<int, SellProduct>  $lines
+     * @param  Collection<int, Product|null>  $products
      * @return array<int, string>
      */
-    private function salesSummarySizeNames($lines): array
+    private function salesSummarySizeNames($products): array
     {
-        $ids = $lines
-            ->flatMap(fn (SellProduct $line): array => $line->product?->sizes ?? [])
+        $ids = $products
+            ->flatMap(fn ($product): array => $product?->sizes ?? [])
             ->filter()
             ->unique()
             ->values()
@@ -698,9 +822,19 @@ class ReportService
      */
     private function resolveSalesSummaryLineAttributes(SellProduct $line, array $colorNames, array $sizeNames): array
     {
-        $variationData = $line->variation?->variation_data;
+        return $this->resolveSalesSummaryAttributes($line->product, $line->variation, $colorNames, $sizeNames);
+    }
 
-        if ($line->variation_id !== null && is_array($variationData) && $variationData !== []) {
+    /**
+     * @param  array<int, string>  $colorNames
+     * @param  array<int, string>  $sizeNames
+     * @return array{variant: ?string, colors: list<string>, sizes: list<string>}
+     */
+    private function resolveSalesSummaryAttributes($product, $variation, array $colorNames, array $sizeNames): array
+    {
+        $variationData = $variation?->variation_data;
+
+        if ($variation !== null && is_array($variationData) && $variationData !== []) {
             return [
                 'variant' => $this->salesSummaryVariationLabel($variationData),
                 'colors' => [],
@@ -708,13 +842,13 @@ class ReportService
             ];
         }
 
-        $colors = collect($line->product?->colors ?? [])
+        $colors = collect($product?->colors ?? [])
             ->map(fn ($id): ?string => $colorNames[(int) $id] ?? null)
             ->filter()
             ->values()
             ->all();
 
-        $sizes = collect($line->product?->sizes ?? [])
+        $sizes = collect($product?->sizes ?? [])
             ->map(fn ($id): ?string => $sizeNames[(int) $id] ?? null)
             ->filter()
             ->values()
@@ -951,7 +1085,10 @@ class ReportService
             $filterUserId,
         );
 
-        $sales = $salesQuery->with(['products:id,sell_id,discount'])->get();
+        $sales = $salesQuery->with([
+            'products:id,sell_id,discount',
+            'productExchange:id,sell_id,price_difference,paid_amount',
+        ])->get();
         $purchases = $purchasesQuery->get();
         $returns = $returnsQuery->get();
         $purchaseReturns = $purchaseReturnsQuery->get();
@@ -959,8 +1096,8 @@ class ReportService
         $damages = $damagesQuery->with('products')->get();
         $vouchers = $vouchersQuery->get(['type', 'total_amount']);
 
-        $salesNet = $sales->sum(fn (Sell $s) => $s->net_amount);
-        $salesPaid = $sales->sum(fn (Sell $s) => (float) $s->paid_amount);
+        $salesNet = $this->exchangeOverlay->sumEffectiveNet($sales);
+        $salesPaid = $this->exchangeOverlay->sumEffectivePaid($sales);
         $purchaseNet = $purchases->sum(fn (Purchase $p) => $p->net_amount);
         $purchasePaid = $purchases->sum(fn (Purchase $p) => (float) $p->paid_amount);
         $expenseVouchers = $vouchers->where('type', VoucherType::Expense);
@@ -1191,7 +1328,12 @@ class ReportService
         $salesQuery = Sell::query()
             ->sale()
             ->whereDate('date', $date)
-            ->with(['branch:id,name', 'user:id,name', 'products:id,sell_id,discount']);
+            ->with([
+                'branch:id,name',
+                'user:id,name',
+                'products:id,sell_id,discount',
+                'productExchange:id,sell_id,price_difference,paid_amount',
+            ]);
 
         $purchasesQuery = Purchase::query()
             ->where('purchase_type', PurchaseType::Purchase)
@@ -1283,8 +1425,8 @@ class ReportService
                 [$branchId, $staffUserId] = array_pad(explode('-', $key, 2), 2, null);
                 $staffUserId = $staffUserId !== null && $staffUserId !== '' ? (int) $staffUserId : null;
 
-                $salesGross = $sales->sum(fn (Sell $sell) => $sell->net_amount);
-                $salesPaid = $sales->sum(fn (Sell $sell) => (float) $sell->paid_amount);
+                $salesGross = $this->exchangeOverlay->sumEffectiveNet($sales);
+                $salesPaid = $this->exchangeOverlay->sumEffectivePaid($sales);
                 $purchaseGross = $purchases->sum(fn (Purchase $purchase) => $purchase->net_amount);
                 $purchasePaid = $purchases->sum(fn (Purchase $purchase) => (float) $purchase->paid_amount);
                 $user = $sample instanceof Sell
@@ -1422,8 +1564,8 @@ class ReportService
      */
     private function mapSellBreakdownItem(Sell $sell): array
     {
-        $gross = $sell->net_amount;
-        $paid = (float) $sell->paid_amount;
+        $gross = $this->exchangeOverlay->effectiveNetAmount($sell);
+        $paid = $this->exchangeOverlay->effectivePaidAmount($sell);
 
         return [
             'id' => $sell->id,
@@ -1431,6 +1573,7 @@ class ReportService
             'gross' => round($gross, 2),
             'paid' => round($paid, 2),
             'due' => round(max(0, $gross - $paid), 2),
+            'has_exchange' => $this->exchangeOverlay->hasExchange($sell),
         ];
     }
 

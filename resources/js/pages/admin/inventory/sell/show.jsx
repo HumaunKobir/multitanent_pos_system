@@ -10,12 +10,14 @@ import { route } from '@/lib/route';
 import { buildSellPosPrintPayload, posPrint } from '@/lib/pos-print';
 import { computeSellDisplayGross, computeSellNetAmount } from '@/lib/pos-discount';
 import { computeSplitSalePayment } from '@/lib/sale-payment';
+import { formatBdDate } from '@/lib/format-bd-date';
 import { resolveSellEditAccess } from '@/lib/sell-summary';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { ArrowLeft, Edit, Receipt, ShoppingCart, Trash2, User } from 'lucide-react';
+import { ArrowLeft, ArrowLeftRight, Edit, Receipt, ShoppingCart, Trash2, User } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { Can } from '@/components/can';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useCan } from '@/hooks/use-can';
@@ -37,8 +39,11 @@ export default function SellShow({ sell }) {
 
     const invoiceNumber = sell.invoice_number ?? `INVS${String(sell.id).padStart(8, '0')}`;
     const products = sell.products ?? [];
+    const hasExchange = Boolean(sell.has_exchange);
     const lineDiscount = products.reduce((sum, line) => sum + parseFloat(line.discount ?? 0), 0);
-    const grossAmount = parseFloat(sell.gross_amount ?? 0);
+    const grossAmount = hasExchange
+        ? products.reduce((sum, line) => sum + parseFloat(line.quantity ?? 0) * parseFloat(line.unit_price ?? 0), 0)
+        : parseFloat(sell.gross_amount ?? 0);
     const vat = parseFloat(sell.vat ?? 0);
     const discount = parseFloat(sell.discount ?? 0);
     const specialDiscount = parseFloat(sell.special_discount_amount ?? 0);
@@ -46,7 +51,7 @@ export default function SellShow({ sell }) {
     const coinDiscount = parseFloat(sell.coin_discount_amount ?? 0);
     const roundOff = parseFloat(sell.round_off_amount ?? 0);
     const gross = computeSellDisplayGross(grossAmount, promotionDiscount, products);
-    const net = computeSellNetAmount({
+    const computedNet = computeSellNetAmount({
         grossAmount,
         vat,
         discount,
@@ -55,13 +60,16 @@ export default function SellShow({ sell }) {
         roundOffAmount: roundOff,
         lineDiscountTotal: lineDiscount,
     });
-    const paid = parseFloat(sell.paid_amount ?? 0);
+    const net = hasExchange ? parseFloat(sell.effective_net_amount ?? computedNet) : computedNet;
+    const paid = hasExchange ? parseFloat(sell.effective_paid_amount ?? 0) : parseFloat(sell.paid_amount ?? 0);
     const paymentLines = sell.payments ?? [];
     const collectionDetails = sell.collection_payment_details ?? [];
     const posPayment = computeSplitSalePayment(paymentLines, net);
-    const due = Math.max(0, net - paid);
+    const due = hasExchange ? parseFloat(sell.effective_due_amount ?? Math.max(0, net - paid)) : Math.max(0, net - paid);
     const change = posPayment.changeAmount;
     const hasPosPayments = paymentLines.length > 0;
+    const originalSale = sell.original_sale;
+    const exchangeSummary = sell.exchange_summary;
     const { canEdit } = resolveSellEditAccess({ netAmount: net, paidAmount: paid, dueAmount: due });
     const actionClass = headerActionClassName();
 
@@ -106,6 +114,12 @@ export default function SellShow({ sell }) {
 
             <div className="px-2 py-1">
                 <InvoiceShowHeader icon={ShoppingCart} title="Sale Invoice" invoiceNumber={invoiceNumber}>
+                    {hasExchange && (
+                        <Badge variant="outline" className="gap-1 border-amber-300 bg-amber-50 text-amber-800">
+                            <ArrowLeftRight className="size-3.5" />
+                            Exchanged
+                        </Badge>
+                    )}
                     <button type="button" onClick={handlePosPrint} className={btnPosPrint} title="POS print">
                         <Receipt className="size-3.5" />
                         POS Print
@@ -203,6 +217,56 @@ export default function SellShow({ sell }) {
                                     <span className="tabular-nums">৳{change.toFixed(2)}</span>
                                 </div>
                             )}
+                        </div>
+                    </div>
+                )}
+
+                {hasExchange && originalSale && exchangeSummary && (
+                    <div className="mx-auto mt-3 max-w-4xl space-y-3">
+                        <div className="border border-amber-200 bg-amber-50/60 p-4 shadow-sm">
+                            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-900">Exchange History</h3>
+                                <Can permission="inventory.product-exchange.view">
+                                    <Button size="sm" variant="outline" asChild>
+                                        <Link href={route('inventory.product-exchange.show', exchangeSummary.id)}>
+                                            View {exchangeSummary.invoice_number}
+                                        </Link>
+                                    </Button>
+                                </Can>
+                            </div>
+                            <p className="mb-3 text-sm text-amber-950">
+                                Exchanged on {formatBdDate(exchangeSummary.date)}. Settlement difference: ৳
+                                {parseFloat(exchangeSummary.price_difference ?? 0).toFixed(2)}
+                            </p>
+                            <div className="grid gap-3 md:grid-cols-2">
+                                <div className="border border-border/70 bg-white p-3">
+                                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Original Sale</p>
+                                    <p className="text-sm font-medium">Net: ৳{parseFloat(originalSale.net_amount ?? 0).toFixed(2)}</p>
+                                    <ul className="mt-2 space-y-1 text-sm">
+                                        {(originalSale.products ?? []).map((line) => (
+                                            <li key={`original-${line.id}`} className="text-muted-foreground">
+                                                {line.product?.name ?? 'Product'} × {parseFloat(line.quantity ?? 0)}
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                                <div className="border border-border/70 bg-white p-3">
+                                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Exchange Lines</p>
+                                    <ul className="space-y-2 text-sm">
+                                        {(exchangeSummary.lines ?? []).map((line) => (
+                                            <li key={`exchange-${line.sell_product_id}`}>
+                                                <span className="text-muted-foreground">
+                                                    {line.old_product?.name ?? 'Product'} × {line.old_quantity}
+                                                </span>
+                                                <span className="mx-1 text-muted-foreground">→</span>
+                                                <span className="font-medium">
+                                                    {line.new_product?.name ?? 'Product'} × {line.new_quantity}
+                                                </span>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}

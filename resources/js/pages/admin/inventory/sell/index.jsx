@@ -3,10 +3,11 @@ import { formatBdDate } from '@/lib/format-bd-date';
 import { buildSellRowSummary, resolveSellEditAccess } from '@/lib/sell-summary';
 import { route } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Edit, Eye, Plus, Search, ShoppingCart, Trash2 } from 'lucide-react';
+import { Edit, Eye, Plus, Search, ShoppingCart, Trash2, ArrowLeftRight } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { DataTable } from '@/components/ui/data-table';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -49,9 +50,18 @@ export default function SellIndex({ sells, filters }) {
             id: 'invoice',
             header: 'Invoice',
             render: (row) => (
-                <span className="font-mono text-xs font-semibold text-primary">
-                    {row.invoice_number ?? `INVS${String(row.id).padStart(8, '0')}`}
-                </span>
+                <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-semibold text-primary">
+                        {row.invoice_number ?? `INVS${String(row.id).padStart(8, '0')}`}
+                    </span>
+                    {row.has_exchange && (
+                        <Badge variant="outline" className="gap-1 border-amber-300 bg-amber-50 text-[10px] text-amber-800">
+                            <ArrowLeftRight className="size-3" />
+                            Exchanged
+                            {row.exchange_invoice_number ? ` · ${row.exchange_invoice_number}` : ''}
+                        </Badge>
+                    )}
+                </div>
             ),
         },
         { id: 'date', header: 'Date', render: (row) => formatBdDate(row.date) },

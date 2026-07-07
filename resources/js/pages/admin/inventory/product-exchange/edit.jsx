@@ -232,12 +232,30 @@ export default function ProductExchangeEdit({
 
     function updateExchangeQty(index, rawValue) {
         const item = items[index];
-        const next = clampQuantityInput(rawValue, item.sold_quantity, (max) => {
+        const maxSwap = Math.max(
+            0,
+            parseInt(item.sold_quantity || 0, 10) -
+                parseInt(item.return_quantity || 0, 10),
+        );
+        const next = clampQuantityInput(rawValue, maxSwap, (max) => {
             toast.error(
                 `Exchange quantity cannot exceed ${max} for this line.`,
             );
         });
         updateItem(index, 'quantity', next);
+    }
+
+    function updateReturnQty(index, rawValue) {
+        const item = items[index];
+        const maxReturn = Math.max(
+            0,
+            parseInt(item.sold_quantity || 0, 10) -
+                parseInt(item.quantity || 0, 10),
+        );
+        const next = clampQuantityInput(rawValue, maxReturn, (max) => {
+            toast.error(`Return quantity cannot exceed ${max} for this line.`);
+        });
+        updateItem(index, 'return_quantity', next);
     }
 
     function handleSubmit(e) {
@@ -266,35 +284,48 @@ export default function ProductExchangeEdit({
 
         const overLimit = items.some(
             (it) =>
-                parseInt(it.quantity || 0, 10) >
+                parseInt(it.quantity || 0, 10) +
+                    parseInt(it.return_quantity || 0, 10) >
                 parseInt(it.sold_quantity || 0, 10),
         );
 
         if (overLimit) {
             toast.error(
-                'Exchange quantity cannot exceed the sold quantity for any line.',
+                'Exchange and return quantity cannot exceed the sold quantity for any line.',
             );
 
             return;
         }
 
         const exchangeItems = items
-            .filter((it) => parseInt(it.quantity || 0, 10) > 0)
+            .filter(
+                (it) =>
+                    parseInt(it.quantity || 0, 10) > 0 ||
+                    parseInt(it.return_quantity || 0, 10) > 0,
+            )
             .map((it) => ({
                 sell_product_id: it.sell_product_id,
-                product_id: it.new_product_id,
+                product_id:
+                    parseInt(it.quantity || 0, 10) > 0
+                        ? it.new_product_id
+                        : null,
                 variation_id: it.new_variation_id || null,
                 unit_price: it.new_unit_price,
-                quantity: it.quantity,
+                quantity: it.quantity || '0',
+                return_quantity: it.return_quantity || '0',
             }));
 
         if (exchangeItems.length === 0) {
-            toast.error('Add exchange quantity for at least one line.');
+            toast.error('Add an exchange or return quantity for at least one line.');
 
             return;
         }
 
-        if (exchangeItems.some((it) => !it.product_id)) {
+        if (
+            exchangeItems.some(
+                (it) => parseInt(it.quantity || 0, 10) > 0 && !it.product_id,
+            )
+        ) {
             toast.error('Select a replacement product for each exchange line.');
 
             return;
@@ -414,6 +445,11 @@ export default function ProductExchangeEdit({
                                         align: 'right',
                                     },
                                     {
+                                        id: 'returnQty',
+                                        header: 'Return Qty',
+                                        align: 'right',
+                                    },
+                                    {
                                         id: 'oldPrice',
                                         header: 'Old Price',
                                         align: 'right',
@@ -501,7 +537,35 @@ export default function ProductExchangeEdit({
                                                                 e.target.value,
                                                             )
                                                         }
-                                                        className={`${inputCls} ml-auto w-20 text-right ${parseInt(item.quantity || 0, 10) > parseInt(item.sold_quantity || 0, 10) ? 'border-destructive' : ''}`}
+                                                        className={`${inputCls} ml-auto w-20 text-right ${parseInt(item.quantity || 0, 10) + parseInt(item.return_quantity || 0, 10) > parseInt(item.sold_quantity || 0, 10) ? 'border-destructive' : ''}`}
+                                                    />
+                                                )}
+                                            </td>
+                                            <td className="px-2 py-1.5 text-right">
+                                                {paymentOnlyEdit ? (
+                                                    item.return_quantity
+                                                ) : (
+                                                    <Input
+                                                        type="number"
+                                                        min="0"
+                                                        max={item.sold_quantity}
+                                                        step="1"
+                                                        value={
+                                                            item.return_quantity
+                                                        }
+                                                        onChange={(e) =>
+                                                            updateReturnQty(
+                                                                i,
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                        onBlur={(e) =>
+                                                            updateReturnQty(
+                                                                i,
+                                                                e.target.value,
+                                                            )
+                                                        }
+                                                        className={`${inputCls} ml-auto w-20 text-right`}
                                                     />
                                                 )}
                                             </td>
@@ -634,6 +698,15 @@ export default function ProductExchangeEdit({
                                         </strong>
                                     </span>
                                 )}
+                                {(lineTotals?.return_refund ?? lineTotals?.returnRefund ?? 0) > 0.009 && (
+                                    <span className="text-destructive">
+                                        Return refund:{' '}
+                                        <strong>
+                                            -৳
+                                            {(lineTotals.return_refund ?? lineTotals.returnRefund).toFixed(2)}
+                                        </strong>
+                                    </span>
+                                )}
                                 <span>
                                     Net new:{' '}
                                     <strong>
@@ -696,7 +769,19 @@ export default function ProductExchangeEdit({
                         disabled={
                             !paymentOnlyEdit &&
                             (items.length === 0 ||
-                                items.some((it) => !it.new_product_id))
+                                !items.some(
+                                    (it) =>
+                                        parseInt(it.quantity || 0, 10) > 0 ||
+                                        parseInt(
+                                            it.return_quantity || 0,
+                                            10,
+                                        ) > 0,
+                                ) ||
+                                items.some(
+                                    (it) =>
+                                        parseInt(it.quantity || 0, 10) > 0 &&
+                                        !it.new_product_id,
+                                ))
                         }
                     />
                 </form>

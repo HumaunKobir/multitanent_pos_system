@@ -77,6 +77,73 @@ test('exchange overlay computes effective sale totals without mutating the sale'
         ->and($sellProduct->fresh()->product_id)->toBe($oldProduct->id);
 });
 
+test('exchange with a partial return reduces the effective sale and refunds paid amount', function () {
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+
+    $product = Product::factory()->create(['branch_id' => $branch->id, 'name' => 'Keeper']);
+
+    // Sold 3 @ 100 = 300, fully paid. net_amount is a computed accessor.
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+        'gross_amount' => 300,
+        'paid_amount' => 300,
+        'vat' => 0,
+    ]);
+
+    $sellProduct = SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'quantity' => 3,
+        'unit_price' => 100,
+        'original_unit_price' => 100,
+        'discount' => 0,
+        'batches' => [],
+    ]);
+
+    // Keep/exchange 1 (same product, no upcharge) and return 2 with a cash refund of 200.
+    $exchange = ProductExchange::query()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'sell_id' => $sell->id,
+        'date' => now()->format('Y-m-d'),
+        'gross_amount' => 100,
+        'net_amount' => 100,
+        'return_refund_amount' => 200,
+        'paid_amount' => 200,
+        'price_difference' => -200,
+    ]);
+
+    ProductExchangeProduct::query()->create([
+        'branch_id' => $branch->id,
+        'product_exchange_id' => $exchange->id,
+        'sell_product_id' => $sellProduct->id,
+        'old_product_id' => $product->id,
+        'old_quantity' => 1,
+        'old_unit_price' => 100,
+        'return_quantity' => 2,
+        'return_unit_price' => 100,
+        'return_refund_amount' => 200,
+        'new_product_id' => $product->id,
+        'new_quantity' => 1,
+        'new_unit_price' => 100,
+        'new_line_discount' => 0,
+    ]);
+
+    $sell->load('productExchange.products.newProduct');
+    $overlay = app(SellExchangeOverlayService::class);
+
+    expect($overlay->effectiveNetAmount($sell))->toBe(100.0)
+        ->and($overlay->effectivePaidAmount($sell))->toBe(100.0)
+        ->and($overlay->effectiveDueAmount($sell))->toBe(0.0)
+        ->and($overlay->effectiveGrossAmount($sell))->toBe(100.0)
+        ->and($overlay->effectiveProducts($sell))->toHaveCount(1)
+        ->and($overlay->effectiveProducts($sell)[0]['quantity'])->toBe(1.0);
+});
+
 test('sales summary shows the post-exchange product and amount', function () {
     $branch = Branch::factory()->create();
     $user = User::factory()->create(['branch_id' => $branch->id]);

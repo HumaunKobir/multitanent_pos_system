@@ -23,6 +23,7 @@ class ProductExchange extends Model
         'customer_id',
         'date',
         'gross_amount',
+        'return_refund_amount',
         'special_discount_id',
         'special_discount_amount',
         'promotion_discount_total',
@@ -46,6 +47,7 @@ class ProductExchange extends Model
     protected $casts = [
         'date' => 'date',
         'gross_amount' => 'decimal:2',
+        'return_refund_amount' => 'decimal:2',
         'special_discount_amount' => 'decimal:2',
         'promotion_discount_total' => 'decimal:2',
         'discount' => 'decimal:2',

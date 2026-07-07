@@ -17,6 +17,7 @@ use App\Models\SpecialDiscount;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\InventoryAccountingService;
+use App\Services\SellExchangeOverlayService;
 use App\Services\SystemAccountService;
 use Spatie\Permission\Models\Permission;
 
@@ -1334,6 +1335,98 @@ test('zero settlement exchange does not post to cash or bank accounts', function
     expect($totals['cash_credit'])->toBe(0.0);
     expect($totals['ar_debit'])->toBe(0.0);
     expect($totals['ar_credit'])->toBe(0.0);
+});
+
+test('product exchange with partial return refunds the returned quantity and reduces the sale', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser();
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+
+    $product = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 500]);
+    $batch = Batch::factory()->for($product)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '1500',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '500',
+                    'quantity' => '3',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $sell = Sell::query()->latest('id')->firstOrFail();
+    $sellProductId = $sell->products()->first()->id;
+
+    // Keep/exchange 1 (same product, no upcharge) and return 2 to the customer account.
+    $this->actingAs($user)
+        ->post('/inventory/product-exchange', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => null,
+            'paid_amount' => '0',
+            'payment_type' => ReceivedPaymentMethod::Customer_Account->value,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'vat' => '0',
+            'items' => [
+                [
+                    'sell_product_id' => $sellProductId,
+                    'product_id' => $product->id,
+                    'variation_id' => null,
+                    'unit_price' => '500',
+                    'quantity' => '1',
+                    'return_quantity' => '2',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.product-exchange.index'));
+
+    $exchange = ProductExchange::query()->latest('id')->firstOrFail();
+
+    expect((float) $exchange->gross_amount)->toBe(500.0)
+        ->and((float) $exchange->return_refund_amount)->toBe(1000.0)
+        ->and((float) $exchange->price_difference)->toBe(-1000.0)
+        ->and($exchange->settlementAmount())->toBe(1000.0);
+
+    // Line records both the swap and the return.
+    $line = $exchange->products()->firstOrFail();
+    expect((float) $line->old_quantity)->toBe(1.0)
+        ->and((float) $line->return_quantity)->toBe(2.0)
+        ->and((float) $line->return_refund_amount)->toBe(1000.0);
+
+    // Effective sale gross/net drops from 1500 to 500 (only the 1 kept unit remains).
+    $sell->refresh()->load('productExchange.products.newProduct');
+    $overlay = app(SellExchangeOverlayService::class);
+    expect($overlay->effectiveGrossAmount($sell))->toBe(500.0)
+        ->and($overlay->effectiveNetAmount($sell))->toBe(500.0)
+        ->and($overlay->effectiveProducts($sell))->toHaveCount(1);
+
+    // Stock: sold 3 (10 → 7), swap-out restore +1 then new deduct −1, return restore +2 → 9.
+    expect((float) $batch->refresh()->available)->toBe(9.0);
+
+    // The customer is owed the 1000 refund on their account.
+    expect((float) $customer->refresh()->balance)->toBe(1000.0);
 });
 
 test('product exchange carries original promotion discount for same product after promotion expires', function () {

@@ -238,6 +238,16 @@ export function resolveOldExchangeTotal(items = []) {
     );
 }
 
+export function resolveReturnTotal(items = []) {
+    return items.reduce(
+        (sum, item) =>
+            sum +
+            parseFloat(item.return_quantity || 0) *
+                parseFloat(item.original_old_unit_price ?? (item.old_unit_price || 0)),
+        0,
+    );
+}
+
 export function resolveExchangeCatalogProportion(oldExchangeTotal, parentCatalogGross) {
     const parentGross = parseFloat(parentCatalogGross || 0);
     const oldGross = parseFloat(oldExchangeTotal || 0);
@@ -389,10 +399,12 @@ export function calcProductExchangeSummary({
 
     const oldTotal = oldExchangeTotal;
     const oldNetTotal = resolveOldNetTotal(sellDiscounts, oldTotal);
+    const returnTotal = resolveReturnTotal(items);
+    const returnRefund = returnTotal > 0 ? resolveOldNetTotal(sellDiscounts, returnTotal) : 0;
     const grossPriceDifference = grossAmount - oldTotal;
     const newDiscountTotal = Math.max(0, grossAmount + vatAmount - netNewAmount);
     const priceDifference = grossPriceDifference;
-    const signedSettlement = resolveGrossBasedSignedSettlement(
+    const swapSignedSettlement = resolveGrossBasedSignedSettlement(
         oldTotal,
         grossAmount,
         invoiceDiscountAmount,
@@ -401,6 +413,7 @@ export function calcProductExchangeSummary({
         specialDiscountAmount,
         coinDiscountAmount,
     );
+    const signedSettlement = Math.round((swapSignedSettlement - returnRefund) * 100) / 100;
     const settlementAmount = Math.abs(signedSettlement) < 0.01 ? 0 : Math.abs(signedSettlement);
     const customerAccountEffect = Math.round(signedSettlement * 100) / 100;
 
@@ -422,11 +435,14 @@ export function calcProductExchangeSummary({
         oldTotal,
         soldLineTotal,
         oldExchangeTotal,
+        returnTotal,
+        returnRefund,
         exchangeProportion,
         oldNetTotal,
         grossPriceDifference,
         newDiscountTotal,
         priceDifference,
+        swapSignedSettlement,
         settlementAmount,
         signedSettlement,
         customerAccountEffect,

@@ -156,7 +156,8 @@ export default function ProductExchangeShow({ exchange, totals = {} }) {
                                     <tr>
                                         <th className="p-2 text-left">Old Product</th>
                                         <th className="p-2 text-left">New Product</th>
-                                        <th className="p-2 text-right">Qty</th>
+                                        <th className="p-2 text-right">Exch. Qty</th>
+                                        <th className="p-2 text-right">Return Qty</th>
                                         <th className="p-2 text-right">Old Price</th>
                                         <th className="p-2 text-right">New Price</th>
                                         <th className="p-2 text-right">Line Disc.</th>
@@ -172,18 +173,38 @@ export default function ProductExchangeShow({ exchange, totals = {} }) {
                                                 )}
                                             </td>
                                             <td className="p-2">
-                                                {formatProductLabel(
-                                                    line.new_product?.name,
-                                                    line.new_product?.code,
-                                                )}
-                                                {line.new_promotion?.name && (
-                                                    <p className="text-[10px] text-purple-700 dark:text-purple-400">
-                                                        Promo: {line.new_promotion.name}
-                                                    </p>
-                                                )}
+                                                {parseFloat(
+                                                    line.old_quantity || 0,
+                                                ) > 0
+                                                    ? formatProductLabel(
+                                                          line.new_product?.name,
+                                                          line.new_product?.code,
+                                                      )
+                                                    : '—'}
+                                                {parseFloat(
+                                                    line.old_quantity || 0,
+                                                ) > 0 &&
+                                                    line.new_promotion?.name && (
+                                                        <p className="text-[10px] text-purple-700 dark:text-purple-400">
+                                                            Promo: {line.new_promotion.name}
+                                                        </p>
+                                                    )}
                                             </td>
                                             <td className="p-2 text-right">
-                                                {line.new_quantity}
+                                                {parseFloat(
+                                                    line.old_quantity || 0,
+                                                ) > 0
+                                                    ? line.new_quantity
+                                                    : '—'}
+                                            </td>
+                                            <td className="p-2 text-right">
+                                                {parseFloat(
+                                                    line.return_quantity || 0,
+                                                ) > 0
+                                                    ? parseFloat(
+                                                          line.return_quantity,
+                                                      )
+                                                    : '—'}
                                             </td>
                                             <td className="p-2 text-right">
                                                 ৳
@@ -192,10 +213,11 @@ export default function ProductExchangeShow({ exchange, totals = {} }) {
                                                 ).toFixed(2)}
                                             </td>
                                             <td className="p-2 text-right">
-                                                ৳
                                                 {parseFloat(
-                                                    line.new_unit_price || 0,
-                                                ).toFixed(2)}
+                                                    line.old_quantity || 0,
+                                                ) > 0
+                                                    ? `৳${parseFloat(line.new_unit_price || 0).toFixed(2)}`
+                                                    : '—'}
                                             </td>
                                             <td className="p-2 text-right">
                                                 {parseFloat(
@@ -243,6 +265,13 @@ export default function ProductExchangeShow({ exchange, totals = {} }) {
                                     value={`৳${(totals.net ?? 0).toFixed(2)}`}
                                     accent="font-semibold"
                                 />
+                                {(totals.return_refund ?? 0) > 0.009 && (
+                                    <SummaryRow
+                                        label={`Return refund${(totals.return_quantity ?? 0) > 0 ? ` (${totals.return_quantity} qty)` : ''}`}
+                                        value={`-৳${totals.return_refund.toFixed(2)}`}
+                                        accent="text-destructive"
+                                    />
+                                )}
                                 {(totals.settlement ?? 0) > 0.009 && (
                                     <SummaryRow
                                         label={settlementLabel}

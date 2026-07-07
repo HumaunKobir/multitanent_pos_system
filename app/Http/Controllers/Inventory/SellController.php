@@ -25,6 +25,7 @@ use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
 use App\Services\PartyPaymentAllocationService;
 use App\Services\PromotionService;
+use App\Services\SellExchangeOverlayService;
 use App\Services\SpecialDiscountService;
 use App\Services\SystemAccountService;
 use App\Support\StorageUrl;
@@ -52,6 +53,7 @@ class SellController extends Controller
         private CustomerDueAlertService $dueAlertService,
         private CoinService $coinService,
         private PartyPaymentAllocationService $allocations,
+        private SellExchangeOverlayService $exchangeOverlay,
     ) {}
 
     public function index(Request $request): Response
@@ -61,7 +63,7 @@ class SellController extends Controller
         $sells = $this->forCurrentBranchUser(Sell::query())
             ->sale()
             ->withSum('products as line_discount_total', 'discount')
-            ->with('customer:id,name,phone')
+            ->with(['customer:id,name,phone', 'productExchange:id,sell_id,invoice_sequence'])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('invoice_sequence', 'like', "%{$s}%")
                     ->orWhere('id', 'like', "%{$s}%")
@@ -69,7 +71,11 @@ class SellController extends Controller
             }))
             ->latest()
             ->paginate(20)
-            ->withQueryString();
+            ->withQueryString()
+            ->through(fn (Sell $sell) => [
+                ...$sell->toArray(),
+                ...$this->exchangeOverlay->indexRowOverlay($sell),
+            ]);
 
         return Inertia::render('admin/inventory/sell/index', [
             'sells' => $sells,
@@ -361,6 +367,10 @@ class SellController extends Controller
             'products.promotion:id,name',
             'products.variation',
             'payments.paymentAccount:id,code,name',
+            'productExchange.products.oldProduct',
+            'productExchange.products.newProduct',
+            'productExchange.products.oldVariation',
+            'productExchange.products.newVariation',
         ]);
 
         if ($sell->branch) {
@@ -369,15 +379,25 @@ class SellController extends Controller
 
         $paymentAccountLabels = collect($this->paymentAccountsForBranch($sell->branch_id))->keyBy('id');
 
+        $hasExchange = $this->exchangeOverlay->hasExchange($sell);
+
         return Inertia::render('admin/inventory/sell/show', [
             'sell' => [
                 ...$sell->toArray(),
                 'customer' => $sell->customer,
                 'branch' => $sell->branch,
                 'special_discount' => $sell->specialDiscount,
-                'products' => $sell->products,
+                'products' => $hasExchange
+                    ? $this->exchangeOverlay->effectiveProducts($sell)
+                    : $sell->products,
                 'payments' => $sell->payments,
                 'collection_payment_details' => $this->allocations->customerCollectionDetailsForSell($sell, $paymentAccountLabels),
+                'has_exchange' => $hasExchange,
+                'effective_net_amount' => $this->exchangeOverlay->effectiveNetAmount($sell),
+                'effective_paid_amount' => $this->exchangeOverlay->effectivePaidAmount($sell),
+                'effective_due_amount' => $this->exchangeOverlay->effectiveDueAmount($sell),
+                'original_sale' => $this->exchangeOverlay->originalSaleSnapshot($sell),
+                'exchange_summary' => $this->exchangeOverlay->exchangeSummary($sell),
             ],
         ]);
     }

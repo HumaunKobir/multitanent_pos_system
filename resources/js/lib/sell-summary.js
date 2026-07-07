@@ -48,6 +48,8 @@ export function buildSellRowSummary(row) {
         promotionDiscountAmount,
         paidAmount,
         dueAmount,
+        hasExchange: Boolean(row.has_exchange),
+        exchangeInvoiceNumber: row.exchange_invoice_number ?? null,
     };
 }
 

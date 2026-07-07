@@ -12,6 +12,7 @@ use App\Models\Branch;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\ChartOfAccount;
+use App\Models\Color;
 use App\Models\Customer;
 use App\Models\CustomerPayment;
 use App\Models\Damage;
@@ -26,6 +27,7 @@ use App\Models\PurchaseReturn;
 use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\SellProduct;
+use App\Models\Size;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
 use App\Models\Transaction;
@@ -1052,6 +1054,88 @@ test('sales summary shows sale lines with customer name and phone sorted by quan
         ->assertInertia(fn (Assert $page) => $page
             ->where('rows.0.total_quantity', 2)
             ->where('rows.1.total_quantity', 12));
+});
+
+test('sales summary shows product colors and sizes for non-variant lines and variation attributes for variant lines', function () {
+    $this->artisan('permissions:sync');
+
+    $date = '2026-07-06';
+    $branch = Branch::factory()->create();
+    $user = reportUser([ReportController::PERMISSION_SALES_SUMMARY]);
+    $user->update(['branch_id' => $branch->id]);
+
+    $red = Color::query()->create(['branch_id' => $branch->id, 'name' => 'Report Red', 'status' => 1]);
+    $green = Color::query()->create(['branch_id' => $branch->id, 'name' => 'Report Green', 'status' => 1]);
+    $medium = Size::query()->create(['branch_id' => $branch->id, 'name' => 'Report M', 'status' => 1]);
+
+    $plainProduct = Product::factory()->create([
+        'branch_id' => $branch->id,
+        'name' => 'Color Size Product',
+        'colors' => [$red->id, $green->id],
+        'sizes' => [$medium->id],
+    ]);
+
+    $variantProduct = Product::factory()->create([
+        'branch_id' => $branch->id,
+        'name' => 'Variant Product',
+        'colors' => null,
+        'sizes' => null,
+    ]);
+    $variation = ProductVariation::query()->create([
+        'branch_id' => $branch->id,
+        'product_id' => $variantProduct->id,
+        'sku' => fake()->unique()->numerify('########'),
+        'variation_data' => ['label' => 'Blue / L', 'Color' => 'Blue', 'Size' => 'L'],
+        'price' => 300,
+        'purchase_price' => 150,
+        'stock' => 5,
+        'status' => 1,
+    ]);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+        'date' => $date,
+        'gross_amount' => 800,
+        'paid_amount' => 800,
+    ]);
+
+    SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $sell->id,
+        'product_id' => $plainProduct->id,
+        'quantity' => 10,
+        'free_quantity' => 0,
+        'unit_price' => 50,
+        'discount' => 0,
+        'batches' => [],
+    ]);
+
+    SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $sell->id,
+        'product_id' => $variantProduct->id,
+        'variation_id' => $variation->id,
+        'quantity' => 3,
+        'free_quantity' => 0,
+        'unit_price' => 100,
+        'discount' => 0,
+        'batches' => [],
+    ]);
+
+    $this->actingAs($user)
+        ->get('/report/sales-summary?date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/sales-summary')
+            ->has('rows', 2)
+            ->where('rows.0.product', 'Color Size Product')
+            ->where('rows.0.colors', ['Report Red', 'Report Green'])
+            ->where('rows.0.sizes', ['Report M'])
+            ->where('rows.1.product', 'Variant Product')
+            ->where('rows.1.colors', ['Blue'])
+            ->where('rows.1.sizes', ['L']));
 });
 
 test('sales summary identifies promotion discount period with highest quantity sold', function () {

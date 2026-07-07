@@ -214,6 +214,26 @@ export default function SalesSummaryReport({
                         },
                         { id: 'product', header: 'Product', render: (row) => row.product },
                         {
+                            id: 'colors',
+                            header: 'Color',
+                            render: (row) =>
+                                row.colors && row.colors.length > 0 ? (
+                                    row.colors.join(', ')
+                                ) : (
+                                    <span className="text-muted-foreground">—</span>
+                                ),
+                        },
+                        {
+                            id: 'sizes',
+                            header: 'Size',
+                            render: (row) =>
+                                row.sizes && row.sizes.length > 0 ? (
+                                    row.sizes.join(', ')
+                                ) : (
+                                    <span className="text-muted-foreground">—</span>
+                                ),
+                        },
+                        {
                             id: 'discount',
                             header: 'Discount',
                             render: (row) => (

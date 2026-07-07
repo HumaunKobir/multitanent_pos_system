@@ -11,6 +11,7 @@ use App\Enums\VoucherType;
 use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\ChartOfAccount;
+use App\Models\Color;
 use App\Models\Customer;
 use App\Models\CustomerPayment;
 use App\Models\Damage;
@@ -26,6 +27,7 @@ use App\Models\PurchaseReturn;
 use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\SellProduct;
+use App\Models\Size;
 use App\Models\SpecialDiscount;
 use App\Models\SupplierPayment;
 use App\Models\Transaction;
@@ -565,7 +567,8 @@ class ReportService
                 'sell.customer:id,name,phone',
                 'sell.specialDiscount:id,name',
                 'promotion:id,name,starts_at,ends_at',
-                'product:id,name,code',
+                'product:id,name,code,colors,sizes',
+                'variation:id,variation_data',
             ])
             ->orderByRaw('(sell_products.quantity + COALESCE(sell_products.free_quantity, 0)) '.$sortDirection)
             ->orderByDesc('sells.date')
@@ -573,9 +576,13 @@ class ReportService
             ->limit(500)
             ->get();
 
+        $colorNames = $this->salesSummaryColorNames($lines);
+        $sizeNames = $this->salesSummarySizeNames($lines);
+
         $rows = $lines
-            ->map(function (SellProduct $line) {
+            ->map(function (SellProduct $line) use ($colorNames, $sizeNames) {
                 $discount = $this->resolveSalesSummaryLineDiscount($line);
+                [$colors, $sizes] = $this->resolveSalesSummaryVariantAttributes($line, $colorNames, $sizeNames);
 
                 return [
                     'id' => $line->id,
@@ -585,6 +592,8 @@ class ReportService
                     'customer_phone' => $line->sell->customer?->phone ?? '—',
                     'product' => $line->product?->name ?? '—',
                     'product_code' => $line->product?->code ?? '—',
+                    'colors' => $colors,
+                    'sizes' => $sizes,
                     'quantity' => (float) $line->quantity,
                     'free_quantity' => (float) $line->free_quantity,
                     'total_quantity' => round((float) $line->quantity + (float) $line->free_quantity, 2),
@@ -624,6 +633,104 @@ class ReportService
             'discount_summary' => $discountSummary,
             'top_discount' => $discountSummary[0] ?? null,
         ];
+    }
+
+    /**
+     * Map of color id => name for every color referenced by the given sale lines' products.
+     *
+     * @param  Collection<int, SellProduct>  $lines
+     * @return array<int, string>
+     */
+    private function salesSummaryColorNames($lines): array
+    {
+        $ids = $lines
+            ->flatMap(fn (SellProduct $line): array => $line->product?->colors ?? [])
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($ids === []) {
+            return [];
+        }
+
+        return Color::query()
+            ->whereIn('id', $ids)
+            ->pluck('name', 'id')
+            ->all();
+    }
+
+    /**
+     * Map of size id => name for every size referenced by the given sale lines' products.
+     *
+     * @param  Collection<int, SellProduct>  $lines
+     * @return array<int, string>
+     */
+    private function salesSummarySizeNames($lines): array
+    {
+        $ids = $lines
+            ->flatMap(fn (SellProduct $line): array => $line->product?->sizes ?? [])
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+
+        if ($ids === []) {
+            return [];
+        }
+
+        return Size::query()
+            ->whereIn('id', $ids)
+            ->pluck('name', 'id')
+            ->all();
+    }
+
+    /**
+     * Resolve the color and size labels for a sale line.
+     *
+     * Variation lines use the color/size stored on the variation. Lines without a
+     * variation fall back to the colors and sizes configured on the product itself.
+     *
+     * @param  array<int, string>  $colorNames
+     * @param  array<int, string>  $sizeNames
+     * @return array{0: list<string>, 1: list<string>}
+     */
+    private function resolveSalesSummaryVariantAttributes(SellProduct $line, array $colorNames, array $sizeNames): array
+    {
+        $variationData = $line->variation?->variation_data;
+
+        if (is_array($variationData) && $variationData !== []) {
+            $colors = [];
+            $sizes = [];
+
+            foreach ($variationData as $key => $value) {
+                if ($value === null || $value === '' || strcasecmp((string) $key, 'label') === 0) {
+                    continue;
+                }
+
+                if (strcasecmp((string) $key, 'color') === 0) {
+                    $colors[] = (string) $value;
+                } elseif (strcasecmp((string) $key, 'size') === 0) {
+                    $sizes[] = (string) $value;
+                }
+            }
+
+            return [$colors, $sizes];
+        }
+
+        $colors = collect($line->product?->colors ?? [])
+            ->map(fn ($id): ?string => $colorNames[(int) $id] ?? null)
+            ->filter()
+            ->values()
+            ->all();
+
+        $sizes = collect($line->product?->sizes ?? [])
+            ->map(fn ($id): ?string => $sizeNames[(int) $id] ?? null)
+            ->filter()
+            ->values()
+            ->all();
+
+        return [$colors, $sizes];
     }
 
     /**

@@ -1,0 +1,1 @@
+import{_ as e}from"./app-7_EmJa_y.js";function t(t){let{permission:n,children:r,fallback:i}=t,a=i===void 0?null:i,{can:o}=e();return o(n)?r:a}export{t};

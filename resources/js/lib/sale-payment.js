@@ -119,6 +119,23 @@ export function dueSaleCustomerError(customerId, walkInCustomerId, dueAmount) {
 }
 
 /**
+ * @param {number} dueAmount
+ * @param {string|null|undefined} dueGivenDate
+ * @returns {string|null}
+ */
+export function dueSaleGivenDateError(dueAmount, dueGivenDate) {
+    if (dueAmount <= 0) {
+        return null;
+    }
+
+    if (!dueGivenDate) {
+        return 'Set a due given date for this due amount.';
+    }
+
+    return null;
+}
+
+/**
  * @param {Array<{ payment_account_id?: number|string, amount?: number|string }>} payments
  * @returns {Array<{ payment_account_id: number, amount: number }>}
  */

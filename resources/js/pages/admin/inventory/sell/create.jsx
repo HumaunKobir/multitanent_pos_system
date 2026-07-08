@@ -16,6 +16,7 @@ import {
     buildInitialSalePayments,
     computeSplitSalePayment,
     dueSaleCustomerError,
+    dueSaleGivenDateError,
     saleCustomerRequiredError,
     serializeSalePayments,
     splitPaymentValidationError,
@@ -1029,6 +1030,7 @@ export default function SellCreate({
     const { totalPaid, dueAmount, changeAmount } = computeSplitSalePayment(form.data.payments, netAmount);
     const customerRequiredError = saleCustomerRequiredError(form.data.customer_id);
     const dueCustomerError = dueSaleCustomerError(form.data.customer_id, defaultCustomer?.id ?? null, dueAmount);
+    const dueGivenDateError = dueSaleGivenDateError(dueAmount, form.data.due_given_date);
     const hasOverStock = promotedItems.some((item) => linePhysicalQty(item) > parseFloat(item.available_stock ?? 0));
     const itemCount = promotedItems.reduce((sum, item) => sum + linePhysicalQty(item), 0);
 
@@ -1141,6 +1143,11 @@ export default function SellCreate({
 
         if (dueCustomerError) {
             toast.error(dueCustomerError);
+            return;
+        }
+
+        if (dueGivenDateError) {
+            toast.error(dueGivenDateError);
             return;
         }
 

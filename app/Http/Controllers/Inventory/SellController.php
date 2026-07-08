@@ -1271,8 +1271,14 @@ class SellController extends Controller
      */
     private function assertDueAlertFields(array $data, ?int $branchId, float $dueAmount): void
     {
-        if ($dueAmount <= 0 || blank($data['due_given_date'] ?? null)) {
+        if ($dueAmount <= 0) {
             return;
+        }
+
+        if (blank($data['due_given_date'] ?? null)) {
+            throw ValidationException::withMessages([
+                'due_given_date' => 'Due given date is required when the sale has a due amount.',
+            ]);
         }
 
         $customerId = isset($data['customer_id']) ? (int) $data['customer_id'] : null;

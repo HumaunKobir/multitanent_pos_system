@@ -20,6 +20,7 @@ import {
     computeSplitSalePayment,
     computeSplitSalePaymentWithCollections,
     dueSaleCustomerError,
+    dueSaleGivenDateError,
     saleCustomerRequiredError,
     serializeSalePayments,
     splitPaymentValidationError,
@@ -661,6 +662,7 @@ export default function SellEdit({
     const { totalPaid, dueAmount, changeAmount } = paymentSummary;
     const customerRequiredError = saleCustomerRequiredError(form.data.customer_id);
     const dueCustomerError = dueSaleCustomerError(form.data.customer_id, walkInCustomerId, dueAmount);
+    const dueGivenDateError = dueSaleGivenDateError(dueAmount, form.data.due_given_date);
 
     useEffect(() => {
         if (!paymentOnlyEdit && !promotionStacking.invoice_discount && parseFloat(form.data.discount_value || 0) > 0) {
@@ -750,6 +752,11 @@ export default function SellEdit({
 
         if (dueCustomerError) {
             toast.error(dueCustomerError);
+            return;
+        }
+
+        if (dueGivenDateError) {
+            toast.error(dueGivenDateError);
             return;
         }
 

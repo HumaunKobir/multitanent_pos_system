@@ -650,6 +650,11 @@ test('daily summary branch totals match staff breakdown including line discounts
             ->where('summary.sales.gross', 395.50)
             ->where('summary.supplier_payments.amount', 250)
             ->where('summary.customer_collections.amount', 200)
+            ->has('summary.records.sales', 2)
+            ->has('summary.records.supplier_payments', 2)
+            ->where('summary.records.supplier_payments.0.gross', 100)
+            ->has('summary.records.customer_collections', 2)
+            ->where('summary.records.customer_collections.0.gross', 120)
             ->where('summary.staff_breakdown', function ($rows): bool {
                 $rows = collect($rows);
                 $salesGross = round($rows->sum(fn (array $row) => (float) ($row['sales']['gross'] ?? 0)), 2);
@@ -822,7 +827,22 @@ test('daily summary applies all sell discount types and sale return net amount',
             ->where('summary.staff_breakdown.0.purchase_returns_items.0.gross', 480)
             ->has('summary.staff_breakdown.0.damages_items', 1)
             ->where('summary.staff_breakdown.0.damages_items.0.id', $damage->id)
-            ->where('summary.staff_breakdown.0.damages_items.0.gross', 100));
+            ->where('summary.staff_breakdown.0.damages_items.0.gross', 100)
+            ->has('summary.records.sales', 1)
+            ->where('summary.records.sales.0.id', $sell->id)
+            ->where('summary.records.sales.0.gross', 810)
+            ->has('summary.records.sale_returns', 1)
+            ->where('summary.records.sale_returns.0.id', $saleReturn->id)
+            ->where('summary.records.sale_returns.0.gross', 255)
+            ->has('summary.records.product_exchanges', 1)
+            ->where('summary.records.product_exchanges.0.id', $productExchange->id)
+            ->where('summary.records.product_exchanges.0.gross', 175)
+            ->has('summary.records.purchase_returns', 1)
+            ->where('summary.records.purchase_returns.0.id', $purchaseReturn->id)
+            ->where('summary.records.purchase_returns.0.gross', 480)
+            ->has('summary.records.damages', 1)
+            ->where('summary.records.damages.0.id', $damage->id)
+            ->where('summary.records.damages.0.gross', 100));
 });
 
 test('branch user customer ledger options exclude other branches', function () {

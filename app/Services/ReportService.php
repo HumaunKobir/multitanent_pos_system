@@ -1086,21 +1086,25 @@ class ReportService
         );
 
         $sales = $salesQuery->with([
+            'customer:id,name',
             'products:id,sell_id,discount',
             'productExchange:id,sell_id,price_difference,paid_amount',
         ])->get();
-        $purchases = $purchasesQuery->get();
-        $returns = $returnsQuery->get();
-        $purchaseReturns = $purchaseReturnsQuery->get();
-        $exchanges = $exchangesQuery->get();
+        $purchases = $purchasesQuery->with('supplier:id,name')->get();
+        $returns = $returnsQuery->with('customer:id,name')->get();
+        $purchaseReturns = $purchaseReturnsQuery->with('supplier:id,name')->get();
+        $exchanges = $exchangesQuery->with('customer:id,name')->get();
         $damages = $damagesQuery->with('products')->get();
-        $vouchers = $vouchersQuery->get(['type', 'total_amount']);
+        $payments = $paymentsQuery->with('supplier:id,name')->get();
+        $collections = $collectionsQuery->with('customer:id,name')->get();
+        $vouchers = $vouchersQuery->get();
 
         $salesNet = $this->exchangeOverlay->sumEffectiveNet($sales);
         $salesPaid = $this->exchangeOverlay->sumEffectivePaid($sales);
         $purchaseNet = $purchases->sum(fn (Purchase $p) => $p->net_amount);
         $purchasePaid = $purchases->sum(fn (Purchase $p) => (float) $p->paid_amount);
         $expenseVouchers = $vouchers->where('type', VoucherType::Expense);
+        $otherVouchers = $vouchers->where('type', '!=', VoucherType::Expense);
         $initialStock = $this->dailyInitialStockSummary($date, $effectiveBranchId, $effectiveUserId);
 
         return [
@@ -1119,12 +1123,12 @@ class ReportService
                 'due' => round(max(0, $purchaseNet - $purchasePaid), 2),
             ],
             'supplier_payments' => [
-                'count' => $paymentsQuery->count(),
-                'amount' => round((float) $paymentsQuery->sum('amount'), 2),
+                'count' => $payments->count(),
+                'amount' => round((float) $payments->sum('amount'), 2),
             ],
             'customer_collections' => [
-                'count' => $collectionsQuery->count(),
-                'amount' => round((float) $collectionsQuery->sum('amount'), 2),
+                'count' => $collections->count(),
+                'amount' => round((float) $collections->sum('amount'), 2),
             ],
             'expenses' => [
                 'count' => $expenseVouchers->count(),
@@ -1179,6 +1183,76 @@ class ReportService
             'staff_breakdown' => $this->shouldShowDailyStaffBreakdown($filterBranchId, $filterUserId)
                 ? $this->dailyStaffBreakdown($date, $effectiveBranchId, $effectiveUserId)
                 : [],
+            'records' => [
+                'sales' => $sales->sortByDesc('id')->values()
+                    ->map(fn (Sell $sell) => [
+                        ...$this->mapSellBreakdownItem($sell),
+                        'party' => $sell->customer?->name,
+                    ])->all(),
+                'sale_returns' => $returns->sortByDesc('id')->values()
+                    ->map(fn (SaleReturn $return) => [
+                        ...$this->mapSaleReturnBreakdownItem($return),
+                        'party' => $return->customer?->name,
+                    ])->all(),
+                'product_exchanges' => $exchanges->sortByDesc('id')->values()
+                    ->map(fn (ProductExchange $exchange) => [
+                        ...$this->mapProductExchangeBreakdownItem($exchange),
+                        'party' => $exchange->customer?->name,
+                    ])->all(),
+                'purchases' => $purchases->sortByDesc('id')->values()
+                    ->map(fn (Purchase $purchase) => [
+                        ...$this->mapPurchaseBreakdownItem($purchase),
+                        'party' => $purchase->supplier?->name,
+                    ])->all(),
+                'purchase_returns' => $purchaseReturns->sortByDesc('id')->values()
+                    ->map(fn (PurchaseReturn $return) => [
+                        ...$this->mapPurchaseReturnBreakdownItem($return),
+                        'party' => $return->supplier?->name,
+                    ])->all(),
+                'damages' => $damages->sortByDesc('id')->values()
+                    ->map(fn (Damage $damage) => $this->mapDamageBreakdownItem($damage))
+                    ->all(),
+                'supplier_payments' => $payments->sortByDesc('id')->values()
+                    ->map(fn (SupplierPayment $payment) => [
+                        'id' => $payment->id,
+                        'reference' => $payment->invoice_number,
+                        'party' => $payment->supplier?->name,
+                        'gross' => round((float) $payment->amount, 2),
+                        'paid' => 0.0,
+                        'due' => 0.0,
+                    ])->all(),
+                'customer_collections' => $collections->sortByDesc('id')->values()
+                    ->map(fn (CustomerPayment $collection) => [
+                        'id' => $collection->id,
+                        'reference' => $collection->invoice_number,
+                        'party' => $collection->customer?->name,
+                        'gross' => round((float) $collection->amount, 2),
+                        'paid' => 0.0,
+                        'due' => 0.0,
+                    ])->all(),
+                'expenses' => $expenseVouchers->sortByDesc('id')->values()
+                    ->map(fn (Voucher $voucher) => $this->mapVoucherBreakdownItem($voucher))
+                    ->all(),
+                'vouchers' => $otherVouchers->sortByDesc('id')->values()
+                    ->map(fn (Voucher $voucher) => $this->mapVoucherBreakdownItem($voucher))
+                    ->all(),
+            ],
+        ];
+    }
+
+    /**
+     * @return array{id: int, reference: string, party: ?string, gross: float, paid: float, due: float, type: string}
+     */
+    private function mapVoucherBreakdownItem(Voucher $voucher): array
+    {
+        return [
+            'id' => $voucher->id,
+            'reference' => $voucher->voucher_no,
+            'party' => $voucher->narration,
+            'gross' => round((float) $voucher->total_amount, 2),
+            'paid' => 0.0,
+            'due' => 0.0,
+            'type' => $voucher->type->value,
         ];
     }
 

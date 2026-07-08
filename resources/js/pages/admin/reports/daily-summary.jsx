@@ -211,6 +211,86 @@ const salesGroup = salesGroupKeys.map((key) => sectionByKey[key]);
 const purchaseGroup = purchaseGroupKeys.map((key) => sectionByKey[key]);
 const otherSections = sections.filter((section) => !groupedKeys.has(section.key));
 
+const recordModules = [
+    { key: 'sales', title: 'Sales', icon: CircleDollarSign, showRoute: 'inventory.sell.show', headerClass: 'bg-emerald-600', accentClass: 'text-emerald-700 dark:text-emerald-300', showPaid: true },
+    { key: 'sale_returns', title: 'Sale Returns', icon: ArrowLeftRight, showRoute: 'inventory.sale-return.show', headerClass: 'bg-amber-600', accentClass: 'text-amber-700 dark:text-amber-300', showPaid: true },
+    { key: 'product_exchanges', title: 'Product Exchanges', icon: ArrowLeftRight, showRoute: 'inventory.product-exchange.show', headerClass: 'bg-fuchsia-600', accentClass: 'text-fuchsia-700 dark:text-fuchsia-300', showPaid: true },
+    { key: 'purchases', title: 'Purchases', icon: HandCoins, showRoute: 'inventory.purchase.show', headerClass: 'bg-blue-600', accentClass: 'text-blue-700 dark:text-blue-300', showPaid: true },
+    { key: 'purchase_returns', title: 'Purchase Returns', icon: Undo2, showRoute: 'inventory.purchase-return.show', headerClass: 'bg-orange-600', accentClass: 'text-orange-700 dark:text-orange-300', showPaid: true },
+    { key: 'damages', title: 'Damage', icon: AlertTriangle, showRoute: 'inventory.damage.show', headerClass: 'bg-red-600', accentClass: 'text-red-700 dark:text-red-300', showPaid: false },
+    { key: 'supplier_payments', title: 'Supplier Payments', icon: Wallet, showRoute: null, headerClass: 'bg-violet-600', accentClass: 'text-violet-700 dark:text-violet-300', showPaid: false },
+    { key: 'customer_collections', title: 'Customer Collections', icon: HandCoins, showRoute: null, headerClass: 'bg-teal-600', accentClass: 'text-teal-700 dark:text-teal-300', showPaid: false },
+    { key: 'expenses', title: 'Expenses', icon: ReceiptText, showRoute: 'accounts.vouchers.show', headerClass: 'bg-rose-600', accentClass: 'text-rose-700 dark:text-rose-300', showPaid: false },
+    { key: 'vouchers', title: 'Vouchers', icon: Receipt, showRoute: 'accounts.vouchers.show', headerClass: 'bg-indigo-600', accentClass: 'text-indigo-700 dark:text-indigo-300', showPaid: false },
+];
+
+function DayRecordCard({ module, items }) {
+    const [expanded, setExpanded] = useState(false);
+    const Icon = module.icon;
+    const total = items.reduce((sum, item) => sum + parseFloat(item.gross ?? 0), 0);
+
+    return (
+        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
+            <button
+                type="button"
+                onClick={() => setExpanded((open) => !open)}
+                className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-muted/30"
+                aria-expanded={expanded}
+            >
+                <div className={['flex size-8 shrink-0 items-center justify-center rounded-md', module.headerClass].join(' ')}>
+                    <Icon className="size-4 text-white" />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold">{module.title}</p>
+                    <p className="text-xs text-muted-foreground">
+                        {items.length} record(s) · <MoneyCell value={total} />
+                    </p>
+                </div>
+                <ChevronDown className={`size-4 shrink-0 text-muted-foreground transition-transform ${expanded ? 'rotate-180' : ''}`} />
+            </button>
+            {expanded ? (
+                <div className="space-y-1 border-t bg-muted/10 px-3 py-2">
+                    {items.map((item) => (
+                        <div
+                            key={`${module.key}-${item.id}`}
+                            className="flex flex-col gap-1 rounded-md border border-dashed border-black/10 bg-white/70 px-2.5 py-1.5 text-xs sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2 dark:border-white/10 dark:bg-slate-950/40"
+                        >
+                            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
+                                {module.showRoute ? (
+                                    <Link
+                                        href={route(module.showRoute, item.id)}
+                                        className="font-mono font-medium text-blue-700 hover:underline dark:text-blue-300"
+                                    >
+                                        {item.reference}
+                                    </Link>
+                                ) : (
+                                    <span className="font-mono font-medium">{item.reference}</span>
+                                )}
+                                {item.party ? <span className="min-w-0 truncate text-muted-foreground">{item.party}</span> : null}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 font-mono tabular-nums">
+                                <span className={module.accentClass}>
+                                    <MoneyCell value={item.gross} />
+                                </span>
+                                {module.showPaid ? (
+                                    <span>
+                                        Paid <MoneyCell value={item.paid} />
+                                    </span>
+                                ) : null}
+                                {module.showPaid && (item.due ?? 0) > 0 ? (
+                                    <span className="text-amber-700 dark:text-amber-400">
+                                        Due <MoneyCell value={item.due} />
+                                    </span>
+                                ) : null}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : null}
+        </div>
+    );
+}
+
 function SummaryStatCard({ section, summary }) {
     const Icon = section.icon;
     const rows = section.rows(summary);
@@ -624,6 +704,8 @@ export default function DailySummaryReport({
     const salesGross = parseFloat(s.sales?.gross ?? 0);
     const purchaseGross = parseFloat(s.purchases?.gross ?? 0);
     const staffBreakdown = s.staff_breakdown ?? [];
+    const records = s.records ?? {};
+    const populatedRecordModules = recordModules.filter((module) => (records[module.key] ?? []).length > 0);
     const showBranchFilter = !isBranchScoped;
     const showUserFilter = !isBranchScoped;
 
@@ -748,6 +830,69 @@ export default function DailySummaryReport({
                         ))}
                     </div>
                 </div>
+
+                <div className="mt-6 overflow-hidden rounded-lg border bg-card shadow-sm">
+                    <div className="border-b bg-muted/40 px-4 py-3">
+                        <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-950 dark:text-blue-100">
+                            Day Transactions
+                        </h3>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                            Every record behind the totals above for {formatBdDate(s.date ?? date)}. Expand a module to see each
+                            entry, and open a record from its reference.
+                        </p>
+                    </div>
+                    {populatedRecordModules.length > 0 ? (
+                        <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-3">
+                            {populatedRecordModules.map((module) => (
+                                <DayRecordCard key={module.key} module={module} items={records[module.key] ?? []} />
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center justify-center gap-2 px-4 py-10 text-center">
+                            <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                                <Receipt className="size-5" />
+                            </div>
+                            <p className="text-sm font-medium">No transactions on this date</p>
+                            <p className="max-w-md text-xs text-muted-foreground">
+                                There is no sale, return, exchange, purchase, damage, payment, collection, expense or voucher
+                                recorded for {formatBdDate(s.date ?? date)}.
+                            </p>
+                        </div>
+                    )}
+                </div>
+
+                {!isBranchScoped && staffBreakdown.length === 0 ? (
+                    <div className="mt-6 overflow-hidden rounded-lg border bg-card shadow-sm">
+                        <div className="border-b bg-muted/40 px-4 py-3">
+                            <h3 className="text-sm font-semibold uppercase tracking-wide text-blue-950 dark:text-blue-100">
+                                Branch &amp; User Performance
+                            </h3>
+                        </div>
+                        <div className="flex flex-col items-center justify-center gap-2 px-4 py-10 text-center">
+                            <div className="flex size-10 items-center justify-center rounded-full bg-muted text-muted-foreground">
+                                <Building2 className="size-5" />
+                            </div>
+                            {branchId === 'all' && userId === 'all' ? (
+                                <>
+                                    <p className="text-sm font-medium">Select a branch or user to view detailed lists</p>
+                                    <p className="max-w-md text-xs text-muted-foreground">
+                                        The branch &amp; user performance breakdown, with each invoice, return, exchange and
+                                        damage record, appears once you pick a <span className="font-medium">Branch</span> or{' '}
+                                        <span className="font-medium">User</span> from the filters above.
+                                    </p>
+                                </>
+                            ) : (
+                                <>
+                                    <p className="text-sm font-medium">No transactions for the selected filter</p>
+                                    <p className="max-w-md text-xs text-muted-foreground">
+                                        There is no activity for the chosen branch/user on {formatBdDate(s.date ?? date)}. Try a
+                                        different date or clear the filters.
+                                    </p>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                ) : null}
 
                 {staffBreakdown.length > 0 ? (
                     <div className="mt-6 overflow-hidden rounded-lg border bg-card shadow-sm">

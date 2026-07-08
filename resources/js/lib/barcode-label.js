@@ -12,6 +12,8 @@ export const PREVIEW_MAX_SCALE = 2;
 export const MIN_BARCODE_BAR_HEIGHT_PX = 32;
 /** Floor when scaling barcode width to fit the label. */
 export const MIN_BARCODE_FONT_PX = 18;
+/** Upper bound for JsBarcode module width when scaling up to fill the label. */
+export const MAX_BARCODE_MODULE_WIDTH = 6;
 /**
  * Leave horizontal headroom so barcode quiet zones are not clipped in print
  * (browser/print engines often render slightly wider than on-screen measurement).
@@ -21,9 +23,6 @@ export const BARCODE_WIDTH_SAFETY_RATIO = 0.86;
 export const BARCODE_HEIGHT_USAGE_RATIO = 0.98;
 /** Compact bar height used in the barcode list and label preview (at 1" label height). */
 export const LIST_BARCODE_BAR_HEIGHT = 28;
-/** Default sticker content size — barcode stays this size when the page is larger. */
-export const DEFAULT_LABEL_CONTENT_WIDTH = 1.5;
-export const DEFAULT_LABEL_CONTENT_HEIGHT = 1;
 export const JSBARCODE_CDN =
     'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
 
@@ -177,14 +176,14 @@ export function getLabelPreviewScale(
 }
 
 /**
- * Barcode content area — capped at the default sticker size when the page is larger.
+ * Barcode content area matches the label page dimensions.
  *
  * @returns {{ width: number, height: number }}
  */
 export function getLabelContentDimensions(settings) {
     return {
-        width: Math.min(settings.width, DEFAULT_LABEL_CONTENT_WIDTH),
-        height: Math.min(settings.height, DEFAULT_LABEL_CONTENT_HEIGHT),
+        width: settings.width,
+        height: settings.height,
     };
 }
 
@@ -474,7 +473,51 @@ export function escapeHtmlAttr(text) {
 }
 
 /**
- * Render a scannable Code 128 SVG and shrink module width to fit the label.
+ * Shrink or grow JsBarcode module width so the SVG fits the target width.
+ */
+export function fitBarcodeModuleWidth(svgEl, draw, targetWidth) {
+    const minModuleWidth = 0.3;
+    const maxModuleWidth = Math.max(
+        MAX_BARCODE_MODULE_WIDTH,
+        Math.ceil(targetWidth / 40),
+    );
+    let moduleWidth = 2;
+
+    const measure = () => svgEl.getBoundingClientRect().width;
+
+    draw(moduleWidth);
+    let svgWidth = measure();
+
+    while (svgWidth > targetWidth && moduleWidth > minModuleWidth) {
+        moduleWidth = Math.round((moduleWidth - 0.1) * 10) / 10;
+        draw(moduleWidth);
+        svgWidth = measure();
+    }
+
+    while (moduleWidth < maxModuleWidth) {
+        const previousModuleWidth = moduleWidth;
+        const nextModuleWidth = Math.round((moduleWidth + 0.1) * 10) / 10;
+
+        if (nextModuleWidth === moduleWidth) {
+            break;
+        }
+
+        moduleWidth = nextModuleWidth;
+        draw(moduleWidth);
+        svgWidth = measure();
+
+        if (svgWidth > targetWidth) {
+            moduleWidth = previousModuleWidth;
+            draw(moduleWidth);
+            break;
+        }
+    }
+
+    return moduleWidth;
+}
+
+/**
+ * Render a scannable Code 128 SVG and scale module width to fit the label.
  */
 export function renderBarcodeSvg(svgEl, containerEl, code, maxBarHeight, { fill = false } = {}) {
     if (!svgEl || !containerEl) {
@@ -498,11 +541,9 @@ export function renderBarcodeSvg(svgEl, containerEl, code, maxBarHeight, { fill 
         Math.min(maxBarHeight, heightFromContainer),
     );
 
-    let moduleWidth = 2;
-    const minModuleWidth = 0.3;
     const quietMargin = 2;
 
-    const draw = () => {
+    fitBarcodeModuleWidth(svgEl, (moduleWidth) => {
         JsBarcode(svgEl, text, {
             format: 'CODE128',
             width: moduleWidth,
@@ -512,17 +553,7 @@ export function renderBarcodeSvg(svgEl, containerEl, code, maxBarHeight, { fill 
             background: '#ffffff',
             lineColor: '#000000',
         });
-    };
-
-    draw();
-
-    let svgWidth = svgEl.getBoundingClientRect().width;
-
-    while (svgWidth > targetWidth && moduleWidth > minModuleWidth) {
-        moduleWidth = Math.round((moduleWidth - 0.1) * 10) / 10;
-        draw();
-        svgWidth = svgEl.getBoundingClientRect().width;
-    }
+    }, targetWidth);
 
     return barHeight;
 }
@@ -704,25 +735,45 @@ export function buildPrintHtml(rows, settings) {
       var maxBarHeight = parseFloat(svg.getAttribute('data-max-bar-height') || '${defaultBarHeight}');
       var targetWidth = wrap.clientWidth * ${BARCODE_WIDTH_SAFETY_RATIO};
       var barHeight = Math.max(10, maxBarHeight);
-      var moduleWidth = 2;
       var minModuleWidth = 0.3;
-      var draw = function() {
+      var maxModuleWidth = Math.max(${MAX_BARCODE_MODULE_WIDTH}, Math.ceil(targetWidth / 40));
+      var moduleWidth = 2;
+      var quietMargin = 2;
+      var draw = function(width) {
         window.JsBarcode(svg, code, {
           format: 'CODE128',
-          width: moduleWidth,
+          width: width,
           height: barHeight,
           displayValue: false,
-          margin: 2,
+          margin: quietMargin,
           background: '#ffffff',
           lineColor: '#000000',
         });
       };
-      draw();
-      var svgWidth = svg.getBoundingClientRect().width;
+      var measure = function() {
+        return svg.getBoundingClientRect().width;
+      };
+      draw(moduleWidth);
+      var svgWidth = measure();
       while (svgWidth > targetWidth && moduleWidth > minModuleWidth) {
         moduleWidth = Math.round((moduleWidth - 0.1) * 10) / 10;
-        draw();
-        svgWidth = svg.getBoundingClientRect().width;
+        draw(moduleWidth);
+        svgWidth = measure();
+      }
+      while (moduleWidth < maxModuleWidth) {
+        var previousModuleWidth = moduleWidth;
+        var nextModuleWidth = Math.round((moduleWidth + 0.1) * 10) / 10;
+        if (nextModuleWidth === moduleWidth) {
+          break;
+        }
+        moduleWidth = nextModuleWidth;
+        draw(moduleWidth);
+        svgWidth = measure();
+        if (svgWidth > targetWidth) {
+          moduleWidth = previousModuleWidth;
+          draw(moduleWidth);
+          break;
+        }
       }
     }
 

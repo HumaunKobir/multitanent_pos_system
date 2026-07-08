@@ -102,7 +102,7 @@ if (getLabelBarcodeBarHeight(smallLabelSettings, duplicateCodeRow) !== LIST_BARC
 const widePageSettings = { width: 2.5, height: 1, fontSize: 8, fontWeight: 'normal', copies: 1 };
 const wideContent = getLabelContentDimensions(widePageSettings);
 
-if (wideContent.width !== 1.5 || wideContent.height !== 1) {
+if (wideContent.width !== 2.5 || wideContent.height !== 1) {
     process.exit(26);
 }
 
@@ -120,7 +120,7 @@ if (! wideHtml.includes('.label-content')) {
     process.exit(29);
 }
 
-if (! wideHtml.includes('width: 1.5in')) {
+if (! wideHtml.includes('width: 2.5in')) {
     process.exit(30);
 }
 

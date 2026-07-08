@@ -181,7 +181,6 @@ export default function BarcodePrint({ barcodes }) {
         setSettings((prev) => ({ ...prev, [key]: value }));
 
     const previewRow = barcodes[0] ?? null;
-    const contentDims = getLabelContentDimensions(settings);
 
     const handlePrint = () => {
         const win = window.open('', '_blank', 'width=700,height=500');
@@ -380,16 +379,8 @@ export default function BarcodePrint({ barcodes }) {
                     </div>
                     <div className="border-t border-blue-200 px-4 py-2 text-center">
                         <p className="text-xs text-slate-500">
-                            {settings.width}" × {settings.height}" page
-                            {contentDims.width < settings.width ||
-                            contentDims.height < settings.height ? (
-                                <>
-                                    {' '}
-                                    · barcode{' '}
-                                    {contentDims.width}" × {contentDims.height}"
-                                </>
-                            ) : null}{' '}
-                            · {settings.copies}× per label
+                            {settings.width}" × {settings.height}" page ·{' '}
+                            {settings.copies}× per label
                             {previewRow && (
                                 <>
                                     {' '}

@@ -194,6 +194,13 @@ export default function SellShow({ sell }) {
                     }
                 />
 
+                {sell.due_given_date && due > 0 && (
+                    <div className="mx-auto mt-3 flex max-w-4xl items-center justify-between gap-3 border border-amber-200 bg-amber-50/70 px-4 py-2.5 shadow-sm">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-amber-900">Due Given Date</span>
+                        <span className="text-sm font-semibold tabular-nums text-amber-900">{formatBdDate(sell.due_given_date)}</span>
+                    </div>
+                )}
+
                 <DocumentPaymentBreakdown
                     partyPayments={collectionDetails}
                     partyPaymentLabel="Due Collection"

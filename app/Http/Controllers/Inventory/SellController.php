@@ -381,9 +381,14 @@ class SellController extends Controller
 
         $hasExchange = $this->exchangeOverlay->hasExchange($sell);
 
+        $dueAlert = $sell->customer_id
+            ? $this->dueAlertService->findActiveAlert($sell->customer_id, $sell->branch_id)
+            : null;
+
         return Inertia::render('admin/inventory/sell/show', [
             'sell' => [
                 ...$sell->toArray(),
+                'due_given_date' => $dueAlert?->due_given_date?->format('Y-m-d'),
                 'customer' => $sell->customer,
                 'branch' => $sell->branch,
                 'special_discount' => $sell->specialDiscount,

@@ -1,15 +1,17 @@
 import { useAppToast } from '@/contexts/app-toast-context';
 import { formatBdDate } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
-import { Head, Link, router, usePage } from '@inertiajs/react';
-import { ArrowLeftRight, Edit, Eye, Plus, Trash2 } from 'lucide-react';
+import { Head, router, useForm, usePage } from '@inertiajs/react';
+import { ArrowLeftRight, Plus, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { AdminCreateLink, AdminRowActions } from '@/components/admin/row-actions';
+import { paymentModeToAccountId, paymentModeToType } from '@/components/inventory/inventory-form';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { useCan } from '@/hooks/use-can';
 
@@ -20,12 +22,13 @@ const PAYMENT_STATUS_LABELS = {
     settled: 'Settled',
 };
 
-export default function ProductExchangeIndex({ exchanges = { data: [] }, filters = {} }) {
+export default function ProductExchangeIndex({ exchanges = { data: [] }, filters = {}, paymentAccounts = [] }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
     const [deleting, setDeleting] = useState(null);
+    const [settling, setSettling] = useState(null);
 
     useEffect(() => {
         if (flash.success) toast.success(flash.success);
@@ -48,6 +51,10 @@ export default function ProductExchangeIndex({ exchanges = { data: [] }, filters
             onSuccess: () => setDeleting(null),
             preserveScroll: true,
         });
+    }
+
+    function hasOutstandingSettlement(row) {
+        return parseFloat(row.settlement_amount ?? 0) > 0.009 && parseFloat(row.due_amount ?? 0) > 0.009;
     }
 
     const columns = [
@@ -94,14 +101,26 @@ export default function ProductExchangeIndex({ exchanges = { data: [] }, filters
             header: 'Actions',
             align: 'right',
             render: (row) => (
-                <AdminRowActions
-                    prefix="inventory.product-exchange"
-                    id={row.id}
-                    showRoute="inventory.product-exchange.show"
-                    editRoute="inventory.product-exchange.edit"
-                    canEdit={row.can_access_edit !== false}
-                    onDelete={() => setDeleting(row)}
-                />
+                <div className="flex justify-end gap-2">
+                    {can('inventory.product-exchange.update') && hasOutstandingSettlement(row) && (
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            title={row.is_refund ? 'Record refund' : 'Record payment'}
+                            onClick={() => setSettling(row)}
+                        >
+                            <Wallet className="size-3.5" />
+                        </Button>
+                    )}
+                    <AdminRowActions
+                        prefix="inventory.product-exchange"
+                        id={row.id}
+                        showRoute="inventory.product-exchange.show"
+                        editRoute="inventory.product-exchange.edit"
+                        canEdit={row.can_access_edit !== false}
+                        onDelete={() => setDeleting(row)}
+                    />
+                </div>
             ),
         },
     ];
@@ -136,7 +155,167 @@ export default function ProductExchangeIndex({ exchanges = { data: [] }, filters
                     </DialogContent>
                 </Dialog>
                 )}
+                {can('inventory.product-exchange.update') && (
+                    <SettlePaymentDialog
+                        exchange={settling}
+                        paymentAccounts={paymentAccounts}
+                        onClose={() => setSettling(null)}
+                    />
+                )}
             </div>
         </>
+    );
+}
+
+function SettlePaymentDialog({ exchange, paymentAccounts, onClose }) {
+    const toast = useAppToast();
+    const isRefund = Boolean(exchange?.is_refund);
+    const settlement = parseFloat(exchange?.settlement_amount ?? 0);
+    const alreadyPaid = parseFloat(exchange?.paid_amount ?? 0);
+
+    const form = useForm({
+        payment_type: '0',
+        payment_account_id: null,
+        paid_amount: '0',
+    });
+
+    const [paymentMode, setPaymentMode] = useState('party');
+
+    useEffect(() => {
+        if (!exchange) {
+            return;
+        }
+
+        const mode = paymentAccounts.length > 0 ? `cash-${paymentAccounts[0].id}` : 'party';
+        setPaymentMode(mode);
+        form.clearErrors();
+        form.setData({
+            payment_type: paymentModeToType(mode),
+            payment_account_id: paymentModeToAccountId(mode),
+            paid_amount: settlement > 0 ? settlement.toFixed(2) : '0',
+        });
+    }, [exchange?.id]);
+
+    function handleModeChange(mode) {
+        setPaymentMode(mode);
+        form.setData({
+            ...form.data,
+            payment_type: paymentModeToType(mode),
+            payment_account_id: paymentModeToAccountId(mode),
+            paid_amount: mode === 'party' ? '0' : settlement > 0 ? settlement.toFixed(2) : '0',
+        });
+    }
+
+    function handleSubmit(e) {
+        e.preventDefault();
+
+        if (!exchange) {
+            return;
+        }
+
+        form.transform((data) => ({
+            payment_type: paymentModeToType(paymentMode),
+            payment_account_id: paymentModeToAccountId(paymentMode),
+            paid_amount: paymentMode === 'party' ? '0' : data.paid_amount,
+        }));
+
+        form.put(route('inventory.product-exchange.payment', exchange.id), {
+            preserveScroll: true,
+            onSuccess: onClose,
+            onError: (errors) => {
+                const first = Object.values(errors)[0];
+
+                if (first) {
+                    toast.error(Array.isArray(first) ? first[0] : first);
+                }
+            },
+        });
+    }
+
+    const isParty = paymentMode === 'party';
+    const settlementLabel = isRefund ? 'Refund to Customer' : 'Customer Pays';
+    const amountLabel = isRefund ? 'Refund Amount' : 'Amount Received';
+
+    return (
+        <Dialog open={!!exchange} onOpenChange={(open) => !open && onClose()}>
+            <DialogContent className="max-w-sm">
+                <DialogHeader>
+                    <DialogTitle>{isRefund ? 'Record Refund' : 'Record Payment'}</DialogTitle>
+                    <DialogDescription>
+                        {exchange?.invoice_number ?? (exchange ? `INVX${String(exchange.id).padStart(8, '0')}` : '')}
+                        {exchange?.customer?.name ? ` · ${exchange.customer.name}` : ''}
+                    </DialogDescription>
+                </DialogHeader>
+
+                <form onSubmit={handleSubmit} className="space-y-3">
+                    <div className="rounded-md border border-border bg-muted/30 p-3 text-sm">
+                        <div className="flex items-center justify-between">
+                            <span className="text-muted-foreground">{settlementLabel}</span>
+                            <span className={isRefund ? 'font-semibold text-destructive' : 'font-semibold text-primary'}>
+                                ৳{settlement.toFixed(2)}
+                            </span>
+                        </div>
+                        {alreadyPaid > 0.009 && (
+                            <div className="mt-1 flex items-center justify-between text-xs">
+                                <span className="text-muted-foreground">Already recorded</span>
+                                <span className="text-green-700 dark:text-green-400">৳{alreadyPaid.toFixed(2)}</span>
+                            </div>
+                        )}
+                    </div>
+
+                    <div>
+                        <Label className="mb-1 block text-xs text-muted-foreground">Payment Option</Label>
+                        <select
+                            className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs shadow-xs outline-none focus:border-primary focus:ring-[3px] focus:ring-ring/50"
+                            value={paymentMode}
+                            onChange={(e) => handleModeChange(e.target.value)}
+                        >
+                            <option value="party">Customer Account</option>
+                            {paymentAccounts.map((acc) => (
+                                <option key={acc.id} value={`cash-${acc.id}`}>
+                                    {acc.label}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="mt-1 text-[10px] text-muted-foreground">
+                            {isParty
+                                ? 'Settles on the customer account. No cash or bank entry is posted.'
+                                : isRefund
+                                  ? 'Cash / bank account the refund is paid from.'
+                                  : 'Cash / bank account the payment is received into.'}
+                        </p>
+                    </div>
+
+                    {!isParty && (
+                        <div>
+                            <Label className="mb-1 block text-xs text-muted-foreground">{amountLabel}</Label>
+                            <Input
+                                type="number"
+                                min="0"
+                                max={settlement}
+                                step="0.01"
+                                value={form.data.paid_amount}
+                                onChange={(e) => form.setData('paid_amount', e.target.value)}
+                            />
+                            {form.errors.paid_amount && (
+                                <p className="mt-1 text-xs text-destructive">{form.errors.paid_amount}</p>
+                            )}
+                            {form.errors.payment_account_id && (
+                                <p className="mt-1 text-xs text-destructive">{form.errors.payment_account_id}</p>
+                            )}
+                        </div>
+                    )}
+
+                    <DialogFooter className="gap-2">
+                        <DialogClose asChild>
+                            <Button type="button" variant="outline" size="sm">Cancel</Button>
+                        </DialogClose>
+                        <Button type="submit" size="sm" disabled={form.processing}>
+                            {isRefund ? 'Record Refund' : 'Record Payment'}
+                        </Button>
+                    </DialogFooter>
+                </form>
+            </DialogContent>
+        </Dialog>
     );
 }

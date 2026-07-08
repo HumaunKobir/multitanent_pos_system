@@ -130,6 +130,7 @@ Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')
     Route::post('sell/pause', [SellController::class, 'pause'])->name('sell.pause');
     Route::resource('sell', SellController::class);
     Route::resource('sale-return', SaleReturnController::class);
+    Route::put('product-exchange/{product_exchange}/payment', [ProductExchangeController::class, 'settlePayment'])->name('product-exchange.payment');
     Route::resource('product-exchange', ProductExchangeController::class);
     Route::get('stock-distribution/received', [StockDistributionController::class, 'receivedIndex'])->name('stock-distribution.received');
     Route::post('stock-distribution/{stock_distribution}/receive', [StockDistributionController::class, 'receive'])->name('stock-distribution.receive');

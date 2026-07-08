@@ -22,6 +22,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -61,11 +62,14 @@ class ProductExchangeController extends Controller
                 'payment_only_edit' => $exchange->isPaymentOnlyEditable(),
                 'payment_status' => $exchange->paymentStatusLabel(),
                 'settlement_amount' => $exchange->settlementAmount(),
+                'due_amount' => $exchange->dueAmount(),
+                'is_refund' => (float) $exchange->price_difference < 0,
             ]);
 
         return Inertia::render('admin/inventory/product-exchange/index', [
             'exchanges' => $exchanges,
             'filters' => $request->only('search'),
+            'paymentAccounts' => $this->paymentAccountsForBranch(Auth::user()?->branch_id),
         ]);
     }
 
@@ -474,6 +478,88 @@ class ProductExchangeController extends Controller
 
         return redirect()->route('inventory.product-exchange.index')
             ->with('success', 'Product exchange deleted successfully.');
+    }
+
+    /**
+     * Record only the refund/customer-pays settlement for an exchange straight from the list,
+     * without touching exchange lines or discounts.
+     */
+    public function settlePayment(Request $request, ProductExchange $productExchange): RedirectResponse
+    {
+        $this->authorize('inventory.product-exchange.update');
+        $this->authorizeBranchUserRecord($productExchange);
+
+        if ($productExchange->settlementAmount() <= 0) {
+            return back()->with('error', 'This exchange has no outstanding amount to settle.');
+        }
+
+        $data = $request->validate([
+            'payment_type' => ['required', 'integer', Rule::in([
+                ReceivedPaymentMethod::Cash->value,
+                ReceivedPaymentMethod::Customer_Account->value,
+            ])],
+            'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
+            'paid_amount' => ['nullable', 'numeric', 'min:0'],
+        ]);
+
+        $paymentType = ReceivedPaymentMethod::from((int) $data['payment_type']);
+        $paymentAccountId = $paymentType === ReceivedPaymentMethod::Cash
+            ? $this->requirePaymentAccountId($request)
+            : null;
+
+        try {
+            DB::transaction(function () use ($productExchange, $data, $paymentType, $paymentAccountId) {
+                $productExchange->load(['products', 'sell', 'customer']);
+
+                $this->accounting->reverseFor($productExchange);
+                $this->reverseExchangeCustomerAccountEffect($productExchange);
+
+                $payment = $this->exchangeDiscounts->resolvePayment(
+                    $data,
+                    (float) $productExchange->price_difference,
+                    (int) $data['payment_type'],
+                );
+
+                $productExchange->update([
+                    'paid_amount' => $payment['paid_amount'],
+                    'due_amount' => $payment['due_amount'],
+                    'payment_type' => $paymentType,
+                    'payment_account_id' => $paymentAccountId,
+                ]);
+
+                $this->applyExchangeCustomerAccountEffect($productExchange->fresh(), $paymentType);
+                $this->accounting->postExchange(
+                    $productExchange->fresh(['customer', 'sell', 'products']),
+                    $paymentAccountId,
+                );
+            });
+        } catch (\Throwable $e) {
+            return back()
+                ->withErrors([
+                    'paid_amount' => $e instanceof \RuntimeException
+                        ? $e->getMessage()
+                        : 'Unable to record exchange payment.',
+                ])
+                ->withInput();
+        }
+
+        return redirect()->route('inventory.product-exchange.index')
+            ->with('success', 'Exchange payment recorded successfully.');
+    }
+
+    private function applyExchangeCustomerAccountEffect(ProductExchange $productExchange, ReceivedPaymentMethod $paymentType): void
+    {
+        if (! $productExchange->customer_id || $paymentType !== ReceivedPaymentMethod::Customer_Account) {
+            return;
+        }
+
+        $effect = (float) $productExchange->price_difference;
+
+        if ($effect > 0) {
+            Customer::whereKey($productExchange->customer_id)->decrement('balance', $effect);
+        } elseif ($effect < 0) {
+            Customer::whereKey($productExchange->customer_id)->increment('balance', abs($effect));
+        }
     }
 
     private function updateExchangePaymentOnly(Request $request, ProductExchange $productExchange): RedirectResponse

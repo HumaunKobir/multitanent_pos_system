@@ -124,16 +124,27 @@ export default function ProductEdit({
 
         const validation = productFormRef.current?.validateBeforeSubmit?.();
 
+        // #region agent log
+        fetch('http://127.0.0.1:7682/ingest/b2b77a02-47d0-43f6-ab11-689e8f32c576',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'178204'},body:JSON.stringify({sessionId:'178204',hypothesisId:'I,K',location:'edit.jsx:handleSubmit',message:'handleSubmit fired',data:{validation_ok:validation?.ok ?? '(none)',validation_error:validation?.error ?? null,has_variants:form.data.has_variants,combinations_count:Array.isArray(form.data.combinations)?form.data.combinations.length:'not-array',sale_price:form.data.sale_price,branch_id:form.data.branch_id},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+
         if (validation && !validation.ok) {
             return;
         }
 
         form.patch(route('product.update', { product: product.slug }), {
+            // #region agent log
+            onStart: () => { fetch('http://127.0.0.1:7682/ingest/b2b77a02-47d0-43f6-ab11-689e8f32c576',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'178204'},body:JSON.stringify({sessionId:'178204',hypothesisId:'J',location:'edit.jsx:patch.onStart',message:'patch request started',data:{url:route('product.update',{product:product.slug})},timestamp:Date.now()})}).catch(()=>{}); },
             onError: (errors) => {
+                // #region agent log
+                fetch('http://127.0.0.1:7682/ingest/b2b77a02-47d0-43f6-ab11-689e8f32c576',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'178204'},body:JSON.stringify({sessionId:'178204',hypothesisId:'J',location:'edit.jsx:patch.onError',message:'patch returned errors',data:{errors},timestamp:Date.now()})}).catch(()=>{});
+                // #endregion
                 if (errors.initial_stock_payment_account_id) {
                     toast.warning(errors.initial_stock_payment_account_id);
                 }
             },
+            onFinish: () => { fetch('http://127.0.0.1:7682/ingest/b2b77a02-47d0-43f6-ab11-689e8f32c576',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'178204'},body:JSON.stringify({sessionId:'178204',hypothesisId:'J',location:'edit.jsx:patch.onFinish',message:'patch finished',data:{},timestamp:Date.now()})}).catch(()=>{}); },
+            // #endregion
         });
     }
 

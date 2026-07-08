@@ -46,6 +46,25 @@ class ProductController extends Controller
         private BarcodeService $barcodes,
     ) {}
 
+    // #region agent log
+    private function debugLog(string $location, string $hypothesisId, array $data): void
+    {
+        @file_put_contents(
+            '/var/www/html/coolness-point-fresh/.cursor/debug-178204.log',
+            json_encode([
+                'sessionId' => '178204',
+                'runId' => 'update-flow',
+                'hypothesisId' => $hypothesisId,
+                'location' => $location,
+                'message' => $location,
+                'data' => $data,
+                'timestamp' => (int) round(microtime(true) * 1000),
+            ]).PHP_EOL,
+            FILE_APPEND | LOCK_EX,
+        );
+    }
+    // #endregion
+
     /**
      * Convert an initial-stock payment "insufficient balance" failure into a
      * validation error so the form shows a warning toast instead of a 500 page.
@@ -402,6 +421,21 @@ class ProductController extends Controller
     {
         $this->authorize('product.update');
 
+        // #region agent log
+        $this->debugLog('ProductController@update:entry', 'F,G', [
+            'product_id' => $product->id,
+            'product_branch_id' => $product->branch_id,
+            'product_group_id' => $product->product_group_id,
+            'req_has_branch_id' => $request->exists('branch_id'),
+            'req_branch_id_raw' => $request->input('branch_id'),
+            'req_sale_price' => $request->input('sale_price'),
+            'req_has_variants_bool' => $request->boolean('has_variants'),
+            'req_combinations_count' => is_array($request->input('combinations')) ? count($request->input('combinations')) : 'not-array',
+            'existing_variations_count' => $product->variations()->count(),
+            'is_main_branch' => Branch::isMainBranch((int) $product->branch_id),
+        ]);
+        // #endregion
+
         $variantsLocked = $this->variantsAreLocked($product);
         $rawCombinations = $variantsLocked ? [] : $request->input('combinations', []);
         $hasVariations = ! empty($rawCombinations);
@@ -574,7 +608,29 @@ class ProductController extends Controller
                         unset($data['selected_branch_id']);
                     }
 
+                    // #region agent log
+                    $this->debugLog('ProductController@update:before-update', 'A,B,E', [
+                        'branchSelectionProvided' => $branchSelectionProvided,
+                        'selectedBranchId' => $selectedBranchId,
+                        'requestedAllBranches' => $requestedAllBranches,
+                        'previousSelection' => $previousSelection,
+                        'expandingToAllBranches' => $expandingToAllBranches,
+                        'isBranchSelectionChange' => $isBranchSelectionChange,
+                        'data_name' => $data['name'] ?? '(missing)',
+                        'data_sale_price' => $data['sale_price'] ?? '(missing)',
+                        'data_keys' => array_keys($data),
+                    ]);
+                    // #endregion
+
                     $product->update($data);
+
+                    // #region agent log
+                    $this->debugLog('ProductController@update:after-update', 'B,D', [
+                        'product_id' => $product->id,
+                        'fresh_name' => $product->fresh()->name,
+                        'fresh_sale_price' => $product->fresh()->sale_price,
+                    ]);
+                    // #endregion
 
                     if ($branchSelectionProvided && ! Branch::isMainBranch((int) $product->branch_id)) {
                         $this->productReplication->mainSiblingInGroup($product)?->update([
@@ -591,6 +647,18 @@ class ProductController extends Controller
 
                     if ($requestedAllBranches) {
                         $anchorProduct = $this->productReplication->mainSiblingInGroup($product);
+
+                        // #region agent log
+                        $this->debugLog('ProductController@update:path=requestedAllBranches', 'G', [
+                            'anchor_product_id' => $anchorProduct?->id,
+                            'anchor_branch_id' => $anchorProduct?->branch_id,
+                            'hasVariations' => $hasVariations,
+                            'variantsLocked' => $variantsLocked,
+                            'product_variations_exist_before' => $product->variations()->exists(),
+                            'product_variations_count_before' => $product->variations()->count(),
+                            'clearProductVariations_would_run' => (! $variantsLocked && ! $hasVariations && $product->variations()->exists()),
+                        ]);
+                        // #endregion
 
                         if ($anchorProduct === null && Branch::isMainBranch((int) $product->branch_id)) {
                             $anchorProduct = $product;
@@ -613,6 +681,8 @@ class ProductController extends Controller
                             $this->productReplication->syncGroupCatalog($anchorProduct->fresh(), $data);
 
                             if (! $variantsLocked && ! $hasVariations) {
+                                $this->clearGroupVariations($anchorProduct->fresh());
+
                                 $this->initialStock->syncNonVariant(
                                     $anchorProduct->fresh(),
                                     $mainInitialStock,
@@ -650,6 +720,15 @@ class ProductController extends Controller
 
                         return;
                     }
+
+                    // #region agent log
+                    $this->debugLog('ProductController@update:path=normal', 'A', [
+                        'variantsLocked' => $variantsLocked,
+                        'hasVariations' => $hasVariations,
+                        'isBranchSelectionChange' => $isBranchSelectionChange,
+                        'product_group_id' => $product->product_group_id,
+                    ]);
+                    // #endregion
 
                     if (! $variantsLocked) {
                         if ($hasVariations) {
@@ -695,6 +774,16 @@ class ProductController extends Controller
         } catch (\Throwable $exception) {
             $this->rethrowInitialStockPaymentFailure($exception);
         }
+
+        // #region agent log
+        $finalProduct = $product->fresh();
+        $this->debugLog('ProductController@update:final', 'G', [
+            'product_id' => $finalProduct?->id,
+            'branch_id' => $finalProduct?->branch_id,
+            'final_sale_price' => $finalProduct?->sale_price,
+            'final_variations_count' => $finalProduct?->variations()->count(),
+        ]);
+        // #endregion
 
         return redirect()->route('product.index')
             ->with('success', 'Product updated successfully.');
@@ -882,6 +971,13 @@ class ProductController extends Controller
                 $mainSalePrice,
                 $isSource ? $mainInitialStock : 0,
             );
+        }
+    }
+
+    private function clearGroupVariations(Product $sourceProduct): void
+    {
+        foreach ($this->productReplication->siblings($sourceProduct) as $sibling) {
+            $this->clearProductVariations($sibling);
         }
     }
 

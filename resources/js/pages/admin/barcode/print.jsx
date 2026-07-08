@@ -173,7 +173,7 @@ export default function BarcodePrint({ barcodes }) {
         width: 1.5,
         height: 1,
         fontSize: 8,
-        fontWeight: 'normal',
+        fontWeight: 'bold',
         copies: 1,
     });
 

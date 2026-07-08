@@ -745,12 +745,6 @@ class InventoryAccountingService
             );
         }
 
-        $oldNetTotal = $parent
-            ? app(ProductExchangeDiscountService::class)->resolveOldNetTotal($parent, $oldGross)
-            : $oldGross;
-
-        [$oldBase, $oldVat] = $this->splitVat($oldNetTotal, $vatRatio);
-
         $invoiceDiscount = (float) $exchange->discount;
         $specialDiscount = (float) $exchange->special_discount_amount;
         $roundOff = (float) $exchange->round_off_amount;
@@ -759,6 +753,19 @@ class InventoryAccountingService
         $newNet = max(0, (float) $exchange->net_amount);
         $newVat = $exchangeVat > 0 ? $exchangeVat : round($newNet * $vatRatio, 2);
         $newBase = round(max(0, $newNet - $newVat), 2);
+
+        // Balance the old-side revenue reversal against the actual customer
+        // settlement so the journal is always balanced: reversing the old goods
+        // plus the settlement the customer pays/refunds must equal the new
+        // revenue recognized. The stored price_difference is the gross-based,
+        // VAT-excluded amount the customer settles; deriving the reversal from it
+        // keeps the double entry balanced even when the sale carried VAT,
+        // invoice, special, or round-off discounts, or when only some of a
+        // multi-product sale's lines are exchanged.
+        $priceDifference = round((float) $exchange->price_difference, 2);
+        $oldNetTotal = round(max(0, $newNet - $priceDifference), 2);
+
+        [$oldBase, $oldVat] = $this->splitVat($oldNetTotal, $vatRatio);
 
         return [
             'old_base' => $oldBase,

@@ -135,6 +135,7 @@ class ProductExchangeController extends Controller
                 $totals = $processed['totals'];
                 $lines = $processed['lines'];
                 $oldTotal = $processed['old_total'];
+                $oldPromotionTotal = $processed['old_promotion_total'];
                 $grossAmount = $processed['gross_amount'];
                 $returnRefund = $processed['return_refund'];
 
@@ -143,7 +144,7 @@ class ProductExchangeController extends Controller
                 }
 
                 $signedSettlement = round(
-                    $this->resolveExchangeSignedSettlement($totals, $oldTotal, $grossAmount) - $returnRefund,
+                    $this->resolveExchangeSignedSettlement($totals, $oldTotal - $oldPromotionTotal, $grossAmount) - $returnRefund,
                     2,
                 );
                 $priceDifference = $signedSettlement;
@@ -397,6 +398,7 @@ class ProductExchangeController extends Controller
                 $totals = $processed['totals'];
                 $lines = $processed['lines'];
                 $oldTotal = $processed['old_total'];
+                $oldPromotionTotal = $processed['old_promotion_total'];
                 $grossAmount = $processed['gross_amount'];
                 $returnRefund = $processed['return_refund'];
 
@@ -405,7 +407,7 @@ class ProductExchangeController extends Controller
                 }
 
                 $signedSettlement = round(
-                    $this->resolveExchangeSignedSettlement($totals, $oldTotal, $grossAmount) - $returnRefund,
+                    $this->resolveExchangeSignedSettlement($totals, $oldTotal - $oldPromotionTotal, $grossAmount) - $returnRefund,
                     2,
                 );
                 $priceDifference = $signedSettlement;
@@ -584,14 +586,9 @@ class ProductExchangeController extends Controller
                 $this->accounting->reverseFor($productExchange);
                 $this->reverseExchangeCustomerAccountEffect($productExchange);
 
-                $oldTotal = round($productExchange->products->sum(
-                    fn ($line) => (float) $line->old_quantity * (float) $line->old_unit_price
-                ), 2);
-                $signedSettlement = (float) $productExchange->price_difference;
-                $customerAccountEffect = $signedSettlement;
                 $payment = $this->exchangeDiscounts->resolvePayment(
                     $data,
-                    $signedSettlement,
+                    (float) $productExchange->price_difference,
                     (int) $data['payment_type'],
                 );
 
@@ -603,19 +600,7 @@ class ProductExchangeController extends Controller
                     'comment' => $data['comment'] ?? $productExchange->comment,
                 ]);
 
-                $totals = [
-                    'coins_redeemed' => (float) $productExchange->coins_redeemed,
-                    'coin_discount_amount' => (float) $productExchange->coin_discount_amount,
-                    'coins_earned' => (float) $productExchange->coins_earned,
-                ];
-
-                $this->applyExchangeCustomerEffects(
-                    $parent,
-                    $productExchange->fresh(),
-                    $customerAccountEffect,
-                    $paymentType,
-                    $totals,
-                );
+                $this->applyExchangeCustomerAccountEffect($productExchange->fresh(), $paymentType);
                 $this->accounting->postExchange(
                     $productExchange->fresh(['customer', 'sell', 'products']),
                     $paymentAccountId,
@@ -828,6 +813,7 @@ class ProductExchangeController extends Controller
 
         $grossAmount = 0.0;
         $oldTotal = 0.0;
+        $oldPromotionTotal = 0.0;
         $lineDiscountTotal = 0.0;
         $returnRefundTotal = 0.0;
         $lines = [];
@@ -932,7 +918,17 @@ class ProductExchangeController extends Controller
                     $lineGross,
                 );
 
+                // Credit back the promotion the customer originally received on
+                // the swapped-out units, so the old side is valued at what the
+                // customer actually paid (catalog minus their original promotion)
+                // and mirrors the promotion-adjusted new side. Without this a
+                // like-for-like swap of a promoted item shows a phantom refund.
+                $originalPromoShare = (float) $sellProduct->quantity > 0
+                    ? round((float) $sellProduct->promotion_discount * ($qty / (float) $sellProduct->quantity), 2)
+                    : 0.0;
+
                 $oldTotal += $qty * $lineOldCatalogPrice;
+                $oldPromotionTotal += $originalPromoShare;
                 $grossAmount += $lineGross;
                 $lineDiscountTotal += $lineDiscount;
             }
@@ -978,6 +974,7 @@ class ProductExchangeController extends Controller
             'totals' => $totals,
             'gross_amount' => $grossAmount,
             'old_total' => $oldTotal,
+            'old_promotion_total' => round($oldPromotionTotal, 2),
             'return_refund' => round($returnRefundTotal, 2),
         ];
     }

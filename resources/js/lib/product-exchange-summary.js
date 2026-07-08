@@ -238,6 +238,29 @@ export function resolveOldExchangeTotal(items = []) {
     );
 }
 
+/**
+ * Proportional share of the promotion the customer originally received on the
+ * swapped-out units. The old side of the settlement must be valued at what the
+ * customer actually paid (catalog minus their original promotion), mirroring the
+ * promotion-adjusted new side, otherwise a like-for-like swap of a promoted item
+ * shows a phantom refund.
+ */
+export function resolveOldPromotionTotal(items = []) {
+    return items.reduce((sum, item) => {
+        const qty = parseFloat(item.quantity || 0);
+        const soldQty = parseFloat(item.sold_quantity || 0);
+        const originalPromo = parseFloat(item.promotion_discount || 0);
+
+        if (qty <= 0 || soldQty <= 0 || originalPromo <= 0) {
+            return sum;
+        }
+
+        const proportion = Math.min(1, qty / soldQty);
+
+        return sum + Math.round(originalPromo * proportion * 100) / 100;
+    }, 0);
+}
+
 export function resolveReturnTotal(items = []) {
     return items.reduce(
         (sum, item) =>
@@ -398,14 +421,16 @@ export function calcProductExchangeSummary({
     const netNewAmount = Math.max(0, netBeforeRoundOff - roundOffAmount);
 
     const oldTotal = oldExchangeTotal;
+    const oldPromotionTotal = resolveOldPromotionTotal(items);
+    const oldSettlementTotal = Math.max(0, oldTotal - oldPromotionTotal);
     const oldNetTotal = resolveOldNetTotal(sellDiscounts, oldTotal);
     const returnTotal = resolveReturnTotal(items);
     const returnRefund = returnTotal > 0 ? resolveOldNetTotal(sellDiscounts, returnTotal) : 0;
-    const grossPriceDifference = grossAmount - oldTotal;
+    const grossPriceDifference = grossAmount - oldSettlementTotal;
     const newDiscountTotal = Math.max(0, grossAmount + vatAmount - netNewAmount);
     const priceDifference = grossPriceDifference;
     const swapSignedSettlement = resolveGrossBasedSignedSettlement(
-        oldTotal,
+        oldSettlementTotal,
         grossAmount,
         invoiceDiscountAmount,
         roundOffAmount,

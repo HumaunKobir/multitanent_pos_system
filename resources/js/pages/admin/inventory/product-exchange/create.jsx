@@ -193,6 +193,7 @@ export default function ProductExchangeCreate({
                 old_product_name: i.product_name,
                 old_product_code: i.product_code,
                 old_variation_id: i.variation_id ?? null,
+                old_variation_label: i.variation_label ?? null,
                 old_unit_price: i.unit_price,
                 original_old_unit_price: i.unit_price,
                 line_discount: i.line_discount,
@@ -201,7 +202,7 @@ export default function ProductExchangeCreate({
                 promotion_discount: i.promotion_discount,
                 category_id: i.category_id,
                 brand_id: i.brand_id,
-                quantity: String(i.sold_quantity),
+                quantity: '0',
                 return_quantity: '0',
                 sold_quantity: i.sold_quantity,
                 new_product_id: '',
@@ -219,21 +220,30 @@ export default function ProductExchangeCreate({
         }
 
         setItems((prev) =>
-            prev.map((it, i) =>
-                i === replaceIndex
-                    ? {
-                          ...it,
-                          new_product_id: product.product_id,
-                          new_product_name: product.product_name,
-                          new_product_code: product.product_code,
-                          new_variation_id: product.variation_id ?? null,
-                          new_variation_label: product.variation_label ?? null,
-                          new_unit_price: String(product.unit_price ?? 0),
-                          category_id: product.category_id ?? it.category_id,
-                          brand_id: product.brand_id ?? it.brand_id,
-                      }
-                    : it,
-            ),
+            prev.map((it, i) => {
+                if (i !== replaceIndex) {
+                    return it;
+                }
+
+                const soldQty = parseInt(it.sold_quantity || 0, 10);
+                const returnQty = parseInt(it.return_quantity || 0, 10);
+                const currentQty = parseInt(it.quantity || 0, 10);
+                const defaultQty = Math.max(1, soldQty - returnQty);
+
+                return {
+                    ...it,
+                    new_product_id: product.product_id,
+                    new_product_name: product.product_name,
+                    new_product_code: product.product_code,
+                    new_variation_id: product.variation_id ?? null,
+                    new_variation_label: product.variation_label ?? null,
+                    new_unit_price: String(product.unit_price ?? 0),
+                    category_id: product.category_id ?? it.category_id,
+                    brand_id: product.brand_id ?? it.brand_id,
+                    quantity:
+                        currentQty > 0 ? it.quantity : String(defaultQty),
+                };
+            }),
         );
         setReplaceIndex(null);
     }
@@ -464,6 +474,9 @@ export default function ProductExchangeCreate({
                                                 <ProductNameWithCode
                                                     name={item.old_product_name}
                                                     code={item.old_product_code}
+                                                    variation={
+                                                        item.old_variation_label
+                                                    }
                                                 />
                                             </td>
                                             <td className="px-3 py-2">
@@ -474,6 +487,9 @@ export default function ProductExchangeCreate({
                                                         }
                                                         code={
                                                             item.new_product_code
+                                                        }
+                                                        variation={
+                                                            item.new_variation_label
                                                         }
                                                         className="text-primary [&_p]:text-primary"
                                                     />
@@ -495,7 +511,7 @@ export default function ProductExchangeCreate({
                                             <td className="px-2 py-1.5 text-right">
                                                 <Input
                                                     type="number"
-                                                    min="1"
+                                                    min="0"
                                                     max={item.sold_quantity}
                                                     step="1"
                                                     value={item.quantity}

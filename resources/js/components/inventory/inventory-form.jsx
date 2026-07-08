@@ -717,10 +717,17 @@ export function formatProductLabel(name, code) {
     return code ? `${name} (${code})` : name;
 }
 
-export function ProductNameWithCode({ name, code, className = '' }) {
+export function ProductNameWithCode({ name, code, variation = null, className = '' }) {
     return (
         <div className={className}>
-            <p className="font-medium">{name ?? '—'}</p>
+            <p className="font-medium">
+                {name ?? '—'}
+                {variation ? (
+                    <span className="ml-1 rounded bg-muted px-1 py-0.5 text-[10px] font-medium text-muted-foreground">
+                        {variation}
+                    </span>
+                ) : null}
+            </p>
             {code ? <p className="text-[10px] text-muted-foreground">{code}</p> : null}
         </div>
     );

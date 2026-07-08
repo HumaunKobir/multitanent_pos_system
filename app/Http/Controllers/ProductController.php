@@ -598,7 +598,7 @@ class ProductController extends Controller
 
                         if ($anchorProduct !== null) {
                             if (! $variantsLocked && $hasVariations) {
-                                $this->syncProductVariations($anchorProduct, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+                                $this->syncGroupVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
                             }
 
                             $this->productReplication->expandGroupToAllBranches(
@@ -653,7 +653,11 @@ class ProductController extends Controller
 
                     if (! $variantsLocked) {
                         if ($hasVariations) {
-                            $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+                            if ($product->product_group_id !== null) {
+                                $this->syncGroupVariations($product->fresh(), $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+                            } else {
+                                $this->syncProductVariations($product, $combinations, $mainPurchasePrice, $mainSalePrice, $mainInitialStock);
+                            }
                         } elseif ($product->variations()->exists()) {
                             $this->clearProductVariations($product);
                         } else {
@@ -829,6 +833,55 @@ class ProductController extends Controller
                 'code' => $sku,
                 'name' => $product->name.' - '.$combo['variant'],
             ]);
+        }
+    }
+
+    /**
+     * Sync variation edits across every branch copy in the product group.
+     *
+     * Each branch keeps its own variation rows (matched by their label), so the
+     * incoming combinations are re-mapped per sibling: prices and labels are
+     * shared, while each branch preserves its own barcode and stock. Only the
+     * edited product receives the submitted stock; other siblings are left
+     * untouched.
+     *
+     * @param  array<int, array<string, mixed>>  $combinations
+     */
+    private function syncGroupVariations(Product $sourceProduct, array $combinations, float $mainPurchasePrice, float $mainSalePrice, int $mainInitialStock = 0): void
+    {
+        foreach ($this->productReplication->siblings($sourceProduct) as $sibling) {
+            $isSource = $sibling->is($sourceProduct);
+
+            $existingByLabel = $sibling->variations()
+                ->get()
+                ->keyBy(fn (ProductVariation $variation): string => (string) ($variation->variation_data['label'] ?? $variation->sku));
+
+            $siblingCombinations = array_map(function (array $combo) use ($existingByLabel, $isSource): array {
+                $label = (string) ($combo['variation_data']['label'] ?? $combo['variant'] ?? '');
+                $match = $label !== '' ? $existingByLabel->get($label) : null;
+
+                if ($match !== null) {
+                    $combo['id'] = $match->id;
+                    $combo['sku'] = $isSource ? ($combo['sku'] ?? '') : (string) $match->sku;
+                    $combo['stock'] = $isSource ? ($combo['stock'] ?? '') : (string) $match->stock;
+
+                    return $combo;
+                }
+
+                unset($combo['id']);
+                $combo['sku'] = $isSource ? ($combo['sku'] ?? '') : '';
+                $combo['stock'] = $isSource ? ($combo['stock'] ?? '') : '';
+
+                return $combo;
+            }, $combinations);
+
+            $this->syncProductVariations(
+                $sibling,
+                $siblingCombinations,
+                $mainPurchasePrice,
+                $mainSalePrice,
+                $isSource ? $mainInitialStock : 0,
+            );
         }
     }
 

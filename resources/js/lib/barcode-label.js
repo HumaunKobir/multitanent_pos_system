@@ -531,7 +531,8 @@ export function renderBarcodeSvg(svgEl, containerEl, code, maxBarHeight, { fill 
         return maxBarHeight;
     }
 
-    const targetWidth = containerEl.clientWidth * BARCODE_WIDTH_SAFETY_RATIO;
+    const targetWidth =
+        containerEl.getBoundingClientRect().width * BARCODE_WIDTH_SAFETY_RATIO;
     const availableHeight = containerEl.clientHeight;
     const heightFromContainer =
         fill && availableHeight > 8

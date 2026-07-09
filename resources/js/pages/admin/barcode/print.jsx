@@ -20,7 +20,6 @@ import {
     getEffectiveLabelFontSize,
     getLabelBarcodeBarHeight,
     getLabelCodeLine,
-    getLabelContentDimensions,
     getLabelHeaderLines,
     getLabelLineHeight,
     getLabelPreviewScale,
@@ -37,9 +36,6 @@ const PREVIEW_MAX_H = 320;
 function LabelPreview({ row, settings }) {
     const pxWidth = settings.width * PRINT_DPI;
     const pxHeight = settings.height * PRINT_DPI;
-    const contentDims = getLabelContentDimensions(settings);
-    const contentPxWidth = contentDims.width * PRINT_DPI;
-    const contentPxHeight = contentDims.height * PRINT_DPI;
     const scale = getLabelPreviewScale(
         settings.width,
         settings.height,
@@ -109,8 +105,8 @@ function LabelPreview({ row, settings }) {
                 >
                     <div
                         style={{
-                            width: `${contentPxWidth}px`,
-                            height: `${contentPxHeight}px`,
+                            width: '100%',
+                            height: '100%',
                             flexShrink: 0,
                             display: 'flex',
                             flexDirection: 'column',

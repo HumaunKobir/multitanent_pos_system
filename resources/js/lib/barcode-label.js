@@ -6,8 +6,6 @@ export const BARCODE_PRICE_GAP_PX = 1;
 export const MIN_LABEL_FONT_PX = 5;
 /** Share of label height used to cap font size on small labels. */
 export const LABEL_FONT_HEIGHT_RATIO = 0.065;
-/** Maximum upscale factor for on-screen preview (avoids oversized text). */
-export const PREVIEW_MAX_SCALE = 2;
 /** Minimum bar height for reliable scanner reads (~8.5mm at 96 DPI). */
 export const MIN_BARCODE_BAR_HEIGHT_PX = 32;
 /** Floor when scaling barcode width to fit the label. */
@@ -160,7 +158,10 @@ export function getEffectiveLabelFontSize(settings, row = null) {
 }
 
 /**
- * Preview scale capped so small labels are not blown up on screen.
+ * Preview scale — renders at the label's true physical size (1 CSS inch =
+ * 96px, matching print @page sizing), only shrinking to fit the preview
+ * area for labels too large to display at full size. Never enlarges, so
+ * the on-screen box always matches the width/height field values.
  */
 export function getLabelPreviewScale(
     widthIn,
@@ -172,7 +173,7 @@ export function getLabelPreviewScale(
     const pxH = heightIn * PRINT_DPI;
     const fit = Math.min(maxW / pxW, maxH / pxH);
 
-    return Math.min(PREVIEW_MAX_SCALE, fit);
+    return Math.min(1, fit);
 }
 
 /**
@@ -571,7 +572,6 @@ export function fitBarcodeToContainer(svgEl, containerEl, maxBarHeight, options 
 
 export function buildPrintHtml(rows, settings) {
     const { width, height, fontWeight, copies } = settings;
-    const content = getLabelContentDimensions(settings);
     const fw = fontWeight === 'bold' ? 700 : 400;
     const barcodePriceGap = getBarcodePriceGap();
     const defaultBarHeight = getLabelBarcodeBarHeight(settings);
@@ -641,8 +641,8 @@ export function buildPrintHtml(rows, settings) {
       justify-content: center;
     }
     .label-content {
-      width: ${content.width}in;
-      height: ${content.height}in;
+      width: 100%;
+      height: 100%;
       flex-shrink: 0;
       display: flex;
       flex-direction: column;

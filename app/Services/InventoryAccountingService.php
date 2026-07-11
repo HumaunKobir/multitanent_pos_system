@@ -466,7 +466,7 @@ class InventoryAccountingService
 
         $lines = [
             $this->debitLine(SystemAccountKey::SupplierPayables, $amount, "Payable reduced — Payment {$serial}, {$supplierName}", $branchId),
-            $this->creditPaymentAccount($paymentAccountId, $amount, "Cash paid — Payment {$serial}"),
+            $this->creditPaymentAccount($paymentAccountId, $amount, "Cash paid — Payment {$serial}", $branchId),
         ];
 
         return $this->postJournal(
@@ -926,21 +926,12 @@ class InventoryAccountingService
         }
 
         $inventoryTotal = round($inventoryTotal, 2);
-        $paidAmount = round(min(max(0, $paidAmount), $inventoryTotal), 2);
-        $dueAmount = round(max(0, $inventoryTotal - $paidAmount), 2);
         $branchId = $product->branch_id;
 
         $lines = [
             $this->debitLine(SystemAccountKey::ProductInventory, $inventoryTotal, "Initial stock — {$product->name}", $branchId),
+            $this->creditLine(SystemAccountKey::SupplierPayables, $inventoryTotal, "Supplier payable — Initial stock {$product->name}, {$supplierName}", $branchId),
         ];
-
-        if ($paidAmount > 0) {
-            $lines[] = $this->creditPaymentAccount($paymentAccountId, $paidAmount, "Cash paid — Initial stock {$product->name}", $branchId);
-        }
-
-        if ($dueAmount > 0) {
-            $lines[] = $this->creditLine(SystemAccountKey::SupplierPayables, $dueAmount, "Supplier payable — Initial stock {$product->name}, {$supplierName}", $branchId);
-        }
 
         return $this->postJournal(
             Product::class,

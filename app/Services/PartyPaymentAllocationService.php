@@ -2,43 +2,70 @@
 
 namespace App\Services;
 
+use App\Enums\PurchaseType;
 use App\Models\Customer;
 use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentAllocation;
+use App\Models\Product;
 use App\Models\Purchase;
 use App\Models\Sell;
 use App\Models\SellPayment;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
 use App\Models\SupplierPaymentAllocation;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\ValidationException;
 
 class PartyPaymentAllocationService
 {
-    public function __construct(private InventoryAccountingService $accounting) {}
+    public function __construct(
+        private InventoryAccountingService $accounting,
+        private SupplierPayableDocumentService $payableDocuments,
+    ) {}
 
     /**
      * @return Collection<int, array{id: int, invoice_number: string, date: string|null, net_amount: float, paid_amount: float, due_amount: float}>
      */
     public function duePurchasesForSupplier(Supplier $supplier, ?SupplierPayment $editingPayment = null): Collection
     {
+        $this->payableDocuments->reconcilePurchaseDueAmounts($supplier);
+
         $currentAllocations = $this->currentSupplierAllocationAmounts($editingPayment);
 
-        return Purchase::query()
-            ->ownBranch()
-            ->purchase()
-            ->where('supplier_id', $supplier->id)
+        $purchases = $this->payablePurchasesQuery($supplier)
             ->orderBy('date')
             ->orderBy('id')
-            ->get()
+            ->get();
+
+        if ($editingPayment !== null) {
+            $editingPayment->loadMissing('allocations.purchase');
+
+            foreach ($editingPayment->allocations as $allocation) {
+                $purchase = $allocation->purchase;
+
+                if ($purchase !== null && ! $purchases->contains('id', $purchase->id)) {
+                    $purchases->push($purchase);
+                }
+            }
+
+            $purchases = $purchases->sortBy([
+                ['date', 'asc'],
+                ['id', 'asc'],
+            ])->values();
+        }
+
+        return $purchases
             ->map(function (Purchase $purchase) use ($currentAllocations) {
                 $allocatedAmount = round((float) ($currentAllocations[$purchase->id] ?? 0), 2);
-                $dueAmount = round((float) $purchase->due_amount + $allocatedAmount, 2);
+                $dueAmount = $this->effectivePurchaseDueAmount($purchase, $allocatedAmount);
 
                 return [
                     'id' => $purchase->id,
                     'invoice_number' => $purchase->invoice_number,
+                    'purchase_type' => $purchase->purchase_type->value,
+                    'purchase_type_label' => $this->purchaseTypeLabel($purchase->purchase_type),
                     'date' => $purchase->date?->format('Y-m-d'),
                     'net_amount' => round((float) $purchase->net_amount, 2),
                     'paid_amount' => round(max(0, (float) $purchase->paid_amount - $allocatedAmount), 2),
@@ -48,6 +75,155 @@ class PartyPaymentAllocationService
             })
             ->filter(fn (array $purchase) => $purchase['due_amount'] > 0)
             ->values();
+    }
+
+    public function effectivePurchaseDueAmount(Purchase $purchase, float $allocationRestore = 0): float
+    {
+        $netAmount = round((float) $purchase->net_amount, 2);
+        $paidAmount = round((float) $purchase->paid_amount, 2);
+
+        return round(max(0, $netAmount - $paidAmount) + $allocationRestore, 2);
+    }
+
+    public function totalPayableDueFor(Supplier $supplier, ?SupplierPayment $editingPayment = null): float
+    {
+        $documentedDue = round((float) $this->duePurchasesForSupplier($supplier, $editingPayment)->sum('due_amount'), 2);
+
+        return max($documentedDue, round((float) $supplier->balance, 2));
+    }
+
+    /**
+     * @param  Collection<int, Supplier>|array<int, Supplier>  $suppliers
+     * @return array<int, float>
+     */
+    public function totalPayableDueForSuppliers(Collection|array $suppliers): array
+    {
+        $documentedTotals = $this->documentedPayableDueForSuppliers($suppliers);
+
+        return collect($suppliers)
+            ->mapWithKeys(function (Supplier $supplier) use ($documentedTotals): array {
+                $supplierId = (int) $supplier->id;
+
+                return [
+                    $supplierId => max(
+                        $documentedTotals[$supplierId] ?? 0.0,
+                        round((float) $supplier->balance, 2),
+                    ),
+                ];
+            })
+            ->all();
+    }
+
+    /**
+     * @param  Collection<int, Supplier>|array<int, Supplier>  $suppliers
+     * @return array<int, float>
+     */
+    public function documentedPayableDueForSuppliers(Collection|array $suppliers): array
+    {
+        $suppliers = collect($suppliers);
+
+        if ($suppliers->isEmpty()) {
+            return [];
+        }
+
+        $this->payableDocuments->reconcilePurchaseDueAmountsForSuppliers($suppliers);
+
+        $userBranchId = Auth::user()?->branch_id;
+        $suppliersById = $suppliers->keyBy('id');
+
+        $purchases = Purchase::query()
+            ->supplierPayable()
+            ->whereIn('supplier_id', $suppliers->pluck('id'))
+            ->when($userBranchId !== null, fn (Builder $query) => $query->where(function (Builder $inner) use ($userBranchId) {
+                $inner->where('branch_id', $userBranchId)
+                    ->orWhereNull('branch_id');
+            }))
+            ->get()
+            ->filter(function (Purchase $purchase) use ($userBranchId, $suppliersById): bool {
+                if ($userBranchId !== null) {
+                    return true;
+                }
+
+                $supplier = $suppliersById->get($purchase->supplier_id);
+
+                if ($supplier === null || $supplier->branch_id === null) {
+                    return true;
+                }
+
+                return (int) $purchase->branch_id === (int) $supplier->branch_id
+                    || $purchase->branch_id === null;
+            });
+
+        $totals = $suppliers
+            ->mapWithKeys(fn (Supplier $supplier): array => [(int) $supplier->id => 0.0])
+            ->all();
+
+        foreach ($purchases as $purchase) {
+            $supplierId = (int) $purchase->supplier_id;
+            $totals[$supplierId] = round(($totals[$supplierId] ?? 0) + $this->effectivePurchaseDueAmount($purchase), 2);
+        }
+
+        return $totals;
+    }
+
+    public function allowedSupplierPaymentBalance(Supplier $supplier, ?SupplierPayment $editingPayment = null): float
+    {
+        return round(
+            $this->totalPayableDueFor($supplier, $editingPayment)
+            + (($editingPayment?->supplier_id === $supplier->id) ? (float) $editingPayment->amount : 0),
+            2,
+        );
+    }
+
+    /**
+     * @param  Collection<int, Supplier>|array<int, Supplier>  $suppliers
+     */
+    public function syncSupplierBalancesFromPayables(Collection|array $suppliers): void
+    {
+        $totals = $this->documentedPayableDueForSuppliers($suppliers);
+
+        foreach (collect($suppliers) as $supplier) {
+            $totalDue = round((float) ($totals[(int) $supplier->id] ?? 0), 2);
+
+            if (abs((float) $supplier->balance - $totalDue) > 0.001) {
+                Supplier::query()
+                    ->whereKey($supplier->id)
+                    ->update(['balance' => $totalDue]);
+            }
+        }
+    }
+
+    private function purchaseTypeLabel(PurchaseType $type): string
+    {
+        $name = str_replace('_', ' ', $type->name);
+
+        return trim(preg_replace('/(?<!^)([A-Z])/', ' $1', $name) ?? $name);
+    }
+
+    /**
+     * @return Builder<Purchase>
+     */
+    private function payablePurchasesQuery(Supplier $supplier): Builder
+    {
+        $userBranchId = Auth::user()?->branch_id;
+
+        return Purchase::query()
+            ->supplierPayable()
+            ->where('supplier_id', $supplier->id)
+            ->when(
+                $userBranchId !== null,
+                fn (Builder $query) => $query->where(function (Builder $inner) use ($userBranchId) {
+                    $inner->where('branch_id', $userBranchId)
+                        ->orWhereNull('branch_id');
+                }),
+            )
+            ->when(
+                $userBranchId === null && $supplier->branch_id !== null,
+                fn (Builder $query) => $query->where(function (Builder $inner) use ($supplier) {
+                    $inner->where('branch_id', $supplier->branch_id)
+                        ->orWhereNull('branch_id');
+                }),
+            );
     }
 
     /**
@@ -86,6 +262,42 @@ class PartyPaymentAllocationService
      * @param  array<int, array{purchase_id: int|string, amount: float|int|string}>  $allocations
      * @return array{total: float, purchases: Collection<int, Purchase>}
      */
+    public function validateSupplierPayment(
+        Supplier $supplier,
+        array $allocations,
+        ?float $amount,
+        ?SupplierPayment $editingPayment = null,
+    ): array {
+        if ($allocations !== []) {
+            return $this->validateSupplierAllocations($supplier, $allocations, $editingPayment);
+        }
+
+        $amount = round((float) ($amount ?? 0), 2);
+
+        if ($amount <= 0) {
+            throw ValidationException::withMessages([
+                'amount' => 'Enter a payment amount greater than zero.',
+            ]);
+        }
+
+        $allowedBalance = $this->allowedSupplierPaymentBalance($supplier, $editingPayment);
+
+        if ($amount > $allowedBalance) {
+            throw ValidationException::withMessages([
+                'amount' => 'Payment amount cannot exceed supplier due balance.',
+            ]);
+        }
+
+        return [
+            'total' => $amount,
+            'purchases' => collect(),
+        ];
+    }
+
+    /**
+     * @param  array<int, array{purchase_id: int|string, amount: float|int|string}>  $allocations
+     * @return array{total: float, purchases: Collection<int, Purchase>}
+     */
     public function validateSupplierAllocations(Supplier $supplier, array $allocations, ?SupplierPayment $editingPayment = null): array
     {
         if ($allocations === []) {
@@ -102,10 +314,7 @@ class PartyPaymentAllocationService
             ]);
         }
 
-        $purchases = Purchase::query()
-            ->ownBranch()
-            ->purchase()
-            ->where('supplier_id', $supplier->id)
+        $purchases = $this->payablePurchasesQuery($supplier)
             ->whereIn('id', $purchaseIds)
             ->get()
             ->keyBy('id');
@@ -117,14 +326,17 @@ class PartyPaymentAllocationService
         }
 
         $existingAllocations = $this->currentSupplierAllocationAmounts($editingPayment);
-        $allowedBalance = round((float) $supplier->balance + (($editingPayment?->supplier_id === $supplier->id) ? (float) $editingPayment->amount : 0), 2);
+        $allowedBalance = $this->allowedSupplierPaymentBalance($supplier, $editingPayment);
         $total = 0.0;
 
         foreach ($allocations as $index => $allocation) {
             $purchaseId = (int) $allocation['purchase_id'];
             $amount = round((float) $allocation['amount'], 2);
             $purchase = $purchases->get($purchaseId);
-            $effectiveDueAmount = round((float) $purchase->due_amount + (float) ($existingAllocations[$purchaseId] ?? 0), 2);
+            $effectiveDueAmount = $this->effectivePurchaseDueAmount(
+                $purchase,
+                (float) ($existingAllocations[$purchaseId] ?? 0),
+            );
 
             if ($amount <= 0) {
                 throw ValidationException::withMessages([
@@ -232,7 +444,7 @@ class PartyPaymentAllocationService
      * @param  array<int, array{purchase_id: int|string, amount: float|int|string}>  $allocations
      * @param  Collection<int, Purchase>  $purchases
      */
-    public function applySupplierAllocations(SupplierPayment $payment, array $allocations, Collection $purchases): void
+    public function applySupplierAllocations(SupplierPayment $payment, array $allocations, Collection $purchases, ?int $paymentAccountId = null): void
     {
         foreach ($allocations as $allocation) {
             $purchaseId = (int) $allocation['purchase_id'];
@@ -246,7 +458,53 @@ class PartyPaymentAllocationService
             ]);
 
             $purchase->increment('paid_amount', $amount);
-            $purchase->decrement('due_amount', $amount);
+            $purchase->refresh();
+            $purchase->update([
+                'due_amount' => round(max(0, (float) $purchase->net_amount - (float) $purchase->paid_amount), 2),
+            ]);
+
+            $this->syncInitialStockProductFromPurchase($purchase, $paymentAccountId);
+        }
+    }
+
+    public function applySupplierPaymentAcrossDues(SupplierPayment $payment, Supplier $supplier, float $amount, ?int $paymentAccountId = null): void
+    {
+        $remaining = round($amount, 2);
+
+        if ($remaining <= 0) {
+            return;
+        }
+
+        $duePurchases = $this->payablePurchasesQuery($supplier)
+            ->orderBy('date')
+            ->orderBy('id')
+            ->get();
+
+        $allocations = [];
+        $purchases = collect();
+
+        foreach ($duePurchases as $purchase) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $dueAmount = $this->effectivePurchaseDueAmount($purchase);
+
+            if ($dueAmount <= 0) {
+                continue;
+            }
+
+            $applied = round(min($dueAmount, $remaining), 2);
+            $allocations[] = [
+                'purchase_id' => $purchase->id,
+                'amount' => $applied,
+            ];
+            $purchases->put($purchase->id, $purchase);
+            $remaining = round($remaining - $applied, 2);
+        }
+
+        if ($allocations !== []) {
+            $this->applySupplierAllocations($payment, $allocations, $purchases, $paymentAccountId);
         }
     }
 
@@ -260,11 +518,43 @@ class PartyPaymentAllocationService
             if ($purchase !== null) {
                 $amount = (float) $allocation->amount;
                 $purchase->decrement('paid_amount', $amount);
-                $purchase->increment('due_amount', $amount);
+                $purchase->refresh();
+                $purchase->update([
+                    'due_amount' => round(max(0, (float) $purchase->net_amount - (float) $purchase->paid_amount), 2),
+                ]);
+
+                $this->syncInitialStockProductFromPurchase($purchase, null);
             }
         }
 
         $payment->allocations()->delete();
+    }
+
+    /**
+     * Keeps the Product's initial-stock settlement fields (used by the product
+     * edit page) in sync when a supplier payment is applied to or reversed
+     * from the InitialStock purchase document linked to that product.
+     */
+    private function syncInitialStockProductFromPurchase(Purchase $purchase, ?int $paymentAccountId): void
+    {
+        if ($purchase->purchase_type !== PurchaseType::InitialStock || $purchase->product_id === null) {
+            return;
+        }
+
+        $product = Product::query()->find($purchase->product_id);
+
+        if ($product === null) {
+            return;
+        }
+
+        $paidAmount = round(min((float) $purchase->paid_amount, (float) $purchase->net_amount), 2);
+
+        $product->update([
+            'initial_stock_paid_amount' => $paidAmount,
+            'initial_stock_payment_account_id' => $paidAmount > 0
+                ? ($paymentAccountId ?? $product->initial_stock_payment_account_id)
+                : null,
+        ]);
     }
 
     /**
@@ -320,11 +610,14 @@ class PartyPaymentAllocationService
      */
     public function purchasePaymentSummary(Purchase $purchase): array
     {
+        $netAmount = round((float) $purchase->net_amount, 2);
+        $paidAmount = round((float) $purchase->paid_amount, 2);
+
         return [
             'invoice_number' => $purchase->invoice_number,
-            'net_amount' => round((float) $purchase->net_amount, 2),
-            'paid_amount' => round((float) $purchase->paid_amount, 2),
-            'due_amount' => round((float) $purchase->due_amount, 2),
+            'net_amount' => $netAmount,
+            'paid_amount' => $paidAmount,
+            'due_amount' => round(max(0, $netAmount - $paidAmount), 2),
         ];
     }
 

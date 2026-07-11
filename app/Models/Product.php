@@ -255,6 +255,11 @@ class Product extends Model
         return $this->belongsTo(Supplier::class, 'initial_stock_supplier_id');
     }
 
+    public function initialStockPayablePurchase(): HasOne
+    {
+        return $this->hasOne(Purchase::class)->initialStock();
+    }
+
     public function initialStockPaymentAccount(): BelongsTo
     {
         return $this->belongsTo(ChartOfAccount::class, 'initial_stock_payment_account_id');

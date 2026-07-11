@@ -7,6 +7,8 @@ use App\Models\Supplier;
 use App\Models\SupplierPayment;
 use App\Models\SupplierPaymentAllocation;
 use App\Models\User;
+use App\Services\InventoryAccountingService;
+use App\Services\SupplierPayableDocumentService;
 use Spatie\Permission\Models\Permission;
 
 function supplierPaymentUser(array $permissions = []): User
@@ -53,6 +55,146 @@ function supplierDuePurchase(User $user, Supplier $supplier, float $dueAmount): 
 
     return $purchase;
 }
+
+test('supplier payment index returns merged total due for multiple payable sources', function () {
+    $this->artisan('permissions:sync');
+
+    $user = supplierPaymentUser([
+        'party.supplier-payment.view',
+        'inventory.purchase.create',
+    ]);
+
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+    ]);
+
+    supplierDuePurchase($user, $supplier, 350);
+    supplierDuePurchase($user, $supplier, 1160);
+
+    $this->actingAs($user)
+        ->get('/party/supplier-payment')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/inventory/supplier-payment/index')
+            ->where('suppliers', fn ($suppliers) => collect($suppliers)->contains(
+                fn ($row) => (int) $row['id'] === (int) $supplier->id
+                    && (float) $row['total_due'] === 1510.0,
+            )));
+});
+
+test('supplier payment can be recorded without purchase allocations against balance only', function () {
+    $this->artisan('permissions:sync');
+
+    $user = supplierPaymentUser([
+        'party.supplier-payment.view',
+        'party.supplier-payment.create',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 350,
+    ]);
+
+    app(InventoryAccountingService::class)->postSupplierOpeningBalance(
+        $supplier,
+        350,
+        '2026-07-11',
+    );
+
+    app(SupplierPayableDocumentService::class)->syncOpeningBalancePurchase(
+        $supplier,
+        350,
+        '2026-07-11',
+    );
+
+    $this->actingAs($user)
+        ->post('/party/supplier-payment', [
+            'supplier_id' => $supplier->id,
+            'date' => '2026-07-11',
+            'payment_account_id' => $cash->id,
+            'amount' => '350',
+            'allocations' => [],
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    expect((float) $supplier->fresh()->balance)->toBe(0.0);
+    expect(SupplierPayment::query()->where('supplier_id', $supplier->id)->exists())->toBeTrue();
+});
+
+test('regular purchase due appears in supplier payment list even when due_amount column is stale', function () {
+    $this->artisan('permissions:sync');
+
+    $user = supplierPaymentUser([
+        'party.supplier-payment.view',
+        'inventory.purchase.create',
+    ]);
+
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+    ]);
+
+    $purchase = supplierDuePurchase($user, $supplier, 350);
+    $purchase->update(['due_amount' => 0]);
+
+    $this->actingAs($user)
+        ->getJson(route('api.suppliers.due-purchases', $supplier))
+        ->assertOk()
+        ->assertJsonCount(1, 'purchases')
+        ->assertJsonFragment([
+            'id' => $purchase->id,
+            'due_amount' => 350.0,
+            'purchase_type_label' => 'Purchase',
+        ])
+        ->assertJsonPath('total_due', 350);
+});
+
+test('purchase with legacy null branch id still appears for supplier due list', function () {
+    $this->artisan('permissions:sync');
+
+    $user = supplierPaymentUser([
+        'party.supplier-payment.view',
+        'inventory.purchase.create',
+    ]);
+
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+    ]);
+
+    $purchase = supplierDuePurchase($user, $supplier, 500);
+    $purchase->update(['branch_id' => null]);
+
+    $this->actingAs($user)
+        ->getJson(route('api.suppliers.due-purchases', $supplier))
+        ->assertOk()
+        ->assertJsonFragment([
+            'id' => $purchase->id,
+            'due_amount' => 500.0,
+        ]);
+});
+
+test('orphaned supplier balance is reconciled into opening balance due document', function () {
+    $this->artisan('permissions:sync');
+
+    $user = supplierPaymentUser(['party.supplier-payment.view']);
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 350,
+    ]);
+
+    app(SupplierPayableDocumentService::class)->reconcileSupplierBalanceDocuments($supplier);
+
+    $this->actingAs($user)
+        ->getJson(route('api.suppliers.due-purchases', $supplier))
+        ->assertOk()
+        ->assertJsonCount(1, 'purchases')
+        ->assertJsonFragment(['due_amount' => 350.0])
+        ->assertJsonFragment(['purchase_type_label' => 'Opening Balance']);
+});
 
 test('guests cannot access supplier payments', function () {
     $this->get('/party/supplier-payment')->assertRedirect(route('login'));
@@ -318,9 +460,9 @@ test('supplier payment shows warning when payment account has insufficient balan
         ->assertRedirect(route('party.supplier-payment.index'))
         ->assertSessionHas('warning', 'Insufficient balance in the selected payment account.');
 
-    expect((float) $supplier->fresh()->balance)->toBe(5000.0);
+    expect((float) $purchase->fresh()->paid_amount)->toBe(0.0);
     expect((float) $purchase->fresh()->due_amount)->toBe(5000.0);
-    expect(SupplierPayment::query()->where('supplier_id', $supplier->id)->exists())->toBeFalse();
+    expect((float) $supplier->fresh()->balance)->toBe(5000.0);
 });
 
 test('branch user cannot delete payment from another branch', function () {

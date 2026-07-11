@@ -6,7 +6,6 @@ use App\Enums\AccountType;
 use App\Enums\ProductLogType;
 use App\Enums\PurchaseType;
 use App\Enums\SaleType;
-use App\Enums\SystemAccountKey;
 use App\Enums\VoucherType;
 use App\Models\Batch;
 use App\Models\Branch;
@@ -31,6 +30,7 @@ use App\Models\SellProduct;
 use App\Models\Size;
 use App\Models\SpecialDiscount;
 use App\Models\SupplierPayment;
+use App\Models\SupplierPaymentAllocation;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Models\Voucher;
@@ -1311,44 +1311,33 @@ class ReportService
             ];
         }
 
-        $ledgersByTransaction = Ledger::query()
-            ->whereIn('transaction_id', $transactions->pluck('id'))
-            ->get()
-            ->groupBy('transaction_id');
-
-        $gross = 0.0;
-        $paid = 0.0;
-        $due = 0.0;
-
-        foreach ($transactions as $transaction) {
-            $transactionBranchId = $this->resolveInitialStockTransactionBranchId($transaction);
-            $gross += (float) $transaction->amount;
-
-            foreach ($ledgersByTransaction->get($transaction->id, collect()) as $ledger) {
-                if ((float) $ledger->credit <= 0) {
-                    continue;
-                }
-
-                if (BranchPaymentAccountService::find($ledger->account_id, $transactionBranchId) !== null) {
-                    $paid += (float) $ledger->credit;
-
-                    continue;
-                }
-
-                SystemAccountService::ensureConfigured($transactionBranchId);
-
-                if ($ledger->account_id === SystemAccountService::id(SystemAccountKey::SupplierPayables, $transactionBranchId)) {
-                    $due += (float) $ledger->credit;
-                }
-            }
-        }
+        $gross = round((float) $transactions->sum('amount'), 2);
+        $paid = $this->initialStockSupplierPaymentsForDate($date, $branchId, $userId);
 
         return [
             'count' => $transactions->count(),
-            'gross' => round($gross, 2),
+            'gross' => $gross,
             'paid' => round($paid, 2),
-            'due' => round($due, 2),
+            'due' => round(max(0, $gross - $paid), 2),
         ];
+    }
+
+    private function initialStockSupplierPaymentsForDate(string $date, ?int $branchId, ?int $userId): float
+    {
+        return round((float) SupplierPaymentAllocation::query()
+            ->whereHas('purchase', fn (Builder $query) => $query->initialStock())
+            ->whereHas('supplierPayment', function (Builder $query) use ($date, $branchId, $userId) {
+                $query->whereDate('date', $date);
+
+                if ($branchId !== null) {
+                    $query->where('branch_id', $branchId);
+                }
+
+                if ($userId !== null) {
+                    $query->where('created_by', $userId);
+                }
+            })
+            ->sum('amount'), 2);
     }
 
     /**

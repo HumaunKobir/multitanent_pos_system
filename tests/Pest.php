@@ -2,9 +2,12 @@
 
 use App\Enums\SystemAccountKey;
 use App\Models\Branch;
+use App\Models\Brand;
+use App\Models\Category;
 use App\Models\ChartOfAccount;
 use App\Models\Product;
 use App\Models\Transaction;
+use App\Models\Unit;
 use App\Models\User;
 use App\Services\EcommerceBranchService;
 use App\Services\InventoryAccountingService;
@@ -105,6 +108,30 @@ function seedAccountingAccounts(float $minimumBalance = 100000, ?int $branchId =
     }
 
     return $cash;
+}
+
+function validProductPayload(array $overrides = []): array
+{
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    return array_merge([
+        'branch_id' => (string) Branch::MAIN_BRANCH_ID,
+        'category_id' => (string) Category::factory()->create(['status' => 1])->id,
+        'brand_id' => (string) Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => (string) Unit::query()->create([
+            'branch_id' => Branch::MAIN_BRANCH_ID,
+            'name' => 'Unit '.fake()->unique()->numerify('####'),
+            'status' => 1,
+        ])->id,
+        'name' => 'Product '.fake()->unique()->numerify('######'),
+        'purchase_price' => '100',
+        'sale_price' => '150',
+        'visible' => 'no',
+        'status' => '1',
+    ], $overrides);
 }
 
 /**

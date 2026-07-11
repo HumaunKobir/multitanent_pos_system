@@ -38,6 +38,14 @@ function supplierLabel(supplier) {
     return company || person || '—';
 }
 
+function supplierDueAmount(supplier) {
+    if (!supplier) {
+        return 0;
+    }
+
+    return parseFloat(supplier.total_due ?? supplier.balance ?? 0) || 0;
+}
+
 function PaymentSummary({ payment }) {
     if (!payment) {
         return null;
@@ -90,6 +98,7 @@ function PaymentForm({ form, suppliers, paymentAccounts = [], payment = null, on
     const [duePurchases, setDuePurchases] = useState([]);
     const [loadingPurchases, setLoadingPurchases] = useState(false);
     const [amountsById, setAmountsById] = useState({});
+    const [liveTotalDue, setLiveTotalDue] = useState(null);
     const isEditing = payment?.id != null;
 
     const selected = useMemo(
@@ -97,7 +106,11 @@ function PaymentForm({ form, suppliers, paymentAccounts = [], payment = null, on
         [suppliers, form.data.supplier_id],
     );
 
-    const totalAmount = useMemo(() => allocationTotal(amountsById), [amountsById]);
+    const allocationSum = useMemo(() => allocationTotal(amountsById), [amountsById]);
+    const hasDueDocuments = duePurchases.length > 0;
+    const usesManualAmount = !hasDueDocuments;
+
+    const selectedDue = liveTotalDue ?? supplierDueAmount(selected);
 
     useEffect(() => {
         if (!isEditing || !payment?.allocations?.length) {
@@ -114,8 +127,10 @@ function PaymentForm({ form, suppliers, paymentAccounts = [], payment = null, on
     useEffect(() => {
         if (!form.data.supplier_id) {
             setDuePurchases([]);
+            setLiveTotalDue(null);
             if (!isEditing) {
                 setAmountsById({});
+                form.setData('amount', '');
             }
             return;
         }
@@ -131,9 +146,16 @@ function PaymentForm({ form, suppliers, paymentAccounts = [], payment = null, on
             .then((res) => (res.ok ? res.json() : Promise.reject()))
             .then((data) => {
                 if (!cancelled) {
-                    setDuePurchases(data.purchases ?? []);
-                    if (isEditing) {
-                        setAmountsById(allocationAmountsFromApiDocuments(data.purchases));
+                    const purchases = data.purchases ?? [];
+                    setDuePurchases(purchases);
+                    setLiveTotalDue(data.total_due != null ? parseFloat(data.total_due) : null);
+
+                    if (purchases.length > 0) {
+                        if (isEditing) {
+                            setAmountsById(allocationAmountsFromApiDocuments(purchases));
+                        }
+                    } else if (!isEditing) {
+                        setAmountsById({});
                     }
                 }
             })
@@ -163,9 +185,12 @@ function PaymentForm({ form, suppliers, paymentAccounts = [], payment = null, on
 
     function handleSubmit(e) {
         e.preventDefault();
+        const allocations = buildAllocations('purchase_id', duePurchases, amountsById);
+
         form.transform((data) => ({
             ...data,
-            allocations: buildAllocations('purchase_id', duePurchases, amountsById),
+            allocations,
+            amount: allocations.length > 0 ? null : data.amount,
         }));
         const options = {
             preserveState: true,
@@ -197,7 +222,7 @@ function PaymentForm({ form, suppliers, paymentAccounts = [], payment = null, on
                     <SelectContent>
                         {suppliers.map((supplier) => (
                             <SelectItem key={supplier.id} value={String(supplier.id)}>
-                                {supplierLabel(supplier)} — ৳{parseFloat(supplier.balance).toFixed(2)} due
+                                {supplierLabel(supplier)} — ৳{supplierDueAmount(supplier).toFixed(2)} due
                             </SelectItem>
                         ))}
                     </SelectContent>
@@ -206,7 +231,7 @@ function PaymentForm({ form, suppliers, paymentAccounts = [], payment = null, on
 
             {selected && (
                 <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                    Current due: <strong>৳{parseFloat(selected.balance).toFixed(2)}</strong>
+                    Current due: <strong>৳{selectedDue.toFixed(2)}</strong>
                 </p>
             )}
 
@@ -221,33 +246,49 @@ function PaymentForm({ form, suppliers, paymentAccounts = [], payment = null, on
                         aria-invalid={!!form.errors.date}
                     />
                 </FormField>
-                <FormField label="Total Amount" name="amount">
+                <FormField label="Total Amount" required={usesManualAmount} name="amount" error={form.errors.amount}>
                     <Input
                         id="amount"
-                        type="text"
-                        readOnly
-                        value={totalAmount > 0 ? totalAmount.toFixed(2) : ''}
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        readOnly={!usesManualAmount}
+                        value={
+                            usesManualAmount
+                                ? form.data.amount
+                                : allocationSum > 0
+                                  ? allocationSum.toFixed(2)
+                                  : ''
+                        }
+                        onChange={(e) => form.setData('amount', e.target.value)}
                         placeholder="0"
-                        className="mt-1 bg-muted"
+                        className={`mt-1 ${usesManualAmount ? '' : 'bg-muted'}`}
+                        aria-invalid={!!form.errors.amount}
                     />
                 </FormField>
             </div>
 
-            <FormField label="Allocate to Purchases" required error={form.errors.allocations}>
-                <PaymentAllocationTable
-                    documents={duePurchases}
-                    idField="purchase_id"
-                    amountsById={amountsById}
-                    onAmountChange={handleAmountChange}
-                    onPayFull={handlePayFull}
-                    loading={loadingPurchases}
-                    emptyMessage={
-                        form.data.supplier_id
-                            ? 'No due purchases found for this supplier.'
-                            : 'Select a supplier to see due purchases.'
-                    }
-                />
-            </FormField>
+            {hasDueDocuments ? (
+                <FormField label="Allocate to Dues" error={form.errors.allocations}>
+                    <PaymentAllocationTable
+                        documents={duePurchases}
+                        idField="purchase_id"
+                        amountsById={amountsById}
+                        onAmountChange={handleAmountChange}
+                        onPayFull={handlePayFull}
+                        loading={loadingPurchases}
+                        emptyMessage="No due items found for this supplier."
+                    />
+                </FormField>
+            ) : (
+                <p className="rounded-md border border-dashed px-3 py-3 text-xs text-muted-foreground">
+                    {loadingPurchases
+                        ? 'Loading supplier dues…'
+                        : form.data.supplier_id
+                          ? 'No itemized dues found. Enter the payment amount above to reduce the supplier balance directly.'
+                          : 'Select a supplier first.'}
+                </p>
+            )}
 
             <FormField label="Note" name="comment" error={form.errors.comment}>
                 <Input
@@ -321,6 +362,7 @@ export default function SupplierPaymentIndex({ payments, suppliers, filters, tod
         date: today,
         payment_account_id: '',
         comment: '',
+        amount: '',
         allocations: [],
     });
     const editForm = useForm({
@@ -328,6 +370,7 @@ export default function SupplierPaymentIndex({ payments, suppliers, filters, tod
         date: today,
         payment_account_id: '',
         comment: '',
+        amount: '',
         allocations: [],
     });
 
@@ -341,6 +384,7 @@ export default function SupplierPaymentIndex({ payments, suppliers, filters, tod
             date: editing.date ?? today,
             payment_account_id: editing.payment_account_id ? String(editing.payment_account_id) : '',
             comment: editing.comment ?? '',
+            amount: editing.allocations?.length ? '' : String(editing.amount ?? ''),
             allocations: [],
         });
         editForm.clearErrors();

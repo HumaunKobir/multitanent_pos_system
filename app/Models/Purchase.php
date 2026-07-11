@@ -21,6 +21,7 @@ class Purchase extends Model
         'branch_id',
         'user_id',
         'supplier_id',
+        'product_id',
         'parent_purchase_id',
         'date',
         'gross_amount',
@@ -67,6 +68,11 @@ class Purchase extends Model
         return $this->belongsTo(Supplier::class);
     }
 
+    public function product(): BelongsTo
+    {
+        return $this->belongsTo(Product::class);
+    }
+
     public function purchaseProducts(): HasMany
     {
         return $this->hasMany(PurchaseProduct::class, 'purchase_id');
@@ -85,5 +91,19 @@ class Purchase extends Model
     public function scopeInitialStock(Builder $q): Builder
     {
         return $q->where('purchase_type', PurchaseType::InitialStock);
+    }
+
+    public function scopeOpeningBalance(Builder $q): Builder
+    {
+        return $q->where('purchase_type', PurchaseType::OpeningBalance);
+    }
+
+    public function scopeSupplierPayable(Builder $q): Builder
+    {
+        return $q->whereIn('purchase_type', [
+            PurchaseType::Purchase,
+            PurchaseType::InitialStock,
+            PurchaseType::OpeningBalance,
+        ]);
     }
 }

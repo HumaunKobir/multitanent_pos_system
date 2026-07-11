@@ -54,7 +54,12 @@ export function PaymentAllocationTable({
                 <tbody>
                     {documents.map((doc) => (
                         <tr key={doc.id} className="border-t">
-                            <td className="px-2 py-2 font-mono font-medium">{doc.invoice_number}</td>
+                            <td className="px-2 py-2 font-mono font-medium">
+                                <div>{doc.invoice_number}</div>
+                                {doc.purchase_type_label && (
+                                    <div className="font-sans text-[10px] font-normal text-muted-foreground">{doc.purchase_type_label}</div>
+                                )}
+                            </td>
                             <td className="px-2 py-2 text-muted-foreground">{formatBdDate(doc.date)}</td>
                             <td className="px-2 py-2 text-right">৳{parseFloat(doc.due_amount).toFixed(2)}</td>
                             <td className="px-2 py-2">

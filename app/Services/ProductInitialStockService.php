@@ -16,7 +16,10 @@ class ProductInitialStockService
 {
     private bool $skipPerRecordAccounting = false;
 
-    public function __construct(private InventoryAccountingService $accounting) {}
+    public function __construct(
+        private InventoryAccountingService $accounting,
+        private SupplierPayableDocumentService $payableDocuments,
+    ) {}
 
     public function usingSupplierAccounting(bool $enabled, callable $callback): mixed
     {
@@ -293,6 +296,7 @@ class ProductInitialStockService
                     ->decrement('balance', $previousDue);
             }
 
+            $this->payableDocuments->reverseInitialStockDocuments($product);
             $this->accounting->reverseFor($product);
         }
 
@@ -317,7 +321,13 @@ class ProductInitialStockService
             }
 
             $product->loadMissing('initialStockSupplier:id,name');
-            $supplierName = $product->initialStockSupplier?->name ?? 'Supplier';
+            $supplier = $product->initialStockSupplier;
+
+            if ($supplier === null) {
+                throw new RuntimeException('Initial stock supplier not found.');
+            }
+
+            $supplierName = $supplier->name;
 
             $this->accounting->postProductInitialStockSupplierSettlement(
                 $product,
@@ -326,6 +336,24 @@ class ProductInitialStockService
                 $settlement->paymentAccountId,
                 $supplierName,
             );
+
+            $purchase = $this->payableDocuments->syncInitialStockPurchase(
+                $product,
+                $supplier,
+                $newTotalAmount,
+                $paidAmount,
+                now()->format('Y-m-d'),
+            );
+
+            if ($paidAmount > 0 && $settlement->paymentAccountId !== null) {
+                $this->payableDocuments->recordInitialStockSettlementPayment(
+                    $purchase,
+                    $supplier,
+                    $paidAmount,
+                    $settlement->paymentAccountId,
+                    now()->format('Y-m-d'),
+                );
+            }
 
             return;
         }
@@ -373,6 +401,7 @@ class ProductInitialStockService
                     ->decrement('balance', $dueAmount);
             }
 
+            $this->payableDocuments->reverseInitialStockDocuments($product);
             $this->accounting->reverseFor($product);
 
             return;

@@ -12,4 +12,5 @@ enum PurchaseType: int
     case Damage = 2;
     case Purchase_Return = 5;
     case InitialStock = 6;
+    case OpeningBalance = 7;
 }

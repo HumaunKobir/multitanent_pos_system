@@ -74,7 +74,19 @@ class SupplierPaymentController extends Controller
 
         $suppliers = Supplier::ownBranch()
             ->orderBy('name')
-            ->get(['id', 'name', 'company_name', 'phone', 'balance']);
+            ->get(['id', 'name', 'company_name', 'phone', 'balance', 'branch_id']);
+
+        $dueTotals = $this->allocations->totalPayableDueForSuppliers($suppliers);
+        $this->allocations->syncSupplierBalancesFromPayables($suppliers);
+
+        $suppliers = $suppliers->map(fn (Supplier $supplier): array => [
+            'id' => $supplier->id,
+            'name' => $supplier->name,
+            'company_name' => $supplier->company_name,
+            'phone' => $supplier->phone,
+            'balance' => $dueTotals[$supplier->id] ?? 0.0,
+            'total_due' => $dueTotals[$supplier->id] ?? 0.0,
+        ])->values();
 
         return Inertia::render('admin/inventory/supplier-payment/index', [
             'payments' => $payments,
@@ -94,7 +106,8 @@ class SupplierPaymentController extends Controller
             'date' => ['required', 'date'],
             'payment_account_id' => ['required', 'integer', 'exists:chart_of_accounts,id'],
             'comment' => ['nullable', 'string', 'max:1000'],
-            'allocations' => ['required', 'array', 'min:1'],
+            'amount' => ['nullable', 'numeric', 'min:0.01'],
+            'allocations' => ['nullable', 'array'],
             'allocations.*.purchase_id' => ['required', 'integer', 'exists:purchases,id'],
             'allocations.*.amount' => ['required', 'numeric', 'min:0.01'],
         ]);
@@ -109,11 +122,16 @@ class SupplierPaymentController extends Controller
             ]);
         }
 
-        $validated = $this->allocations->validateSupplierAllocations($supplier, $data['allocations']);
+        $allocations = $data['allocations'] ?? [];
+        $validated = $this->allocations->validateSupplierPayment(
+            $supplier,
+            $allocations,
+            isset($data['amount']) ? (float) $data['amount'] : null,
+        );
         $amount = $validated['total'];
 
         try {
-            DB::transaction(function () use ($data, $branchId, $supplier, $amount, $paymentAccountId, $validated) {
+            DB::transaction(function () use ($data, $branchId, $supplier, $amount, $paymentAccountId, $validated, $allocations) {
                 $payment = SupplierPayment::create([
                     'branch_id' => $branchId,
                     'supplier_id' => $supplier->id,
@@ -124,9 +142,15 @@ class SupplierPaymentController extends Controller
                     'serial' => 'INVSP'.str_pad((string) (SupplierPayment::max('id') + 1), 8, '0', STR_PAD_LEFT),
                 ]);
 
-                $this->allocations->applySupplierAllocations($payment, $data['allocations'], $validated['purchases']);
-                $supplier->decrement('balance', $amount);
                 $this->accounting->postSupplierPayment($payment->fresh(['supplier']), $paymentAccountId);
+
+                if ($allocations !== [] && $validated['purchases']->isNotEmpty()) {
+                    $this->allocations->applySupplierAllocations($payment, $allocations, $validated['purchases'], $paymentAccountId);
+                } else {
+                    $this->allocations->applySupplierPaymentAcrossDues($payment, $supplier, $amount, $paymentAccountId);
+                }
+
+                $this->allocations->syncSupplierBalancesFromPayables([$supplier->fresh()]);
             });
         } catch (\Throwable $e) {
             if ($this->isInsufficientBalanceException($e)) {
@@ -152,13 +176,12 @@ class SupplierPaymentController extends Controller
 
         DB::transaction(function () use ($supplierPayment, $supplier) {
             $this->allocations->reverseSupplierAllocations($supplierPayment);
-
-            if ($supplier !== null) {
-                $supplier->increment('balance', (float) $supplierPayment->amount);
-            }
-
             $this->accounting->reverseFor($supplierPayment);
             $supplierPayment->delete();
+
+            if ($supplier !== null) {
+                $this->allocations->syncSupplierBalancesFromPayables([$supplier->fresh()]);
+            }
         });
 
         return back()->with('success', 'Supplier payment deleted successfully.');
@@ -174,7 +197,8 @@ class SupplierPaymentController extends Controller
             'date' => ['required', 'date'],
             'payment_account_id' => ['required', 'integer', 'exists:chart_of_accounts,id'],
             'comment' => ['nullable', 'string', 'max:1000'],
-            'allocations' => ['required', 'array', 'min:1'],
+            'amount' => ['nullable', 'numeric', 'min:0.01'],
+            'allocations' => ['nullable', 'array'],
             'allocations.*.purchase_id' => ['required', 'integer', 'exists:purchases,id'],
             'allocations.*.amount' => ['required', 'numeric', 'min:0.01'],
         ]);
@@ -188,19 +212,21 @@ class SupplierPaymentController extends Controller
             ]);
         }
 
-        $validated = $this->allocations->validateSupplierAllocations($supplier, $data['allocations'], $supplierPayment);
+        $allocations = $data['allocations'] ?? [];
+        $validated = $this->allocations->validateSupplierPayment(
+            $supplier,
+            $allocations,
+            isset($data['amount']) ? (float) $data['amount'] : null,
+            $supplierPayment,
+        );
         $amount = $validated['total'];
 
         try {
-            DB::transaction(function () use ($supplierPayment, $supplier, $data, $paymentAccountId, $validated, $amount) {
+            DB::transaction(function () use ($supplierPayment, $supplier, $data, $paymentAccountId, $validated, $allocations, $amount) {
                 $previousSupplier = Supplier::ownBranch()->whereKey($supplierPayment->supplier_id)->lockForUpdate()->first();
                 $nextSupplier = Supplier::ownBranch()->whereKey($supplier->id)->lockForUpdate()->first();
 
                 $this->allocations->reverseSupplierAllocations($supplierPayment);
-
-                if ($previousSupplier !== null) {
-                    $previousSupplier->increment('balance', (float) $supplierPayment->amount);
-                }
 
                 $this->accounting->reverseFor($supplierPayment);
 
@@ -211,13 +237,16 @@ class SupplierPaymentController extends Controller
                     'comment' => $data['comment'] ?? null,
                 ]);
 
-                $this->allocations->applySupplierAllocations($supplierPayment, $data['allocations'], $validated['purchases']);
+                $this->accounting->postSupplierPayment($supplierPayment->fresh(['supplier']), $paymentAccountId);
 
-                if ($nextSupplier !== null) {
-                    $nextSupplier->decrement('balance', $amount);
+                if ($allocations !== [] && $validated['purchases']->isNotEmpty()) {
+                    $this->allocations->applySupplierAllocations($supplierPayment, $allocations, $validated['purchases'], $paymentAccountId);
+                } else {
+                    $this->allocations->applySupplierPaymentAcrossDues($supplierPayment, $supplier, $amount, $paymentAccountId);
                 }
 
-                $this->accounting->postSupplierPayment($supplierPayment->fresh(['supplier']), $paymentAccountId);
+                $suppliersToSync = collect([$previousSupplier, $nextSupplier])->filter()->unique('id')->values()->all();
+                $this->allocations->syncSupplierBalancesFromPayables($suppliersToSync);
             });
         } catch (\Throwable $e) {
             if ($this->isInsufficientBalanceException($e)) {

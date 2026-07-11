@@ -1,11 +1,14 @@
 <?php
 
+use App\Enums\SystemAccountKey;
 use App\Models\Branch;
 use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\Supplier;
+use App\Models\SupplierPayment;
 use App\Models\Transaction;
 use App\Services\BranchPaymentAccountService;
+use App\Services\SystemAccountService;
 
 test('branch payment account service accepts global accounts for main branch products', function () {
     seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
@@ -57,9 +60,15 @@ test('product store accepts branch payment account resolved for main branch prod
     expect($transaction)->not->toBeNull();
 
     $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
+    $payablesId = SystemAccountService::id(SystemAccountKey::SupplierPayables, Branch::MAIN_BRANCH_ID);
 
     expect(round($ledgers->sum('debit'), 2))->toBe(1000.0)
-        ->and(round($ledgers->sum('credit'), 2))->toBe(1000.0);
+        ->and(round($ledgers->sum('credit'), 2))->toBe(1000.0)
+        ->and(round((float) $ledgers->firstWhere('account_id', $payablesId)?->credit, 2))->toBe(1000.0);
+
+    $payment = SupplierPayment::query()->where('supplier_id', $supplier->id)->first();
+    expect($payment)->not->toBeNull()
+        ->and((float) $payment->amount)->toBe(1000.0);
 });
 
 test('product store returns validation warning when payment account balance is insufficient', function () {

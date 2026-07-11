@@ -35,6 +35,7 @@ class SupplierDuePurchasesController extends Controller
 
         return response()->json([
             'purchases' => $this->allocations->duePurchasesForSupplier($supplier, $editingPayment),
+            'total_due' => $this->allocations->totalPayableDueFor($supplier, $editingPayment),
         ]);
     }
 }

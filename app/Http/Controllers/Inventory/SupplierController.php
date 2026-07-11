@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Inventory;
 use App\Http\Controllers\Controller;
 use App\Models\Supplier;
 use App\Services\InventoryAccountingService;
+use App\Services\SupplierPayableDocumentService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -12,7 +13,10 @@ use Inertia\Response;
 
 class SupplierController extends Controller
 {
-    public function __construct(private InventoryAccountingService $accounting) {}
+    public function __construct(
+        private InventoryAccountingService $accounting,
+        private SupplierPayableDocumentService $payableDocuments,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -55,6 +59,12 @@ class SupplierController extends Controller
 
         if ($openingBalance > 0) {
             $this->accounting->postSupplierOpeningBalance(
+                $supplier,
+                $openingBalance,
+                now()->format('Y-m-d'),
+            );
+
+            $this->payableDocuments->syncOpeningBalancePurchase(
                 $supplier,
                 $openingBalance,
                 now()->format('Y-m-d'),

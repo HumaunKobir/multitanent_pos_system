@@ -1076,6 +1076,90 @@ test('sales summary shows sale lines with customer name and phone sorted by quan
             ->where('rows.1.total_quantity', 12));
 });
 
+test('sales summary shows the same invoice number as the sell record', function () {
+    $this->artisan('permissions:sync');
+
+    $date = '2026-07-02';
+    $branch = Branch::factory()->create();
+    $user = reportUser([ReportController::PERMISSION_SALES_SUMMARY]);
+    $user->update(['branch_id' => $branch->id]);
+    $product = Product::factory()->create(['branch_id' => $branch->id, 'name' => 'Invoice Product']);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+        'date' => $date,
+        'gross_amount' => 500,
+        'paid_amount' => 500,
+    ]);
+
+    $line = SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'quantity' => 1,
+        'free_quantity' => 0,
+        'unit_price' => 500,
+        'discount' => 0,
+        'batches' => [],
+    ]);
+
+    $sell->refresh();
+
+    $this->actingAs($user)
+        ->get('/report/sales-summary?date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/sales-summary')
+            ->has('rows', 1)
+            ->where('rows.0.id', $line->id)
+            ->where('rows.0.invoice', $sell->invoice_number));
+});
+
+test('sales summary excludes deleted sales', function () {
+    $this->artisan('permissions:sync');
+
+    $date = '2026-07-03';
+    $branch = Branch::factory()->create();
+    $user = reportUser([ReportController::PERMISSION_SALES_SUMMARY]);
+    $user->update(['branch_id' => $branch->id]);
+    $product = Product::factory()->create(['branch_id' => $branch->id, 'name' => 'Deleted Sale Product']);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+        'date' => $date,
+        'gross_amount' => 300,
+        'paid_amount' => 300,
+    ]);
+
+    SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'quantity' => 1,
+        'free_quantity' => 0,
+        'unit_price' => 300,
+        'discount' => 0,
+        'batches' => [],
+    ]);
+
+    $this->actingAs($user)
+        ->get('/report/sales-summary?date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->has('rows', 1));
+
+    $sell->products()->delete();
+    $sell->delete();
+
+    $this->actingAs($user)
+        ->get('/report/sales-summary?date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page->has('rows', 0));
+});
+
 test('sales summary shows product colors and sizes for non-variant lines and variant label for variant lines', function () {
     $this->artisan('permissions:sync');
 

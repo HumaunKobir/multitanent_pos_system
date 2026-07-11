@@ -565,7 +565,7 @@ class ReportService
                         ->where('coin_discount_amount', '<=', 0)),
             )
             ->with([
-                'sell:id,date,customer_id,special_discount_id,discount,coin_discount_amount',
+                'sell:id,date,customer_id,special_discount_id,discount,coin_discount_amount,invoice_sequence',
                 'sell.customer:id,name,phone',
                 'sell.specialDiscount:id,name',
                 'sell.productExchange:id,sell_id',

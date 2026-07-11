@@ -394,6 +394,8 @@ class ProductController extends Controller
             'product' => $product,
             'formBranchId' => $this->productReplication->resolveFormBranchSelection($product),
             'variantsLocked' => $this->variantsAreLocked($product),
+            'initialStockValue' => $this->initialStock->calculateProductInitialStockValue($product),
+            'hasExistingSettlement' => $product->initial_stock_supplier_id !== null,
             'selectedColors' => Color::query()
                 ->whereIn('id', $product->colors ?? [])
                 ->orderBy('name')
@@ -528,12 +530,14 @@ class ProductController extends Controller
             'initial_stock_payment_account_id' => $product->initial_stock_payment_account_id,
         ]);
 
-        $initialStockValue = $this->initialStock->calculateInitialStockValueFromInput(
-            $hasVariations,
-            $combinations,
-            $mainInitialStock,
-            (float) $mainPurchasePrice,
-        );
+        $initialStockValue = $variantsLocked
+            ? $this->initialStock->calculateProductInitialStockValue($product)
+            : $this->initialStock->calculateInitialStockValueFromInput(
+                $hasVariations,
+                $combinations,
+                $mainInitialStock,
+                (float) $mainPurchasePrice,
+            );
 
         $this->assertInitialStockSettlement(
             $settlement,
@@ -692,7 +696,7 @@ class ProductController extends Controller
 
                             $this->syncProductBarcode($anchorProduct->fresh(), $hasVariations);
 
-                            $this->completeInitialStockSettlement($anchorProduct->fresh(), $settlement, $previousTotalAmount, $previousSettlement, $variantsLocked);
+                            $this->completeInitialStockSettlement($anchorProduct->fresh(), $settlement, $previousTotalAmount, $previousSettlement);
 
                             return;
                         }
@@ -713,7 +717,7 @@ class ProductController extends Controller
 
                             $this->syncProductBarcode($product->fresh(), $hasVariations);
 
-                            $this->completeInitialStockSettlement($product->fresh(), $settlement, $previousTotalAmount, $previousSettlement, $variantsLocked);
+                            $this->completeInitialStockSettlement($product->fresh(), $settlement, $previousTotalAmount, $previousSettlement);
 
                             return;
                         }
@@ -761,14 +765,14 @@ class ProductController extends Controller
 
                         $this->syncProductBarcode($product->fresh(), $hasVariations);
 
-                        $this->completeInitialStockSettlement($product->fresh(), $settlement, $previousTotalAmount, $previousSettlement, $variantsLocked);
+                        $this->completeInitialStockSettlement($product->fresh(), $settlement, $previousTotalAmount, $previousSettlement);
 
                         return;
                     }
 
                     $this->syncProductBarcode($product->fresh(), $hasVariations);
 
-                    $this->completeInitialStockSettlement($product->fresh(), $settlement, $previousTotalAmount, $previousSettlement, $variantsLocked);
+                    $this->completeInitialStockSettlement($product->fresh(), $settlement, $previousTotalAmount, $previousSettlement);
                 });
             });
         } catch (\Throwable $exception) {
@@ -1214,12 +1218,7 @@ class ProductController extends Controller
         InitialStockSettlement $settlement,
         float $previousTotalAmount,
         InitialStockSettlement $previousSettlement,
-        bool $variantsLocked,
     ): void {
-        if ($variantsLocked) {
-            return;
-        }
-
         $this->initialStock->finalizeSettlement(
             $product->fresh(),
             $settlement,

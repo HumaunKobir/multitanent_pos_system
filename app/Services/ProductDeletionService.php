@@ -24,6 +24,8 @@ use RuntimeException;
 
 class ProductDeletionService
 {
+    public function __construct(private ProductInitialStockService $initialStock) {}
+
     /**
      * @return array{action: 'deleted'|'archived', message: string}
      */
@@ -151,6 +153,8 @@ class ProductDeletionService
     {
         DB::transaction(function () use ($product): void {
             $product->loadMissing('photos');
+
+            $this->initialStock->reverseAccountingForDeletion($product);
 
             ProductInOutLog::query()->where('product_id', $product->id)->delete();
             ProductInitialStock::query()->where('product_id', $product->id)->delete();

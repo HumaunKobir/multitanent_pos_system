@@ -382,6 +382,93 @@ test('product update saves multiple colors and sizes even when variants are lock
         ->and($product->sizes)->toBe([$sizeOne->id, $sizeTwo->id]);
 });
 
+test('product update can update supplier settlement when variants are locked', function () {
+    $admin = productUpdateAdmin();
+    $cash = seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    $supplier = Supplier::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+
+    $product = Product::factory()->create([
+        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+        'purchase_price' => 100,
+        'sale_price' => 150,
+        'initial_stock_supplier_id' => $supplier->id,
+        'initial_stock_paid_amount' => 200,
+        'initial_stock_payment_account_id' => $cash->id,
+    ]);
+
+    ProductInitialStock::query()->create([
+        'product_id' => $product->id,
+        'quantity' => 10,
+        'unit_cost' => 100,
+    ]);
+
+    $variation = ProductVariation::query()->create([
+        'product_id' => $product->id,
+        'sku' => fake()->unique()->numerify('########'),
+        'price' => 150,
+        'purchase_price' => 100,
+        'stock' => 10,
+        'variation_data' => ['label' => 'Red-S', 'Color' => 'Red', 'Size' => 'S'],
+    ]);
+
+    $sell = Sell::query()->create([
+        'date' => now()->toDateString(),
+        'gross_amount' => 150,
+        'paid_amount' => 150,
+    ]);
+
+    SellProduct::query()->create([
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'variation_id' => $variation->id,
+        'quantity' => 1,
+        'unit_price' => 150,
+    ]);
+
+    $supplier->update(['balance' => 800]);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), productUpdatePayload($product, [
+            'initial_stock' => '10',
+            'purchase_price' => '100',
+            'initial_stock_supplier_id' => (string) $supplier->id,
+            'initial_stock_paid_amount' => '500',
+            'initial_stock_payment_account_id' => (string) $cash->id,
+            'combinations' => [
+                [
+                    'id' => $variation->id,
+                    'variant' => 'Red-S',
+                    'variation_data' => ['label' => 'Red-S', 'Color' => 'Red', 'Size' => 'S'],
+                    'sale_price' => '999',
+                    'purchase_price' => '888',
+                    'sku' => $variation->sku,
+                    'stock' => '99',
+                ],
+            ],
+        ]))
+        ->assertRedirect(route('product.index'));
+
+    $product->refresh();
+    $variation->refresh();
+
+    expect((float) $product->initial_stock_paid_amount)->toBe(500.0)
+        ->and((float) $variation->price)->toBe(150.0)
+        ->and((float) $variation->purchase_price)->toBe(100.0)
+        ->and($variation->stock)->toBe(10)
+        ->and((float) $supplier->fresh()->balance)->toBe(500.0);
+
+    $transactions = Transaction::query()
+        ->where('source_type', Product::class)
+        ->where('source_id', $product->id)
+        ->get();
+
+    expect($transactions)->toHaveCount(1);
+});
+
 test('product update ignores variation changes when locked', function () {
     $admin = productUpdateAdmin();
     $product = Product::factory()->create([

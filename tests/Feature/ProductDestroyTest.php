@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\SystemAccountKey;
 use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Brand;
@@ -7,10 +8,14 @@ use App\Models\Category;
 use App\Models\Damage;
 use App\Models\DamageProduct;
 use App\Models\Product;
+use App\Models\ProductInitialStock;
 use App\Models\ProductInOutLog;
 use App\Models\Sell;
+use App\Models\Supplier;
+use App\Models\Transaction;
 use App\Models\Unit;
 use App\Models\User;
+use App\Services\SystemAccountService;
 use Spatie\Permission\Models\Permission;
 
 function productDeleteAdmin(): User
@@ -74,6 +79,84 @@ test('product with only initial stock batches can be deleted', function () {
     expect(Product::query()->whereKey($product->id)->exists())->toBeFalse()
         ->and(Batch::query()->where('product_id', $product->id)->exists())->toBeFalse()
         ->and(ProductInOutLog::query()->where('product_id', $product->id)->exists())->toBeFalse();
+});
+
+test('deleting product with supplier initial stock settlement reverses accounts and supplier balance', function () {
+    $admin = productDeleteAdmin();
+    $cash = seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    $supplier = Supplier::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    $inventory = SystemAccountService::resolve(SystemAccountKey::ProductInventory, Branch::MAIN_BRANCH_ID);
+
+    $initialCashBalance = (float) $cash->fresh()->current_balance;
+    $initialInventoryBalance = (float) $inventory->fresh()->current_balance;
+
+    $payload = productDeletePayload([
+        'initial_stock' => '20',
+        'purchase_price' => '80',
+        'initial_stock_supplier_id' => (string) $supplier->id,
+        'initial_stock_paid_amount' => '500',
+        'initial_stock_payment_account_id' => (string) $cash->id,
+    ]);
+
+    $this->actingAs($admin)->post(route('product.store'), $payload)->assertRedirect(route('product.index'));
+
+    $product = Product::query()->where('name', $payload['name'])->first();
+
+    expect((float) $cash->fresh()->current_balance)->toBe(round($initialCashBalance - 500, 2))
+        ->and((float) $inventory->fresh()->current_balance)->toBe(round($initialInventoryBalance + 1600, 2))
+        ->and((float) $supplier->fresh()->balance)->toBe(1100.0);
+
+    $this->actingAs($admin)
+        ->delete(route('product.destroy', $product))
+        ->assertRedirect(route('product.index'))
+        ->assertSessionHas('success');
+
+    expect(Product::query()->whereKey($product->id)->exists())->toBeFalse()
+        ->and((float) $cash->fresh()->current_balance)->toBe($initialCashBalance)
+        ->and((float) $inventory->fresh()->current_balance)->toBe($initialInventoryBalance)
+        ->and((float) $supplier->fresh()->balance)->toBe(0.0)
+        ->and(Transaction::query()
+            ->where('source_type', Product::class)
+            ->where('source_id', $product->id)
+            ->exists())->toBeFalse();
+});
+
+test('deleting product with opening balance initial stock reverses inventory accounting', function () {
+    $admin = productDeleteAdmin();
+    seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    $inventory = SystemAccountService::resolve(SystemAccountKey::ProductInventory, Branch::MAIN_BRANCH_ID);
+    $openingBalance = SystemAccountService::resolve(SystemAccountKey::OpeningBalanceClearing, Branch::MAIN_BRANCH_ID);
+
+    $initialInventoryBalance = (float) $inventory->fresh()->current_balance;
+    $initialOpeningBalance = (float) $openingBalance->fresh()->current_balance;
+
+    $payload = productDeletePayload([
+        'initial_stock' => '10',
+        'purchase_price' => '50',
+        'sale_price' => '80',
+    ]);
+
+    $this->actingAs($admin)->post(route('product.store'), $payload)->assertRedirect(route('product.index'));
+
+    $product = Product::query()->where('name', $payload['name'])->first();
+    $record = ProductInitialStock::query()->where('product_id', $product->id)->first();
+
+    expect($record)->not->toBeNull()
+        ->and((float) $inventory->fresh()->current_balance)->toBe(round($initialInventoryBalance + 500, 2))
+        ->and((float) $openingBalance->fresh()->current_balance)->toBe(round($initialOpeningBalance + 500, 2));
+
+    $this->actingAs($admin)
+        ->delete(route('product.destroy', $product))
+        ->assertRedirect(route('product.index'))
+        ->assertSessionHas('success');
+
+    expect(Product::query()->whereKey($product->id)->exists())->toBeFalse()
+        ->and((float) $inventory->fresh()->current_balance)->toBe($initialInventoryBalance)
+        ->and((float) $openingBalance->fresh()->current_balance)->toBe($initialOpeningBalance)
+        ->and(Transaction::query()
+            ->where('source_type', ProductInitialStock::class)
+            ->where('source_id', $record->id)
+            ->exists())->toBeFalse();
 });
 
 test('product with sales history and zero stock is archived instead of deleted', function () {

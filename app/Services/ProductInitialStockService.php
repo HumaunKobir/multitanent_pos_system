@@ -354,6 +354,34 @@ class ProductInitialStockService
         ]);
     }
 
+    public function reverseAccountingForDeletion(Product $product): void
+    {
+        $settlement = InitialStockSettlement::fromRequest([
+            'initial_stock_supplier_id' => $product->initial_stock_supplier_id,
+            'initial_stock_paid_amount' => $product->initial_stock_paid_amount,
+            'initial_stock_payment_account_id' => $product->initial_stock_payment_account_id,
+        ]);
+
+        $totalAmount = $this->calculateProductInitialStockValue($product);
+
+        if ($settlement->usesSupplier() && $totalAmount > 0) {
+            $dueAmount = round(max(0, $totalAmount - $settlement->paidAmount), 2);
+
+            if ($dueAmount > 0) {
+                Supplier::query()
+                    ->whereKey($settlement->supplierId)
+                    ->decrement('balance', $dueAmount);
+            }
+
+            $this->accounting->reverseFor($product);
+
+            return;
+        }
+
+        $this->accounting->reverseFor($product);
+        $this->reverseAllInitialStockRecordJournals($product);
+    }
+
     private function reverseAllInitialStockRecordJournals(Product $product): void
     {
         ProductInitialStock::query()

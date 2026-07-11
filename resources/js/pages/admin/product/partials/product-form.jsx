@@ -819,6 +819,8 @@ const ProductForm = forwardRef(function ProductForm({
     selectedSizes = [],
     initialVariations = [],
     variantsLocked = false,
+    initialStockValue = 0,
+    hasExistingSettlement = false,
     isEditing = false,
     processing = false,
     cancelHref = '',
@@ -880,9 +882,14 @@ const ProductForm = forwardRef(function ProductForm({
         [hasVariations, combinations, form.data.initial_stock, form.data.purchase_price],
     );
 
-    const showInitialStockSettlement = initialStockTotal > 0;
+    const resolvedInitialStockTotal = variantsLocked && initialStockValue > 0
+        ? initialStockValue
+        : initialStockTotal;
+
+    const showInitialStockSettlement = resolvedInitialStockTotal > 0
+        || (isEditing && hasExistingSettlement);
     const initialStockPaidAmount = parseFloat(form.data.initial_stock_paid_amount || 0) || 0;
-    const initialStockDueAmount = Math.max(0, initialStockTotal - initialStockPaidAmount);
+    const initialStockDueAmount = Math.max(0, resolvedInitialStockTotal - initialStockPaidAmount);
 
     const supplierSelectOptions = useMemo(() => mapSupplierOptions(suppliers), [suppliers]);
 
@@ -1072,7 +1079,7 @@ const ProductForm = forwardRef(function ProductForm({
             if (showInitialStockSettlement) {
                 const paidAmount = parseFloat(form.data.initial_stock_paid_amount || 0) || 0;
 
-                if (paidAmount > initialStockTotal + 0.001) {
+                if (paidAmount > resolvedInitialStockTotal + 0.001) {
                     const message = 'Paid amount cannot exceed the initial stock value.';
                     toast.error(message);
                     return { ok: false, error: message };
@@ -1239,6 +1246,12 @@ const ProductForm = forwardRef(function ProductForm({
 
                         {showInitialStockSettlement && (
                             <>
+                                {variantsLocked && (
+                                    <p className="col-span-3 text-xs text-amber-600">
+                                        Stock and variants are locked, but you can still update supplier payment details.
+                                    </p>
+                                )}
+
                                 <Field label="Supplier (optional)" error={form.errors.initial_stock_supplier_id}>
                                     <SmartSelect
                                         options={supplierSelectOptions}
@@ -1273,7 +1286,7 @@ const ProductForm = forwardRef(function ProductForm({
 
                                 <Field label="Stock Value">
                                     <div className="flex h-8 items-center rounded-md border border-input bg-muted/20 px-3 text-xs font-medium tabular-nums">
-                                        ৳{initialStockTotal.toFixed(2)}
+                                        ৳{resolvedInitialStockTotal.toFixed(2)}
                                     </div>
                                 </Field>
 

@@ -21,8 +21,20 @@ export const BARCODE_WIDTH_SAFETY_RATIO = 0.86;
 export const BARCODE_HEIGHT_USAGE_RATIO = 0.98;
 /** Compact bar height used in the barcode list and label preview (at 1" label height). */
 export const LIST_BARCODE_BAR_HEIGHT = 28;
+/** Quiet zone scales with module width so scanners can find the barcode edges. */
+export const QUIET_ZONE_MODULE_RATIO = 5;
+/** Quiet zone never shrinks below this, even for very thin bars. */
+export const MIN_QUIET_MARGIN_PX = 2;
 export const JSBARCODE_CDN =
     'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
+
+/** Quiet zone (margin) in px for a given JsBarcode module width. */
+export function getBarcodeQuietMargin(moduleWidth) {
+    return Math.max(
+        MIN_QUIET_MARGIN_PX,
+        Math.round(moduleWidth * QUIET_ZONE_MODULE_RATIO),
+    );
+}
 
 const CODE128_START_B = 204;
 const CODE128_STOP = 206;
@@ -543,15 +555,13 @@ export function renderBarcodeSvg(svgEl, containerEl, code, maxBarHeight, { fill 
         Math.min(maxBarHeight, heightFromContainer),
     );
 
-    const quietMargin = 2;
-
     fitBarcodeModuleWidth(svgEl, (moduleWidth) => {
         JsBarcode(svgEl, text, {
             format: 'CODE128',
             width: moduleWidth,
             height: barHeight,
             displayValue: false,
-            margin: quietMargin,
+            margin: getBarcodeQuietMargin(moduleWidth),
             background: '#ffffff',
             lineColor: '#000000',
         });
@@ -576,6 +586,14 @@ export function buildPrintHtml(rows, settings) {
     const fw = fontWeight === 'bold' ? 700 : 400;
     const barcodePriceGap = getBarcodePriceGap();
     const defaultBarHeight = getLabelBarcodeBarHeight(settings);
+    /**
+     * Some print drivers ignore the exact @page dimensions below and fall
+     * back to their own default paper, silently keeping it portrait. The
+     * `landscape`/`portrait` keyword is the most broadly supported @page
+     * orientation hint, so pin it explicitly instead of relying on the
+     * browser to infer it from the width/height pair.
+     */
+    const pageOrientation = width >= height ? 'landscape' : 'portrait';
 
     const labels = rows
         .flatMap((row) => Array.from({ length: copies }, () => row))
@@ -696,7 +714,7 @@ export function buildPrintHtml(rows, settings) {
       width: 100%;
     }
     @media print {
-      @page { size: ${width}in ${height}in; margin: 0; }
+      @page { size: ${pageOrientation}; margin: 0; }
       html, body {
         width: ${width}in;
         margin: 0;
@@ -739,14 +757,13 @@ export function buildPrintHtml(rows, settings) {
       var minModuleWidth = 0.3;
       var maxModuleWidth = Math.max(${MAX_BARCODE_MODULE_WIDTH}, Math.ceil(targetWidth / 40));
       var moduleWidth = 2;
-      var quietMargin = 2;
       var draw = function(width) {
         window.JsBarcode(svg, code, {
           format: 'CODE128',
           width: width,
           height: barHeight,
           displayValue: false,
-          margin: quietMargin,
+          margin: Math.max(${MIN_QUIET_MARGIN_PX}, Math.round(width * ${QUIET_ZONE_MODULE_RATIO})),
           background: '#ffffff',
           lineColor: '#000000',
         });

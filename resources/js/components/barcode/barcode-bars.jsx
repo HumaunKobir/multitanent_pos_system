@@ -2,11 +2,13 @@ import { useLayoutEffect, useRef } from 'react';
 
 import { renderBarcodeSvg } from '@/lib/barcode-label';
 
-export function BarcodeBars({ code, barHeight, fill = false }) {
+export function BarcodeBars({ code, barHeight, fill = false, wrapPaddingX = 2 }) {
     const svgRef = useRef(null);
     const wrapRef = useRef(null);
 
     useLayoutEffect(() => {
+        let frame = 0;
+
         const measure = () => {
             if (svgRef.current && wrapRef.current) {
                 renderBarcodeSvg(
@@ -19,7 +21,12 @@ export function BarcodeBars({ code, barHeight, fill = false }) {
             }
         };
 
-        measure();
+        const scheduleMeasure = () => {
+            cancelAnimationFrame(frame);
+            frame = requestAnimationFrame(measure);
+        };
+
+        scheduleMeasure();
 
         const wrap = wrapRef.current;
 
@@ -27,16 +34,15 @@ export function BarcodeBars({ code, barHeight, fill = false }) {
             return undefined;
         }
 
-        const observer = new ResizeObserver(() => {
-            measure();
-        });
+        const observer = new ResizeObserver(scheduleMeasure);
 
         observer.observe(wrap);
 
         return () => {
+            cancelAnimationFrame(frame);
             observer.disconnect();
         };
-    }, [code, barHeight, fill]);
+    }, [code, barHeight, fill, wrapPaddingX]);
 
     return (
         <div
@@ -49,11 +55,11 @@ export function BarcodeBars({ code, barHeight, fill = false }) {
                 justifyContent: 'center',
                 flex: fill ? '1 1 0' : '0 0 auto',
                 minHeight: fill ? 0 : undefined,
-                padding: '0 6px',
+                padding: `0 ${wrapPaddingX}px`,
                 boxSizing: 'border-box',
             }}
         >
-            <svg ref={svgRef} style={{ display: 'block', maxWidth: '100%', height: 'auto' }} />
+            <svg ref={svgRef} />
         </div>
     );
 }

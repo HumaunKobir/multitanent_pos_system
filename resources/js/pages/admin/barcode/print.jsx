@@ -1,9 +1,10 @@
 import { Head, Link } from '@inertiajs/react';
 import { ArrowLeft, Printer } from 'lucide-react';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 
 import { BarcodeBars } from '@/components/barcode/barcode-bars';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import {
@@ -22,11 +23,17 @@ import {
     getLabelCodeLine,
     getLabelHeaderLines,
     getLabelLineHeight,
-    getLabelPreviewScale,
+    getLabelPreviewDisplaySize,
+    getMaxFittingLabelFontSize,
     getBarcodePriceGap,
     getNameBarcodeGap,
+    LABEL_PADDING_X_PX,
+    LABEL_PADDING_BOTTOM_PX,
+    LABEL_PADDING_TOP_PX,
     LIST_BARCODE_BAR_HEIGHT,
-    PRINT_DPI,
+    MAX_LABEL_FONT_PX,
+    resolveLabelSettings,
+    scaleLabelPreviewPx,
 } from '@/lib/barcode-label';
 import { route } from '@/lib/route';
 
@@ -34,35 +41,44 @@ const PREVIEW_MAX_W = 500;
 const PREVIEW_MAX_H = 320;
 
 function LabelPreview({ row, settings }) {
-    const pxWidth = settings.width * PRINT_DPI;
-    const pxHeight = settings.height * PRINT_DPI;
-    const scale = getLabelPreviewScale(
-        settings.width,
-        settings.height,
-        PREVIEW_MAX_W,
-        PREVIEW_MAX_H,
-    );
-    const displayW = Math.round(pxWidth * scale);
-    const displayH = Math.round(pxHeight * scale);
+    const { scale, width: displayW, height: displayH } =
+        getLabelPreviewDisplaySize(
+            settings.width,
+            settings.height,
+            PREVIEW_MAX_W,
+            PREVIEW_MAX_H,
+        );
     const effectiveFontSize = getEffectiveLabelFontSize(settings, row);
 
     const fw = settings.fontWeight === 'bold' ? 700 : 400;
-    const lineHeight = getLabelLineHeight(effectiveFontSize);
-    const barHeight = getLabelBarcodeBarHeight(settings, row);
-    const nameBarcodeGap = getNameBarcodeGap(effectiveFontSize);
-    const barcodePriceGap = getBarcodePriceGap();
+    const scaledFontSize = scaleLabelPreviewPx(effectiveFontSize, scale);
+    const lineHeight = scaleLabelPreviewPx(
+        getLabelLineHeight(effectiveFontSize),
+        scale,
+    );
+    const barHeight = scaleLabelPreviewPx(
+        getLabelBarcodeBarHeight(settings, row),
+        scale,
+    );
+    const nameBarcodeGap = scaleLabelPreviewPx(
+        getNameBarcodeGap(effectiveFontSize),
+        scale,
+    );
+    const barcodePriceGap = scaleLabelPreviewPx(getBarcodePriceGap(), scale);
+    const paddingTop = scaleLabelPreviewPx(LABEL_PADDING_TOP_PX, scale);
+    const paddingBottom = scaleLabelPreviewPx(LABEL_PADDING_BOTTOM_PX, scale);
+    const paddingX = scaleLabelPreviewPx(LABEL_PADDING_X_PX / 2, scale);
+    const barcodePaddingX = scaleLabelPreviewPx(2, scale);
     const price = getEffectivePrice(row);
     const headerLines = getLabelHeaderLines(row);
     const codeLine = getLabelCodeLine(row);
 
     const lineStyle = {
-        fontSize: `${effectiveFontSize}px`,
+        fontSize: `${scaledFontSize}px`,
         fontWeight: fw,
         fontFamily: 'sans-serif',
         textAlign: 'center',
         whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
         lineHeight: `${lineHeight}px`,
         flexShrink: 0,
         color: '#111827',
@@ -73,91 +89,59 @@ function LabelPreview({ row, settings }) {
             style={{
                 width: `${displayW}px`,
                 height: `${displayH}px`,
+                border: '1px solid #d1d5db',
+                background: '#fff',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'flex-start',
+                alignItems: 'stretch',
+                padding: `${paddingTop}px ${paddingX}px ${paddingBottom}px`,
+                boxSizing: 'border-box',
                 overflow: 'hidden',
                 flexShrink: 0,
             }}
         >
             <div
                 style={{
-                    width: `${pxWidth}px`,
-                    height: `${pxHeight}px`,
-                    border: '1px solid #d1d5db',
-                    background: '#fff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '3px 5px',
-                    boxSizing: 'border-box',
-                    overflow: 'hidden',
-                    transform: `scale(${scale})`,
-                    transformOrigin: '0 0',
+                    flexShrink: 0,
+                    marginBottom: `${nameBarcodeGap}px`,
+                    textAlign: 'center',
+                    width: '100%',
+                    paddingTop: `${Math.max(1, scaleLabelPreviewPx(1, scale))}px`,
                 }}
             >
-                <div
-                    style={{
-                        width: '100%',
-                        height: '100%',
-                        minHeight: 0,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                    }}
-                >
+                {headerLines.map((line) => (
                     <div
+                        key={line.text}
                         style={{
-                            width: '100%',
-                            height: '100%',
-                            flexShrink: 0,
-                            display: 'flex',
-                            flexDirection: 'column',
-                            justifyContent: 'center',
-                            alignItems: 'center',
-                            gap: 0,
-                            overflow: 'hidden',
+                            ...lineStyle,
+                            fontWeight: line.bold ? 700 : fw,
                         }}
                     >
-                    <div
-                        style={{
-                            flexShrink: 0,
-                            marginBottom: `${nameBarcodeGap}px`,
-                            textAlign: 'center',
-                            width: '100%',
-                        }}
-                    >
-                        {headerLines.map((line) => (
-                            <div
-                                key={line.text}
-                                style={{
-                                    ...lineStyle,
-                                    fontWeight: line.bold ? 700 : fw,
-                                }}
-                            >
-                                {line.text}
-                            </div>
-                        ))}
+                        {line.text}
                     </div>
-                    <div style={{ width: '100%' }}>
-                        <BarcodeBars
-                            code={row?.code ?? '123456789'}
-                            barHeight={barHeight}
-                        />
-                    </div>
-                    <div
-                        style={{
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            flexShrink: 0,
-                            marginTop: `${barcodePriceGap}px`,
-                            width: '100%',
-                        }}
-                    >
-                        <div style={lineStyle}>{codeLine}</div>
-                        <div style={{ ...lineStyle, fontWeight: 700 }}>
-                            {formatLabelPrice(price)}
-                        </div>
-                    </div>
-                    </div>
+                ))}
+            </div>
+            <div style={{ width: '100%', flexShrink: 0 }}>
+                <BarcodeBars
+                    code={row?.code ?? '123456789'}
+                    barHeight={barHeight}
+                    wrapPaddingX={barcodePaddingX}
+                />
+            </div>
+            <div
+                style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    flexShrink: 0,
+                    marginTop: `${barcodePriceGap}px`,
+                    width: '100%',
+                }}
+            >
+                <div style={lineStyle}>{codeLine}</div>
+                <div style={{ ...lineStyle, fontWeight: 700 }}>
+                    {formatLabelPrice(price)}
                 </div>
             </div>
         </div>
@@ -168,15 +152,52 @@ export default function BarcodePrint({ barcodes }) {
     const [settings, setSettings] = useState({
         width: 1.5,
         height: 1,
-        fontSize: 8,
+        fontSize: 9,
         fontWeight: 'bold',
         copies: 1,
+        autoHeight: true,
     });
+    const [fontSizeInput, setFontSizeInput] = useState('9');
 
     const set = (key, value) =>
         setSettings((prev) => ({ ...prev, [key]: value }));
 
+    const commitFontSize = (rawValue) => {
+        const parsed = parseInt(rawValue, 10);
+        const clamped = Number.isNaN(parsed)
+            ? 9
+            : Math.min(MAX_LABEL_FONT_PX, Math.max(6, parsed));
+
+        setFontSizeInput(String(clamped));
+        applyFontSize(clamped);
+    };
+
+    const applyFontSize = (fontSize) => {
+        setSettings((prev) => ({ ...prev, fontSize }));
+    };
+
     const previewRow = barcodes[0] ?? null;
+    const resolvedSettings = useMemo(
+        () => resolveLabelSettings(settings, barcodes),
+        [settings, barcodes],
+    );
+    const effectiveFontSize = previewRow
+        ? getEffectiveLabelFontSize(resolvedSettings, previewRow)
+        : null;
+    const maxFittingFontSize = previewRow
+        ? getMaxFittingLabelFontSize(settings, previewRow)
+        : null;
+    const isFontSizeCapped =
+        !settings.autoHeight &&
+        effectiveFontSize != null &&
+        maxFittingFontSize != null &&
+        settings.fontSize > effectiveFontSize;
+    const isHeightAutoAdjusted =
+        settings.autoHeight &&
+        resolvedSettings.height > settings.height;
+    const isWidthAutoAdjusted =
+        settings.autoHeight &&
+        resolvedSettings.width > settings.width;
 
     const handlePrint = () => {
         const win = window.open('', '_blank', 'width=700,height=500');
@@ -287,14 +308,28 @@ export default function BarcodePrint({ barcodes }) {
                                     <Input
                                         type="number"
                                         min={6}
-                                        max={24}
+                                        max={MAX_LABEL_FONT_PX}
                                         step={1}
-                                        value={settings.fontSize}
-                                        onChange={(e) =>
-                                            set(
-                                                'fontSize',
-                                                parseInt(e.target.value) || 8,
-                                            )
+                                        value={fontSizeInput}
+                                        onChange={(e) => {
+                                            const nextValue = e.target.value;
+                                            setFontSizeInput(nextValue);
+
+                                            const parsed = parseInt(
+                                                nextValue,
+                                                10,
+                                            );
+
+                                            if (
+                                                !Number.isNaN(parsed) &&
+                                                parsed >= 6 &&
+                                                parsed <= MAX_LABEL_FONT_PX
+                                            ) {
+                                                applyFontSize(parsed);
+                                            }
+                                        }}
+                                        onBlur={() =>
+                                            commitFontSize(fontSizeInput)
                                         }
                                         className="h-7 text-xs"
                                     />
@@ -323,6 +358,18 @@ export default function BarcodePrint({ barcodes }) {
                                     </Select>
                                 </div>
                             </div>
+                            <label className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+                                <Checkbox
+                                    checked={settings.autoHeight}
+                                    onCheckedChange={(checked) => {
+                                        setSettings((prev) => ({
+                                            ...prev,
+                                            autoHeight: checked === true,
+                                        }));
+                                    }}
+                                />
+                                Auto-adjust label size for content
+                            </label>
                         </div>
 
                         <div className="px-4 py-3">
@@ -365,7 +412,7 @@ export default function BarcodePrint({ barcodes }) {
                         {previewRow ? (
                             <LabelPreview
                                 row={previewRow}
-                                settings={settings}
+                                settings={resolvedSettings}
                             />
                         ) : (
                             <p className="text-xs text-slate-500">
@@ -375,17 +422,33 @@ export default function BarcodePrint({ barcodes }) {
                     </div>
                     <div className="border-t border-blue-200 px-4 py-2 text-center">
                         <p className="text-xs text-slate-500">
-                            {settings.width}" × {settings.height}" page ·{' '}
-                            {settings.copies}× per label
-                            {previewRow && (
+                            {resolvedSettings.width}" × {resolvedSettings.height}"
+                            page · {settings.copies}× per label
+                            {previewRow && effectiveFontSize != null && (
                                 <>
                                     {' '}
-                                    · renders at{' '}
-                                    {getEffectiveLabelFontSize(
-                                        settings,
-                                        previewRow,
+                                    · {effectiveFontSize}px font
+                                    {isFontSizeCapped && (
+                                        <>
+                                            {' '}
+                                            (max {maxFittingFontSize}px for this
+                                            label size)
+                                        </>
                                     )}
-                                    px
+                                    {isWidthAutoAdjusted && (
+                                        <>
+                                            {' '}
+                                            · width auto-adjusted to{' '}
+                                            {resolvedSettings.width}"
+                                        </>
+                                    )}
+                                    {isHeightAutoAdjusted && (
+                                        <>
+                                            {' '}
+                                            · height auto-adjusted to{' '}
+                                            {resolvedSettings.height}"
+                                        </>
+                                    )}
                                 </>
                             )}
                         </p>

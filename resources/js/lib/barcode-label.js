@@ -1,11 +1,30 @@
 import JsBarcode from 'jsbarcode';
 
 export const PRINT_DPI = 96;
-export const NAME_BARCODE_GAP_PX = 4;
+export const NAME_BARCODE_GAP_PX = 1;
 export const BARCODE_PRICE_GAP_PX = 1;
 export const MIN_LABEL_FONT_PX = 5;
-/** Share of label height used to cap font size on small labels. */
-export const LABEL_FONT_HEIGHT_RATIO = 0.065;
+export const MAX_LABEL_FONT_PX = 24;
+export const MIN_LABEL_HEIGHT_IN = 0.3;
+export const MAX_LABEL_HEIGHT_IN = 10;
+export const MIN_LABEL_WIDTH_IN = 0.5;
+export const MAX_LABEL_WIDTH_IN = 10;
+/** Horizontal label padding (5px left + 5px right). */
+export const LABEL_PADDING_X_PX = 10;
+/** Top label padding — extra room so bold header text is not clipped in print. */
+export const LABEL_PADDING_TOP_PX = 5;
+/** Bottom label padding. */
+export const LABEL_PADDING_BOTTOM_PX = 3;
+/** Vertical label padding total (top + bottom). */
+export const LABEL_PADDING_Y_PX = LABEL_PADDING_TOP_PX + LABEL_PADDING_BOTTOM_PX;
+/** Horizontal padding inside the barcode row (2px each side). */
+export const LABEL_BARCODE_WRAP_PADDING_X = 4;
+/** Average character width as a fraction of font size for width-fit checks. */
+export const LABEL_CHAR_WIDTH_RATIO = 0.58;
+/** Bold text needs slightly more horizontal space per character. */
+export const LABEL_CHAR_WIDTH_RATIO_BOLD = 0.64;
+/** Extra print headroom so long product names are not clipped at the edge. */
+export const LABEL_WIDTH_SAFETY_PX = 8;
 /** Minimum bar height for reliable scanner reads (~8.5mm at 96 DPI). */
 export const MIN_BARCODE_BAR_HEIGHT_PX = 32;
 /** Floor when scaling barcode width to fit the label. */
@@ -100,8 +119,8 @@ export function escapeHtml(text) {
         .replace(/"/g, '&quot;');
 }
 
-export function getNameBarcodeGap(fontSize) {
-    return Math.max(NAME_BARCODE_GAP_PX, Math.ceil(fontSize * 0.5));
+export function getNameBarcodeGap(_fontSize = null) {
+    return NAME_BARCODE_GAP_PX;
 }
 
 export function getBarcodePriceGap() {
@@ -135,38 +154,247 @@ export function getLabelLineHeight(fontSize) {
     return Math.ceil(fontSize * LABEL_LINE_HEIGHT_RATIO);
 }
 
-/**
- * Scale font size to fit the label dimensions and line count.
- */
-export function getEffectiveLabelFontSize(settings, row = null) {
-    const { width, height, fontSize } = getContentLayoutSettings(settings);
-    const labelHeightPx = height * PRINT_DPI;
-    const labelWidthPx = width * PRINT_DPI;
-    const headerLines = row ? getLabelHeaderLineCount(row) : 1;
-    const totalLines = headerLines + 2;
-    const paddingY = 6;
-    const barcodeReserve = Math.min(
-        MIN_BARCODE_BAR_HEIGHT_PX,
-        Math.floor(labelHeightPx * 0.34),
-    );
-    const gapReserve = 6;
-    const textBudget = labelHeightPx - paddingY - barcodeReserve - gapReserve;
-    const maxByLineCount = Math.floor(
-        textBudget / (totalLines * LABEL_LINE_HEIGHT_RATIO),
-    );
-    const maxByHeight = Math.max(
-        MIN_LABEL_FONT_PX,
-        Math.floor(labelHeightPx * LABEL_FONT_HEIGHT_RATIO),
-    );
-    const maxByWidth = Math.max(
-        MIN_LABEL_FONT_PX,
-        Math.floor(labelWidthPx / 22),
-    );
+function getLabelTextLines(row) {
+    if (!row) {
+        return ['Product Name', '000000', formatLabelPrice(0)];
+    }
 
+    return [
+        ...getLabelHeaderLines(row).map((line) => line.text),
+        getLabelCodeLine(row),
+        formatLabelPrice(getEffectivePrice(row) ?? 0),
+    ].filter(Boolean);
+}
+
+function getLongestLabelLineLength(row) {
+    const lines = getLabelTextLines(row);
+
+    return Math.max(...lines.map((line) => line.length), 1);
+}
+
+function clampLabelFontSize(fontSize) {
     return Math.max(
         MIN_LABEL_FONT_PX,
-        Math.min(fontSize, maxByLineCount, maxByHeight, maxByWidth),
+        Math.min(fontSize ?? 9, MAX_LABEL_FONT_PX),
     );
+}
+
+function clampLabelHeight(height) {
+    return Math.max(
+        MIN_LABEL_HEIGHT_IN,
+        Math.min(height ?? 1, MAX_LABEL_HEIGHT_IN),
+    );
+}
+
+function clampLabelWidth(width) {
+    return Math.max(
+        MIN_LABEL_WIDTH_IN,
+        Math.min(width ?? 1.5, MAX_LABEL_WIDTH_IN),
+    );
+}
+
+function estimateLabelLineWidthPx(text, fontSize, bold = false) {
+    const ratio = bold ? LABEL_CHAR_WIDTH_RATIO_BOLD : LABEL_CHAR_WIDTH_RATIO;
+
+    return String(text ?? '').length * fontSize * ratio;
+}
+
+/**
+ * Minimum label width in pixels so header, code, and price lines are not clipped.
+ */
+export function getRequiredLabelWidthPx(settings, row, fontSize = null) {
+    const fs = clampLabelFontSize(fontSize ?? settings.fontSize);
+    const fw = settings.fontWeight === 'bold';
+    let maxLineWidth = 0;
+
+    if (row) {
+        for (const line of getLabelHeaderLines(row)) {
+            maxLineWidth = Math.max(
+                maxLineWidth,
+                estimateLabelLineWidthPx(line.text, fs, line.bold || fw),
+            );
+        }
+
+        maxLineWidth = Math.max(
+            maxLineWidth,
+            estimateLabelLineWidthPx(getLabelCodeLine(row), fs, false),
+        );
+        maxLineWidth = Math.max(
+            maxLineWidth,
+            estimateLabelLineWidthPx(
+                formatLabelPrice(getEffectivePrice(row) ?? 0),
+                fs,
+                true,
+            ),
+        );
+    } else {
+        maxLineWidth = estimateLabelLineWidthPx('Product Name', fs, true);
+    }
+
+    return maxLineWidth + LABEL_PADDING_X_PX + LABEL_WIDTH_SAFETY_PX;
+}
+
+/**
+ * Minimum label width in inches so header, code, and price lines are not clipped.
+ */
+export function getRequiredLabelWidthIn(settings, row, fontSize = null) {
+    const px = getRequiredLabelWidthPx(settings, row, fontSize);
+    const inches = px / PRINT_DPI;
+
+    return Math.min(
+        MAX_LABEL_WIDTH_IN,
+        Math.max(MIN_LABEL_WIDTH_IN, Math.ceil(inches * 10) / 10),
+    );
+}
+
+/** Barcode height target used when calculating required label height. */
+export function getTargetBarcodeBarHeightPx(heightIn = 1) {
+    const scaled = Math.round(LIST_BARCODE_BAR_HEIGHT * heightIn);
+
+    return Math.max(Math.floor(MIN_BARCODE_BAR_HEIGHT_PX * 0.75), scaled);
+}
+
+/**
+ * Minimum label height in pixels for the requested font size and row content.
+ */
+export function getRequiredLabelHeightPx(settings, row, fontSize = null) {
+    const fs = clampLabelFontSize(fontSize ?? settings.fontSize);
+    const lineHeightPx = getLabelLineHeight(fs);
+    const headerLines = row ? getLabelHeaderLineCount(row) : 1;
+    const headerBlockPx = headerLines * lineHeightPx;
+    const nameBarcodeGapPx = getNameBarcodeGap(fs);
+    const footerBlockPx = lineHeightPx * 2 + getBarcodePriceGap();
+    const barHeightPx = getTargetBarcodeBarHeightPx(settings.height ?? 1);
+
+    return (
+        LABEL_PADDING_Y_PX +
+        headerBlockPx +
+        nameBarcodeGapPx +
+        barHeightPx +
+        footerBlockPx
+    );
+}
+
+/**
+ * Minimum label height in inches for the requested font size and row content.
+ */
+export function getRequiredLabelHeightIn(settings, row, fontSize = null) {
+    const px = getRequiredLabelHeightPx(settings, row, fontSize);
+    const inches = px / PRINT_DPI;
+
+    return Math.min(
+        MAX_LABEL_HEIGHT_IN,
+        Math.max(MIN_LABEL_HEIGHT_IN, Math.ceil(inches * 10) / 10),
+    );
+}
+
+/**
+ * Apply auto-height when enabled so text and barcode fit without clipping.
+ */
+export function resolveLabelSettings(settings, rows = []) {
+    const fontSize = clampLabelFontSize(settings.fontSize);
+    let height = clampLabelHeight(settings.height);
+    let width = clampLabelWidth(settings.width);
+
+    if (settings.autoHeight === true) {
+        const labelRows = rows.length > 0 ? rows : [null];
+
+        for (const row of labelRows) {
+            const context = { ...settings, fontSize, height, width };
+
+            height = Math.max(
+                height,
+                getRequiredLabelHeightIn(context, row, fontSize),
+            );
+            width = Math.max(
+                width,
+                getRequiredLabelWidthIn(context, row, fontSize),
+            );
+        }
+    }
+
+    return {
+        ...settings,
+        fontSize,
+        height,
+        width,
+    };
+}
+
+function labelTextFitsWidth(row, fontSize, contentWidthPx) {
+    return (
+        getRequiredLabelWidthPx({ fontSize }, row, fontSize) - LABEL_PADDING_X_PX <=
+        contentWidthPx
+    );
+}
+
+/**
+ * Whether the label layout fits at the given font size (text + minimum barcode).
+ */
+export function labelLayoutFitsAtFontSize(settings, row, fontSize) {
+    const { width, height } = getContentLayoutSettings(settings);
+    const labelHeightPx = height * PRINT_DPI;
+    const labelWidthPx = width * PRINT_DPI;
+    const lineHeightPx = getLabelLineHeight(fontSize);
+    const headerLines = row ? getLabelHeaderLineCount(row) : 1;
+    const headerBlockPx = headerLines * lineHeightPx;
+    const nameBarcodeGapPx = getNameBarcodeGap(fontSize);
+    const barcodePriceGapPx = getBarcodePriceGap();
+    const footerBlockPx = lineHeightPx * 2 + barcodePriceGapPx;
+    const minBarHeight = getTargetBarcodeBarHeightPx(height);
+    const totalHeightPx =
+        LABEL_PADDING_Y_PX +
+        headerBlockPx +
+        nameBarcodeGapPx +
+        minBarHeight +
+        footerBlockPx;
+
+    if (totalHeightPx > labelHeightPx) {
+        return false;
+    }
+
+    return labelTextFitsWidth(
+        row,
+        fontSize,
+        labelWidthPx - LABEL_PADDING_X_PX,
+    );
+}
+
+/**
+ * Largest font size that fits the label for the given row and dimensions.
+ */
+export function getMaxFittingLabelFontSize(settings, row = null) {
+    const { height } = getContentLayoutSettings(settings);
+    const labelHeightPx = height * PRINT_DPI;
+    const maxByHeight = Math.max(
+        MIN_LABEL_FONT_PX,
+        Math.floor(labelHeightPx / 4),
+    );
+    const upperBound = Math.min(MAX_LABEL_FONT_PX, maxByHeight);
+
+    for (let size = upperBound; size >= MIN_LABEL_FONT_PX; size--) {
+        if (labelLayoutFitsAtFontSize(settings, row, size)) {
+            return size;
+        }
+    }
+
+    return MIN_LABEL_FONT_PX;
+}
+
+/**
+ * Use the requested font size when it fits; otherwise use the largest size that fits.
+ */
+export function getEffectiveLabelFontSize(settings, row = null) {
+    const { fontSize } = getContentLayoutSettings(settings);
+    const requested = clampLabelFontSize(fontSize);
+
+    if (settings.autoHeight === true) {
+        return requested;
+    }
+
+    const maxFit = getMaxFittingLabelFontSize(settings, row);
+
+    return Math.min(requested, maxFit);
 }
 
 /**
@@ -186,6 +414,31 @@ export function getLabelPreviewScale(
     const fit = Math.min(maxW / pxW, maxH / pxH);
 
     return Math.min(1, fit);
+}
+
+/** Round a print-pixel value for on-screen preview rendering. */
+export function scaleLabelPreviewPx(px, scale) {
+    return Math.max(1, Math.round(px * scale));
+}
+
+/**
+ * @returns {{ scale: number, width: number, height: number }}
+ */
+export function getLabelPreviewDisplaySize(
+    widthIn,
+    heightIn,
+    maxW = 500,
+    maxH = 320,
+) {
+    const scale = getLabelPreviewScale(widthIn, heightIn, maxW, maxH);
+    const pxW = widthIn * PRINT_DPI;
+    const pxH = heightIn * PRINT_DPI;
+
+    return {
+        scale,
+        width: Math.round(pxW * scale),
+        height: Math.round(pxH * scale),
+    };
 }
 
 /**
@@ -425,20 +678,20 @@ export function getLabelTitle(row) {
 /**
  * Fit barcode height inside the label without clipping text rows.
  */
-export function calculateBarcodeBarHeight(settings, row = null) {
+export function calculateBarcodeBarHeight(settings, row = null, fontSize = null) {
     const { height } = getContentLayoutSettings(settings);
-    const fontSize = getEffectiveLabelFontSize(settings, row);
+    const resolvedFontSize =
+        fontSize ?? getEffectiveLabelFontSize(settings, row);
     const labelHeightPx = height * PRINT_DPI;
-    const paddingY = 6;
-    const lineHeightPx = getLabelLineHeight(fontSize);
+    const lineHeightPx = getLabelLineHeight(resolvedFontSize);
     const headerLines = row ? getLabelHeaderLineCount(row) : 1;
     const headerBlockPx = headerLines * lineHeightPx;
-    const nameBarcodeGapPx = getNameBarcodeGap(fontSize);
+    const nameBarcodeGapPx = getNameBarcodeGap(resolvedFontSize);
     const barcodePriceGapPx = getBarcodePriceGap();
     const footerBlockPx = lineHeightPx * 2 + barcodePriceGapPx;
     const maxBarHeight =
         labelHeightPx -
-        paddingY -
+        LABEL_PADDING_Y_PX -
         headerBlockPx -
         nameBarcodeGapPx -
         footerBlockPx;
@@ -473,7 +726,7 @@ function buildLabelHeaderHtml(row, fontSize, fontWeight) {
         .map((line) => {
             const weight = line.bold ? 700 : fw;
 
-            return `<div class="label-line" style="font-size:${fontSize}px;font-weight:${weight};line-height:${lineHeight}px;">${escapeHtml(line.text)}</div>`;
+            return `<div class="label-line label-header-line" style="font-size:${fontSize}px;font-weight:${weight};line-height:${lineHeight}px;">${escapeHtml(line.text)}</div>`;
         })
         .join('');
 }
@@ -487,46 +740,61 @@ export function escapeHtmlAttr(text) {
 
 /**
  * Shrink or grow JsBarcode module width so the SVG fits the target width.
+ * Uses integer module widths only so bars render on pixel boundaries.
  */
 export function fitBarcodeModuleWidth(svgEl, draw, targetWidth) {
-    const minModuleWidth = 0.3;
+    const minModuleWidth = 1;
     const maxModuleWidth = Math.max(
         MAX_BARCODE_MODULE_WIDTH,
         Math.ceil(targetWidth / 40),
     );
     let moduleWidth = 2;
 
-    const measure = () => svgEl.getBoundingClientRect().width;
+    const measure = () => parseFloat(svgEl.getAttribute('width') || '0');
 
     draw(moduleWidth);
     let svgWidth = measure();
 
     while (svgWidth > targetWidth && moduleWidth > minModuleWidth) {
-        moduleWidth = Math.round((moduleWidth - 0.1) * 10) / 10;
+        moduleWidth -= 1;
         draw(moduleWidth);
         svgWidth = measure();
     }
 
     while (moduleWidth < maxModuleWidth) {
-        const previousModuleWidth = moduleWidth;
-        const nextModuleWidth = Math.round((moduleWidth + 0.1) * 10) / 10;
+        const nextModuleWidth = moduleWidth + 1;
 
-        if (nextModuleWidth === moduleWidth) {
+        draw(nextModuleWidth);
+        const nextWidth = measure();
+
+        if (nextWidth > targetWidth) {
+            draw(moduleWidth);
             break;
         }
 
         moduleWidth = nextModuleWidth;
-        draw(moduleWidth);
-        svgWidth = measure();
-
-        if (svgWidth > targetWidth) {
-            moduleWidth = previousModuleWidth;
-            draw(moduleWidth);
-            break;
-        }
+        svgWidth = nextWidth;
     }
 
     return moduleWidth;
+}
+
+/**
+ * Keep the SVG at native JsBarcode dimensions — never stretch with CSS.
+ */
+export function finalizeBarcodeSvg(svgEl) {
+    if (!svgEl) {
+        return;
+    }
+
+    svgEl.style.removeProperty('width');
+    svgEl.style.removeProperty('height');
+    svgEl.style.removeProperty('max-width');
+    svgEl.style.display = 'block';
+    svgEl.style.flexShrink = '0';
+    svgEl.style.margin = '0 auto';
+    svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    svgEl.setAttribute('shape-rendering', 'crispEdges');
 }
 
 /**
@@ -543,8 +811,8 @@ export function renderBarcodeSvg(svgEl, containerEl, code, maxBarHeight, { fill 
         return maxBarHeight;
     }
 
-    const targetWidth =
-        containerEl.getBoundingClientRect().width * BARCODE_WIDTH_SAFETY_RATIO;
+    const containerWidth = containerEl.clientWidth;
+    const targetWidth = containerWidth * BARCODE_WIDTH_SAFETY_RATIO;
     const availableHeight = containerEl.clientHeight;
     const heightFromContainer =
         fill && availableHeight > 8
@@ -567,6 +835,8 @@ export function renderBarcodeSvg(svgEl, containerEl, code, maxBarHeight, { fill 
         });
     }, targetWidth);
 
+    finalizeBarcodeSvg(svgEl);
+
     return barHeight;
 }
 
@@ -582,25 +852,18 @@ export function fitBarcodeToContainer(svgEl, containerEl, maxBarHeight, options 
 }
 
 export function buildPrintHtml(rows, settings) {
-    const { width, height, fontWeight, copies } = settings;
+    const resolved = resolveLabelSettings(settings, rows);
+    const { width, height, fontWeight, copies } = resolved;
     const fw = fontWeight === 'bold' ? 700 : 400;
     const barcodePriceGap = getBarcodePriceGap();
-    const defaultBarHeight = getLabelBarcodeBarHeight(settings);
-    /**
-     * Some print drivers ignore the exact @page dimensions below and fall
-     * back to their own default paper, silently keeping it portrait. The
-     * `landscape`/`portrait` keyword is the most broadly supported @page
-     * orientation hint, so pin it explicitly instead of relying on the
-     * browser to infer it from the width/height pair.
-     */
-    const pageOrientation = width >= height ? 'landscape' : 'portrait';
+    const defaultBarHeight = getLabelBarcodeBarHeight(resolved);
 
     const labels = rows
         .flatMap((row) => Array.from({ length: copies }, () => row))
         .map((row) => {
             const price = getEffectivePrice(row) ?? 0;
-            const effectiveFontSize = getEffectiveLabelFontSize(settings, row);
-            const barHeight = getLabelBarcodeBarHeight(settings, row);
+            const effectiveFontSize = getEffectiveLabelFontSize(resolved, row);
+            const barHeight = getLabelBarcodeBarHeight(resolved, row);
             const headerHtml = buildLabelHeaderHtml(
                 row,
                 effectiveFontSize,
@@ -644,9 +907,9 @@ export function buildPrintHtml(rows, settings) {
       height: ${height}in;
       border: 1px solid #ccc;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
-      padding: 3px 5px;
+      padding: ${LABEL_PADDING_TOP_PX}px 5px ${LABEL_PADDING_BOTTOM_PX}px;
       overflow: hidden;
       page-break-inside: avoid;
       break-inside: avoid;
@@ -656,7 +919,7 @@ export function buildPrintHtml(rows, settings) {
       height: 100%;
       min-height: 0;
       display: flex;
-      align-items: center;
+      align-items: flex-start;
       justify-content: center;
     }
     .label-content {
@@ -665,8 +928,8 @@ export function buildPrintHtml(rows, settings) {
       flex-shrink: 0;
       display: flex;
       flex-direction: column;
-      justify-content: center;
-      align-items: center;
+      justify-content: flex-start;
+      align-items: stretch;
       gap: 0;
       overflow: hidden;
     }
@@ -674,15 +937,21 @@ export function buildPrintHtml(rows, settings) {
       flex-shrink: 0;
       text-align: center;
       width: 100%;
+      overflow: visible;
+      padding-top: 1px;
     }
     .label-line {
       font-weight: ${fw};
       font-family: sans-serif;
       text-align: center;
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
       flex-shrink: 0;
+    }
+    .label-header-line,
+    .label-code,
+    .label-price {
+      overflow: visible;
+      text-overflow: clip;
     }
     .label-code {
       margin-bottom: 1px;
@@ -697,13 +966,12 @@ export function buildPrintHtml(rows, settings) {
       align-items: center;
       justify-content: center;
       overflow: hidden;
-      padding: 0 6px;
+      padding: 0 2px;
       box-sizing: border-box;
     }
     .bars {
       display: block;
-      max-width: 100%;
-      height: auto;
+      flex-shrink: 0;
     }
     .footer {
       display: flex;
@@ -714,7 +982,7 @@ export function buildPrintHtml(rows, settings) {
       width: 100%;
     }
     @media print {
-      @page { size: ${pageOrientation}; margin: 0; }
+      @page { size: ${width}in ${height}in; margin: 0; }
       html, body {
         width: ${width}in;
         margin: 0;
@@ -754,7 +1022,7 @@ export function buildPrintHtml(rows, settings) {
       var maxBarHeight = parseFloat(svg.getAttribute('data-max-bar-height') || '${defaultBarHeight}');
       var targetWidth = wrap.clientWidth * ${BARCODE_WIDTH_SAFETY_RATIO};
       var barHeight = Math.max(10, maxBarHeight);
-      var minModuleWidth = 0.3;
+      var minModuleWidth = 1;
       var maxModuleWidth = Math.max(${MAX_BARCODE_MODULE_WIDTH}, Math.ceil(targetWidth / 40));
       var moduleWidth = 2;
       var draw = function(width) {
@@ -769,30 +1037,34 @@ export function buildPrintHtml(rows, settings) {
         });
       };
       var measure = function() {
-        return svg.getBoundingClientRect().width;
+        return parseFloat(svg.getAttribute('width') || '0');
       };
       draw(moduleWidth);
       var svgWidth = measure();
       while (svgWidth > targetWidth && moduleWidth > minModuleWidth) {
-        moduleWidth = Math.round((moduleWidth - 0.1) * 10) / 10;
+        moduleWidth -= 1;
         draw(moduleWidth);
         svgWidth = measure();
       }
       while (moduleWidth < maxModuleWidth) {
-        var previousModuleWidth = moduleWidth;
-        var nextModuleWidth = Math.round((moduleWidth + 0.1) * 10) / 10;
-        if (nextModuleWidth === moduleWidth) {
-          break;
-        }
-        moduleWidth = nextModuleWidth;
-        draw(moduleWidth);
-        svgWidth = measure();
-        if (svgWidth > targetWidth) {
-          moduleWidth = previousModuleWidth;
+        var nextModuleWidth = moduleWidth + 1;
+        draw(nextModuleWidth);
+        var nextWidth = measure();
+        if (nextWidth > targetWidth) {
           draw(moduleWidth);
           break;
         }
+        moduleWidth = nextModuleWidth;
+        svgWidth = nextWidth;
       }
+      svg.style.removeProperty('width');
+      svg.style.removeProperty('height');
+      svg.style.removeProperty('max-width');
+      svg.style.display = 'block';
+      svg.style.flexShrink = '0';
+      svg.style.margin = '0 auto';
+      svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+      svg.setAttribute('shape-rendering', 'crispEdges');
     }
 
     function printWhenReady() {

@@ -8,7 +8,7 @@ test('barcode print html uses label page size and jsbarcode svg renderer', funct
     $projectRoot = base_path();
 
     $script = <<<'JS'
-import { buildPrintHtml, BARCODE_WIDTH_SAFETY_RATIO, JSBARCODE_CDN, getLabelTitle, getLabelProductName, getLabelColor, getLabelCodeLine, getLabelSkuLine, getEffectiveLabelFontSize, getLabelBarcodeBarHeight, getLabelContentDimensions, LIST_BARCODE_BAR_HEIGHT, formatLabelPrice } from './resources/js/lib/barcode-label.js';
+import { buildPrintHtml, BARCODE_WIDTH_SAFETY_RATIO, JSBARCODE_CDN, getLabelTitle, getLabelProductName, getLabelColor, getLabelCodeLine, getLabelSkuLine, getEffectiveLabelFontSize, getLabelBarcodeBarHeight, getLabelContentDimensions, getRequiredLabelHeightIn, getRequiredLabelWidthIn, LIST_BARCODE_BAR_HEIGHT, formatLabelPrice, finalizeBarcodeSvg, resolveLabelSettings } from './resources/js/lib/barcode-label.js';
 
 if (BARCODE_WIDTH_SAFETY_RATIO >= 1) {
     process.exit(1);
@@ -89,9 +89,9 @@ if (getLabelSkuLine(duplicateCodeRow) !== null) {
     process.exit(23);
 }
 
-const smallLabelSettings = { width: 1.5, height: 1, fontSize: 8, fontWeight: 'normal', copies: 1 };
+const smallLabelSettings = { width: 1.5, height: 1, fontSize: 8, fontWeight: 'normal', copies: 1, autoHeight: false };
 
-if (getEffectiveLabelFontSize(smallLabelSettings, duplicateCodeRow) > 7) {
+if (getEffectiveLabelFontSize(smallLabelSettings, duplicateCodeRow) !== 8) {
     process.exit(24);
 }
 
@@ -99,7 +99,7 @@ if (getLabelBarcodeBarHeight(smallLabelSettings, duplicateCodeRow) !== LIST_BARC
     process.exit(25);
 }
 
-const widePageSettings = { width: 2.5, height: 1, fontSize: 8, fontWeight: 'normal', copies: 1 };
+const widePageSettings = { width: 2.5, height: 1, fontSize: 8, fontWeight: 'normal', copies: 1, autoHeight: false };
 const wideContent = getLabelContentDimensions(widePageSettings);
 
 if (wideContent.width !== 2.5 || wideContent.height !== 1) {
@@ -165,7 +165,9 @@ if (! html.includes('JsBarcode')) {
     process.exit(5);
 }
 
-if (! html.includes('data-max-bar-height="28"')) {
+const variantBarHeight = getLabelBarcodeBarHeight(smallLabelSettings, variantRow);
+
+if (! html.includes(`data-max-bar-height="${variantBarHeight}"`)) {
     process.exit(6);
 }
 
@@ -175,6 +177,63 @@ if (html.includes('flex: 1 1 0')) {
 
 if (html.includes('Libre Barcode 128')) {
     process.exit(8);
+}
+
+const autoHeightSettings = {
+    width: 1.5,
+    height: 1,
+    fontSize: 15,
+    fontWeight: 'bold',
+    copies: 1,
+    autoHeight: true,
+};
+
+const resolvedAuto = resolveLabelSettings(autoHeightSettings, [variantRow]);
+
+if (resolvedAuto.height <= 1) {
+    process.exit(31);
+}
+
+if (getEffectiveLabelFontSize(resolvedAuto, variantRow) !== 15) {
+    process.exit(32);
+}
+
+const requiredHeight = getRequiredLabelHeightIn(autoHeightSettings, variantRow, 15);
+
+if (resolvedAuto.height < requiredHeight) {
+    process.exit(33);
+}
+
+const requiredWidth = getRequiredLabelWidthIn(autoHeightSettings, variantRow, 15);
+
+if (resolvedAuto.width < requiredWidth) {
+    process.exit(38);
+}
+
+const autoHtml = buildPrintHtml([variantRow], autoHeightSettings);
+
+if (! autoHtml.includes(`@page { size: ${resolvedAuto.width}in ${resolvedAuto.height}in; margin: 0; }`)) {
+    process.exit(34);
+}
+
+if (! autoHtml.includes('font-size:15px')) {
+    process.exit(35);
+}
+
+const svg = {
+    style: {
+        removeProperty(key) {
+            delete this[key];
+        },
+    },
+    setAttribute() {},
+};
+finalizeBarcodeSvg(svg);
+if (svg.style.width !== undefined || svg.style.height !== undefined) {
+    process.exit(36);
+}
+if (svg.style.display !== 'block') {
+    process.exit(37);
 }
 
 console.log('ok');

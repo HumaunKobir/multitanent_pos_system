@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\ProductExchange;
 use App\Models\ProductExchangeProduct;
+use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\SellProduct;
 use Illuminate\Support\Collection;
@@ -222,10 +223,13 @@ class SellExchangeOverlayService
     public function indexRowOverlay(Sell $sell): array
     {
         $exchange = $this->resolveExchange($sell);
+        $latestReturn = $this->resolveLatestSaleReturn($sell);
 
         return [
             'has_exchange' => $exchange !== null,
             'exchange_invoice_number' => $exchange?->invoice_number,
+            'has_return' => $latestReturn !== null,
+            'return_invoice_number' => $latestReturn?->invoice_number,
         ];
     }
 
@@ -306,5 +310,14 @@ class SellExchangeOverlayService
         }
 
         return $sell->productExchange()->first();
+    }
+
+    private function resolveLatestSaleReturn(Sell $sell): ?SaleReturn
+    {
+        if ($sell->relationLoaded('saleReturns')) {
+            return $sell->saleReturns->sortByDesc('id')->first();
+        }
+
+        return $sell->saleReturns()->latest('id')->first();
     }
 }

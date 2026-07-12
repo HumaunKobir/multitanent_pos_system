@@ -129,21 +129,17 @@ class ProductExchange extends Model
 
     public function isEditable(): bool
     {
-        if ($this->payment_type === ReceivedPaymentMethod::Customer_Account && $this->settlementAmount() > 0) {
-            return false;
-        }
-
-        return ! $this->isPartiallyPaid() && ! $this->isFullyPaid();
+        return true;
     }
 
     public function isPaymentOnlyEditable(): bool
     {
-        return $this->isPartiallyPaid();
+        return false;
     }
 
     public function canAccessEdit(): bool
     {
-        return $this->isEditable() || $this->isPaymentOnlyEditable();
+        return true;
     }
 
     public function paymentStatusLabel(): string

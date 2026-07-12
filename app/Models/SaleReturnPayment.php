@@ -9,6 +9,8 @@ class SaleReturnPayment extends Model
 {
     protected $fillable = [
         'sale_return_id',
+        'branch_id',
+        'date',
         'payment_account_id',
         'amount',
     ];
@@ -16,6 +18,7 @@ class SaleReturnPayment extends Model
     protected function casts(): array
     {
         return [
+            'date' => 'date',
             'amount' => 'decimal:2',
         ];
     }

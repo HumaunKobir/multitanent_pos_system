@@ -10,6 +10,7 @@ use App\Models\Customer;
 use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\ProductExchange;
+use App\Models\ProductExchangeProduct;
 use App\Models\Promotion;
 use App\Models\PromotionTarget;
 use App\Models\Sell;
@@ -493,8 +494,8 @@ test('product exchange show and edit expose sale source discounts payload', func
         ->get(route('inventory.product-exchange.edit', $exchange))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
-            ->has('sell_discounts')
-            ->where('sell_discounts.special_discount_amount', 150)
+            ->has('sellDiscounts')
+            ->where('sellDiscounts.special_discount_amount', 150)
         );
 });
 
@@ -819,7 +820,7 @@ test('unpaid cash exchange remains editable', function () {
         ->assertOk();
 });
 
-test('fully paid exchange cannot be edited', function () {
+test('fully paid exchange opens full edit', function () {
     $this->artisan('permissions:sync');
 
     $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
@@ -888,14 +889,17 @@ test('fully paid exchange cannot be edited', function () {
         'due_amount' => 0,
     ]);
 
-    expect($exchange->fresh()->isEditable())->toBeFalse();
+    expect($exchange->fresh()->isEditable())->toBeTrue();
+    expect($exchange->fresh()->isPaymentOnlyEditable())->toBeFalse();
+    expect($exchange->fresh()->canAccessEdit())->toBeTrue();
 
     $this->actingAs($user)
         ->get(route('inventory.product-exchange.edit', $exchange))
-        ->assertForbidden();
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('paymentOnlyEdit', false));
 });
 
-test('partially paid exchange opens payment-only edit', function () {
+test('partially paid exchange opens full edit', function () {
     $this->artisan('permissions:sync');
 
     $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
@@ -952,27 +956,43 @@ test('partially paid exchange opens payment-only edit', function () {
     expect((float) $exchange->price_difference)->toBe(350.0);
     expect((float) $exchange->paid_amount)->toBe(40.0);
     expect((float) $exchange->due_amount)->toBe(310.0);
-    expect($exchange->fresh()->isEditable())->toBeFalse();
-    expect($exchange->fresh()->isPaymentOnlyEditable())->toBeTrue();
+    expect($exchange->fresh()->isEditable())->toBeTrue();
+    expect($exchange->fresh()->isPaymentOnlyEditable())->toBeFalse();
     expect($exchange->fresh()->canAccessEdit())->toBeTrue();
 
     $this->actingAs($user)
         ->get(route('inventory.product-exchange.edit', $exchange))
         ->assertOk()
         ->assertInertia(fn ($page) => $page
-            ->where('paymentOnlyEdit', true)
+            ->where('paymentOnlyEdit', false)
             ->has('totals')
         );
 
+    $line = $exchange->products()->firstOrFail();
+
     $this->actingAs($user)
         ->put(route('inventory.product-exchange.update', $exchange), [
+            'date' => now()->format('Y-m-d'),
             'comment' => 'Partial payment updated',
             'paid_amount' => '350',
             'payment_type' => ReceivedPaymentMethod::Cash->value,
             'payment_account_id' => $cash->id,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'special_discount_id' => $specialDiscount->id,
+            'items' => [
+                [
+                    'sell_product_id' => $line->sell_product_id,
+                    'product_id' => $line->new_product_id,
+                    'variation_id' => $line->new_variation_id,
+                    'unit_price' => (string) $line->new_unit_price,
+                    'quantity' => (string) (int) $line->old_quantity,
+                    'return_quantity' => '0',
+                ],
+            ],
         ])
         ->assertSessionDoesntHaveErrors()
-        ->assertRedirect(route('inventory.product-exchange.show', $exchange));
+        ->assertRedirect(route('inventory.product-exchange.index'));
 
     $exchange->refresh();
 
@@ -1595,6 +1615,90 @@ function exchangeLedgerFingerprint(ProductExchange $exchange): array
         ->toArray();
 }
 
+function exchangeLatestLedgerIsBalanced(ProductExchange $exchange): bool
+{
+    $fingerprint = exchangeLedgerFingerprint($exchange);
+    $debit = round(array_sum(array_map(fn (array $line) => $line['debit'], $fingerprint)), 2);
+    $credit = round(array_sum(array_map(fn (array $line) => $line['credit'], $fingerprint)), 2);
+
+    return abs($debit - $credit) < 0.01;
+}
+
+/**
+ * @return array{sell: Sell, exchange: ProductExchange, exchanged_line: ProductExchangeProduct, untouched_sell_product_id: int}
+ */
+function createPartialSaleExchange(User $user, ChartOfAccount $cash, Customer $customer): array
+{
+    $firstOld = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 300]);
+    $secondOld = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 200]);
+    Batch::factory()->for($firstOld)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+    Batch::factory()->for($secondOld)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    $newProduct = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 200]);
+    Batch::factory()->for($newProduct)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    test()->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '3500',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [
+                ['product_id' => $firstOld->id, 'variation_id' => null, 'unit_price' => '300', 'quantity' => '5'],
+                ['product_id' => $secondOld->id, 'variation_id' => null, 'unit_price' => '200', 'quantity' => '10'],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $sell = Sell::query()->latest('id')->firstOrFail();
+    $exchangedSellProductId = $sell->products()->orderBy('id')->first()->id;
+    $untouchedSellProductId = $sell->products()->orderBy('id')->skip(1)->first()->id;
+
+    test()->actingAs($user)
+        ->post('/inventory/product-exchange', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => null,
+            'paid_amount' => '0',
+            'payment_type' => ReceivedPaymentMethod::Customer_Account->value,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'items' => [
+                [
+                    'sell_product_id' => $exchangedSellProductId,
+                    'product_id' => $newProduct->id,
+                    'variation_id' => null,
+                    'unit_price' => '200',
+                    'quantity' => '5',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $exchange = ProductExchange::query()->latest('id')->firstOrFail();
+
+    return [
+        'sell' => $sell,
+        'exchange' => $exchange,
+        'exchanged_line' => $exchange->products()->firstOrFail(),
+        'untouched_sell_product_id' => $untouchedSellProductId,
+    ];
+}
+
 /**
  * @return array{exchange: ProductExchange}
  */
@@ -1781,4 +1885,643 @@ test('list settlement requires a payment account for cash', function () {
 
     expect((float) $exchange->paid_amount)->toBe(0.0);
     expect((float) $exchange->due_amount)->toBe(500.0);
+});
+
+test('exchange list settlement adds to paid amount incrementally', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    $exchange = createCustomerAccountExchange($user, $cash, $customer, 600)['exchange'];
+
+    expect((float) $exchange->due_amount)->toBe(500.0);
+
+    $this->actingAs($user)
+        ->put(route('inventory.product-exchange.payment', $exchange), [
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'paid_amount' => '200',
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $exchange->refresh();
+
+    expect((float) $exchange->paid_amount)->toBe(200.0);
+    expect((float) $exchange->due_amount)->toBe(300.0);
+    expect($exchange->fresh()->isPaymentOnlyEditable())->toBeFalse();
+
+    $this->actingAs($user)
+        ->put(route('inventory.product-exchange.payment', $exchange), [
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'paid_amount' => '300',
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $exchange->refresh();
+
+    expect((float) $exchange->paid_amount)->toBe(500.0);
+    expect((float) $exchange->due_amount)->toBe(0.0);
+    expect($exchange->fresh()->isFullyPaid())->toBeTrue();
+    expect($exchange->fresh()->isPaymentOnlyEditable())->toBeFalse();
+    expect($exchange->fresh()->canAccessEdit())->toBeTrue();
+
+    $totals = exchangePaymentLedgerTotals($exchange, $cash);
+    expect($totals['cash_debit'])->toBe(500.0);
+});
+
+test('fully paid cash exchange remains editable', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+
+    $exchange = createDirectCashExchange($user, $cash, Customer::factory()->create(['branch_id' => $user->branch_id]), 600, '500')['exchange'];
+
+    expect($exchange->fresh()->isFullyPaid())->toBeTrue();
+    expect($exchange->fresh()->isPaymentOnlyEditable())->toBeFalse();
+    expect($exchange->fresh()->canAccessEdit())->toBeTrue();
+});
+
+test('unpaid customer account exchange is editable from list', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    $exchange = createCustomerAccountExchange($user, $cash, $customer, 600)['exchange'];
+
+    expect((float) $exchange->due_amount)->toBe(500.0);
+    expect($exchange->fresh()->isEditable())->toBeTrue();
+    expect($exchange->fresh()->isPaymentOnlyEditable())->toBeFalse();
+    expect($exchange->fresh()->canAccessEdit())->toBeTrue();
+
+    $this->actingAs($user)
+        ->get(route('inventory.product-exchange.edit', $exchange))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page->where('paymentOnlyEdit', false));
+});
+
+test('exchange edit exposes sell discounts for live settlement calculation', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    $fixture = createPartialSaleExchange($user, $cash, $customer);
+
+    $this->actingAs($user)
+        ->get(route('inventory.product-exchange.edit', $fixture['exchange']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('sellDiscounts')
+            ->where('sellDiscounts.gross_amount', 3500)
+        );
+});
+
+test('exchange edit lists every sale line including products not yet exchanged', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    $fixture = createPartialSaleExchange($user, $cash, $customer);
+
+    $this->actingAs($user)
+        ->get(route('inventory.product-exchange.edit', $fixture['exchange']))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('exchange.items', 2)
+            ->where('exchange.items.0.sell_product_id', $fixture['exchanged_line']->sell_product_id)
+            ->where('exchange.items.0.quantity', '5')
+            ->where('exchange.items.0.new_product_id', $fixture['exchanged_line']->new_product_id)
+            ->where('exchange.items.1.sell_product_id', $fixture['untouched_sell_product_id'])
+            ->where('exchange.items.1.quantity', '0')
+            ->where('exchange.items.1.return_quantity', '0')
+            ->where('exchange.items.1.new_product_id', '')
+        );
+});
+
+test('exchange update without changes reverses and reposts matching ledger accounts', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    $exchange = createCustomerAccountExchange($user, $cash, $customer, 600)['exchange'];
+    $line = $exchange->products()->firstOrFail();
+    $beforeFingerprint = exchangeLedgerFingerprint($exchange);
+    $transactionIdBefore = Transaction::query()
+        ->where('source_type', ProductExchange::class)
+        ->where('source_id', $exchange->id)
+        ->latest('id')
+        ->value('id');
+
+    $this->actingAs($user)
+        ->put(route('inventory.product-exchange.update', $exchange), [
+            'date' => now()->format('Y-m-d'),
+            'comment' => $exchange->comment,
+            'paid_amount' => '0',
+            'payment_type' => ReceivedPaymentMethod::Customer_Account->value,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'items' => [
+                [
+                    'sell_product_id' => $line->sell_product_id,
+                    'product_id' => $line->new_product_id,
+                    'variation_id' => $line->new_variation_id,
+                    'unit_price' => (string) $line->new_unit_price,
+                    'quantity' => (string) (int) $line->old_quantity,
+                    'return_quantity' => (string) (int) $line->return_quantity,
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.product-exchange.index'));
+
+    $exchange->refresh();
+
+    expect(exchangeLedgerFingerprint($exchange))->toBe($beforeFingerprint);
+    expect(exchangeLatestLedgerIsBalanced($exchange))->toBeTrue();
+    expect(Transaction::query()
+        ->where('source_type', ProductExchange::class)
+        ->where('source_id', $exchange->id)
+        ->latest('id')
+        ->value('id'))->not->toBe($transactionIdBefore);
+});
+
+test('exchange update with changed replacement price reposts balanced ledgers', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    $exchange = createCustomerAccountExchange($user, $cash, $customer, 600)['exchange'];
+    $line = $exchange->products()->firstOrFail();
+    $beforeFingerprint = exchangeLedgerFingerprint($exchange);
+    $receivablesId = SystemAccountService::resolve(SystemAccountKey::CustomerReceivables, $user->branch_id)->id;
+
+    $this->actingAs($user)
+        ->put(route('inventory.product-exchange.update', $exchange), [
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Lower replacement price',
+            'paid_amount' => '0',
+            'payment_type' => ReceivedPaymentMethod::Customer_Account->value,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'items' => [
+                [
+                    'sell_product_id' => $line->sell_product_id,
+                    'product_id' => $line->new_product_id,
+                    'variation_id' => $line->new_variation_id,
+                    'unit_price' => '200',
+                    'quantity' => (string) (int) $line->old_quantity,
+                    'return_quantity' => (string) (int) $line->return_quantity,
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.product-exchange.index'));
+
+    $exchange->refresh();
+    $afterFingerprint = exchangeLedgerFingerprint($exchange);
+
+    expect($afterFingerprint)->not->toBe($beforeFingerprint);
+    expect(exchangeLatestLedgerIsBalanced($exchange))->toBeTrue();
+    expect($afterFingerprint[$receivablesId]['credit'] ?? 0)->toBeGreaterThan($beforeFingerprint[$receivablesId]['credit'] ?? 0);
+    expect((float) $exchange->products()->first()->new_unit_price)->toBe(200.0);
+});
+
+test('exchange edit exposes refund settlement labels for refund exchanges', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+
+    $oldProduct = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 400]);
+    Batch::factory()->for($oldProduct)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    $newProduct = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 175]);
+    Batch::factory()->for($newProduct)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    test()->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => DiscountType::Percent->value,
+            'discount_value' => '3',
+            'round_off_amount' => '2',
+            'special_discount_id' => null,
+            'vat' => '5',
+            'paid_amount' => '1630',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [
+                ['product_id' => $oldProduct->id, 'variation_id' => null, 'unit_price' => '400', 'quantity' => '4'],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $sell = Sell::query()->latest('id')->firstOrFail();
+    $sellProductId = $sell->products()->first()->id;
+
+    test()->actingAs($user)
+        ->post('/inventory/product-exchange', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => null,
+            'paid_amount' => '0',
+            'payment_type' => ReceivedPaymentMethod::Customer_Account->value,
+            'discount_type' => DiscountType::Percent->value,
+            'discount_value' => '3',
+            'round_off_amount' => '2',
+            'items' => [
+                [
+                    'sell_product_id' => $sellProductId,
+                    'product_id' => $newProduct->id,
+                    'variation_id' => null,
+                    'unit_price' => '175',
+                    'quantity' => '4',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $exchange = ProductExchange::query()->latest('id')->firstOrFail();
+
+    expect((float) $exchange->price_difference)->toBe(-923.0);
+
+    test()->actingAs($user)
+        ->get(route('inventory.product-exchange.edit', $exchange))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('paymentOnlyEdit', false)
+            ->where('totals.is_refund', true)
+            ->where('totals.settlement', 923)
+            ->where('exchange.is_refund', true)
+            ->where('exchange.settlement_amount', 923)
+            ->where('exchange.discount_type', DiscountType::Percent->value)
+            ->where('exchange.discount_value', 3)
+            ->where('sellDiscounts.round_off_amount', 2)
+            ->where('sellDiscounts.invoice_discount_type', DiscountType::Percent->value)
+            ->where('sellDiscounts.invoice_discount_value', 3)
+        );
+});
+
+test('exchange edit exposes customer pays settlement for charge exchanges', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    $exchange = createCustomerAccountExchange($user, $cash, $customer, 600)['exchange'];
+
+    expect((float) $exchange->price_difference)->toBe(500.0);
+
+    test()->actingAs($user)
+        ->get(route('inventory.product-exchange.edit', $exchange))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('paymentOnlyEdit', false)
+            ->where('totals.is_refund', false)
+            ->where('totals.settlement', 500)
+            ->where('exchange.is_refund', false)
+            ->where('exchange.settlement_amount', 500)
+        );
+});
+
+test('exchange edit update can add another sale line and recalculates settlement', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    $fixture = createPartialSaleExchange($user, $cash, $customer);
+    $exchange = $fixture['exchange'];
+    $firstLine = $fixture['exchanged_line'];
+
+    $secondReplacement = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 250]);
+    Batch::factory()->for($secondReplacement)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    expect($exchange->products)->toHaveCount(1);
+    expect((float) $exchange->price_difference)->toBe(-500.0);
+
+    test()->actingAs($user)
+        ->put(route('inventory.product-exchange.update', $exchange), [
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Added second line',
+            'paid_amount' => '0',
+            'payment_type' => ReceivedPaymentMethod::Customer_Account->value,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'items' => [
+                [
+                    'sell_product_id' => $firstLine->sell_product_id,
+                    'product_id' => $firstLine->new_product_id,
+                    'variation_id' => $firstLine->new_variation_id,
+                    'unit_price' => (string) $firstLine->new_unit_price,
+                    'quantity' => (string) (int) $firstLine->old_quantity,
+                    'return_quantity' => '0',
+                ],
+                [
+                    'sell_product_id' => $fixture['untouched_sell_product_id'],
+                    'product_id' => $secondReplacement->id,
+                    'variation_id' => null,
+                    'unit_price' => '250',
+                    'quantity' => '5',
+                    'return_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.product-exchange.index'));
+
+    $exchange->refresh();
+
+    expect($exchange->products)->toHaveCount(2);
+    // Line 1: 300×5 → 200×5 = -500 refund; line 2: 200×5 → 250×5 = +250 charge; net -250 refund.
+    expect((float) $exchange->price_difference)->toBe(-250.0);
+    expect((float) $exchange->due_amount)->toBe(250.0);
+    expect(exchangeLatestLedgerIsBalanced($exchange))->toBeTrue();
+});
+
+test('exchange edit update preserves partial refund payment when settlement unchanged', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    $oldProduct = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 500]);
+    Batch::factory()->for($oldProduct)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    $newProduct = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 300]);
+    Batch::factory()->for($newProduct)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    test()->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '2500',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [
+                ['product_id' => $oldProduct->id, 'variation_id' => null, 'unit_price' => '500', 'quantity' => '5'],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $sell = Sell::query()->latest('id')->firstOrFail();
+    $sellProductId = $sell->products()->first()->id;
+
+    test()->actingAs($user)
+        ->post('/inventory/product-exchange', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => null,
+            'paid_amount' => '200',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'items' => [
+                [
+                    'sell_product_id' => $sellProductId,
+                    'product_id' => $newProduct->id,
+                    'variation_id' => null,
+                    'unit_price' => '300',
+                    'quantity' => '5',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $exchange = ProductExchange::query()->latest('id')->firstOrFail();
+    $line = $exchange->products()->firstOrFail();
+
+    expect((float) $exchange->price_difference)->toBe(-1000.0);
+    expect((float) $exchange->paid_amount)->toBe(200.0);
+    expect((float) $exchange->due_amount)->toBe(800.0);
+
+    test()->actingAs($user)
+        ->put(route('inventory.product-exchange.update', $exchange), [
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Adjusted comment only',
+            'paid_amount' => '200',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'items' => [
+                [
+                    'sell_product_id' => $line->sell_product_id,
+                    'product_id' => $line->new_product_id,
+                    'variation_id' => $line->new_variation_id,
+                    'unit_price' => (string) $line->new_unit_price,
+                    'quantity' => (string) (int) $line->old_quantity,
+                    'return_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.product-exchange.index'));
+
+    $exchange->refresh();
+
+    expect((float) $exchange->price_difference)->toBe(-1000.0);
+    expect((float) $exchange->paid_amount)->toBe(200.0);
+    expect((float) $exchange->due_amount)->toBe(800.0);
+    expect(exchangeLatestLedgerIsBalanced($exchange))->toBeTrue();
+});
+
+test('exchange edit update preserves partial customer pays amount when settlement unchanged', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    $exchange = createDirectCashExchange($user, $cash, $customer, 600, '150')['exchange'];
+    $line = $exchange->products()->firstOrFail();
+
+    expect((float) $exchange->price_difference)->toBe(500.0);
+    expect((float) $exchange->paid_amount)->toBe(150.0);
+    expect((float) $exchange->due_amount)->toBe(350.0);
+
+    test()->actingAs($user)
+        ->put(route('inventory.product-exchange.update', $exchange), [
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Customer pays edit',
+            'paid_amount' => '150',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'items' => [
+                [
+                    'sell_product_id' => $line->sell_product_id,
+                    'product_id' => $line->new_product_id,
+                    'variation_id' => $line->new_variation_id,
+                    'unit_price' => (string) $line->new_unit_price,
+                    'quantity' => (string) (int) $line->old_quantity,
+                    'return_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.product-exchange.index'));
+
+    $exchange->refresh();
+
+    expect((float) $exchange->price_difference)->toBe(500.0);
+    expect((float) $exchange->paid_amount)->toBe(150.0);
+    expect((float) $exchange->due_amount)->toBe(350.0);
+    expect(exchangeLatestLedgerIsBalanced($exchange))->toBeTrue();
+});
+
+test('exchange edit update adjusts fully paid refund down when settlement decreases', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
+
+    $oldProduct = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 500]);
+    Batch::factory()->for($oldProduct)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    $newProduct = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 300]);
+    Batch::factory()->for($newProduct)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    test()->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '2500',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [
+                ['product_id' => $oldProduct->id, 'variation_id' => null, 'unit_price' => '500', 'quantity' => '5'],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $sell = Sell::query()->latest('id')->firstOrFail();
+    $sellProductId = $sell->products()->first()->id;
+
+    test()->actingAs($user)
+        ->post('/inventory/product-exchange', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => null,
+            'paid_amount' => '1000',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'items' => [
+                [
+                    'sell_product_id' => $sellProductId,
+                    'product_id' => $newProduct->id,
+                    'variation_id' => null,
+                    'unit_price' => '300',
+                    'quantity' => '5',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $exchange = ProductExchange::query()->latest('id')->firstOrFail();
+    $line = $exchange->products()->firstOrFail();
+
+    expect((float) $exchange->paid_amount)->toBe(1000.0);
+    expect((float) $exchange->due_amount)->toBe(0.0);
+
+    $higherReplacement = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 350]);
+    Batch::factory()->for($higherReplacement)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    test()->actingAs($user)
+        ->put(route('inventory.product-exchange.update', $exchange), [
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Higher replacement',
+            'paid_amount' => '1000',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'items' => [
+                [
+                    'sell_product_id' => $line->sell_product_id,
+                    'product_id' => $higherReplacement->id,
+                    'variation_id' => null,
+                    'unit_price' => '350',
+                    'quantity' => (string) (int) $line->old_quantity,
+                    'return_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.product-exchange.index'));
+
+    $exchange->refresh();
+
+    expect((float) $exchange->price_difference)->toBe(-750.0);
+    expect((float) $exchange->paid_amount)->toBe(750.0);
+    expect((float) $exchange->due_amount)->toBe(0.0);
+    expect(exchangeLatestLedgerIsBalanced($exchange))->toBeTrue();
 });

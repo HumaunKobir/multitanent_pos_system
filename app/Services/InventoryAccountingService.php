@@ -18,6 +18,7 @@ use App\Models\Purchase;
 use App\Models\PurchaseReturn;
 use App\Models\PurchaseReturnPayment;
 use App\Models\SaleReturn;
+use App\Models\SaleReturnPayment;
 use App\Models\Sell;
 use App\Models\StockDistribution;
 use App\Models\StockDistributionProduct;
@@ -229,6 +230,36 @@ class InventoryAccountingService
             $sell->id,
             $sell->date->format('Y-m-d'),
             "Sale {$invoice}",
+            $lines,
+            validateBalance: false,
+        );
+    }
+
+    /**
+     * Record an incremental cash refund against an outstanding sale return due.
+     * Dr Customer Receivables, Cr Cash — clears the store credit posted at return creation.
+     */
+    public function postSaleReturnRefundPayment(SaleReturnPayment $payment): void
+    {
+        $payment->loadMissing(['saleReturn.customer:id,name']);
+
+        $saleReturn = $payment->saleReturn;
+        $invoice = $saleReturn?->invoice_number ?? "SR#{$payment->sale_return_id}";
+        $customerName = $saleReturn?->customer?->name ?? 'Customer';
+        $branchId = $payment->branch_id ?? $saleReturn?->branch_id;
+        $amount = round((float) $payment->amount, 2);
+        $date = $payment->date ?? $saleReturn?->date ?? now();
+
+        $lines = [
+            $this->debitLine(SystemAccountKey::CustomerReceivables, $amount, "Refund payable cleared — Sale Return {$invoice}, {$customerName}", $branchId),
+            $this->creditPaymentAccount($payment->payment_account_id, $amount, "Cash refunded — Sale Return {$invoice}, {$customerName}", $branchId),
+        ];
+
+        $this->postJournal(
+            SaleReturnPayment::class,
+            $payment->id,
+            $date->format('Y-m-d'),
+            "Sale Return Refund {$invoice}",
             $lines,
             validateBalance: false,
         );

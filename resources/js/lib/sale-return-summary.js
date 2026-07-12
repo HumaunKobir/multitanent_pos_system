@@ -251,3 +251,15 @@ export function buildInitialReturnPayments(salePayments, suggestedRefund, paymen
         };
     });
 }
+
+/** @param {{ sold_quantity?: number|string, returned_elsewhere?: number|string, quantity?: number|string, max_return_quantity?: number|string }} item */
+export function saleReturnLineStats(item) {
+    const sold = parseFloat(item.sold_quantity || 0);
+    const elsewhere = parseFloat(item.returned_elsewhere ?? 0);
+    const returning = parseFloat(item.quantity || 0);
+    const returnedOnSale = elsewhere + returning;
+    const available = Math.max(0, sold - returnedOnSale);
+    const maxReturn = parseFloat(item.max_return_quantity ?? 0);
+
+    return { sold, elsewhere, returning, returnedOnSale, available, maxReturn };
+}

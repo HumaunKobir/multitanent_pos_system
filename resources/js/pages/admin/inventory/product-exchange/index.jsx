@@ -172,6 +172,7 @@ function SettlePaymentDialog({ exchange, paymentAccounts, onClose }) {
     const isRefund = Boolean(exchange?.is_refund);
     const settlement = parseFloat(exchange?.settlement_amount ?? 0);
     const alreadyPaid = parseFloat(exchange?.paid_amount ?? 0);
+    const remainingDue = parseFloat(exchange?.due_amount ?? 0);
 
     const form = useForm({
         payment_type: '0',
@@ -192,7 +193,7 @@ function SettlePaymentDialog({ exchange, paymentAccounts, onClose }) {
         form.setData({
             payment_type: paymentModeToType(mode),
             payment_account_id: paymentModeToAccountId(mode),
-            paid_amount: settlement > 0 ? settlement.toFixed(2) : '0',
+            paid_amount: mode === 'party' ? '0' : remainingDue > 0 ? remainingDue.toFixed(2) : '0',
         });
     }, [exchange?.id]);
 
@@ -202,7 +203,7 @@ function SettlePaymentDialog({ exchange, paymentAccounts, onClose }) {
             ...form.data,
             payment_type: paymentModeToType(mode),
             payment_account_id: paymentModeToAccountId(mode),
-            paid_amount: mode === 'party' ? '0' : settlement > 0 ? settlement.toFixed(2) : '0',
+            paid_amount: mode === 'party' ? '0' : remainingDue > 0 ? remainingDue.toFixed(2) : '0',
         });
     }
 
@@ -261,6 +262,12 @@ function SettlePaymentDialog({ exchange, paymentAccounts, onClose }) {
                                 <span className="text-green-700 dark:text-green-400">৳{alreadyPaid.toFixed(2)}</span>
                             </div>
                         )}
+                        {remainingDue > 0.009 && (
+                            <div className="mt-1 flex items-center justify-between text-xs">
+                                <span className="text-muted-foreground">Remaining due</span>
+                                <span className="font-semibold text-destructive">৳{remainingDue.toFixed(2)}</span>
+                            </div>
+                        )}
                     </div>
 
                     <div>
@@ -292,7 +299,7 @@ function SettlePaymentDialog({ exchange, paymentAccounts, onClose }) {
                             <Input
                                 type="number"
                                 min="0"
-                                max={settlement}
+                                max={remainingDue > 0 ? remainingDue : settlement}
                                 step="0.01"
                                 value={form.data.paid_amount}
                                 onChange={(e) => form.setData('paid_amount', e.target.value)}

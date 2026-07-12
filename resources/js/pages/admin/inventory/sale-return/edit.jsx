@@ -13,7 +13,7 @@ import {
     inputCls,
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
-import { calcSaleReturnSummary } from '@/lib/sale-return-summary';
+import { calcSaleReturnSummary, saleReturnLineStats } from '@/lib/sale-return-summary';
 import { buildInitialSalePayments, computeSplitSalePayment, serializeSalePayments, splitPaymentValidationError } from '@/lib/sale-payment';
 import { toDateInputValue } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
@@ -23,7 +23,7 @@ import { useEffect, useState } from 'react';
 
 import { Input } from '@/components/ui/input';
 
-export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
+export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], paymentOnlyEdit = false }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const [items, setItems] = useState(saleReturn.items ?? []);
@@ -70,6 +70,10 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
           })
         : null;
 
+    const hasMissingReturnLines =
+        parseFloat(saleReturn.refund_amount ?? 0) > 0.009 &&
+        items.every((item) => parseInt(item.quantity || 0, 10) <= 0);
+
     function updateReturnQty(index, rawValue) {
         const item = items[index];
         const next = clampQuantityInput(rawValue, item.max_return_quantity, (max) => {
@@ -88,6 +92,31 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
 
     function handleSubmit(e) {
         e.preventDefault();
+
+        if (paymentOnlyEdit) {
+            const paymentError = splitPaymentValidationError(payments);
+            if (paymentError) {
+                toast.error(paymentError);
+                return;
+            }
+
+            const serializedPayments = serializeSalePayments(payments);
+
+            form.transform((data) => ({
+                ...data,
+                paid_amount: String(totalPaid),
+                payment_type: '0',
+                payments: serializedPayments.length > 0 ? serializedPayments : undefined,
+            }));
+            form.put(route('inventory.sale-return.update', saleReturn.id), {
+                preserveScroll: true,
+                onError: (errors) => {
+                    const first = Object.values(errors)[0];
+                    if (first) toast.error(Array.isArray(first) ? first[0] : first);
+                },
+            });
+            return;
+        }
 
         const overLimit = items.some(
             (it) => parseInt(it.quantity || 0, 10) > parseInt(it.max_return_quantity || 0, 10),
@@ -143,16 +172,34 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
 
     return (
         <>
-            <Head title="Edit Sale Return" />
+            <Head title={paymentOnlyEdit ? `Update Refund — ${saleReturn.sale_invoice ?? saleReturn.id}` : 'Edit Sale Return'} />
             <div className="px-2 py-1">
                 <InventoryPageHeader
-                    title="Edit Sale Return"
-                    subtitle="Update return quantities and payment."
+                    title={paymentOnlyEdit ? 'Update Refund Payment' : 'Edit Sale Return'}
+                    subtitle={
+                        paymentOnlyEdit
+                            ? 'Update the cash refund without changing return lines.'
+                            : 'Update return quantities and payment.'
+                    }
                     icon={RotateCcw}
                     backRoute="inventory.sale-return.index"
                 />
 
+                {paymentOnlyEdit && (
+                    <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-100">
+                        A refund has already been recorded. Only payment details can be updated.
+                    </div>
+                )}
+
+                {hasMissingReturnLines && (
+                    <div className="mb-4 rounded-md border border-destructive/40 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                        This return has no product lines saved. Set the return quantity for each product below and
+                        save to restore the return.
+                    </div>
+                )}
+
                 <form onSubmit={handleSubmit} className="space-y-4">
+                    {!paymentOnlyEdit && (
                     <InventoryCard title="Source Sale" icon={CalendarDays}>
                         <p className="text-xs text-muted-foreground">
                             Customer: {saleReturn.customer_name ?? 'Walk-in'} · Sale:{' '}
@@ -167,29 +214,38 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
                             />
                         </div>
                     </InventoryCard>
+                    )}
 
-                    {items.length > 0 && (
+                    {!paymentOnlyEdit && items.length > 0 && (
                         <InventoryCard title="Return Items" icon={Package}>
                             <LineItemsTable
                                 columns={[
                                     { id: 'product', header: 'Product' },
-                                    { id: 'max', header: 'Max', align: 'right' },
+                                    { id: 'sold', header: 'Sold', align: 'right' },
+                                    { id: 'returned', header: 'Returned', align: 'right' },
+                                    { id: 'available', header: 'Available', align: 'right' },
                                     { id: 'price', header: 'Unit Price', align: 'right' },
                                     { id: 'qty', header: 'Return Qty', align: 'right' },
                                     { id: 'sub', header: 'Sub Total', align: 'right' },
                                 ]}
                             >
                                 {items.map((item, i) => {
-                                    const sub = parseFloat(item.quantity || 0) * parseFloat(item.unit_price || 0);
-                                    const overMax =
-                                        parseFloat(item.quantity || 0) > parseFloat(item.max_return_quantity);
+                                    const stats = saleReturnLineStats(item);
+                                    const sub = stats.returning * parseFloat(item.unit_price || 0);
+                                    const overMax = stats.returning > stats.maxReturn;
                                     return (
                                         <tr key={i} className="hover:bg-muted/20">
                                             <td className="px-3 py-2">
-                                                <ProductNameWithCode name={item.product_name} code={item.product_code} />
+                                                <ProductNameWithCode
+                                                    name={item.product_name}
+                                                    code={item.product_code}
+                                                    variation={item.variation_label}
+                                                />
                                             </td>
-                                            <td className="px-3 py-2 text-right text-muted-foreground">
-                                                {formatQty(item.max_return_quantity)}
+                                            <td className="px-3 py-2 text-right">{formatQty(stats.sold)}</td>
+                                            <td className="px-3 py-2 text-right">{formatQty(stats.returnedOnSale)}</td>
+                                            <td className="px-3 py-2 text-right font-medium">
+                                                {formatQty(stats.available)}
                                             </td>
                                             <td className="px-3 py-2 text-right">৳{parseFloat(item.unit_price).toFixed(2)}</td>
                                             <td className="px-2 py-1.5 text-right">
@@ -212,7 +268,7 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
                         </InventoryCard>
                     )}
 
-                    {saleReturn.sell_discounts && (
+                    {!paymentOnlyEdit && saleReturn.sell_discounts && (
                         <SaleReturnSourceDiscounts
                             sellDiscounts={saleReturn.sell_discounts}
                             returnSummary={returnSummary}
@@ -224,37 +280,41 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [] }) {
                     )}
 
                     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                        {!paymentOnlyEdit && (
                         <CommentCard
                             value={form.data.comment}
                             onChange={(v) => form.setData('comment', v)}
                             error={form.errors.comment}
                         />
+                        )}
                         <SaleReturnRefundCard
                             Icon={RotateCcw}
-                            grossAmount={returnSummary?.netAmount ?? 0}
-                            subtotalAmount={returnSummary?.grossAmount ?? null}
-                            discountAmount={returnSummary?.discountAmount ?? 0}
-                            vatAmount={returnSummary?.returnVat ?? 0}
-                            vatPercent={parseFloat(vatPercent || 0)}
+                            grossAmount={paymentOnlyEdit ? parseFloat(saleReturn.refund_amount ?? 0) : (returnSummary?.netAmount ?? 0)}
+                            subtotalAmount={paymentOnlyEdit ? null : (returnSummary?.grossAmount ?? null)}
+                            discountAmount={paymentOnlyEdit ? 0 : (returnSummary?.discountAmount ?? 0)}
+                            vatAmount={paymentOnlyEdit ? 0 : (returnSummary?.returnVat ?? 0)}
+                            vatPercent={paymentOnlyEdit ? 0 : parseFloat(vatPercent || 0)}
                             parentPaymentInfo={
-                                returnSummary
-                                    ? { paid: returnSummary.parentPaid, due: returnSummary.parentDue }
-                                    : null
+                                paymentOnlyEdit
+                                    ? null
+                                    : returnSummary
+                                      ? { paid: returnSummary.parentPaid, due: returnSummary.parentDue }
+                                      : null
                             }
                             payments={payments}
                             paymentAccounts={paymentAccounts}
                             onPaymentsChange={setPayments}
                             errors={form.errors}
-                            exceedsSale={returnSummary?.exceedsSale ?? false}
-                            maxAmount={returnSummary?.maxNetAmount ?? null}
+                            exceedsSale={paymentOnlyEdit ? false : (returnSummary?.exceedsSale ?? false)}
+                            maxAmount={paymentOnlyEdit ? parseFloat(saleReturn.refund_amount ?? 0) : (returnSummary?.maxNetAmount ?? null)}
                         />
                     </div>
 
                     <InventoryFormActions
                         cancelRoute="inventory.sale-return.index"
-                        submitLabel="Update Return"
+                        submitLabel={paymentOnlyEdit ? 'Update Refund' : 'Update Return'}
                         processing={form.processing}
-                        disabled={items.length === 0}
+                        disabled={!paymentOnlyEdit && items.length === 0}
                     />
                 </form>
             </div>

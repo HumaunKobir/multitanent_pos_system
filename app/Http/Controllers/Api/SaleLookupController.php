@@ -29,6 +29,7 @@ class SaleLookupController extends Controller
 
         $request->validate([
             'invoice' => ['required', 'string'],
+            'for' => ['nullable', 'in:return,exchange'],
         ]);
 
         $id = $this->resolveSaleId(strtoupper(trim($request->string('invoice')->toString())));
@@ -56,8 +57,9 @@ class SaleLookupController extends Controller
             return response()->json(['message' => 'This sale has already been exchanged.'], 422);
         }
 
-        if (SaleReturn::where('sell_id', $sell->id)->exists()) {
-            return response()->json(['message' => 'This sale has already been returned.'], 422);
+        if ($request->string('for')->toString() === 'exchange'
+            && SaleReturn::query()->where('sell_id', $sell->id)->exists()) {
+            return response()->json(['message' => 'This sale has a sale return and cannot be exchanged.'], 422);
         }
 
         $returnedQtyByLine = SaleReturn::query()
@@ -111,6 +113,10 @@ class SaleLookupController extends Controller
                     : (float) ($line->product?->sale_price ?? $line->unit_price),
             ];
         })->values();
+
+        if ($items->every(fn (array $item) => $item['max_return_quantity'] <= 0)) {
+            return response()->json(['message' => 'This sale has been fully returned.'], 422);
+        }
 
         return response()->json([
             'id' => $sell->id,

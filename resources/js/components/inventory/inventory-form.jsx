@@ -489,8 +489,10 @@ export function ProductExchangeDiscountsCard({
 
     const invoiceType = manualDiscounts.invoiceType || 'flat';
     const showSpecialDiscount =
-        parseFloat(sellDiscounts?.special_discount_amount || 0) > 0 ||
-        Boolean(sellDiscounts?.special_discount_id);
+        specialDiscounts.length > 0 &&
+        (parseFloat(sellDiscounts?.special_discount_amount || 0) > 0 ||
+            Boolean(sellDiscounts?.special_discount_id) ||
+            Boolean(manualDiscounts?.specialDiscountId));
 
     return (
         <InventoryCard title="Discounts & Payment Adjustments" icon={Percent}>

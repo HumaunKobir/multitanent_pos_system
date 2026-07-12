@@ -22,27 +22,40 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { useCustomerCoinInfo } from '@/hooks/use-customer-coin-info';
-import { calcProductExchangeSummary } from '@/lib/product-exchange-summary';
+import {
+    buildEditExchangeDiscounts,
+    calcProductExchangeSummary,
+    syncExchangeEditPaidAmount,
+} from '@/lib/product-exchange-summary';
 import { formatBdDate, toDateInputValue } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 
+function mapExchangeLine(item) {
+    return {
+        ...item,
+        original_old_unit_price:
+            item.original_old_unit_price ?? item.old_unit_price,
+    };
+}
+
 export default function ProductExchangeEdit({
     exchange,
-    sellDiscounts = null,
+    sellDiscounts: sellDiscountsProp = null,
+    sell_discounts: sellDiscountsSnake = null,
     paymentAccounts = [],
     promotions = [],
     specialDiscounts = [],
     paymentOnlyEdit = false,
     totals = null,
 }) {
+    const sellDiscounts = sellDiscountsProp ?? sellDiscountsSnake;
     const { flash, walkInCustomerId } = usePage().props;
     const toast = useAppToast();
-    const [items, setItems] = useState(
-        (exchange.items ?? []).map((item) => ({
-            ...item,
-            original_old_unit_price:
-                item.original_old_unit_price ?? item.old_unit_price,
-        })),
+    const [sourceItems] = useState(() =>
+        (exchange.items ?? []).map(mapExchangeLine),
+    );
+    const [items, setItems] = useState(() =>
+        (exchange.items ?? []).map(mapExchangeLine),
     );
     const [paymentMode, setPaymentMode] = useState(() => {
         const mode = paymentTypeToMode(
@@ -57,25 +70,17 @@ export default function ProductExchangeEdit({
         return mode;
     });
     const [replaceIndex, setReplaceIndex] = useState(null);
-    const prevSettlementRef = useRef(parseFloat(exchange.paid_amount || 0));
-    const [manualDiscounts, setManualDiscounts] = useState(() => ({
-        invoiceType: exchange.discount_type ?? 'flat',
-        invoice:
-            parseFloat(exchange.discount_value || 0) > 0
-                ? String(exchange.discount_value)
-                : '',
-        specialDiscountId: exchange.special_discount_id
-            ? String(exchange.special_discount_id)
-            : '',
-        roundOff:
-            parseFloat(exchange.round_off_amount || 0) > 0
-                ? String(exchange.round_off_amount)
-                : '',
-        coinsRedeemed:
-            parseFloat(exchange.coins_redeemed || 0) > 0
-                ? String(exchange.coins_redeemed)
-                : '',
-    }));
+    const prevSettlementRef = useRef(
+        parseFloat(exchange.settlement_amount ?? exchange.paid_amount ?? 0),
+    );
+    const isInitialPaidSync = useRef(true);
+    const [manualDiscounts, setManualDiscounts] = useState(() =>
+        buildEditExchangeDiscounts(
+            exchange,
+            sellDiscountsProp ?? sellDiscountsSnake,
+            (exchange.items ?? []).map(mapExchangeLine),
+        ),
+    );
 
     const form = useForm({
         date: toDateInputValue(exchange.date),
@@ -104,7 +109,7 @@ export default function ProductExchangeEdit({
         return calcProductExchangeSummary({
             items,
             sellDiscounts,
-            sourceItems: items,
+            sourceItems,
             promotions,
             saleDate: form.data.date,
             manualDiscounts,
@@ -116,6 +121,7 @@ export default function ProductExchangeEdit({
     }, [
         paymentOnlyEdit,
         items,
+        sourceItems,
         sellDiscounts,
         promotions,
         form.data.date,
@@ -146,17 +152,25 @@ export default function ProductExchangeEdit({
 
         if (paymentMode === 'party') {
             form.setData('paid_amount', '0');
+            prevSettlementRef.current = settlement;
 
             return;
         }
 
         const currentPaid = parseFloat(form.data.paid_amount || 0);
+        const syncedPaid = syncExchangeEditPaidAmount({
+            currentPaid,
+            previousSettlement: prevSettlementRef.current,
+            nextSettlement: settlement,
+            skipAutoFill: isInitialPaidSync.current,
+        });
 
-        if (currentPaid === 0 || currentPaid === prevSettlementRef.current) {
-            form.setData(
-                'paid_amount',
-                settlement > 0 ? settlement.toFixed(2) : '0',
-            );
+        if (syncedPaid !== null) {
+            form.setData('paid_amount', syncedPaid);
+        }
+
+        if (isInitialPaidSync.current) {
+            isInitialPaidSync.current = false;
         }
 
         prevSettlementRef.current = settlement;
@@ -192,10 +206,15 @@ export default function ProductExchangeEdit({
         }
 
         const settlement = summary?.settlementAmount ?? 0;
-        form.setData(
-            'paid_amount',
-            settlement > 0 ? settlement.toFixed(2) : '0',
-        );
+        const currentPaid = parseFloat(form.data.paid_amount || 0);
+
+        if (currentPaid <= 0.009) {
+            form.setData(
+                'paid_amount',
+                settlement > 0 ? settlement.toFixed(2) : '0',
+            );
+        }
+
         prevSettlementRef.current = settlement;
     }
 
@@ -205,21 +224,30 @@ export default function ProductExchangeEdit({
         }
 
         setItems((prev) =>
-            prev.map((it, i) =>
-                i === replaceIndex
-                    ? {
-                          ...it,
-                          new_product_id: product.product_id,
-                          new_product_name: product.product_name,
-                          new_product_code: product.product_code,
-                          new_variation_id: product.variation_id ?? null,
-                          new_variation_label: product.variation_label ?? null,
-                          new_unit_price: String(product.unit_price ?? 0),
-                          category_id: product.category_id ?? it.category_id,
-                          brand_id: product.brand_id ?? it.brand_id,
-                      }
-                    : it,
-            ),
+            prev.map((it, i) => {
+                if (i !== replaceIndex) {
+                    return it;
+                }
+
+                const soldQty = parseInt(it.sold_quantity || 0, 10);
+                const returnQty = parseInt(it.return_quantity || 0, 10);
+                const currentQty = parseInt(it.quantity || 0, 10);
+                const defaultQty = Math.max(1, soldQty - returnQty);
+
+                return {
+                    ...it,
+                    new_product_id: product.product_id,
+                    new_product_name: product.product_name,
+                    new_product_code: product.product_code,
+                    new_variation_id: product.variation_id ?? null,
+                    new_variation_label: product.variation_label ?? null,
+                    new_unit_price: String(product.unit_price ?? 0),
+                    category_id: product.category_id ?? it.category_id,
+                    brand_id: product.brand_id ?? it.brand_id,
+                    quantity:
+                        currentQty > 0 ? it.quantity : String(defaultQty),
+                };
+            }),
         );
         setReplaceIndex(null);
     }
@@ -355,15 +383,25 @@ export default function ProductExchangeEdit({
         });
     }
 
-    const priceDifference = lineTotals?.gross_price_difference ?? lineTotals?.priceDifference ?? 0;
+    const signedSettlement = paymentOnlyEdit
+        ? (totals?.is_refund
+            ? -parseFloat(totals?.settlement ?? exchange.settlement_amount ?? 0)
+            : parseFloat(totals?.settlement ?? exchange.settlement_amount ?? 0))
+        : (summary?.signedSettlement ?? parseFloat(exchange.price_difference ?? 0));
+    const priceDifference = paymentOnlyEdit
+        ? signedSettlement
+        : (summary?.priceDifference ?? parseFloat(exchange.price_difference ?? 0));
     const settlementAmount = paymentOnlyEdit
-        ? (totals?.settlement ?? exchange.settlement_amount ?? 0)
+        ? Math.abs(signedSettlement) < 0.009
+            ? 0
+            : Math.abs(signedSettlement)
         : (summary?.settlementAmount ?? 0);
     const isRefund = paymentOnlyEdit
-        ? Boolean(totals?.is_refund)
-        : (summary?.signedSettlement ?? priceDifference) < 0;
+        ? Boolean(totals?.is_refund ?? exchange.is_refund)
+        : (summary?.signedSettlement ?? priceDifference) < -0.009;
     const isParty = paymentMode === 'party';
     const settlementLineLabel = isRefund ? 'Refund to Customer' : 'Customer Pays';
+    const paidLabel = isRefund ? 'Refund Paid' : 'Paid Amount';
     const dueLabel = isRefund ? 'Remaining Refund' : 'Due Amount';
 
     return (
@@ -475,6 +513,11 @@ export default function ProductExchangeEdit({
                                               promoLine.promotion_discount || 0,
                                           )
                                         : 0;
+                                    const maxReturnQty = Math.max(
+                                        0,
+                                        parseInt(item.sold_quantity || 0, 10) -
+                                            parseInt(item.quantity || 0, 10),
+                                    );
 
                                     return (
                                         <tr
@@ -521,8 +564,20 @@ export default function ProductExchangeEdit({
                                                 ) : (
                                                     <Input
                                                         type="number"
-                                                        min="1"
-                                                        max={item.sold_quantity}
+                                                        min="0"
+                                                        max={Math.max(
+                                                            0,
+                                                            parseInt(
+                                                                item.sold_quantity ||
+                                                                    0,
+                                                                10,
+                                                            ) -
+                                                                parseInt(
+                                                                    item.return_quantity ||
+                                                                        0,
+                                                                    10,
+                                                                ),
+                                                        )}
                                                         step="1"
                                                         value={item.quantity}
                                                         onChange={(e) =>
@@ -548,18 +603,12 @@ export default function ProductExchangeEdit({
                                                     <Input
                                                         type="number"
                                                         min="0"
-                                                        max={item.sold_quantity}
+                                                        max={maxReturnQty}
                                                         step="1"
                                                         value={
                                                             item.return_quantity
                                                         }
                                                         onChange={(e) =>
-                                                            updateReturnQty(
-                                                                i,
-                                                                e.target.value,
-                                                            )
-                                                        }
-                                                        onBlur={(e) =>
                                                             updateReturnQty(
                                                                 i,
                                                                 e.target.value,
@@ -689,6 +738,20 @@ export default function ProductExchangeEdit({
                                         ৳{priceDifference.toFixed(2)}
                                     </strong>
                                 </span>
+                                {settlementAmount > 0.009 && (
+                                    <span>
+                                        {settlementLineLabel}:{' '}
+                                        <strong
+                                            className={
+                                                isRefund
+                                                    ? 'text-destructive'
+                                                    : 'text-primary'
+                                            }
+                                        >
+                                            ৳{settlementAmount.toFixed(2)}
+                                        </strong>
+                                    </span>
+                                )}
                                 {(lineTotals?.new_discount_total ?? lineTotals?.newDiscountTotal ?? 0) > 0.009 && (
                                     <span className="text-destructive">
                                         Discounts:{' '}
@@ -711,7 +774,7 @@ export default function ProductExchangeEdit({
                                     Net new:{' '}
                                     <strong>
                                         ৳
-                                        ৳{(lineTotals?.net ?? lineTotals?.netNewAmount ?? 0).toFixed(2)}
+                                        {(lineTotals?.net ?? lineTotals?.netNewAmount ?? 0).toFixed(2)}
                                     </strong>
                                 </span>
                             </div>
@@ -748,7 +811,7 @@ export default function ProductExchangeEdit({
                                 form.setData('paid_amount', v)
                             }
                             paidReadOnly={false}
-                            paidLabel={settlementLineLabel}
+                            paidLabel={paidLabel}
                             settlementLineLabel={settlementLineLabel}
                             showPaidAmount={!isParty}
                             dueLabel={dueLabel}
@@ -756,7 +819,18 @@ export default function ProductExchangeEdit({
                             onPaymentModeChange={handlePaymentModeChange}
                             paymentAccounts={paymentAccounts}
                             partyLabel="Customer Account"
-                            partyPaidHint="The full exchange difference settles on the customer account. No cash or bank entry is posted."
+                            partyPaidHint={
+                                isRefund
+                                    ? 'The full refund settles on the customer account. No cash or bank entry is posted.'
+                                    : 'The full exchange difference settles on the customer account. No cash or bank entry is posted.'
+                            }
+                            paymentHint={
+                                isParty
+                                    ? null
+                                    : isRefund
+                                      ? 'Cash / bank account the refund is paid from.'
+                                      : 'Cash / bank account (asset ledger). Enter the amount received in Paid Amount.'
+                            }
                             paidError={form.errors.paid_amount}
                             showDue={!isParty && settlementAmount > 0}
                         />

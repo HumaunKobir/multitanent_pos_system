@@ -63,7 +63,7 @@ class SellController extends Controller
         $sells = $this->forCurrentBranchUser(Sell::query())
             ->sale()
             ->withSum('products as line_discount_total', 'discount')
-            ->with(['customer:id,name,phone', 'productExchange:id,sell_id,invoice_sequence'])
+            ->with(['customer:id,name,phone', 'productExchange:id,sell_id,invoice_sequence', 'saleReturns:id,sell_id,invoice_sequence'])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('invoice_sequence', 'like', "%{$s}%")
                     ->orWhere('id', 'like', "%{$s}%")

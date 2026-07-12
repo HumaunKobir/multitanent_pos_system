@@ -85,7 +85,14 @@ export default function ProductExchangeEdit({
     const form = useForm({
         date: toDateInputValue(exchange.date),
         comment: exchange.comment ?? '',
-        paid_amount: exchange.paid_amount ?? '0',
+        // If this exchange already had money recorded against it, the field starts
+        // at 0 (no additional payment yet) — the already-paid portion is tracked
+        // separately via priorPaidAmount and the sync effect below only bumps this
+        // up if the exchange was previously fully settled.
+        paid_amount:
+            parseFloat(exchange.paid_amount ?? 0) > 0.009
+                ? '0'
+                : (exchange.paid_amount ?? '0'),
         payment_type: String(exchange.payment_type ?? '5'),
         items: [],
     });
@@ -133,6 +140,36 @@ export default function ProductExchangeEdit({
 
     const lineTotals = paymentOnlyEdit ? totals : summary;
 
+    const signedSettlement = paymentOnlyEdit
+        ? (totals?.is_refund
+            ? -parseFloat(totals?.settlement ?? exchange.settlement_amount ?? 0)
+            : parseFloat(totals?.settlement ?? exchange.settlement_amount ?? 0))
+        : (summary?.signedSettlement ?? parseFloat(exchange.price_difference ?? 0));
+    const priceDifference = paymentOnlyEdit
+        ? signedSettlement
+        : (summary?.priceDifference ?? parseFloat(exchange.price_difference ?? 0));
+    const settlementAmount = paymentOnlyEdit
+        ? Math.abs(signedSettlement) < 0.009
+            ? 0
+            : Math.abs(signedSettlement)
+        : (summary?.settlementAmount ?? 0);
+    const isRefund = paymentOnlyEdit
+        ? Boolean(totals?.is_refund ?? exchange.is_refund)
+        : (summary?.signedSettlement ?? priceDifference) < -0.009;
+    const isParty = paymentMode === 'party';
+
+    // The amount already disbursed/collected for this exchange before this edit
+    // session started. Only offset against it while the settlement direction
+    // (refund vs. customer-pays) hasn't flipped — a flip means the prior payment
+    // isn't part of the same money flow anymore.
+    const priorPaidAmount = parseFloat(exchange.paid_amount ?? 0) || 0;
+    const priorIsRefund = Boolean(exchange.is_refund);
+    const showPriorPayment = priorPaidAmount > 0.009 && priorIsRefund === isRefund;
+    const fieldPaidAmount = isParty ? 0 : parseFloat(form.data.paid_amount || 0) || 0;
+    const totalPaidAmount = showPriorPayment
+        ? priorPaidAmount + fieldPaidAmount
+        : fieldPaidAmount;
+
     useEffect(() => {
         if (flash?.success) {
             toast.success(flash.success);
@@ -157,16 +194,19 @@ export default function ProductExchangeEdit({
             return;
         }
 
-        const currentPaid = parseFloat(form.data.paid_amount || 0);
-        const syncedPaid = syncExchangeEditPaidAmount({
-            currentPaid,
+        const syncedTotal = syncExchangeEditPaidAmount({
+            currentPaid: totalPaidAmount,
             previousSettlement: prevSettlementRef.current,
             nextSettlement: settlement,
             skipAutoFill: isInitialPaidSync.current,
         });
 
-        if (syncedPaid !== null) {
-            form.setData('paid_amount', syncedPaid);
+        if (syncedTotal !== null) {
+            const nextTotal = parseFloat(syncedTotal);
+            const nextField = showPriorPayment
+                ? Math.max(0, nextTotal - priorPaidAmount)
+                : nextTotal;
+            form.setData('paid_amount', nextField > 0.009 ? nextField.toFixed(2) : '0');
         }
 
         if (isInitialPaidSync.current) {
@@ -206,13 +246,12 @@ export default function ProductExchangeEdit({
         }
 
         const settlement = summary?.settlementAmount ?? 0;
-        const currentPaid = parseFloat(form.data.paid_amount || 0);
 
-        if (currentPaid <= 0.009) {
-            form.setData(
-                'paid_amount',
-                settlement > 0 ? settlement.toFixed(2) : '0',
-            );
+        if (totalPaidAmount <= 0.009) {
+            const target = showPriorPayment
+                ? Math.max(0, settlement - priorPaidAmount)
+                : settlement;
+            form.setData('paid_amount', target > 0.009 ? target.toFixed(2) : '0');
         }
 
         prevSettlementRef.current = settlement;
@@ -294,7 +333,9 @@ export default function ProductExchangeEdit({
                 comment: data.comment,
                 payment_type: paymentModeToType(paymentMode),
                 payment_account_id: paymentModeToAccountId(paymentMode),
-                paid_amount: paymentMode === 'party' ? '0' : data.paid_amount,
+                paid_amount: paymentMode === 'party'
+                    ? '0'
+                    : (totalPaidAmount > 0.009 ? totalPaidAmount.toFixed(2) : '0'),
             }));
             form.put(route('inventory.product-exchange.update', exchange.id), {
                 preserveScroll: true,
@@ -363,7 +404,9 @@ export default function ProductExchangeEdit({
             ...data,
             payment_type: paymentModeToType(paymentMode),
             payment_account_id: paymentModeToAccountId(paymentMode),
-            paid_amount: paymentMode === 'party' ? '0' : data.paid_amount,
+            paid_amount: paymentMode === 'party'
+                ? '0'
+                : (totalPaidAmount > 0.009 ? totalPaidAmount.toFixed(2) : '0'),
             discount_type: manualDiscounts.invoiceType || 'flat',
             discount_value: String(parseFloat(manualDiscounts.invoice || 0)),
             special_discount_id: manualDiscounts.specialDiscountId || null,
@@ -383,26 +426,12 @@ export default function ProductExchangeEdit({
         });
     }
 
-    const signedSettlement = paymentOnlyEdit
-        ? (totals?.is_refund
-            ? -parseFloat(totals?.settlement ?? exchange.settlement_amount ?? 0)
-            : parseFloat(totals?.settlement ?? exchange.settlement_amount ?? 0))
-        : (summary?.signedSettlement ?? parseFloat(exchange.price_difference ?? 0));
-    const priceDifference = paymentOnlyEdit
-        ? signedSettlement
-        : (summary?.priceDifference ?? parseFloat(exchange.price_difference ?? 0));
-    const settlementAmount = paymentOnlyEdit
-        ? Math.abs(signedSettlement) < 0.009
-            ? 0
-            : Math.abs(signedSettlement)
-        : (summary?.settlementAmount ?? 0);
-    const isRefund = paymentOnlyEdit
-        ? Boolean(totals?.is_refund ?? exchange.is_refund)
-        : (summary?.signedSettlement ?? priceDifference) < -0.009;
-    const isParty = paymentMode === 'party';
     const settlementLineLabel = isRefund ? 'Refund to Customer' : 'Customer Pays';
-    const paidLabel = isRefund ? 'Refund Paid' : 'Paid Amount';
+    const paidLabel = showPriorPayment
+        ? (isRefund ? 'Additional Refund Now' : 'Additional Payment Now')
+        : (isRefund ? 'Refund Paid' : 'Paid Amount');
     const dueLabel = isRefund ? 'Remaining Refund' : 'Due Amount';
+    const priorPaidLabel = isRefund ? 'Already Refunded' : 'Already Received';
 
     return (
         <>
@@ -815,6 +844,9 @@ export default function ProductExchangeEdit({
                             settlementLineLabel={settlementLineLabel}
                             showPaidAmount={!isParty}
                             dueLabel={dueLabel}
+                            dueAmountOverride={Math.max(0, settlementAmount - totalPaidAmount)}
+                            priorPaidAmount={showPriorPayment && !isParty ? priorPaidAmount : null}
+                            priorPaidLabel={priorPaidLabel}
                             paymentMode={paymentMode}
                             onPaymentModeChange={handlePaymentModeChange}
                             paymentAccounts={paymentAccounts}

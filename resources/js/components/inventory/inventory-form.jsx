@@ -129,6 +129,8 @@ export function PaymentSummaryCard({
     dueAmountOverride = null,
     dueOffsetAmount = null,
     paymentHint = null,
+    priorPaidAmount = null,
+    priorPaidLabel = 'Already Recorded',
 }) {
     const isParty = paymentMode === 'party';
     const paid = isParty ? 0 : parseFloat(paidAmount || 0);
@@ -199,6 +201,13 @@ export function PaymentSummaryCard({
                     <div className="flex justify-between border-t border-border pt-2">
                         <span className="text-muted-foreground">{settlementLineLabel}</span>
                         <span className="font-semibold">৳{grossAmount.toFixed(2)}</span>
+                    </div>
+                )}
+
+                {priorPaidAmount != null && priorPaidAmount > 0.009 && (
+                    <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">{priorPaidLabel}</span>
+                        <span className="text-green-700 dark:text-green-400">৳{priorPaidAmount.toFixed(2)}</span>
                     </div>
                 )}
 

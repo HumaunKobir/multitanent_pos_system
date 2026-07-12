@@ -9,6 +9,7 @@ use App\Models\ChartOfAccount;
 use App\Models\CoinSettings;
 use App\Models\Customer;
 use App\Models\CustomerCoinTransaction;
+use App\Models\CustomerDueAlert;
 use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\Sell;
@@ -19,6 +20,7 @@ use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\SystemAccountService;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\Permission\Models\Permission;
@@ -1792,6 +1794,188 @@ test('authenticated user can update a sale and stock is adjusted', function () {
 
     $sell->refresh();
     expect((float) $sell->gross_amount)->toBe(300.0);
+});
+
+test('editing a sale locks the sale row before adjusting the customer balance', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'is_default' => false,
+        'balance' => 0,
+    ]);
+
+    $payload = fn (string $paidAmount) => [
+        'customer_id' => $customer->id,
+        'date' => now()->format('Y-m-d'),
+        'discount_type' => 'flat',
+        'discount_value' => '0',
+        'special_discount_id' => null,
+        'vat' => '0',
+        'paid_amount' => $paidAmount,
+        'payment_account_id' => $cash->id,
+        'comment' => null,
+        'due_given_date' => now()->format('Y-m-d'),
+        'items' => [[
+            'product_id' => $product->id,
+            'variation_id' => null,
+            'unit_price' => '500',
+            'quantity' => '1',
+        ]],
+    ];
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', $payload('0'))
+        ->assertRedirect();
+
+    $sell = Sell::query()->where('customer_id', $customer->id)->latest('id')->first();
+    expect($sell)->not->toBeNull();
+
+    $dueAfterCreate = round((float) $sell->net_amount - (float) $sell->paid_amount, 2);
+    expect($dueAfterCreate)->toBeGreaterThan(0);
+
+    $customer->refresh();
+    expect((float) $customer->balance)->toBe($dueAfterCreate);
+
+    // Capture the exact SQL order the edit issues. Two overlapping edit requests
+    // can only avoid double-adjusting the customer's balance if the sale row is
+    // locked (and re-read) *before* the old due is computed and the balance is
+    // decremented — otherwise both requests can compute the old due from the
+    // same stale pre-edit values and each subtract it once.
+    $queries = [];
+    DB::listen(function ($query) use (&$queries) {
+        $queries[] = strtolower($query->sql);
+    });
+
+    $this->actingAs($user)
+        ->put("/inventory/sell/{$sell->id}", $payload((string) $dueAfterCreate))
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect();
+
+    $lockIndex = collect($queries)->search(
+        fn (string $sql) => str_contains($sql, 'for update') && str_contains($sql, '`sells`')
+    );
+    $balanceWriteIndex = collect($queries)->search(
+        fn (string $sql) => str_contains($sql, 'update `customers`') && str_contains($sql, '`balance`')
+    );
+
+    expect($lockIndex)->not->toBeFalse();
+    expect($balanceWriteIndex)->not->toBeFalse();
+    expect($lockIndex)->toBeLessThan($balanceWriteIndex);
+
+    $customer->refresh();
+    expect((float) $customer->balance)->toBe(0.0);
+});
+
+test('editing a due sale to fully paid zeroes the customer due and a repeat save does not drift it', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'is_default' => false,
+        'balance' => 0,
+    ]);
+
+    $payload = fn (string $paidAmount) => [
+        'customer_id' => $customer->id,
+        'date' => now()->format('Y-m-d'),
+        'discount_type' => 'flat',
+        'discount_value' => '0',
+        'special_discount_id' => null,
+        'vat' => '0',
+        'paid_amount' => $paidAmount,
+        'payment_account_id' => $cash->id,
+        'comment' => null,
+        'due_given_date' => now()->format('Y-m-d'),
+        'items' => [[
+            'product_id' => $product->id,
+            'variation_id' => null,
+            'unit_price' => '500',
+            'quantity' => '1',
+        ]],
+    ];
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', $payload('0'))
+        ->assertRedirect();
+
+    $sell = Sell::query()->where('customer_id', $customer->id)->latest('id')->first();
+    $netAmount = round((float) $sell->net_amount, 2);
+
+    $customer->refresh();
+    expect((float) $customer->balance)->toBe($netAmount);
+
+    $this->actingAs($user)
+        ->put("/inventory/sell/{$sell->id}", $payload((string) $netAmount))
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect();
+
+    $customer->refresh();
+    expect((float) $customer->balance)->toBe(0.0);
+
+    // Resubmitting the same fully-paid edit again must not drift the balance further.
+    $this->actingAs($user)
+        ->put("/inventory/sell/{$sell->id}", $payload((string) $netAmount))
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect();
+
+    $customer->refresh();
+    expect((float) $customer->balance)->toBe(0.0);
+});
+
+test('editing a due sale to fully paid marks the customer due alert as paid', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'is_default' => false,
+        'balance' => 0,
+    ]);
+
+    $payload = fn (string $paidAmount) => [
+        'customer_id' => $customer->id,
+        'date' => now()->format('Y-m-d'),
+        'discount_type' => 'flat',
+        'discount_value' => '0',
+        'special_discount_id' => null,
+        'vat' => '0',
+        'paid_amount' => $paidAmount,
+        'payment_account_id' => $cash->id,
+        'comment' => null,
+        'due_given_date' => now()->format('Y-m-d'),
+        'items' => [[
+            'product_id' => $product->id,
+            'variation_id' => null,
+            'unit_price' => '500',
+            'quantity' => '1',
+        ]],
+    ];
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', $payload('0'))
+        ->assertRedirect();
+
+    $sell = Sell::query()->where('customer_id', $customer->id)->latest('id')->first();
+    $netAmount = round((float) $sell->net_amount, 2);
+
+    $alert = CustomerDueAlert::query()->where('customer_id', $customer->id)->first();
+    expect($alert)->not->toBeNull();
+    expect($alert->status)->toBe(CustomerDueAlertStatus::Unpaid);
+
+    $this->actingAs($user)
+        ->put("/inventory/sell/{$sell->id}", $payload((string) $netAmount))
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect();
+
+    $customer->refresh();
+    expect((float) $customer->balance)->toBe(0.0);
+    expect($alert->fresh()->status)->toBe(CustomerDueAlertStatus::Paid);
 });
 
 test('sell edit exposes reserved stock for existing line items so zero warehouse stock does not block update', function () {

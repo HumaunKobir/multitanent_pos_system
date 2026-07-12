@@ -7,6 +7,7 @@ use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\CustomerPayment;
+use App\Services\CustomerDueAlertService;
 use App\Services\InventoryAccountingService;
 use App\Services\PartyPaymentAllocationService;
 use Illuminate\Http\RedirectResponse;
@@ -25,6 +26,7 @@ class CustomerDueCollectionController extends Controller
     public function __construct(
         private InventoryAccountingService $accounting,
         private PartyPaymentAllocationService $allocations,
+        private CustomerDueAlertService $dueAlertService,
     ) {}
 
     public function index(Request $request): Response
@@ -124,6 +126,7 @@ class CustomerDueCollectionController extends Controller
 
                 $this->allocations->applyCustomerAllocations($payment, $data['allocations'], $validated['sells']);
                 $customer->decrement('balance', $amount);
+                $this->dueAlertService->syncPaidForCustomer($customer->id, $branchId);
                 $this->accounting->postCustomerPayment($payment->fresh(['customer']), $paymentAccountId);
             });
         } catch (\Throwable $e) {
@@ -213,6 +216,12 @@ class CustomerDueCollectionController extends Controller
 
                 if ($nextCustomer !== null) {
                     $nextCustomer->decrement('balance', $amount);
+                }
+
+                $branchId = Auth::user()?->branch_id;
+
+                foreach (array_unique(array_filter([$previousCustomer?->id, $nextCustomer?->id])) as $customerId) {
+                    $this->dueAlertService->syncPaidForCustomer($customerId, $branchId);
                 }
 
                 $this->accounting->postCustomerPayment($customerPayment->fresh(['customer']), $paymentAccountId);

@@ -169,6 +169,12 @@ export default function ProductExchangeEdit({
     const totalPaidAmount = showPriorPayment
         ? priorPaidAmount + fieldPaidAmount
         : fieldPaidAmount;
+    // If line edits shrink a refund below what was already paid out on a prior
+    // save, the excess becomes a receivable on the customer's account instead
+    // of a due handed back to them — mirrors ProductExchangeController::update.
+    const overpaidAmount = isRefund && !isParty
+        ? Math.max(0, totalPaidAmount - settlementAmount)
+        : 0;
 
     useEffect(() => {
         if (flash?.success) {
@@ -426,12 +432,14 @@ export default function ProductExchangeEdit({
         });
     }
 
+    const isOverpaid = overpaidAmount > 0.009;
     const settlementLineLabel = isRefund ? 'Refund to Customer' : 'Customer Pays';
     const paidLabel = showPriorPayment
         ? (isRefund ? 'Additional Refund Now' : 'Additional Payment Now')
         : (isRefund ? 'Refund Paid' : 'Paid Amount');
     const dueLabel = isRefund ? 'Remaining Refund' : 'Due Amount';
     const priorPaidLabel = isRefund ? 'Already Refunded' : 'Already Received';
+    const overpaidLabel = 'Customer Pays This Back — Added to Due';
 
     return (
         <>
@@ -842,11 +850,13 @@ export default function ProductExchangeEdit({
                             paidReadOnly={false}
                             paidLabel={paidLabel}
                             settlementLineLabel={settlementLineLabel}
-                            showPaidAmount={!isParty}
+                            showPaidAmount={!isParty && !isOverpaid}
                             dueLabel={dueLabel}
                             dueAmountOverride={Math.max(0, settlementAmount - totalPaidAmount)}
                             priorPaidAmount={showPriorPayment && !isParty ? priorPaidAmount : null}
                             priorPaidLabel={priorPaidLabel}
+                            overpaidAmount={isOverpaid ? overpaidAmount : null}
+                            overpaidLabel={overpaidLabel}
                             paymentMode={paymentMode}
                             onPaymentModeChange={handlePaymentModeChange}
                             paymentAccounts={paymentAccounts}

@@ -131,6 +131,8 @@ export function PaymentSummaryCard({
     paymentHint = null,
     priorPaidAmount = null,
     priorPaidLabel = 'Already Recorded',
+    overpaidAmount = null,
+    overpaidLabel = 'Overpaid',
 }) {
     const isParty = paymentMode === 'party';
     const paid = isParty ? 0 : parseFloat(paidAmount || 0);
@@ -265,6 +267,13 @@ export function PaymentSummaryCard({
                     <div className="flex justify-between border-t border-border pt-2">
                         <span className="font-semibold text-destructive">{dueLabel}</span>
                         <span className="font-bold text-destructive">৳{due.toFixed(2)}</span>
+                    </div>
+                )}
+
+                {overpaidAmount != null && overpaidAmount > 0.009 && (
+                    <div className="flex justify-between border-t border-border pt-2 text-amber-700 dark:text-amber-400">
+                        <span className="font-semibold">{overpaidLabel}</span>
+                        <span className="font-bold">৳{overpaidAmount.toFixed(2)}</span>
                     </div>
                 )}
             </div>

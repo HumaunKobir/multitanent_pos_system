@@ -447,6 +447,16 @@ class ProductExchangeController extends Controller
                 $customerAccountEffect = $signedSettlement;
                 $payment = $this->exchangeDiscounts->resolvePayment($data, $signedSettlement, (int) $data['payment_type']);
 
+                // If line edits shrank a refund below what was already paid out on a
+                // prior save, resolvePayment's clamp would otherwise silently drop the
+                // excess. Track it as a customer receivable instead of losing it.
+                $overpaidAmount = 0.0;
+                if ($signedSettlement < 0 && $paymentType !== ReceivedPaymentMethod::Customer_Account) {
+                    $settlementAmount = round(abs($signedSettlement), 2);
+                    $submittedPaid = round(max(0, (float) ($data['paid_amount'] ?? 0)), 2);
+                    $overpaidAmount = round(max(0, $submittedPaid - $settlementAmount), 2);
+                }
+
                 $productExchange->update([
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
@@ -465,6 +475,7 @@ class ProductExchangeController extends Controller
                     'net_amount' => $totals['net_amount'],
                     'paid_amount' => $payment['paid_amount'],
                     'due_amount' => $payment['due_amount'],
+                    'overpaid_amount' => $overpaidAmount,
                     'price_difference' => $priceDifference,
                     'payment_type' => $paymentType,
                     'payment_account_id' => $paymentAccountId,
@@ -476,9 +487,24 @@ class ProductExchangeController extends Controller
                 }
 
                 $this->applyExchangeCustomerEffects($parent, $productExchange, $customerAccountEffect, $paymentType, $totals);
+
+                if ($overpaidAmount > 0.009 && $parent->customer_id) {
+                    Customer::whereKey($parent->customer_id)->increment('balance', $overpaidAmount);
+                }
+
                 $this->accounting->postExchange($productExchange->fresh(['customer', 'sell', 'products']), $paymentAccountId);
+
+                if ($overpaidAmount > 0.009 && $paymentAccountId !== null) {
+                    $this->accounting->postExchangeOverpaymentReceivable($productExchange->fresh(['customer']), $paymentAccountId, $overpaidAmount);
+                }
             });
         } catch (\Throwable $e) {
+            \Log::error('Product exchange update failed', [
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+                'file' => $e->getFile().':'.$e->getLine(),
+            ]);
+
             return back()
                 ->withErrors([
                     'items' => $e instanceof \RuntimeException
@@ -496,6 +522,15 @@ class ProductExchangeController extends Controller
     {
         $this->authorize('inventory.product-exchange.delete');
         $this->authorizeBranchUserRecord($productExchange);
+
+        // A collection already recorded against this exchange's overpayment would be
+        // orphaned by the delete (and the FK restricts it anyway) — say so plainly.
+        if ($productExchange->hasCollectedOverpayment()) {
+            return back()->with(
+                'error',
+                'Delete the overpayment collection for this exchange before deleting the exchange.',
+            );
+        }
 
         $productExchange->load(['products', 'sell']);
 
@@ -684,6 +719,12 @@ class ProductExchangeController extends Controller
             } elseif ($priceDifference < 0) {
                 Customer::whereKey($productExchange->customer_id)->decrement('balance', abs($priceDifference));
             }
+        }
+
+        $overpaidAmount = (float) $productExchange->overpaid_amount;
+
+        if ($productExchange->customer_id && $overpaidAmount > 0.009) {
+            Customer::whereKey($productExchange->customer_id)->decrement('balance', $overpaidAmount);
         }
     }
 

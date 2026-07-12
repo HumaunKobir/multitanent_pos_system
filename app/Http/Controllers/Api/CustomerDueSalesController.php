@@ -33,8 +33,10 @@ class CustomerDueSalesController extends Controller
                 ->firstOrFail();
         }
 
+        $documents = $this->allocations->dueDocumentsForCustomer($customer, $editingPayment);
+
         return response()->json([
-            'sales' => $this->allocations->dueSalesForCustomer($customer, $editingPayment),
+            'sales' => $documents,
         ]);
     }
 }

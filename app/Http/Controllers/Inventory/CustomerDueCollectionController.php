@@ -42,6 +42,7 @@ class CustomerDueCollectionController extends Controller
                 'createdBy:id,name',
                 'allocations.sell:id,gross_amount,discount,vat,special_discount_amount,coin_discount_amount,round_off_amount,paid_amount',
                 'allocations.sell.products:id,sell_id,discount',
+                'allocations.productExchange:id,branch_id,date,overpaid_amount,overpaid_collected_amount',
             ])
             ->when($request->search, function ($query, string $search) {
                 $query->where(function ($q) use ($search) {
@@ -95,7 +96,8 @@ class CustomerDueCollectionController extends Controller
             'payment_account_id' => ['required', 'integer', 'exists:chart_of_accounts,id'],
             'comment' => ['nullable', 'string', 'max:1000'],
             'allocations' => ['required', 'array', 'min:1'],
-            'allocations.*.sell_id' => ['required', 'integer', 'exists:sells,id'],
+            'allocations.*.sell_id' => ['nullable', 'integer', 'exists:sells,id'],
+            'allocations.*.product_exchange_id' => ['nullable', 'integer', 'exists:product_exchanges,id'],
             'allocations.*.amount' => ['required', 'numeric', 'min:0.01'],
         ]);
 
@@ -124,7 +126,7 @@ class CustomerDueCollectionController extends Controller
                     'serial' => 'INVCP'.str_pad((string) (CustomerPayment::max('id') + 1), 8, '0', STR_PAD_LEFT),
                 ]);
 
-                $this->allocations->applyCustomerAllocations($payment, $data['allocations'], $validated['sells']);
+                $this->allocations->applyCustomerAllocations($payment, $data['allocations'], $validated['sells'], $validated['exchanges']);
                 $customer->decrement('balance', $amount);
                 $this->dueAlertService->syncPaidForCustomer($customer->id, $branchId);
                 $this->accounting->postCustomerPayment($payment->fresh(['customer']), $paymentAccountId);
@@ -176,7 +178,8 @@ class CustomerDueCollectionController extends Controller
             'payment_account_id' => ['required', 'integer', 'exists:chart_of_accounts,id'],
             'comment' => ['nullable', 'string', 'max:1000'],
             'allocations' => ['required', 'array', 'min:1'],
-            'allocations.*.sell_id' => ['required', 'integer', 'exists:sells,id'],
+            'allocations.*.sell_id' => ['nullable', 'integer', 'exists:sells,id'],
+            'allocations.*.product_exchange_id' => ['nullable', 'integer', 'exists:product_exchanges,id'],
             'allocations.*.amount' => ['required', 'numeric', 'min:0.01'],
         ]);
 
@@ -212,7 +215,7 @@ class CustomerDueCollectionController extends Controller
                     'comment' => $data['comment'] ?? null,
                 ]);
 
-                $this->allocations->applyCustomerAllocations($customerPayment, $data['allocations'], $validated['sells']);
+                $this->allocations->applyCustomerAllocations($customerPayment, $data['allocations'], $validated['sells'], $validated['exchanges']);
 
                 if ($nextCustomer !== null) {
                     $nextCustomer->decrement('balance', $amount);

@@ -7,6 +7,7 @@ use App\Models\Customer;
 use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentAllocation;
 use App\Models\Product;
+use App\Models\ProductExchange;
 use App\Models\Purchase;
 use App\Models\Sell;
 use App\Models\SellPayment;
@@ -227,13 +228,19 @@ class PartyPaymentAllocationService
     }
 
     /**
-     * @return Collection<int, array{id: int, invoice_number: string, date: string|null, net_amount: float, paid_amount: float, due_amount: float}>
+     * Everything the customer currently owes: due sale invoices, plus exchange
+     * overpayments (a refund paid out that a later edit shrank below what was
+     * already handed over — the customer owes the excess back).
+     *
+     * `key` disambiguates the two types; raw ids collide across the tables.
+     *
+     * @return Collection<int, array{key: string, type: string, id: int, invoice_number: string, date: string|null, net_amount: float, paid_amount: float, due_amount: float, allocated_amount: float}>
      */
-    public function dueSalesForCustomer(Customer $customer, ?CustomerPayment $editingPayment = null): Collection
+    public function dueDocumentsForCustomer(Customer $customer, ?CustomerPayment $editingPayment = null): Collection
     {
         $currentAllocations = $this->currentCustomerAllocationAmounts($editingPayment);
 
-        return Sell::query()
+        $sales = Sell::query()
             ->ownBranch()
             ->sale()
             ->where('customer_id', $customer->id)
@@ -241,10 +248,12 @@ class PartyPaymentAllocationService
             ->orderBy('id')
             ->get()
             ->map(function (Sell $sell) use ($currentAllocations) {
-                $allocatedAmount = round((float) ($currentAllocations[$sell->id] ?? 0), 2);
+                $allocatedAmount = round((float) ($currentAllocations['sale:'.$sell->id] ?? 0), 2);
                 $dueAmount = round(max(0, (float) $sell->net_amount - (float) $sell->paid_amount) + $allocatedAmount, 2);
 
                 return [
+                    'key' => 'sale:'.$sell->id,
+                    'type' => 'sale',
                     'id' => $sell->id,
                     'invoice_number' => $sell->invoice_number,
                     'date' => $sell->date?->format('Y-m-d'),
@@ -253,8 +262,38 @@ class PartyPaymentAllocationService
                     'due_amount' => $dueAmount,
                     'allocated_amount' => $allocatedAmount,
                 ];
-            })
-            ->filter(fn (array $sell) => $sell['due_amount'] > 0)
+            });
+
+        $exchanges = ProductExchange::query()
+            ->ownBranchUser()
+            ->where('customer_id', $customer->id)
+            ->where('overpaid_amount', '>', 0)
+            ->orderBy('date')
+            ->orderBy('id')
+            ->get()
+            ->map(function (ProductExchange $exchange) use ($currentAllocations) {
+                $allocatedAmount = round((float) ($currentAllocations['exchange:'.$exchange->id] ?? 0), 2);
+                $overpaid = round((float) $exchange->overpaid_amount, 2);
+                $collected = round((float) $exchange->overpaid_collected_amount, 2);
+                $dueAmount = round(max(0, $overpaid - $collected) + $allocatedAmount, 2);
+
+                return [
+                    'key' => 'exchange:'.$exchange->id,
+                    'type' => 'exchange',
+                    'id' => $exchange->id,
+                    'invoice_number' => $exchange->invoice_number,
+                    'document_label' => 'Exchange overpayment',
+                    'date' => $exchange->date?->format('Y-m-d'),
+                    'net_amount' => $overpaid,
+                    'paid_amount' => round(max(0, $collected - $allocatedAmount), 2),
+                    'due_amount' => $dueAmount,
+                    'allocated_amount' => $allocatedAmount,
+                ];
+            });
+
+        return $sales
+            ->concat($exchanges)
+            ->filter(fn (array $document) => $document['due_amount'] > 0)
             ->values();
     }
 
@@ -368,8 +407,11 @@ class PartyPaymentAllocationService
     }
 
     /**
-     * @param  array<int, array{sell_id: int|string, amount: float|int|string}>  $allocations
-     * @return array{total: float, sells: Collection<int, Sell>}
+     * Each allocation settles exactly one document: a due sale (`sell_id`) or an
+     * exchange overpayment (`product_exchange_id`).
+     *
+     * @param  array<int, array{sell_id?: int|string|null, product_exchange_id?: int|string|null, amount: float|int|string}>  $allocations
+     * @return array{total: float, sells: Collection<int, Sell>, exchanges: Collection<int, ProductExchange>}
      */
     public function validateCustomerAllocations(Customer $customer, array $allocations, ?CustomerPayment $editingPayment = null): array
     {
@@ -379,9 +421,27 @@ class PartyPaymentAllocationService
             ]);
         }
 
-        $sellIds = collect($allocations)->pluck('sell_id')->map(fn ($id) => (int) $id);
+        $sellIds = collect();
+        $exchangeIds = collect();
 
-        if ($sellIds->duplicates()->isNotEmpty()) {
+        foreach ($allocations as $index => $allocation) {
+            $sellId = (int) ($allocation['sell_id'] ?? 0);
+            $exchangeId = (int) ($allocation['product_exchange_id'] ?? 0);
+
+            if (($sellId > 0) === ($exchangeId > 0)) {
+                throw ValidationException::withMessages([
+                    "allocations.{$index}" => 'Each allocation must target exactly one invoice or exchange.',
+                ]);
+            }
+
+            if ($sellId > 0) {
+                $sellIds->push($sellId);
+            } else {
+                $exchangeIds->push($exchangeId);
+            }
+        }
+
+        if ($sellIds->duplicates()->isNotEmpty() || $exchangeIds->duplicates()->isNotEmpty()) {
             throw ValidationException::withMessages([
                 'allocations' => 'Each invoice can only be included once.',
             ]);
@@ -401,15 +461,45 @@ class PartyPaymentAllocationService
             ]);
         }
 
+        $exchanges = ProductExchange::query()
+            ->ownBranchUser()
+            ->where('customer_id', $customer->id)
+            ->whereIn('id', $exchangeIds)
+            ->get()
+            ->keyBy('id');
+
+        if ($exchanges->count() !== $exchangeIds->count()) {
+            throw ValidationException::withMessages([
+                'allocations' => 'One or more exchanges are invalid for this customer.',
+            ]);
+        }
+
         $existingAllocations = $this->currentCustomerAllocationAmounts($editingPayment);
         $allowedBalance = round((float) $customer->balance + (($editingPayment?->customer_id === $customer->id) ? (float) $editingPayment->amount : 0), 2);
         $total = 0.0;
 
         foreach ($allocations as $index => $allocation) {
-            $sellId = (int) $allocation['sell_id'];
+            $sellId = (int) ($allocation['sell_id'] ?? 0);
             $amount = round((float) $allocation['amount'], 2);
-            $sell = $sells->get($sellId);
-            $dueAmount = round(max(0, (float) $sell->net_amount - (float) $sell->paid_amount) + (float) ($existingAllocations[$sellId] ?? 0), 2);
+
+            if ($sellId > 0) {
+                $sell = $sells->get($sellId);
+                $document = $sell->invoice_number;
+                $dueAmount = round(
+                    max(0, (float) $sell->net_amount - (float) $sell->paid_amount)
+                        + (float) ($existingAllocations['sale:'.$sellId] ?? 0),
+                    2,
+                );
+            } else {
+                $exchangeId = (int) $allocation['product_exchange_id'];
+                $exchange = $exchanges->get($exchangeId);
+                $document = $exchange->invoice_number;
+                $dueAmount = round(
+                    $exchange->overpaidDueAmount()
+                        + (float) ($existingAllocations['exchange:'.$exchangeId] ?? 0),
+                    2,
+                );
+            }
 
             if ($amount <= 0) {
                 throw ValidationException::withMessages([
@@ -419,7 +509,7 @@ class PartyPaymentAllocationService
 
             if ($amount > $dueAmount) {
                 throw ValidationException::withMessages([
-                    "allocations.{$index}.amount" => "Amount exceeds due for invoice {$sell->invoice_number}.",
+                    "allocations.{$index}.amount" => "Amount exceeds due for invoice {$document}.",
                 ]);
             }
 
@@ -437,6 +527,7 @@ class PartyPaymentAllocationService
         return [
             'total' => $total,
             'sells' => $sells,
+            'exchanges' => $exchanges,
         ];
     }
 
@@ -561,33 +652,43 @@ class PartyPaymentAllocationService
      * @param  array<int, array{sell_id: int|string, amount: float|int|string}>  $allocations
      * @param  Collection<int, Sell>  $sells
      */
-    public function applyCustomerAllocations(CustomerPayment $payment, array $allocations, Collection $sells): void
-    {
+    public function applyCustomerAllocations(
+        CustomerPayment $payment,
+        array $allocations,
+        Collection $sells,
+        ?Collection $exchanges = null,
+    ): void {
+        $exchanges ??= collect();
+
         foreach ($allocations as $allocation) {
-            $sellId = (int) $allocation['sell_id'];
+            $sellId = (int) ($allocation['sell_id'] ?? 0);
+            $exchangeId = (int) ($allocation['product_exchange_id'] ?? 0);
             $amount = round((float) $allocation['amount'], 2);
-            $sell = $sells->get($sellId);
 
             CustomerPaymentAllocation::create([
                 'customer_payment_id' => $payment->id,
-                'sell_id' => $sellId,
+                'sell_id' => $sellId > 0 ? $sellId : null,
+                'product_exchange_id' => $exchangeId > 0 ? $exchangeId : null,
                 'amount' => $amount,
             ]);
 
-            $sell->increment('paid_amount', $amount);
+            if ($sellId > 0) {
+                $sells->get($sellId)?->increment('paid_amount', $amount);
+
+                continue;
+            }
+
+            $exchanges->get($exchangeId)?->increment('overpaid_collected_amount', $amount);
         }
     }
 
     public function reverseCustomerAllocations(CustomerPayment $payment): void
     {
-        $payment->loadMissing('allocations.sell');
+        $payment->loadMissing(['allocations.sell', 'allocations.productExchange']);
 
         foreach ($payment->allocations as $allocation) {
-            $sell = $allocation->sell;
-
-            if ($sell !== null) {
-                $sell->decrement('paid_amount', (float) $allocation->amount);
-            }
+            $allocation->sell?->decrement('paid_amount', (float) $allocation->amount);
+            $allocation->productExchange?->decrement('overpaid_collected_amount', (float) $allocation->amount);
         }
 
         $payment->allocations()->delete();
@@ -668,16 +769,41 @@ class PartyPaymentAllocationService
         return $allocations
             ->map(function (CustomerPaymentAllocation $allocation) {
                 $sell = $allocation->sell;
+                $exchange = $allocation->productExchange;
+
+                $document = match (true) {
+                    $sell !== null => $this->sellPaymentSummary($sell),
+                    $exchange !== null => $this->exchangeOverpaymentSummary($exchange),
+                    default => null,
+                };
 
                 return [
                     'id' => $allocation->id,
-                    'sell_id' => (int) $allocation->sell_id,
+                    'key' => $allocation->documentKey(),
+                    'type' => $allocation->product_exchange_id !== null ? 'exchange' : 'sale',
+                    'sell_id' => $allocation->sell_id !== null ? (int) $allocation->sell_id : null,
+                    'product_exchange_id' => $allocation->product_exchange_id !== null
+                        ? (int) $allocation->product_exchange_id
+                        : null,
                     'amount' => round((float) $allocation->amount, 2),
-                    'document' => $sell !== null ? $this->sellPaymentSummary($sell) : null,
+                    'document' => $document,
                 ];
             })
             ->values()
             ->all();
+    }
+
+    /**
+     * @return array{invoice_number: string, net_amount: float, paid_amount: float, due_amount: float}
+     */
+    public function exchangeOverpaymentSummary(ProductExchange $exchange): array
+    {
+        return [
+            'invoice_number' => $exchange->invoice_number,
+            'net_amount' => round((float) $exchange->overpaid_amount, 2),
+            'paid_amount' => round((float) $exchange->overpaid_collected_amount, 2),
+            'due_amount' => $exchange->overpaidDueAmount(),
+        ];
     }
 
     /**
@@ -936,6 +1062,11 @@ class PartyPaymentAllocationService
     /**
      * @return array<int, float>
      */
+    /**
+     * Keyed by document key ("sale:1" / "exchange:1") — raw ids collide across types.
+     *
+     * @return array<string, float>
+     */
     private function currentCustomerAllocationAmounts(?CustomerPayment $payment): array
     {
         if ($payment === null) {
@@ -946,7 +1077,7 @@ class PartyPaymentAllocationService
 
         return $payment->allocations
             ->mapWithKeys(fn (CustomerPaymentAllocation $allocation) => [
-                (int) $allocation->sell_id => round((float) $allocation->amount, 2),
+                $allocation->documentKey() => round((float) $allocation->amount, 2),
             ])
             ->all();
     }

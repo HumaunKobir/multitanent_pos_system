@@ -7,6 +7,7 @@ use App\Enums\SystemAccountKey;
 use App\Models\Batch;
 use App\Models\ChartOfAccount;
 use App\Models\Customer;
+use App\Models\CustomerPayment;
 use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\ProductExchange;
@@ -2524,4 +2525,348 @@ test('exchange edit update adjusts fully paid refund down when settlement decrea
     expect((float) $exchange->paid_amount)->toBe(750.0);
     expect((float) $exchange->due_amount)->toBe(0.0);
     expect(exchangeLatestLedgerIsBalanced($exchange))->toBeTrue();
+});
+
+test('exchange edit update tracks overpayment as a customer receivable when a shrinking refund falls below what was already paid in cash', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id, 'balance' => 0]);
+
+    // Sale: 5 x 500 = 2500. Exchange to 5 x 300 = 1500, refund 1000, paid in full.
+    $exchange = createDirectCashExchange($user, $cash, $customer, 300, '1000')['exchange'];
+    $line = $exchange->products()->firstOrFail();
+
+    expect((float) $exchange->paid_amount)->toBe(1000.0);
+    expect((float) $exchange->due_amount)->toBe(0.0);
+    expect((float) $exchange->overpaid_amount)->toBe(0.0);
+
+    // Edit to a pricier replacement: 5 x 350 = 1750, refund shrinks to 750 —
+    // 250 less than the 1000 already handed to the customer.
+    $higherReplacement = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 350]);
+    Batch::factory()->for($higherReplacement)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    test()->actingAs($user)
+        ->put(route('inventory.product-exchange.update', $exchange), [
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Reduced refund after prior full cash payout',
+            'paid_amount' => '1000',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'items' => [
+                [
+                    'sell_product_id' => $line->sell_product_id,
+                    'product_id' => $higherReplacement->id,
+                    'variation_id' => null,
+                    'unit_price' => '350',
+                    'quantity' => (string) (int) $line->old_quantity,
+                    'return_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.product-exchange.index'));
+
+    $exchange->refresh();
+    $customer->refresh();
+
+    expect((float) $exchange->price_difference)->toBe(-750.0);
+    expect((float) $exchange->paid_amount)->toBe(750.0);
+    expect((float) $exchange->due_amount)->toBe(0.0);
+    expect((float) $exchange->overpaid_amount)->toBe(250.0);
+    expect((float) $customer->balance)->toBe(250.0);
+
+    $transactions = Transaction::query()
+        ->where('source_type', ProductExchange::class)
+        ->where('source_id', $exchange->id)
+        ->get();
+    $ledgers = Ledger::query()->whereIn('transaction_id', $transactions->pluck('id'))->get();
+    $totalDebit = round($ledgers->sum(fn (Ledger $line) => (float) $line->debit), 2);
+    $totalCredit = round($ledgers->sum(fn (Ledger $line) => (float) $line->credit), 2);
+
+    expect($totalDebit)->toBe($totalCredit);
+
+    $receivablesId = SystemAccountService::id(SystemAccountKey::CustomerReceivables, $exchange->branch_id);
+    $receivableDebit = round($ledgers->where('account_id', $receivablesId)->sum(fn (Ledger $line) => (float) $line->debit), 2);
+
+    expect($receivableDebit)->toBe(250.0);
+
+    // Editing again back to the original replacement (refund back up to 1000,
+    // matching what's already been paid) must fully reverse the receivable —
+    // no leftover balance, no leftover overpaid_amount.
+    $originalReplacement = Product::query()
+        ->where('id', '!=', $higherReplacement->id)
+        ->where('sale_price', 300)
+        ->firstOrFail();
+
+    test()->actingAs($user)
+        ->put(route('inventory.product-exchange.update', $exchange), [
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Reverted to original replacement',
+            'paid_amount' => '1000',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'items' => [
+                [
+                    'sell_product_id' => $line->sell_product_id,
+                    'product_id' => $originalReplacement->id,
+                    'variation_id' => null,
+                    'unit_price' => '300',
+                    'quantity' => (string) (int) $line->old_quantity,
+                    'return_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.product-exchange.index'));
+
+    $exchange->refresh();
+    $customer->refresh();
+
+    expect((float) $exchange->price_difference)->toBe(-1000.0);
+    expect((float) $exchange->paid_amount)->toBe(1000.0);
+    expect((float) $exchange->overpaid_amount)->toBe(0.0);
+    expect((float) $customer->balance)->toBe(0.0);
+});
+
+/**
+ * Collecting a receivable credits (decreases) the Customer Receivables account, which
+ * TransactionService guards with an insufficient-balance check. Give it headroom so the
+ * guard reflects this test's own postings rather than whatever the shared DB carries.
+ */
+function seedCustomerReceivableBalance(User $user, float $amount = 100000): void
+{
+    $receivables = SystemAccountService::resolve(SystemAccountKey::CustomerReceivables, $user->branch_id);
+
+    app(InventoryAccountingService::class)->postAccountOpeningBalance(
+        $receivables,
+        $amount,
+        now()->format('Y-m-d'),
+    );
+}
+
+/**
+ * Overpay an exchange by 250: refund 1000 paid in cash, then edit the replacement
+ * up so only 750 was actually owed. The customer owes the 250 back.
+ *
+ * @return array{exchange: ProductExchange, customer: Customer}
+ */
+function createOverpaidExchange(User $user, ChartOfAccount $cash, Customer $customer): array
+{
+    $exchange = createDirectCashExchange($user, $cash, $customer, 300, '1000')['exchange'];
+    $line = $exchange->products()->firstOrFail();
+
+    $higherReplacement = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 350]);
+    Batch::factory()->for($higherReplacement)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    test()->actingAs($user)
+        ->put(route('inventory.product-exchange.update', $exchange), [
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Refund shrank below what was already paid out',
+            'paid_amount' => '1000',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'items' => [
+                [
+                    'sell_product_id' => $line->sell_product_id,
+                    'product_id' => $higherReplacement->id,
+                    'variation_id' => null,
+                    'unit_price' => '350',
+                    'quantity' => (string) (int) $line->old_quantity,
+                    'return_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    return ['exchange' => $exchange->refresh(), 'customer' => $customer->refresh()];
+}
+
+test('due collection lists an exchange overpayment alongside due sale invoices', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser([
+        'inventory.product-exchange.create',
+        'inventory.product-exchange.update',
+        'inventory.sell.create',
+        'party.customer-due-collection.view',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id, 'balance' => 0]);
+
+    $exchange = createOverpaidExchange($user, $cash, $customer)['exchange'];
+
+    expect((float) $exchange->overpaid_amount)->toBe(250.0);
+
+    $response = $this->actingAs($user)
+        ->getJson(route('api.customers.due-sales', $customer))
+        ->assertOk();
+
+    $exchangeRow = collect($response->json('sales'))
+        ->firstWhere('key', 'exchange:'.$exchange->id);
+
+    expect($exchangeRow)->not->toBeNull();
+    expect($exchangeRow['type'])->toBe('exchange');
+    expect($exchangeRow['id'])->toBe($exchange->id);
+    expect((float) $exchangeRow['due_amount'])->toBe(250.0);
+    expect($exchangeRow['invoice_number'])->toBe($exchange->invoice_number);
+});
+
+test('collecting an exchange overpayment clears the customer balance and posts cash against the receivable', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser([
+        'inventory.product-exchange.create',
+        'inventory.product-exchange.update',
+        'inventory.sell.create',
+        'party.customer-due-collection.view',
+        'party.customer-due-collection.create',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    seedCustomerReceivableBalance($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id, 'balance' => 0]);
+
+    $exchange = createOverpaidExchange($user, $cash, $customer)['exchange'];
+    $customer->refresh();
+
+    expect((float) $customer->balance)->toBe(250.0);
+
+    $this->actingAs($user)
+        ->post(route('party.customer-due-collection.store'), [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'payment_account_id' => $cash->id,
+            'comment' => 'Customer paid back the overpaid refund',
+            'allocations' => [
+                ['product_exchange_id' => $exchange->id, 'amount' => '250'],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertSessionMissing('warning');
+
+    $exchange->refresh();
+    $customer->refresh();
+
+    expect((float) $exchange->overpaid_collected_amount)->toBe(250.0);
+    expect($exchange->overpaidDueAmount())->toBe(0.0);
+    expect((float) $customer->balance)->toBe(0.0);
+
+    // Settled — it should drop off the collectible list.
+    $remaining = collect(
+        $this->actingAs($user)
+            ->getJson(route('api.customers.due-sales', $customer))
+            ->json('sales'),
+    )->firstWhere('key', 'exchange:'.$exchange->id);
+
+    expect($remaining)->toBeNull();
+
+    $payment = CustomerPayment::query()->latest('id')->firstOrFail();
+    $ledgers = Ledger::query()
+        ->whereIn(
+            'transaction_id',
+            Transaction::query()
+                ->where('source_type', CustomerPayment::class)
+                ->where('source_id', $payment->id)
+                ->pluck('id'),
+        )
+        ->get();
+
+    $receivablesId = SystemAccountService::id(SystemAccountKey::CustomerReceivables, $exchange->branch_id);
+
+    expect(round($ledgers->where('account_id', $cash->id)->sum(fn (Ledger $l) => (float) $l->debit), 2))->toBe(250.0);
+    expect(round($ledgers->where('account_id', $receivablesId)->sum(fn (Ledger $l) => (float) $l->credit), 2))->toBe(250.0);
+});
+
+test('deleting an exchange overpayment collection restores the customer balance and the collectible row', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser([
+        'inventory.product-exchange.create',
+        'inventory.product-exchange.update',
+        'inventory.sell.create',
+        'party.customer-due-collection.view',
+        'party.customer-due-collection.create',
+        'party.customer-due-collection.delete',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    seedCustomerReceivableBalance($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id, 'balance' => 0]);
+
+    $exchange = createOverpaidExchange($user, $cash, $customer)['exchange'];
+
+    $this->actingAs($user)
+        ->post(route('party.customer-due-collection.store'), [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'allocations' => [
+                ['product_exchange_id' => $exchange->id, 'amount' => '250'],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $payment = CustomerPayment::query()->latest('id')->firstOrFail();
+
+    $this->actingAs($user)
+        ->delete(route('party.customer-due-collection.destroy', $payment))
+        ->assertSessionDoesntHaveErrors();
+
+    $exchange->refresh();
+    $customer->refresh();
+
+    expect((float) $exchange->overpaid_collected_amount)->toBe(0.0);
+    expect($exchange->overpaidDueAmount())->toBe(250.0);
+    expect((float) $customer->balance)->toBe(250.0);
+});
+
+test('an exchange overpayment collection cannot exceed the overpaid amount', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser([
+        'inventory.product-exchange.create',
+        'inventory.product-exchange.update',
+        'inventory.sell.create',
+        'party.customer-due-collection.view',
+        'party.customer-due-collection.create',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    seedCustomerReceivableBalance($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id, 'balance' => 0]);
+
+    $exchange = createOverpaidExchange($user, $cash, $customer)['exchange'];
+
+    $this->actingAs($user)
+        ->post(route('party.customer-due-collection.store'), [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'allocations' => [
+                ['product_exchange_id' => $exchange->id, 'amount' => '400'],
+            ],
+        ])
+        ->assertSessionHasErrors('allocations.0.amount');
+
+    $exchange->refresh();
+
+    expect((float) $exchange->overpaid_collected_amount)->toBe(0.0);
 });

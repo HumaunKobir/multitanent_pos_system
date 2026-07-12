@@ -20,7 +20,7 @@ import {
     PaymentAllocationTable,
     allocationAmountsFromApiDocuments,
     allocationTotal,
-    buildAllocations,
+    buildCustomerAllocations,
 } from '@/components/party/payment-allocation-table';
 
 function CollectionSummary({ payment }) {
@@ -91,7 +91,10 @@ function CollectionForm({ form, customers, paymentAccounts = [], payment = null,
 
         setAmountsById(
             Object.fromEntries(
-                payment.allocations.map((allocation) => [allocation.sell_id, String(allocation.amount)]),
+                payment.allocations.map((allocation) => [
+                    allocation.key ?? allocation.sell_id,
+                    String(allocation.amount),
+                ]),
             ),
         );
     }, [payment?.id, isEditing, payment?.allocations]);
@@ -138,19 +141,19 @@ function CollectionForm({ form, customers, paymentAccounts = [], payment = null,
         };
     }, [form.data.customer_id, payment?.id, isEditing]);
 
-    function handleAmountChange(sellId, value) {
-        setAmountsById((prev) => ({ ...prev, [sellId]: value }));
+    function handleAmountChange(rowKey, value) {
+        setAmountsById((prev) => ({ ...prev, [rowKey]: value }));
     }
 
-    function handlePayFull(sellId, dueAmount) {
-        setAmountsById((prev) => ({ ...prev, [sellId]: String(dueAmount) }));
+    function handlePayFull(rowKey, dueAmount) {
+        setAmountsById((prev) => ({ ...prev, [rowKey]: String(dueAmount) }));
     }
 
     function handleSubmit(e) {
         e.preventDefault();
         form.transform((data) => ({
             ...data,
-            allocations: buildAllocations('sell_id', dueSales, amountsById),
+            allocations: buildCustomerAllocations(dueSales, amountsById),
         }));
         const options = {
             preserveState: true,
@@ -221,7 +224,6 @@ function CollectionForm({ form, customers, paymentAccounts = [], payment = null,
             <FormField label="Allocate to Invoices" required error={form.errors.allocations}>
                 <PaymentAllocationTable
                     documents={dueSales}
-                    idField="sell_id"
                     amountsById={amountsById}
                     onAmountChange={handleAmountChange}
                     onPayFull={handlePayFull}

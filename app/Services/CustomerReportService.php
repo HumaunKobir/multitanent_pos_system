@@ -43,7 +43,8 @@ class CustomerReportService
             ->orderBy('id')
             ->get();
 
-        $dueSales = $this->allocations->dueSalesForCustomer($customer);
+        // Includes exchange overpayments, which also sit in customer.balance.
+        $dueSales = $this->allocations->dueDocumentsForCustomer($customer);
 
         $salesNet = round($sales->sum(fn (Sell $sell) => $sell->net_amount), 2);
         $salesPaid = round($sales->sum(fn (Sell $sell) => (float) $sell->paid_amount), 2);

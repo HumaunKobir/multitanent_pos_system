@@ -727,6 +727,35 @@ class InventoryAccountingService
     }
 
     /**
+     * When an edit shrinks a refund below what was already paid out in cash on a
+     * prior save, the excess doesn't vanish — it becomes a customer receivable.
+     * Posted as its own balanced journal (rather than an extra line on the main
+     * exchange journal) so it stays self-consistent and is swept up by
+     * reverseFor() on the next edit or delete like any other exchange posting.
+     */
+    public function postExchangeOverpaymentReceivable(ProductExchange $exchange, int $paymentAccountId, float $amount): Transaction
+    {
+        $amount = round($amount, 2);
+        $exchange->loadMissing('customer:id,name');
+        $invoice = $exchange->invoice_number;
+        $customerName = $exchange->customer?->name ?? 'Customer';
+
+        $lines = [
+            $this->debitLine(SystemAccountKey::CustomerReceivables, $amount, "Receivable — Exchange overpayment {$invoice}, {$customerName}"),
+            $this->creditPaymentAccount($paymentAccountId, $amount, "Overpaid refund recovered — Exchange {$invoice}"),
+        ];
+
+        return $this->postJournal(
+            ProductExchange::class,
+            $exchange->id,
+            $exchange->date->format('Y-m-d'),
+            "Product Exchange overpayment {$invoice}",
+            $lines,
+            false,
+        );
+    }
+
+    /**
      * @return array{
      *   old_base: float,
      *   old_vat: float,

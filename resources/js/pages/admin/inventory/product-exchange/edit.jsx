@@ -159,12 +159,16 @@ export default function ProductExchangeEdit({
         : (summary?.signedSettlement ?? priceDifference) < -0.009;
     const isParty = paymentMode === 'party';
 
-    // The amount already disbursed/collected for this exchange before this edit
-    // session started. Only offset against it while the settlement direction
-    // (refund vs. customer-pays) hasn't flipped — a flip means the prior payment
-    // isn't part of the same money flow anymore.
-    const priorPaidAmount = parseFloat(exchange.paid_amount ?? 0) || 0;
+    // Cash already handed out for this refund = clamped paid_amount plus any
+    // unrecovered overpayment from a prior save. Without the overpaid due, a
+    // re-opened edit looks "fully paid" while the customer list still shows due.
+    const priorPaidRecorded = parseFloat(exchange.paid_amount ?? 0) || 0;
+    const storedOverpaidDue = parseFloat(exchange.overpaid_due_amount ?? 0) || 0;
     const priorIsRefund = Boolean(exchange.is_refund);
+    const priorPaidAmount =
+        priorIsRefund && isRefund
+            ? priorPaidRecorded + storedOverpaidDue
+            : priorPaidRecorded;
     const showPriorPayment = priorPaidAmount > 0.009 && priorIsRefund === isRefund;
     const fieldPaidAmount = isParty ? 0 : parseFloat(form.data.paid_amount || 0) || 0;
     // Gross cash already refunded above the (shrunk) settlement — before any

@@ -63,7 +63,10 @@ class ProductExchangeController extends Controller
                 'payment_only_edit' => $exchange->isPaymentOnlyEditable(),
                 'payment_status' => $exchange->paymentStatusLabel(),
                 'settlement_amount' => $exchange->settlementAmount(),
-                'due_amount' => $exchange->dueAmount(),
+                // Include unrecovered overpaid refund so the Due column matches
+                // customer balance / due-collection, not just settlement remainder.
+                'due_amount' => round($exchange->dueAmount() + $exchange->overpaidDueAmount(), 2),
+                'overpaid_due_amount' => $exchange->overpaidDueAmount(),
                 'is_refund' => (float) $exchange->price_difference < 0,
             ]);
 
@@ -346,6 +349,9 @@ class ProductExchangeController extends Controller
                 'comment' => $productExchange->comment,
                 'paid_amount' => (string) $productExchange->paid_amount,
                 'due_amount' => (string) $productExchange->due_amount,
+                'overpaid_amount' => (float) $productExchange->overpaid_amount,
+                'overpaid_collected_amount' => (float) $productExchange->overpaid_collected_amount,
+                'overpaid_due_amount' => $productExchange->overpaidDueAmount(),
                 'payment_type' => $productExchange->payment_type?->value,
                 'payment_account_id' => $productExchange->payment_account_id,
                 'is_editable' => $productExchange->isEditable(),
@@ -1134,6 +1140,9 @@ class ProductExchangeController extends Controller
             'is_refund' => $signedSettlement < 0,
             'paid' => (float) $exchange->paid_amount,
             'due' => (float) $exchange->due_amount,
+            'overpaid' => (float) $exchange->overpaid_amount,
+            'overpaid_collected' => (float) $exchange->overpaid_collected_amount,
+            'overpaid_due' => $exchange->overpaidDueAmount(),
             'payment_status' => $exchange->paymentStatusLabel(),
         ];
     }

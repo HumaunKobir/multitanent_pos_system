@@ -19,6 +19,7 @@ const PAYMENT_STATUS_LABELS = {
     unpaid: 'Unpaid',
     partially_paid: 'Partially Paid',
     fully_paid: 'Fully Paid',
+    customer_due: 'Customer Due',
     settled: 'Settled',
 };
 
@@ -79,22 +80,40 @@ export default function ProductExchangeIndex({ exchanges = { data: [] }, filters
         {
             id: 'due',
             header: 'Due',
-            render: (row) => (
-                <span
-                    className={
-                        parseFloat(row.due_amount ?? 0) > 0
-                            ? 'font-semibold text-destructive'
-                            : 'font-semibold text-green-700 dark:text-green-400'
-                    }
-                >
-                    ৳{parseFloat(row.due_amount ?? 0).toFixed(2)}
-                </span>
-            ),
+            render: (row) => {
+                const due = parseFloat(row.due_amount ?? 0);
+                const isCustomerDue = row.payment_status === 'customer_due'
+                    || parseFloat(row.overpaid_due_amount ?? 0) > 0.009;
+
+                return (
+                    <span
+                        className={
+                            due > 0.009
+                                ? isCustomerDue
+                                    ? 'font-semibold text-amber-700 dark:text-amber-400'
+                                    : 'font-semibold text-destructive'
+                                : 'font-semibold text-green-700 dark:text-green-400'
+                        }
+                    >
+                        ৳{due.toFixed(2)}
+                    </span>
+                );
+            },
         },
         {
             id: 'payment',
             header: 'Status',
-            render: (row) => PAYMENT_STATUS_LABELS[row.payment_status] ?? '—',
+            render: (row) => (
+                <span
+                    className={
+                        row.payment_status === 'customer_due'
+                            ? 'font-medium text-amber-700 dark:text-amber-400'
+                            : undefined
+                    }
+                >
+                    {PAYMENT_STATUS_LABELS[row.payment_status] ?? '—'}
+                </span>
+            ),
         },
         {
             id: 'actions',

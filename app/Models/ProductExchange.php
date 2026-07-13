@@ -144,7 +144,9 @@ class ProductExchange extends Model
 
     public function isFullyPaid(): bool
     {
-        return $this->dueAmount() <= 0 && $this->settlementAmount() > 0;
+        return $this->dueAmount() <= 0
+            && $this->settlementAmount() > 0
+            && $this->overpaidDueAmount() <= 0.009;
     }
 
     public function isEditable(): bool
@@ -164,6 +166,10 @@ class ProductExchange extends Model
 
     public function paymentStatusLabel(): string
     {
+        if ($this->overpaidDueAmount() > 0.009) {
+            return 'customer_due';
+        }
+
         if ($this->settlementAmount() <= 0) {
             return 'settled';
         }

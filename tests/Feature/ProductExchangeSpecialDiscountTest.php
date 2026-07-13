@@ -2765,6 +2765,105 @@ test('exchange edit customer payment can clear the full overpaid amount', functi
     expect($receivableDebit)->toBe(0.0);
 });
 
+test('overpaid exchange edit page exposes customer due and is not marked fully paid', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser([
+        'inventory.product-exchange.create',
+        'inventory.product-exchange.update',
+        'inventory.product-exchange.view',
+        'inventory.sell.create',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id, 'balance' => 0]);
+
+    $exchange = createOverpaidExchange($user, $cash, $customer)['exchange'];
+
+    expect($exchange->paymentStatusLabel())->toBe('customer_due');
+    expect($exchange->isFullyPaid())->toBeFalse();
+    expect($exchange->overpaidDueAmount())->toBe(250.0);
+
+    $page = test()->actingAs($user)
+        ->get(route('inventory.product-exchange.edit', $exchange))
+        ->assertOk();
+
+    $page->assertInertia(fn ($assert) => $assert
+        ->component('admin/inventory/product-exchange/edit')
+        ->where('exchange.paid_amount', '750.00')
+        ->where('exchange.overpaid_due_amount', 250)
+        ->where('exchange.payment_status', 'customer_due')
+    );
+
+    test()->actingAs($user)
+        ->get(route('inventory.product-exchange.show', $exchange))
+        ->assertOk()
+        ->assertInertia(fn ($assert) => $assert
+            ->component('admin/inventory/product-exchange/show')
+            ->where('totals.overpaid_due', 250)
+            ->where('totals.payment_status', 'customer_due')
+        );
+
+    test()->actingAs($user)
+        ->get(route('inventory.product-exchange.index'))
+        ->assertOk()
+        ->assertInertia(fn ($assert) => $assert
+            ->component('admin/inventory/product-exchange/index')
+            ->has('exchanges.data', fn ($assert) => $assert
+                ->where('0.id', $exchange->id)
+                ->where('0.payment_status', 'customer_due')
+                ->where('0.due_amount', 250)
+                ->where('0.overpaid_due_amount', 250)
+                ->etc()
+            )
+        );
+});
+
+test('re-editing an overpaid exchange without payment keeps the customer due', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id, 'balance' => 0]);
+
+    $created = createOverpaidExchange($user, $cash, $customer);
+    $exchange = $created['exchange'];
+    $line = $exchange->products()->firstOrFail();
+
+    test()->actingAs($user)
+        ->put(route('inventory.product-exchange.update', $exchange), [
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Re-save without collecting customer repayment',
+            // prior paid (750) + remaining overpaid due (250) = cash already out
+            'paid_amount' => '1000',
+            'customer_payment_amount' => '0',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'items' => [
+                [
+                    'sell_product_id' => $line->sell_product_id,
+                    'product_id' => $line->new_product_id,
+                    'variation_id' => null,
+                    'unit_price' => (string) $line->new_unit_price,
+                    'quantity' => (string) (int) $line->old_quantity,
+                    'return_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.product-exchange.index'));
+
+    $exchange->refresh();
+    $customer->refresh();
+
+    expect((float) $exchange->overpaid_amount)->toBe(250.0);
+    expect($exchange->paymentStatusLabel())->toBe('customer_due');
+    expect((float) $customer->balance)->toBe(250.0);
+});
+
 /**
  * Collecting a receivable credits (decreases) the Customer Receivables account, which
  * TransactionService guards with an insufficient-balance check. Give it headroom so the

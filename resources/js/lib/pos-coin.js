@@ -74,6 +74,56 @@ export function maxRedeemableCoins(balance, settings, netBeforeCoin) {
 }
 
 /**
+ * @param {object|null|undefined} settings
+ * @param {Date|string|number} [fromDate]
+ * @returns {Date|null}
+ */
+export function computeCoinsExpireAt(settings, fromDate = new Date()) {
+    const value = parseInt(settings?.expiry_value, 10);
+    const unit = settings?.expiry_unit;
+
+    if (!Number.isFinite(value) || value < 1 || !unit) {
+        return null;
+    }
+
+    const from = fromDate instanceof Date ? new Date(fromDate.getTime()) : new Date(fromDate);
+
+    if (Number.isNaN(from.getTime())) {
+        return null;
+    }
+
+    if (unit === 'day') {
+        from.setDate(from.getDate() + value);
+    } else if (unit === 'week') {
+        from.setDate(from.getDate() + value * 7);
+    } else if (unit === 'month') {
+        from.setMonth(from.getMonth() + value);
+    } else if (unit === 'year') {
+        from.setFullYear(from.getFullYear() + value);
+    } else {
+        return null;
+    }
+
+    return from;
+}
+
+/**
+ * @param {Date|null|undefined} date
+ * @returns {string}
+ */
+export function formatCoinsExpireAt(date) {
+    if (!(date instanceof Date) || Number.isNaN(date.getTime())) {
+        return '';
+    }
+
+    return date.toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+    });
+}
+
+/**
  * @param {object} params
  * @param {number|string} params.balance
  * @param {number|string} params.coinsToRedeem
@@ -81,11 +131,13 @@ export function maxRedeemableCoins(balance, settings, netBeforeCoin) {
  * @param {number|string} params.earnBase
  * @param {object|null|undefined} params.settings
  * @param {boolean} params.isWalkIn
+ * @param {Date|string|number} [params.fromDate]
  * @returns {{
  *   coinDiscount: number,
  *   coinsEarned: number,
  *   remainingBalance: number,
- *   maxRedeemable: number
+ *   maxRedeemable: number,
+ *   expiresAt: Date|null
  * }}
  */
 export function previewCoinSale({
@@ -95,6 +147,7 @@ export function previewCoinSale({
     earnBase = 0,
     settings = null,
     isWalkIn = false,
+    fromDate = new Date(),
 } = {}) {
     if (isWalkIn || !isCoinSystemActive(settings)) {
         return {
@@ -102,6 +155,7 @@ export function previewCoinSale({
             coinsEarned: 0,
             remainingBalance: Math.max(0, parseFloat(balance) || 0),
             maxRedeemable: 0,
+            expiresAt: null,
         };
     }
 
@@ -116,5 +170,6 @@ export function previewCoinSale({
         coinsEarned,
         remainingBalance,
         maxRedeemable,
+        expiresAt: coinsEarned > 0 ? computeCoinsExpireAt(settings, fromDate) : null,
     };
 }

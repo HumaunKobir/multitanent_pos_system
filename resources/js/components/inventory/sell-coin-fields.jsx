@@ -1,6 +1,7 @@
 import {
     computeCoinDiscount,
     computeCoinsEarned,
+    formatCoinsExpireAt,
     isCoinSystemActive,
     maxRedeemableCoins,
     previewCoinSale,
@@ -31,6 +32,7 @@ export function SellCoinFields({
     error,
     inputClassName = '',
     balanceOffset = 0,
+    sellCreatedAt = null,
 }) {
     const isWalkIn =
         !customerId ||
@@ -48,6 +50,7 @@ export function SellCoinFields({
         ? resolveEffectiveCoinsRedeemed(coinsRedeemed, maxRedeemable, deferCoinClamp)
         : 0;
     const coinDiscount = showCoins ? computeCoinDiscount(redeemed, activeSettings, netBeforeCoin) : 0;
+    const earnFromDate = sellCreatedAt ? new Date(sellCreatedAt) : new Date();
     const preview = showCoins
         ? previewCoinSale({
               balance: effectiveBalance,
@@ -56,10 +59,12 @@ export function SellCoinFields({
               earnBase,
               settings: activeSettings,
               isWalkIn: false,
+              fromDate: earnFromDate,
           })
-        : { coinsEarned: 0, remainingBalance: 0 };
+        : { coinsEarned: 0, remainingBalance: 0, expiresAt: null };
 
     const displayAvailable = Math.max(0, effectiveBalance - redeemed);
+    const expiresLabel = preview.expiresAt ? formatCoinsExpireAt(preview.expiresAt) : '';
 
     const handleRedeemChange = (rawValue) => {
         if (rawValue === '') {
@@ -155,6 +160,13 @@ export function SellCoinFields({
                 <div className="flex items-center justify-between gap-2 text-[11px] lg:text-xs">
                     <span className="text-violet-800">Coins to earn</span>
                     <span className="font-medium tabular-nums text-violet-950">+{preview.coinsEarned.toFixed(2)}</span>
+                </div>
+            )}
+
+            {preview.coinsEarned > 0 && expiresLabel && (
+                <div className="flex items-center justify-between gap-2 text-[11px] lg:text-xs">
+                    <span className="text-violet-800">Expires on</span>
+                    <span className="font-medium tabular-nums text-violet-950">{expiresLabel}</span>
                 </div>
             )}
 

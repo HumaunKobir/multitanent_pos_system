@@ -345,6 +345,7 @@ class ProductExchangeController extends Controller
                 'customer_id' => $productExchange->customer_id,
                 'sale_invoice' => $parent->invoice_number,
                 'customer_name' => $productExchange->customer?->name,
+                'created_at' => $productExchange->created_at?->toIso8601String(),
                 'date' => optional($productExchange->date)->format('Y-m-d'),
                 'comment' => $productExchange->comment,
                 'paid_amount' => (string) $productExchange->paid_amount,

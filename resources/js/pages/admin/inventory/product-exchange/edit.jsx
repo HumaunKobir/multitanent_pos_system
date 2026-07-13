@@ -883,6 +883,7 @@ export default function ProductExchangeEdit({
                             customerId={exchange.customer_id}
                             walkInCustomerId={walkInCustomerId}
                             coinBalanceOffset={coinBalanceOffset}
+                            sellCreatedAt={exchange.created_at}
                         />
                     )}
 

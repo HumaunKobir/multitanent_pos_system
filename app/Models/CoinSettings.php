@@ -2,9 +2,12 @@
 
 namespace App\Models;
 
+use App\Enums\CoinExpiryUnit;
 use App\Traits\HasBranch;
+use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Carbon;
 
 class CoinSettings extends Model
 {
@@ -18,6 +21,8 @@ class CoinSettings extends Model
         'coin_value',
         'min_redeem_coins',
         'max_redeem_percent',
+        'expiry_value',
+        'expiry_unit',
     ];
 
     protected function casts(): array
@@ -29,6 +34,8 @@ class CoinSettings extends Model
             'coin_value' => 'decimal:2',
             'min_redeem_coins' => 'decimal:2',
             'max_redeem_percent' => 'decimal:2',
+            'expiry_value' => 'integer',
+            'expiry_unit' => CoinExpiryUnit::class,
         ];
     }
 
@@ -45,6 +52,22 @@ class CoinSettings extends Model
             && (float) $this->coin_value > 0;
     }
 
+    public function resolveExpiresAt(?CarbonInterface $from = null): ?Carbon
+    {
+        if ($this->expiry_value === null || $this->expiry_unit === null || $this->expiry_value < 1) {
+            return null;
+        }
+
+        $from = Carbon::parse($from ?? now());
+
+        return match ($this->expiry_unit) {
+            CoinExpiryUnit::Day => $from->copy()->addDays($this->expiry_value),
+            CoinExpiryUnit::Week => $from->copy()->addWeeks($this->expiry_value),
+            CoinExpiryUnit::Month => $from->copy()->addMonths($this->expiry_value),
+            CoinExpiryUnit::Year => $from->copy()->addYears($this->expiry_value),
+        };
+    }
+
     /**
      * @return array<string, mixed>
      */
@@ -57,6 +80,8 @@ class CoinSettings extends Model
             'coin_value' => (float) $this->coin_value,
             'min_redeem_coins' => (float) $this->min_redeem_coins,
             'max_redeem_percent' => (float) $this->max_redeem_percent,
+            'expiry_value' => $this->expiry_value,
+            'expiry_unit' => $this->expiry_unit?->value,
         ];
     }
 }

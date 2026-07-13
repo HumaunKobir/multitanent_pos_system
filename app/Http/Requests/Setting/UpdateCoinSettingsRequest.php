@@ -2,7 +2,9 @@
 
 namespace App\Http\Requests\Setting;
 
+use App\Enums\CoinExpiryUnit;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateCoinSettingsRequest extends FormRequest
 {
@@ -33,6 +35,29 @@ class UpdateCoinSettingsRequest extends FormRequest
             'coin_value' => ['required', 'numeric', 'min:0.01'],
             'min_redeem_coins' => ['required', 'numeric', 'min:0'],
             'max_redeem_percent' => ['required', 'numeric', 'min:0', 'max:100'],
+            'expiry_value' => ['nullable', 'integer', 'min:1', 'required_with:expiry_unit'],
+            'expiry_unit' => ['nullable', 'required_with:expiry_value', Rule::enum(CoinExpiryUnit::class)],
         ];
+    }
+
+    protected function prepareForValidation(): void
+    {
+        $expiryValue = $this->input('expiry_value');
+        $expiryUnit = $this->input('expiry_unit');
+
+        if ($expiryValue === '' || $expiryValue === null) {
+            $this->merge([
+                'expiry_value' => null,
+                'expiry_unit' => null,
+            ]);
+
+            return;
+        }
+
+        if ($expiryUnit === '' || $expiryUnit === null) {
+            $this->merge([
+                'expiry_unit' => null,
+            ]);
+        }
     }
 }

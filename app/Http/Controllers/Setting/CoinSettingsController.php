@@ -115,6 +115,8 @@ class CoinSettingsController extends Controller
             'coin_value' => '1',
             'min_redeem_coins' => '0',
             'max_redeem_percent' => '50',
+            'expiry_value' => '',
+            'expiry_unit' => '',
             'branch_name' => $branchName,
         ];
     }
@@ -131,6 +133,8 @@ class CoinSettingsController extends Controller
             'coin_value' => (string) (float) $settings->coin_value,
             'min_redeem_coins' => (string) (float) $settings->min_redeem_coins,
             'max_redeem_percent' => (string) (float) $settings->max_redeem_percent,
+            'expiry_value' => $settings->expiry_value !== null ? (string) $settings->expiry_value : '',
+            'expiry_unit' => $settings->expiry_unit?->value ?? '',
             'branch_name' => $branchName,
         ];
     }

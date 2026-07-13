@@ -1,8 +1,11 @@
 <?php
 
+use App\Enums\CoinExpiryUnit;
+use App\Enums\CoinTransactionType;
 use App\Models\Branch;
 use App\Models\CoinSettings;
 use App\Models\Customer;
+use App\Models\CustomerCoinLot;
 use App\Models\CustomerCoinTransaction;
 use App\Models\ProductExchange;
 use App\Models\SaleReturn;
@@ -104,6 +107,174 @@ test('resolve for sale earns coins on full net amount even when payment is parti
     $result = $this->coinService->resolveForSale($customer, $settings, 1000, 0, 1000);
 
     expect($result['coins_earned'])->toBe(10.0);
+});
+
+test('coin settings resolve expires at using configured unit', function () {
+    $settings = coinSettings([
+        'expiry_value' => 6,
+        'expiry_unit' => CoinExpiryUnit::Month,
+    ]);
+
+    $from = now()->startOfDay();
+
+    expect($settings->resolveExpiresAt($from)?->toDateString())->toBe($from->copy()->addMonths(6)->toDateString());
+    expect(
+        coinSettings([
+            'expiry_value' => 1,
+            'expiry_unit' => CoinExpiryUnit::Year,
+        ])->resolveExpiresAt($from)?->toDateString()
+    )->toBe($from->copy()->addYears(1)->toDateString());
+    expect(coinSettings(['expiry_value' => null])->resolveExpiresAt())->toBeNull();
+});
+
+test('apply to sale creates earn lot with expiry and redeem consumes fefo', function () {
+    $branch = Branch::factory()->create();
+    CoinSettings::query()->create([
+        'branch_id' => $branch->id,
+        'enabled' => true,
+        'earn_spend_amount' => 100,
+        'earn_coins' => 1,
+        'coin_value' => 1,
+        'min_redeem_coins' => 0,
+        'max_redeem_percent' => 100,
+        'expiry_value' => 1,
+        'expiry_unit' => 'week',
+    ]);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $branch->id,
+        'point' => 0,
+        'is_default' => false,
+    ]);
+    $sellA = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'customer_id' => $customer->id,
+        'created_at' => now()->subHours(3),
+    ]);
+    $sellB = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'customer_id' => $customer->id,
+    ]);
+
+    $this->coinService->applyToSale($sellA, $customer->fresh(), [
+        'coins_redeemed' => 0,
+        'coin_discount_amount' => 0,
+        'coins_earned' => 10,
+    ]);
+
+    $lotA = CustomerCoinLot::query()->where('sell_id', $sellA->id)->first();
+    expect($lotA)->not->toBeNull();
+    expect((float) $lotA->remaining_coins)->toBe(10.0);
+    expect($lotA->expires_at?->toDateTimeString())->toBe(
+        $sellA->created_at->copy()->addWeek()->toDateTimeString()
+    );
+
+    $lotA->update(['expires_at' => now()->addDay()]);
+
+    $this->coinService->applyToSale($sellB, $customer->fresh(), [
+        'coins_redeemed' => 0,
+        'coin_discount_amount' => 0,
+        'coins_earned' => 10,
+    ]);
+
+    $lotB = CustomerCoinLot::query()->where('sell_id', $sellB->id)->first();
+    $lotB->update(['expires_at' => now()->addDays(10)]);
+
+    $customer->refresh();
+    expect((float) $customer->point)->toBe(20.0);
+
+    $redeemSell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'customer_id' => $customer->id,
+    ]);
+
+    $this->coinService->applyToSale($redeemSell, $customer->fresh(), [
+        'coins_redeemed' => 6,
+        'coin_discount_amount' => 6,
+        'coins_earned' => 0,
+    ]);
+
+    $lotA->refresh();
+    $lotB->refresh();
+    $customer->refresh();
+
+    expect((float) $lotA->remaining_coins)->toBe(4.0);
+    expect((float) $lotB->remaining_coins)->toBe(10.0);
+    expect((float) $customer->point)->toBe(14.0);
+
+    $this->coinService->reverseForSell($redeemSell);
+    $lotA->refresh();
+    $customer->refresh();
+
+    expect((float) $lotA->remaining_coins)->toBe(10.0);
+    expect((float) $customer->point)->toBe(20.0);
+});
+
+test('expire lots removes remaining coins and updates customer balance', function () {
+    $branch = Branch::factory()->create();
+    $customer = Customer::factory()->create([
+        'branch_id' => $branch->id,
+        'point' => 15,
+        'is_default' => false,
+    ]);
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'customer_id' => $customer->id,
+    ]);
+
+    $earn = CustomerCoinTransaction::query()->create([
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'sell_id' => $sell->id,
+        'type' => CoinTransactionType::Earn,
+        'coins' => 10,
+        'balance_after' => 15,
+        'meta' => [],
+    ]);
+
+    $expiredLot = CustomerCoinLot::query()->create([
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'earn_transaction_id' => $earn->id,
+        'sell_id' => $sell->id,
+        'original_coins' => 10,
+        'remaining_coins' => 7,
+        'expires_at' => now()->subDay(),
+    ]);
+
+    $futureEarn = CustomerCoinTransaction::query()->create([
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'type' => CoinTransactionType::Earn,
+        'coins' => 5,
+        'balance_after' => 15,
+        'meta' => [],
+    ]);
+
+    CustomerCoinLot::query()->create([
+        'customer_id' => $customer->id,
+        'branch_id' => $branch->id,
+        'earn_transaction_id' => $futureEarn->id,
+        'original_coins' => 5,
+        'remaining_coins' => 5,
+        'expires_at' => now()->addWeek(),
+    ]);
+
+    $result = $this->coinService->expireLotsForCustomer($customer->id);
+
+    $expiredLot->refresh();
+    $customer->refresh();
+
+    expect($result['lots'])->toBe(1);
+    expect($result['coins'])->toBe(7.0);
+    expect((float) $expiredLot->remaining_coins)->toBe(0.0);
+    expect((float) $customer->point)->toBe(8.0);
+    expect(
+        CustomerCoinTransaction::query()
+            ->where('customer_id', $customer->id)
+            ->where('type', CoinTransactionType::Expire)
+            ->exists()
+    )->toBeTrue();
 });
 
 test('resolve for sale accepts coin balance offset when editing an existing sale', function () {

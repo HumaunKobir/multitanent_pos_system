@@ -500,6 +500,7 @@ export function ProductExchangeDiscountsCard({
     customerId = null,
     walkInCustomerId = null,
     coinBalanceOffset = 0,
+    sellCreatedAt = null,
 }) {
     if (!summary) {
         return null;
@@ -599,6 +600,7 @@ export function ProductExchangeDiscountsCard({
                     earnBase={summary.netNewAmount}
                     balanceOffset={coinBalanceOffset}
                     inputClassName={inputCls}
+                    sellCreatedAt={sellCreatedAt}
                 />
 
                 <div className="grid grid-cols-[1fr_auto] items-center gap-2 border-t border-border pt-3">

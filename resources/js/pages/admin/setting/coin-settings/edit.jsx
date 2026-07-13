@@ -19,6 +19,8 @@ export default function CoinSettingsEdit({ coinSettings, isCreating = false }) {
         coin_value: coinSettings.coin_value ?? '1',
         min_redeem_coins: coinSettings.min_redeem_coins ?? '0',
         max_redeem_percent: coinSettings.max_redeem_percent ?? '50',
+        expiry_value: coinSettings.expiry_value ?? '',
+        expiry_unit: coinSettings.expiry_unit ?? '',
     });
 
     useEffect(() => {
@@ -48,6 +50,11 @@ export default function CoinSettingsEdit({ coinSettings, isCreating = false }) {
             ? `৳${data.earn_spend_amount} spend = ${data.earn_coins} coin(s)`
             : '—';
     const previewValue = `1 coin = ৳${parseFloat(data.coin_value || 0).toFixed(2)}`;
+    const expiryValueNum = parseInt(data.expiry_value, 10);
+    const previewExpiry =
+        Number.isFinite(expiryValueNum) && expiryValueNum >= 1 && data.expiry_unit
+            ? `Coins expire after ${expiryValueNum} ${data.expiry_unit}${expiryValueNum === 1 ? '' : 's'}`
+            : 'Coins never expire';
 
     return (
         <>
@@ -179,6 +186,56 @@ export default function CoinSettingsEdit({ coinSettings, isCreating = false }) {
                                 {errors.max_redeem_percent && <p className="mt-1 text-sm text-destructive">{errors.max_redeem_percent}</p>}
                             </div>
                             <p className="text-xs text-muted-foreground sm:col-span-2">Preview: {previewValue}</p>
+                        </div>
+                    </section>
+
+                    <section className="overflow-hidden rounded-lg border bg-card">
+                        <div className="border-b bg-muted/30 px-5 py-3">
+                            <h2 className="text-sm font-semibold text-foreground">Expiry</h2>
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                                How long newly earned coins remain valid. Leave empty for coins that never expire.
+                            </p>
+                        </div>
+                        <div className="grid gap-4 px-5 py-4 sm:grid-cols-2">
+                            <div>
+                                <Label htmlFor="expiry_value">Expiry duration</Label>
+                                <Input
+                                    id="expiry_value"
+                                    type="number"
+                                    min="1"
+                                    step="1"
+                                    value={data.expiry_value}
+                                    onChange={(e) => {
+                                        const value = e.target.value;
+                                        setData((current) => ({
+                                            ...current,
+                                            expiry_value: value,
+                                            expiry_unit: value === '' ? '' : current.expiry_unit || 'month',
+                                        }));
+                                    }}
+                                    className="mt-1"
+                                    placeholder="e.g. 6"
+                                />
+                                {errors.expiry_value && <p className="mt-1 text-sm text-destructive">{errors.expiry_value}</p>}
+                            </div>
+                            <div>
+                                <Label htmlFor="expiry_unit">Unit</Label>
+                                <select
+                                    id="expiry_unit"
+                                    value={data.expiry_unit}
+                                    onChange={(e) => setData('expiry_unit', e.target.value)}
+                                    disabled={data.expiry_value === '' || data.expiry_value === null}
+                                    className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                    <option value="">Select unit</option>
+                                    <option value="day">Day(s)</option>
+                                    <option value="week">Week(s)</option>
+                                    <option value="month">Month(s)</option>
+                                    <option value="year">Year(s)</option>
+                                </select>
+                                {errors.expiry_unit && <p className="mt-1 text-sm text-destructive">{errors.expiry_unit}</p>}
+                            </div>
+                            <p className="text-xs text-muted-foreground sm:col-span-2">Preview: {previewExpiry}</p>
                         </div>
                     </section>
                 </form>

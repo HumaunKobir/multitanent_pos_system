@@ -87,6 +87,82 @@ test('authorized branch user can store coin settings', function () {
     expect((float) $settings->earn_spend_amount)->toBe(100.0);
     expect((float) $settings->earn_coins)->toBe(2.0);
     expect((float) $settings->coin_value)->toBe(1.5);
+    expect($settings->expiry_value)->toBeNull();
+    expect($settings->expiry_unit)->toBeNull();
+});
+
+test('authorized branch user can store coin settings with expiry', function () {
+    $user = coinSettingsUserWithPermissions();
+
+    $this->actingAs($user)
+        ->post('/setting/coin-settings', [
+            'enabled' => true,
+            'earn_spend_amount' => '100',
+            'earn_coins' => '2',
+            'coin_value' => '1.5',
+            'min_redeem_coins' => '5',
+            'max_redeem_percent' => '40',
+            'expiry_value' => '6',
+            'expiry_unit' => 'month',
+        ])
+        ->assertRedirect(route('setting.coin-settings.index'));
+
+    $settings = CoinSettings::query()->where('branch_id', $user->branch_id)->first();
+
+    expect($settings)->not->toBeNull();
+    expect($settings->expiry_value)->toBe(6);
+    expect($settings->expiry_unit?->value)->toBe('month');
+});
+
+test('coin settings reject expiry value without unit', function () {
+    $user = coinSettingsUserWithPermissions();
+
+    $this->actingAs($user)
+        ->post('/setting/coin-settings', [
+            'enabled' => true,
+            'earn_spend_amount' => '100',
+            'earn_coins' => '1',
+            'coin_value' => '1',
+            'min_redeem_coins' => '0',
+            'max_redeem_percent' => '50',
+            'expiry_value' => '6',
+            'expiry_unit' => '',
+        ])
+        ->assertSessionHasErrors('expiry_unit');
+});
+
+test('coin settings allow empty expiry meaning never expire', function () {
+    $user = coinSettingsUserWithPermissions();
+
+    CoinSettings::query()->create([
+        'branch_id' => $user->branch_id,
+        'enabled' => true,
+        'earn_spend_amount' => 100,
+        'earn_coins' => 1,
+        'coin_value' => 1,
+        'min_redeem_coins' => 0,
+        'max_redeem_percent' => 50,
+        'expiry_value' => 6,
+        'expiry_unit' => 'month',
+    ]);
+
+    $this->actingAs($user)
+        ->put('/setting/coin-settings', [
+            'enabled' => true,
+            'earn_spend_amount' => '100',
+            'earn_coins' => '1',
+            'coin_value' => '1',
+            'min_redeem_coins' => '0',
+            'max_redeem_percent' => '50',
+            'expiry_value' => '',
+            'expiry_unit' => '',
+        ])
+        ->assertRedirect(route('setting.coin-settings.index'));
+
+    $settings = CoinSettings::query()->where('branch_id', $user->branch_id)->first();
+
+    expect($settings->expiry_value)->toBeNull();
+    expect($settings->expiry_unit)->toBeNull();
 });
 
 test('create page redirects to edit when settings already exist', function () {

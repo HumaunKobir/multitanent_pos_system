@@ -101,6 +101,14 @@ export default function CoinSettingsIndex({ branchName, coinSettings }) {
                                 <p className="text-xs text-muted-foreground">Max bill via coins</p>
                                 <p className="mt-1 text-sm font-medium">{coinSettings.max_redeem_percent}%</p>
                             </div>
+                            <div>
+                                <p className="text-xs text-muted-foreground">Coin expiry</p>
+                                <p className="mt-1 text-sm font-medium">
+                                    {coinSettings.expiry_value && coinSettings.expiry_unit
+                                        ? `${coinSettings.expiry_value} ${coinSettings.expiry_unit}${Number(coinSettings.expiry_value) === 1 ? '' : 's'}`
+                                        : 'Never'}
+                                </p>
+                            </div>
                         </div>
                     </section>
                 ) : (

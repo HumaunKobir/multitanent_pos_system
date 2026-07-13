@@ -5,11 +5,14 @@ namespace App\Services;
 use App\Enums\CoinTransactionType;
 use App\Models\CoinSettings;
 use App\Models\Customer;
+use App\Models\CustomerCoinLot;
 use App\Models\CustomerCoinTransaction;
 use App\Models\ProductExchange;
 use App\Models\SaleReturn;
 use App\Models\Sell;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class CoinService
@@ -40,6 +43,8 @@ class CoinService
                 'coin_value' => 1.0,
                 'min_redeem_coins' => 0.0,
                 'max_redeem_percent' => 50.0,
+                'expiry_value' => null,
+                'expiry_unit' => null,
             ];
         }
 
@@ -180,9 +185,11 @@ class CoinService
 
         $customer = Customer::query()->lockForUpdate()->findOrFail($customer->id);
         $balance = (float) $customer->point;
+        $expiresAt = $this->settingsForBranch($sell->branch_id)?->resolveExpiresAt($sell->created_at);
 
         if ($coinsRedeemed > 0) {
             $balance = round($balance - $coinsRedeemed, 2);
+            $consumedLots = $this->consumeLotsFefo($customer->id, $coinsRedeemed);
 
             CustomerCoinTransaction::create([
                 'customer_id' => $customer->id,
@@ -193,6 +200,7 @@ class CoinService
                 'balance_after' => $balance,
                 'meta' => [
                     'coin_discount_amount' => (float) ($coinResult['coin_discount_amount'] ?? 0),
+                    'consumed_lots' => $consumedLots,
                 ],
             ]);
         }
@@ -200,7 +208,7 @@ class CoinService
         if ($coinsEarned > 0) {
             $balance = round($balance + $coinsEarned, 2);
 
-            CustomerCoinTransaction::create([
+            $earnTransaction = CustomerCoinTransaction::create([
                 'customer_id' => $customer->id,
                 'branch_id' => $sell->branch_id,
                 'sell_id' => $sell->id,
@@ -209,8 +217,18 @@ class CoinService
                 'balance_after' => $balance,
                 'meta' => [
                     'effective_paid' => (float) ($coinResult['effective_paid'] ?? 0),
+                    'expires_at' => $expiresAt?->toIso8601String(),
                 ],
             ]);
+
+            $this->createLotForEarn(
+                $earnTransaction,
+                $customer->id,
+                $sell->branch_id,
+                $coinsEarned,
+                $expiresAt,
+                sellId: $sell->id,
+            );
         }
 
         $customer->update(['point' => $balance]);
@@ -246,6 +264,7 @@ class CoinService
 
         if ($coinsRedeemed > 0) {
             $balance = round($balance + $coinsRedeemed, 2);
+            $restoredLots = $this->restoreLotsFefo($customer->id, $coinsRedeemed);
 
             CustomerCoinTransaction::create([
                 'customer_id' => $customer->id,
@@ -257,12 +276,14 @@ class CoinService
                 'meta' => [
                     'sale_return_id' => $saleReturn->id,
                     'source' => 'sale_return',
+                    'restored_lots' => $restoredLots,
                 ],
             ]);
         }
 
         if ($coinsEarned > 0) {
             $balance = round($balance - $coinsEarned, 2);
+            $this->reduceLotsForSell($sell->id, $coinsEarned);
 
             CustomerCoinTransaction::create([
                 'customer_id' => $customer->id,
@@ -312,6 +333,7 @@ class CoinService
         }
 
         $balance = (float) $customer->point;
+        $expiresAt = $this->settingsForBranch($sell->branch_id)?->resolveExpiresAt($sell->created_at);
 
         foreach ($transactions as $transaction) {
             $balance = round($balance - (float) $transaction->coins, 2);
@@ -326,18 +348,37 @@ class CoinService
                 continue;
             }
 
-            CustomerCoinTransaction::create([
+            $meta = [
+                'reversed_transaction_id' => $transaction->id,
+                'source' => 'sale_return_rollback',
+            ];
+
+            if ($restoreType === CoinTransactionType::Redeem) {
+                $amount = abs((float) $transaction->coins);
+                $meta['consumed_lots'] = $this->consumeLotsFefo($customer->id, $amount);
+            }
+
+            $restoredTransaction = CustomerCoinTransaction::create([
                 'customer_id' => $customer->id,
                 'branch_id' => $branchId,
                 'sell_id' => $sell->id,
                 'type' => $restoreType,
                 'coins' => -(float) $transaction->coins,
                 'balance_after' => $balance,
-                'meta' => [
-                    'reversed_transaction_id' => $transaction->id,
-                    'source' => 'sale_return_rollback',
-                ],
+                'meta' => $meta,
             ]);
+
+            if ($restoreType === CoinTransactionType::Earn) {
+                $amount = abs((float) $transaction->coins);
+                $this->createLotForEarn(
+                    $restoredTransaction,
+                    $customer->id,
+                    $branchId,
+                    $amount,
+                    $expiresAt,
+                    sellId: $sell->id,
+                );
+            }
         }
 
         $customer->update(['point' => max(0, $balance)]);
@@ -390,9 +431,11 @@ class CoinService
 
         $customer = Customer::query()->lockForUpdate()->findOrFail($customer->id);
         $balance = (float) $customer->point;
+        $expiresAt = $this->settingsForBranch($exchange->branch_id)?->resolveExpiresAt($exchange->created_at);
 
         if ($coinsRedeemed > 0) {
             $balance = round($balance - $coinsRedeemed, 2);
+            $consumedLots = $this->consumeLotsFefo($customer->id, $coinsRedeemed);
 
             CustomerCoinTransaction::create([
                 'customer_id' => $customer->id,
@@ -403,6 +446,7 @@ class CoinService
                 'balance_after' => $balance,
                 'meta' => [
                     'coin_discount_amount' => (float) ($coinResult['coin_discount_amount'] ?? 0),
+                    'consumed_lots' => $consumedLots,
                 ],
             ]);
         }
@@ -410,7 +454,7 @@ class CoinService
         if ($coinsEarned > 0) {
             $balance = round($balance + $coinsEarned, 2);
 
-            CustomerCoinTransaction::create([
+            $earnTransaction = CustomerCoinTransaction::create([
                 'customer_id' => $customer->id,
                 'branch_id' => $exchange->branch_id,
                 'product_exchange_id' => $exchange->id,
@@ -419,8 +463,18 @@ class CoinService
                 'balance_after' => $balance,
                 'meta' => [
                     'effective_paid' => (float) ($coinResult['effective_paid'] ?? 0),
+                    'expires_at' => $expiresAt?->toIso8601String(),
                 ],
             ]);
+
+            $this->createLotForEarn(
+                $earnTransaction,
+                $customer->id,
+                $exchange->branch_id,
+                $coinsEarned,
+                $expiresAt,
+                productExchangeId: $exchange->id,
+            );
         }
 
         $customer->update(['point' => $balance]);
@@ -464,6 +518,14 @@ class CoinService
                 ? CoinTransactionType::ReverseRedeem
                 : CoinTransactionType::ReverseEarn;
 
+            if ($transaction->type === CoinTransactionType::Redeem) {
+                $this->restoreLotsFromMeta($transaction->meta['consumed_lots'] ?? []);
+            }
+
+            if ($transaction->type === CoinTransactionType::Earn) {
+                $this->zeroLotForEarnTransaction($transaction->id);
+            }
+
             CustomerCoinTransaction::create([
                 'customer_id' => $customer->id,
                 'branch_id' => $transaction->branch_id,
@@ -478,6 +540,108 @@ class CoinService
         }
 
         $customer->update(['point' => max(0, $balance)]);
+    }
+
+    /**
+     * Expire lots past their expires_at and debit customer balances.
+     *
+     * @return array{customers: int, lots: int, coins: float}
+     */
+    public function expireLots(?CarbonInterface $asOf = null): array
+    {
+        $asOf ??= now();
+        $customersAffected = 0;
+        $lotsExpired = 0;
+        $coinsExpired = 0.0;
+
+        $customerIds = CustomerCoinLot::query()
+            ->where('remaining_coins', '>', 0)
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<=', $asOf)
+            ->distinct()
+            ->pluck('customer_id');
+
+        foreach ($customerIds as $customerId) {
+            $result = $this->expireLotsForCustomer((int) $customerId, $asOf);
+            $customersAffected += $result['lots'] > 0 ? 1 : 0;
+            $lotsExpired += $result['lots'];
+            $coinsExpired = round($coinsExpired + $result['coins'], 2);
+        }
+
+        return [
+            'customers' => $customersAffected,
+            'lots' => $lotsExpired,
+            'coins' => $coinsExpired,
+        ];
+    }
+
+    /**
+     * @return array{lots: int, coins: float}
+     */
+    public function expireLotsForCustomer(int $customerId, ?CarbonInterface $asOf = null): array
+    {
+        return DB::transaction(function () use ($customerId, $asOf): array {
+            $asOf ??= now();
+            $customer = Customer::query()->lockForUpdate()->find($customerId);
+
+            if ($customer === null) {
+                return ['lots' => 0, 'coins' => 0.0];
+            }
+
+            $lots = CustomerCoinLot::query()
+                ->where('customer_id', $customerId)
+                ->where('remaining_coins', '>', 0)
+                ->whereNotNull('expires_at')
+                ->where('expires_at', '<=', $asOf)
+                ->orderBy('expires_at')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            if ($lots->isEmpty()) {
+                return ['lots' => 0, 'coins' => 0.0];
+            }
+
+            $balance = (float) $customer->point;
+            $lotsExpired = 0;
+            $coinsExpired = 0.0;
+
+            foreach ($lots as $lot) {
+                $amount = round((float) $lot->remaining_coins, 2);
+
+                if ($amount <= 0) {
+                    continue;
+                }
+
+                $balance = round(max(0, $balance - $amount), 2);
+                $coinsExpired = round($coinsExpired + $amount, 2);
+                $lotsExpired++;
+
+                CustomerCoinTransaction::create([
+                    'customer_id' => $customer->id,
+                    'branch_id' => $lot->branch_id,
+                    'sell_id' => $lot->sell_id,
+                    'product_exchange_id' => $lot->product_exchange_id,
+                    'type' => CoinTransactionType::Expire,
+                    'coins' => -$amount,
+                    'balance_after' => $balance,
+                    'meta' => [
+                        'lot_id' => $lot->id,
+                        'earn_transaction_id' => $lot->earn_transaction_id,
+                        'expires_at' => $lot->expires_at?->toIso8601String(),
+                    ],
+                ]);
+
+                $lot->update(['remaining_coins' => 0]);
+            }
+
+            $customer->update(['point' => $balance]);
+
+            return [
+                'lots' => $lotsExpired,
+                'coins' => $coinsExpired,
+            ];
+        });
     }
 
     /**
@@ -555,6 +719,14 @@ class CoinService
                 ? CoinTransactionType::ReverseRedeem
                 : CoinTransactionType::ReverseEarn;
 
+            if ($transaction->type === CoinTransactionType::Redeem) {
+                $this->restoreLotsFromMeta($transaction->meta['consumed_lots'] ?? []);
+            }
+
+            if ($transaction->type === CoinTransactionType::Earn) {
+                $this->zeroLotForEarnTransaction($transaction->id);
+            }
+
             CustomerCoinTransaction::create([
                 'customer_id' => $customer->id,
                 'branch_id' => $transaction->branch_id,
@@ -590,6 +762,7 @@ class CoinService
 
         if ($coinsRedeemed > 0) {
             $balance = round($balance + $coinsRedeemed, 2);
+            $restoredLots = $this->restoreLotsFefo($customer->id, $coinsRedeemed);
 
             CustomerCoinTransaction::create([
                 'customer_id' => $customer->id,
@@ -600,12 +773,14 @@ class CoinService
                 'balance_after' => $balance,
                 'meta' => [
                     'source' => 'sell_snapshot',
+                    'restored_lots' => $restoredLots,
                 ],
             ]);
         }
 
         if ($coinsEarned > 0) {
             $balance = round($balance - $coinsEarned, 2);
+            $this->reduceLotsForSell($sell->id, $coinsEarned);
 
             CustomerCoinTransaction::create([
                 'customer_id' => $customer->id,
@@ -621,5 +796,184 @@ class CoinService
         }
 
         $customer->update(['point' => max(0, $balance)]);
+    }
+
+    private function createLotForEarn(
+        CustomerCoinTransaction $earnTransaction,
+        int $customerId,
+        int $branchId,
+        float $coins,
+        ?CarbonInterface $expiresAt,
+        ?int $sellId = null,
+        ?int $productExchangeId = null,
+    ): CustomerCoinLot {
+        return CustomerCoinLot::query()->create([
+            'customer_id' => $customerId,
+            'branch_id' => $branchId,
+            'earn_transaction_id' => $earnTransaction->id,
+            'sell_id' => $sellId,
+            'product_exchange_id' => $productExchangeId,
+            'original_coins' => $coins,
+            'remaining_coins' => $coins,
+            'expires_at' => $expiresAt,
+        ]);
+    }
+
+    /**
+     * @return list<array{lot_id: int, coins: float}>
+     */
+    private function consumeLotsFefo(int $customerId, float $amount): array
+    {
+        $amount = round(max(0, $amount), 2);
+
+        if ($amount <= 0) {
+            return [];
+        }
+
+        $lots = CustomerCoinLot::query()
+            ->where('customer_id', $customerId)
+            ->where('remaining_coins', '>', 0)
+            ->orderByRaw('expires_at is null')
+            ->orderBy('expires_at')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        $remaining = $amount;
+        $consumed = [];
+
+        foreach ($lots as $lot) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $available = round((float) $lot->remaining_coins, 2);
+            $take = round(min($available, $remaining), 2);
+
+            if ($take <= 0) {
+                continue;
+            }
+
+            $lot->update(['remaining_coins' => round($available - $take, 2)]);
+            $consumed[] = [
+                'lot_id' => $lot->id,
+                'coins' => $take,
+            ];
+            $remaining = round($remaining - $take, 2);
+        }
+
+        return $consumed;
+    }
+
+    /**
+     * @param  list<array{lot_id?: int, coins?: float|int|string}>  $consumedLots
+     */
+    private function restoreLotsFromMeta(array $consumedLots): void
+    {
+        foreach ($consumedLots as $entry) {
+            $lotId = (int) ($entry['lot_id'] ?? 0);
+            $coins = round((float) ($entry['coins'] ?? 0), 2);
+
+            if ($lotId <= 0 || $coins <= 0) {
+                continue;
+            }
+
+            $lot = CustomerCoinLot::query()->lockForUpdate()->find($lotId);
+
+            if ($lot === null) {
+                continue;
+            }
+
+            $newRemaining = round(min(
+                (float) $lot->original_coins,
+                (float) $lot->remaining_coins + $coins,
+            ), 2);
+
+            $lot->update(['remaining_coins' => $newRemaining]);
+        }
+    }
+
+    /**
+     * Restore redeemed coins into open lots (soonest-expiring first), then leftover as uncapped top-up of last lot.
+     *
+     * @return list<array{lot_id: int, coins: float}>
+     */
+    private function restoreLotsFefo(int $customerId, float $amount): array
+    {
+        $amount = round(max(0, $amount), 2);
+
+        if ($amount <= 0) {
+            return [];
+        }
+
+        $lots = CustomerCoinLot::query()
+            ->where('customer_id', $customerId)
+            ->whereColumn('remaining_coins', '<', 'original_coins')
+            ->orderByRaw('expires_at is null')
+            ->orderBy('expires_at')
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        $remaining = $amount;
+        $restored = [];
+
+        foreach ($lots as $lot) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $room = round((float) $lot->original_coins - (float) $lot->remaining_coins, 2);
+
+            if ($room <= 0) {
+                continue;
+            }
+
+            $add = round(min($room, $remaining), 2);
+            $lot->update(['remaining_coins' => round((float) $lot->remaining_coins + $add, 2)]);
+            $restored[] = [
+                'lot_id' => $lot->id,
+                'coins' => $add,
+            ];
+            $remaining = round($remaining - $add, 2);
+        }
+
+        return $restored;
+    }
+
+    private function zeroLotForEarnTransaction(int $earnTransactionId): void
+    {
+        CustomerCoinLot::query()
+            ->where('earn_transaction_id', $earnTransactionId)
+            ->update(['remaining_coins' => 0]);
+    }
+
+    private function reduceLotsForSell(int $sellId, float $amount): void
+    {
+        $amount = round(max(0, $amount), 2);
+
+        if ($amount <= 0) {
+            return;
+        }
+
+        $lots = CustomerCoinLot::query()
+            ->where('sell_id', $sellId)
+            ->where('remaining_coins', '>', 0)
+            ->orderBy('id')
+            ->lockForUpdate()
+            ->get();
+
+        $remaining = $amount;
+
+        foreach ($lots as $lot) {
+            if ($remaining <= 0) {
+                break;
+            }
+
+            $available = round((float) $lot->remaining_coins, 2);
+            $take = round(min($available, $remaining), 2);
+            $lot->update(['remaining_coins' => round($available - $take, 2)]);
+            $remaining = round($remaining - $take, 2);
+        }
     }
 }

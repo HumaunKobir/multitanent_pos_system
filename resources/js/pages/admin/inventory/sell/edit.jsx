@@ -1219,6 +1219,7 @@ export default function SellEdit({
                                         error={form.errors.coins_redeemed}
                                         inputClassName={inputCls}
                                         balanceOffset={coinBalanceOffset}
+                                        sellCreatedAt={sell.created_at}
                                     />
                                 )}
 

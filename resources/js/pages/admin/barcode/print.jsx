@@ -28,6 +28,8 @@ import {
     getMaxFittingLabelFontSize,
     getBarcodePriceGap,
     getNameBarcodeGap,
+    LABEL_CODE_PRICE_GAP_PX,
+    LABEL_HEADER_PAD_TOP_PX,
     LABEL_PADDING_BOTTOM_PX,
     LABEL_PADDING_TOP_PX,
     LIST_BARCODE_BAR_HEIGHT,
@@ -125,7 +127,9 @@ function LabelPreview({ row, settings }) {
                     style={{
                         width: '100%',
                         minWidth: 0,
+                        minHeight: 0,
                         maxWidth: '100%',
+                        maxHeight: '100%',
                         marginTop: 'auto',
                         marginBottom: 'auto',
                         display: 'flex',
@@ -144,7 +148,7 @@ function LabelPreview({ row, settings }) {
                             minWidth: 0,
                             maxWidth: '100%',
                             overflow: 'hidden',
-                            padding: `${Math.max(1, scaleLabelPreviewPx(1, scale))}px ${sideMarginPx}px 0`,
+                            padding: `${Math.max(1, scaleLabelPreviewPx(LABEL_HEADER_PAD_TOP_PX, scale))}px ${sideMarginPx}px 0`,
                         }}
                     >
                         {headerLines.map((line) => (
@@ -166,9 +170,10 @@ function LabelPreview({ row, settings }) {
                             width: `${barcodeWidthPx}px`,
                             maxWidth: '100%',
                             minWidth: 0,
+                            minHeight: 0,
                             marginLeft: 'auto',
                             marginRight: 'auto',
-                            flexShrink: 0,
+                            flex: '0 1 auto',
                             overflow: 'hidden',
                         }}
                     >
@@ -192,7 +197,14 @@ function LabelPreview({ row, settings }) {
                             padding: `0 ${sideMarginPx}px`,
                         }}
                     >
-                        <div style={{ ...lineStyle, maxWidth: '100%', overflow: 'hidden' }}>
+                        <div
+                            style={{
+                                ...lineStyle,
+                                maxWidth: '100%',
+                                overflow: 'hidden',
+                                marginBottom: `${scaleLabelPreviewPx(LABEL_CODE_PRICE_GAP_PX, scale)}px`,
+                            }}
+                        >
                             {codeLine}
                         </div>
                         <div

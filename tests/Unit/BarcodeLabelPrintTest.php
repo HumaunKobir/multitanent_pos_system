@@ -27,6 +27,8 @@ import {
     getBarcodeBarHeightPx,
     getBarcodeSideMarginIn,
     getLabelContentDimensions,
+    getLabelHeaderLineCount,
+    getLabelTextChromePx,
     getRequiredLabelHeightIn,
     getRequiredLabelWidthIn,
     formatLabelPrice,
@@ -61,6 +63,10 @@ if (getBarcodeSideMarginIn(1.5) !== 0.1) {
 
 if (getBarcodeSideMarginIn(2) !== 0.1) {
     process.exit(66);
+}
+
+if (getBarcodeSideMarginIn(2, 1.3) !== 0.35) {
+    process.exit(76);
 }
 
 if (getBarcodeBarHeightIn(1) !== 0.48) {
@@ -166,6 +172,78 @@ if (getLabelBarcodeWidthIn(smallLabelSettings) !== 1.3) {
 
 if (getLabelBarcodeHeightIn(smallLabelSettings, duplicateCodeRow) !== 0.48) {
     process.exit(47);
+}
+
+const variantCrowdedSettings = {
+    width: 1.5,
+    height: 1,
+    fontSize: 9,
+    fontWeight: 'bold',
+    copies: 1,
+    autoHeight: false,
+};
+const crowdedVariantBarHeight = getLabelBarcodeBarHeight(variantCrowdedSettings, variantRow);
+const variantChrome =
+    getLabelTextChromePx(9, getLabelHeaderLineCount(variantRow));
+
+if (crowdedVariantBarHeight + variantChrome > 1 * 96) {
+    process.exit(71);
+}
+
+if (getLabelHeaderLineCount(variantRow) < 3) {
+    process.exit(72);
+}
+
+const variantAuto = resolveLabelSettings(
+    { ...variantCrowdedSettings, autoHeight: true },
+    [variantRow],
+);
+
+if (variantAuto.height <= 1) {
+    process.exit(73);
+}
+
+const variantAutoBar = getLabelBarcodeBarHeight(variantAuto, variantRow);
+const variantAutoChrome = getLabelTextChromePx(
+    getEffectiveLabelFontSize(variantAuto, variantRow),
+    getLabelHeaderLineCount(variantRow),
+);
+
+if (variantAutoBar + variantAutoChrome > variantAuto.height * 96 + 0.5) {
+    process.exit(74);
+}
+
+if (getLabelBarcodeWidthIn(variantAuto) !== getBarcodeWidthIn(variantCrowdedSettings.width)) {
+    process.exit(77);
+}
+
+if (
+    variantAuto.width > variantCrowdedSettings.width &&
+    getLabelBarcodeWidthIn(variantAuto) >= getBarcodeWidthIn(variantAuto.width)
+) {
+    process.exit(78);
+}
+
+const largeFontSettings = {
+    width: 1.5,
+    height: 1,
+    fontSize: 16,
+    fontWeight: 'bold',
+    copies: 1,
+    autoHeight: false,
+};
+const largeFontSize = getEffectiveLabelFontSize(largeFontSettings, duplicateCodeRow);
+const largeFontBar = getLabelBarcodeBarHeight(
+    { ...largeFontSettings, fontSize: largeFontSize },
+    duplicateCodeRow,
+);
+const largeFontChrome = getLabelTextChromePx(
+    largeFontSize,
+    getLabelHeaderLineCount(duplicateCodeRow),
+);
+
+if (largeFontBar + largeFontChrome > 1 * 96) {
+    process.exit(75);
 }
 
 const widePageSettings = { width: 2.5, height: 1, fontSize: 8, fontWeight: 'normal', copies: 1, autoHeight: false };

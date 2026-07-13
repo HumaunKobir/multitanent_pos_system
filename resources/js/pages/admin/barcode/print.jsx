@@ -28,7 +28,6 @@ import {
     getMaxFittingLabelFontSize,
     getBarcodePriceGap,
     getNameBarcodeGap,
-    LABEL_PADDING_X_PX,
     LABEL_PADDING_BOTTOM_PX,
     LABEL_PADDING_TOP_PX,
     LIST_BARCODE_BAR_HEIGHT,
@@ -62,8 +61,9 @@ function LabelPreview({ row, settings }) {
         getLabelBarcodeBarHeight(settings, row),
         scale,
     );
+    const barcodeWidthIn = getLabelBarcodeWidthIn(settings);
     const barcodeWidthPx = scaleLabelPreviewPx(
-        getLabelBarcodeWidthIn(settings) * PRINT_DPI,
+        Math.min(barcodeWidthIn, settings.width) * PRINT_DPI,
         scale,
     );
     const nameBarcodeGap = scaleLabelPreviewPx(
@@ -73,7 +73,11 @@ function LabelPreview({ row, settings }) {
     const barcodePriceGap = scaleLabelPreviewPx(getBarcodePriceGap(), scale);
     const paddingTop = scaleLabelPreviewPx(LABEL_PADDING_TOP_PX, scale);
     const paddingBottom = scaleLabelPreviewPx(LABEL_PADDING_BOTTOM_PX, scale);
-    const paddingX = scaleLabelPreviewPx(LABEL_PADDING_X_PX / 2, scale);
+    const sideMarginPx = scaleLabelPreviewPx(
+        ((settings.width - Math.min(barcodeWidthIn, settings.width)) / 2) *
+            PRINT_DPI,
+        scale,
+    );
     const price = getEffectivePrice(row);
     const headerLines = getLabelHeaderLines(row);
     const codeLine = getLabelCodeLine(row);
@@ -100,7 +104,7 @@ function LabelPreview({ row, settings }) {
                 flexDirection: 'column',
                 justifyContent: 'flex-start',
                 alignItems: 'stretch',
-                padding: `${paddingTop}px ${paddingX}px ${paddingBottom}px`,
+                padding: `${paddingTop}px 0 ${paddingBottom}px`,
                 boxSizing: 'border-box',
                 overflow: 'hidden',
                 flexShrink: 0,
@@ -108,45 +112,100 @@ function LabelPreview({ row, settings }) {
         >
             <div
                 style={{
-                    flexShrink: 0,
-                    marginBottom: `${nameBarcodeGap}px`,
-                    textAlign: 'center',
                     width: '100%',
-                    paddingTop: `${Math.max(1, scaleLabelPreviewPx(1, scale))}px`,
-                }}
-            >
-                {headerLines.map((line) => (
-                    <div
-                        key={line.text}
-                        style={{
-                            ...lineStyle,
-                            fontWeight: line.bold ? 700 : fw,
-                        }}
-                    >
-                        {line.text}
-                    </div>
-                ))}
-            </div>
-            <div style={{ width: '100%', flexShrink: 0 }}>
-                <BarcodeBars
-                    code={row?.code ?? '123456789'}
-                    barHeight={barHeight}
-                    barcodeWidth={`${barcodeWidthPx}px`}
-                />
-            </div>
-            <div
-                style={{
+                    height: '100%',
+                    minWidth: 0,
+                    minHeight: 0,
                     display: 'flex',
                     flexDirection: 'column',
-                    alignItems: 'center',
-                    flexShrink: 0,
-                    marginTop: `${barcodePriceGap}px`,
-                    width: '100%',
+                    overflow: 'hidden',
                 }}
             >
-                <div style={lineStyle}>{codeLine}</div>
-                <div style={{ ...lineStyle, fontWeight: 700 }}>
-                    {formatLabelPrice(price)}
+                <div
+                    style={{
+                        width: '100%',
+                        minWidth: 0,
+                        maxWidth: '100%',
+                        marginTop: 'auto',
+                        marginBottom: 'auto',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'stretch',
+                        flexShrink: 1,
+                        overflow: 'hidden',
+                    }}
+                >
+                    <div
+                        style={{
+                            flexShrink: 0,
+                            marginBottom: `${nameBarcodeGap}px`,
+                            textAlign: 'center',
+                            width: '100%',
+                            minWidth: 0,
+                            maxWidth: '100%',
+                            overflow: 'hidden',
+                            padding: `${Math.max(1, scaleLabelPreviewPx(1, scale))}px ${sideMarginPx}px 0`,
+                        }}
+                    >
+                        {headerLines.map((line) => (
+                            <div
+                                key={line.text}
+                                style={{
+                                    ...lineStyle,
+                                    fontWeight: line.bold ? 700 : fw,
+                                    maxWidth: '100%',
+                                    overflow: 'hidden',
+                                }}
+                            >
+                                {line.text}
+                            </div>
+                        ))}
+                    </div>
+                    <div
+                        style={{
+                            width: `${barcodeWidthPx}px`,
+                            maxWidth: '100%',
+                            minWidth: 0,
+                            marginLeft: 'auto',
+                            marginRight: 'auto',
+                            flexShrink: 0,
+                            overflow: 'hidden',
+                        }}
+                    >
+                        <BarcodeBars
+                            code={row?.code ?? '123456789'}
+                            barHeight={barHeight}
+                            barcodeWidth="100%"
+                        />
+                    </div>
+                    <div
+                        style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            flexShrink: 0,
+                            marginTop: `${barcodePriceGap}px`,
+                            width: '100%',
+                            minWidth: 0,
+                            maxWidth: '100%',
+                            overflow: 'hidden',
+                            padding: `0 ${sideMarginPx}px`,
+                        }}
+                    >
+                        <div style={{ ...lineStyle, maxWidth: '100%', overflow: 'hidden' }}>
+                            {codeLine}
+                        </div>
+                        <div
+                            style={{
+                                ...lineStyle,
+                                fontWeight: 700,
+                                maxWidth: '100%',
+                                overflow: 'hidden',
+                            }}
+                        >
+                            {formatLabelPrice(price)}
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

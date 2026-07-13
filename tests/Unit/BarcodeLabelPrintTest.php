@@ -25,11 +25,13 @@ import {
     getBarcodeWidthIn,
     getBarcodeBarHeightIn,
     getBarcodeBarHeightPx,
+    getBarcodeSideMarginIn,
     getLabelContentDimensions,
     getRequiredLabelHeightIn,
     getRequiredLabelWidthIn,
     formatLabelPrice,
     finalizeBarcodeSvg,
+    fitBarcodeSvgToWrapper,
     resolveLabelSettings,
 } from './resources/js/lib/barcode-label.js';
 
@@ -51,6 +53,14 @@ if (getBarcodeWidthIn(1.6) !== 1.4) {
 
 if (getBarcodeWidthIn(2) !== 1.8) {
     process.exit(42);
+}
+
+if (getBarcodeSideMarginIn(1.5) !== 0.1) {
+    process.exit(65);
+}
+
+if (getBarcodeSideMarginIn(2) !== 0.1) {
+    process.exit(66);
 }
 
 if (getBarcodeBarHeightIn(1) !== 0.48) {
@@ -187,6 +197,30 @@ if (! wideHtml.includes('.label-content')) {
     process.exit(29);
 }
 
+if (! wideHtml.includes('.label-stack')) {
+    process.exit(56);
+}
+
+if (! wideHtml.includes('margin-top: auto') || ! wideHtml.includes('margin-bottom: auto')) {
+    process.exit(57);
+}
+
+if (! wideHtml.includes('min-width: 0')) {
+    process.exit(58);
+}
+
+if (! wideHtml.includes('fitBarcodeSvgToWrapper')) {
+    process.exit(59);
+}
+
+if (! wideHtml.includes('getBoundingClientRect')) {
+    process.exit(63);
+}
+
+if (wideHtml.includes('landscape') || wideHtml.includes('portrait')) {
+    process.exit(67);
+}
+
 if (! wideHtml.includes('width: 2.5in')) {
     process.exit(30);
 }
@@ -315,14 +349,61 @@ if (! autoHtml.includes('font-size:15px')) {
 
 const svg = {
     style: {},
-    setAttribute() {},
+    attrs: {},
+    setAttribute(name, value) {
+        this.attrs[name] = value;
+    },
 };
-finalizeBarcodeSvg(svg, { width: '100%', height: 46 });
-if (svg.style.width !== '100%' || svg.style.height !== '46px') {
+finalizeBarcodeSvg(svg, { width: 125, height: 46 });
+if (svg.style.width !== '125px' || svg.style.height !== '46px') {
     process.exit(36);
 }
 if (svg.style.display !== 'block') {
     process.exit(37);
+}
+if (svg.attrs.width !== '125px' || svg.attrs.height !== '46px') {
+    process.exit(60);
+}
+if (svg.attrs.preserveAspectRatio !== 'none') {
+    process.exit(61);
+}
+if (svg.style.minWidth !== '0') {
+    process.exit(62);
+}
+
+const wrap = {
+    clientWidth: 130,
+    getBoundingClientRect() {
+        return { width: 130 };
+    },
+};
+const fitted = {
+    style: {},
+    attrs: {},
+    setAttribute(name, value) {
+        this.attrs[name] = value;
+    },
+};
+fitBarcodeSvgToWrapper(fitted, wrap, 46);
+if (fitted.attrs.width !== '130px' || fitted.attrs.height !== '46px') {
+    process.exit(64);
+}
+
+const tallPageHtml = buildPrintHtml(
+    [duplicateCodeRow],
+    { width: 1, height: 1.5, fontSize: 8, fontWeight: 'normal', copies: 1, autoHeight: false },
+);
+
+if (! tallPageHtml.includes('@page { size: 1in 1.5in; margin: 0; }')) {
+    process.exit(68);
+}
+
+if (tallPageHtml.includes('landscape') || tallPageHtml.includes('portrait')) {
+    process.exit(69);
+}
+
+if (! tallPageHtml.includes('overflow: hidden')) {
+    process.exit(70);
 }
 
 console.log('ok');

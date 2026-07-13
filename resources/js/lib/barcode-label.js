@@ -51,15 +51,18 @@ export const JSBARCODE_CDN =
 
 /**
  * Printed barcode width in inches for a given label page width.
- * Formula: pageWidth − 0.20
+ * Formula: pageWidth − 0.20, clipped so it never exceeds the page.
  */
 export function getBarcodeWidthIn(pageWidthIn = 1.5) {
     const width = Math.max(
         MIN_LABEL_WIDTH_IN,
         Math.min(pageWidthIn ?? 1.5, MAX_LABEL_WIDTH_IN),
     );
+    const withMargin = width - BARCODE_HORIZONTAL_MARGIN_IN;
 
-    return Number(Math.max(0.1, width - BARCODE_HORIZONTAL_MARGIN_IN).toFixed(2));
+    // If the page is too narrow for the preferred side margins, use full width
+    // and let the wrapper overflow:hidden clip — never shift to one side.
+    return Number(Math.max(0.1, Math.min(width, withMargin)).toFixed(2));
 }
 
 /**
@@ -787,27 +790,69 @@ export function escapeHtmlAttr(text) {
 }
 
 /**
+ * Equal left/right inset for the barcode on the label page.
+ * Formula: (pageWidth − barcodeWidth) / 2 (= 0.10" at the default margin).
+ */
+export function getBarcodeSideMarginIn(pageWidthIn = 1.5) {
+    const width = clampLabelWidth(pageWidthIn);
+    const barcodeWidth = getBarcodeWidthIn(width);
+
+    return Number(Math.max(0, (width - barcodeWidth) / 2).toFixed(3));
+}
+
+/**
  * Apply CSS-controlled printed size. Library `width` is bar thickness only;
  * wrapper/SVG CSS width & height control the physical label size.
+ *
+ * Prefer absolute pixel width/height attributes. Percentage SVG widths often
+ * resolve against the viewport in print and shift/clip the barcode.
  */
 export function finalizeBarcodeSvg(svgEl, { width = '100%', height = null } = {}) {
     if (!svgEl) {
         return;
     }
 
-    svgEl.style.width = typeof width === 'number' ? `${width}px` : width;
-    svgEl.style.maxWidth = '100%';
-    svgEl.style.height =
+    const widthValue =
+        typeof width === 'number'
+            ? `${Math.max(1, Math.round(width))}px`
+            : width;
+    const heightValue =
         height == null
-            ? 'auto'
+            ? null
             : typeof height === 'number'
-              ? `${height}px`
+              ? `${Math.max(1, Math.round(height))}px`
               : height;
+
+    svgEl.setAttribute('width', widthValue);
+    if (heightValue != null) {
+        svgEl.setAttribute('height', heightValue);
+    }
+
+    svgEl.style.width = widthValue;
+    svgEl.style.maxWidth = '100%';
+    svgEl.style.minWidth = '0';
+    svgEl.style.height = heightValue == null ? 'auto' : heightValue;
     svgEl.style.display = 'block';
     svgEl.style.flexShrink = '0';
-    svgEl.style.margin = '0 auto';
+    svgEl.style.margin = '0';
     svgEl.setAttribute('preserveAspectRatio', 'none');
     svgEl.setAttribute('shape-rendering', 'crispEdges');
+}
+
+/**
+ * Measure the barcode wrapper and force the SVG to that exact pixel box.
+ * Keeps left/right margins equal; overflow clips when the barcode is too wide.
+ */
+export function fitBarcodeSvgToWrapper(svgEl, wrapEl, barHeightPx) {
+    if (!svgEl || !wrapEl) {
+        return;
+    }
+
+    const rect = wrapEl.getBoundingClientRect();
+    const widthPx = Math.max(1, Math.round(rect.width || wrapEl.clientWidth || 0));
+    const heightPx = Math.max(10, Math.round(barHeightPx));
+
+    finalizeBarcodeSvg(svgEl, { width: widthPx, height: heightPx });
 }
 
 /** Shared next-barcode / JsBarcode options for Code 128 labels. */
@@ -839,7 +884,6 @@ export function buildPrintHtml(rows, settings) {
             const price = getEffectivePrice(row) ?? 0;
             const effectiveFontSize = getEffectiveLabelFontSize(resolved, row);
             const barHeightPx = getLabelBarcodeBarHeight(resolved, row);
-            const barcodeHeightIn = getLabelBarcodeHeightIn(resolved, row);
             const headerHtml = buildLabelHeaderHtml(
                 row,
                 effectiveFontSize,
@@ -851,11 +895,11 @@ export function buildPrintHtml(rows, settings) {
 
             return `
       <div class="label">
-        <div class="label-inner">
-          <div class="label-content">
+        <div class="label-content">
+          <div class="label-stack">
             <div class="label-header" style="margin-bottom:${rowNameBarcodeGap}px;">${headerHtml}</div>
-            <div class="bars-wrap" style="width:${barcodeWidthIn}in;">
-              <svg class="bars" data-code="${escapeHtmlAttr(row.code)}" data-bar-height="${barHeightPx}" style="height:${barcodeHeightIn}in;"></svg>
+            <div class="bars-wrap">
+              <svg class="bars" data-code="${escapeHtmlAttr(row.code)}" data-bar-height="${barHeightPx}"></svg>
             </div>
             <div class="footer">
               <div class="label-line label-code" style="font-size:${effectiveFontSize}px;line-height:${lineHeight}px;">${escapeHtml(codeLine)}</div>
@@ -867,6 +911,13 @@ export function buildPrintHtml(rows, settings) {
         })
         .join('');
 
+    // Equal left/right inset from the page edge (not from padded content).
+    const sideMarginIn = getBarcodeSideMarginIn(width);
+    // Clip barcode to the page when requested width exceeds available space.
+    const printedBarcodeWidthIn = Number(
+        Math.min(barcodeWidthIn, width).toFixed(2),
+    );
+
     return `<!DOCTYPE html>
 <html>
 <head>
@@ -875,46 +926,62 @@ export function buildPrintHtml(rows, settings) {
   <script src="${JSBARCODE_CDN}" data-jsbarcode></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    /* Exact width×height — do not add orientation keywords (they rotate content). */
     @page { size: ${width}in ${height}in; margin: 0; }
-    html, body { width: 100%; background: white; }
-    .page { display: flex; flex-wrap: wrap; align-content: flex-start; }
+    html, body {
+      width: ${width}in;
+      height: auto;
+      margin: 0;
+      padding: 0;
+      background: white;
+    }
+    .page { display: block; width: ${width}in; }
     .label {
       width: ${width}in;
       height: ${height}in;
+      max-width: ${width}in;
+      max-height: ${height}in;
       border: 1px solid #ccc;
       display: flex;
-      align-items: flex-start;
-      justify-content: center;
-      padding: ${LABEL_PADDING_TOP_PX}px 5px ${LABEL_PADDING_BOTTOM_PX}px;
+      flex-direction: column;
+      align-items: stretch;
+      justify-content: flex-start;
+      padding: ${LABEL_PADDING_TOP_PX}px 0 ${LABEL_PADDING_BOTTOM_PX}px;
       overflow: hidden;
       page-break-inside: avoid;
       break-inside: avoid;
     }
-    .label-inner {
-      width: 100%;
-      height: 100%;
-      min-height: 0;
-      display: flex;
-      align-items: flex-start;
-      justify-content: center;
-    }
     .label-content {
       width: 100%;
       height: 100%;
-      flex-shrink: 0;
+      min-width: 0;
+      min-height: 0;
       display: flex;
       flex-direction: column;
-      justify-content: flex-start;
       align-items: stretch;
-      gap: 0;
+      overflow: hidden;
+    }
+    /* Center vertically when space remains; overflow clips (does not rotate). */
+    .label-stack {
+      width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      margin-top: auto;
+      margin-bottom: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      flex-shrink: 1;
       overflow: hidden;
     }
     .label-header {
       flex-shrink: 0;
       text-align: center;
       width: 100%;
-      overflow: visible;
-      padding-top: 1px;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      padding: 1px ${sideMarginIn}in 0;
     }
     .label-line {
       font-weight: ${fw};
@@ -922,12 +989,8 @@ export function buildPrintHtml(rows, settings) {
       text-align: center;
       white-space: nowrap;
       flex-shrink: 0;
-    }
-    .label-header-line,
-    .label-code,
-    .label-price {
-      overflow: visible;
-      text-overflow: clip;
+      max-width: 100%;
+      overflow: hidden;
     }
     .label-code {
       margin-bottom: 1px;
@@ -936,22 +999,24 @@ export function buildPrintHtml(rows, settings) {
       font-weight: 700;
     }
     .bars-wrap {
-      width: ${barcodeWidthIn}in;
+      width: ${printedBarcodeWidthIn}in;
       max-width: 100%;
+      min-width: 0;
       margin-left: auto;
       margin-right: auto;
       flex-shrink: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: block;
       overflow: hidden;
       box-sizing: border-box;
+      line-height: 0;
     }
     .bars {
       display: block;
       width: 100%;
+      max-width: 100%;
+      min-width: 0;
       height: ${defaultBarcodeHeightIn}in;
-      flex-shrink: 0;
+      margin: 0;
     }
     .footer {
       display: flex;
@@ -960,6 +1025,10 @@ export function buildPrintHtml(rows, settings) {
       flex-shrink: 0;
       margin-top: ${barcodePriceGap}px;
       width: 100%;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+      padding: 0 ${sideMarginIn}in;
     }
     @media print {
       @page { size: ${width}in ${height}in; margin: 0; }
@@ -979,6 +1048,7 @@ export function buildPrintHtml(rows, settings) {
       .label {
         width: ${width}in;
         height: ${height}in;
+        max-width: ${width}in;
         max-height: ${height}in;
         border: none;
         page-break-after: always;
@@ -995,6 +1065,23 @@ export function buildPrintHtml(rows, settings) {
 <body>
   <div class="page">${labels}</div>
   <script>
+    function fitBarcodeSvgToWrapper(svg, wrap, barHeightPx) {
+      var rect = wrap.getBoundingClientRect();
+      var widthPx = Math.max(1, Math.round(rect.width || wrap.clientWidth || 0));
+      var heightPx = Math.max(10, Math.round(barHeightPx));
+      svg.setAttribute('width', widthPx);
+      svg.setAttribute('height', heightPx);
+      svg.style.width = widthPx + 'px';
+      svg.style.height = heightPx + 'px';
+      svg.style.maxWidth = '100%';
+      svg.style.minWidth = '0';
+      svg.style.display = 'block';
+      svg.style.flexShrink = '0';
+      svg.style.margin = '0';
+      svg.setAttribute('preserveAspectRatio', 'none');
+      svg.setAttribute('shape-rendering', 'crispEdges');
+    }
+
     function fitBarcode(wrap) {
       var svg = wrap.querySelector('.bars');
       if (!svg || !window.JsBarcode) return;
@@ -1009,13 +1096,7 @@ export function buildPrintHtml(rows, settings) {
         background: '#ffffff',
         lineColor: '#000000',
       });
-      svg.style.width = '100%';
-      svg.style.maxWidth = '100%';
-      svg.style.display = 'block';
-      svg.style.flexShrink = '0';
-      svg.style.margin = '0 auto';
-      svg.setAttribute('preserveAspectRatio', 'none');
-      svg.setAttribute('shape-rendering', 'crispEdges');
+      fitBarcodeSvgToWrapper(svg, wrap, barHeight);
     }
 
     function printWhenReady() {
@@ -1025,7 +1106,7 @@ export function buildPrintHtml(rows, settings) {
           setTimeout(function() {
             window.print();
             window.close();
-          }, 150);
+          }, 200);
         });
       });
     }

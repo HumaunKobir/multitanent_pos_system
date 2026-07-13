@@ -1,65 +1,59 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useBarcode } from 'next-barcode';
+import { useEffect, useMemo } from 'react';
 
-import { renderBarcodeSvg } from '@/lib/barcode-label';
+import {
+    finalizeBarcodeSvg,
+    getBarcodeRenderOptions,
+} from '@/lib/barcode-label';
 
-export function BarcodeBars({ code, barHeight, fill = false, wrapPaddingX = 2 }) {
-    const svgRef = useRef(null);
-    const wrapRef = useRef(null);
+export function BarcodeBars({
+    code,
+    barHeight,
+    barcodeWidth = null,
+    fill = false,
+    wrapPaddingX = 2,
+}) {
+    const value = String(code ?? '').trim() || '0';
+    const resolvedBarHeight = Math.max(10, Math.round(barHeight ?? 28));
+    const options = useMemo(
+        () => getBarcodeRenderOptions(resolvedBarHeight),
+        [resolvedBarHeight],
+    );
+    const { inputRef } = useBarcode({
+        value,
+        options,
+    });
 
-    useLayoutEffect(() => {
-        let frame = 0;
+    // next-barcode draws in useEffect; apply CSS size after that paint.
+    useEffect(() => {
+        const frame = requestAnimationFrame(() => {
+            finalizeBarcodeSvg(inputRef.current, {
+                width: '100%',
+                height: resolvedBarHeight,
+            });
+        });
 
-        const measure = () => {
-            if (svgRef.current && wrapRef.current) {
-                renderBarcodeSvg(
-                    svgRef.current,
-                    wrapRef.current,
-                    code,
-                    barHeight,
-                    { fill },
-                );
-            }
-        };
-
-        const scheduleMeasure = () => {
-            cancelAnimationFrame(frame);
-            frame = requestAnimationFrame(measure);
-        };
-
-        scheduleMeasure();
-
-        const wrap = wrapRef.current;
-
-        if (!wrap) {
-            return undefined;
-        }
-
-        const observer = new ResizeObserver(scheduleMeasure);
-
-        observer.observe(wrap);
-
-        return () => {
-            cancelAnimationFrame(frame);
-            observer.disconnect();
-        };
-    }, [code, barHeight, fill, wrapPaddingX]);
+        return () => cancelAnimationFrame(frame);
+    }, [inputRef, value, resolvedBarHeight, options, barcodeWidth]);
 
     return (
         <div
-            ref={wrapRef}
             style={{
-                width: '100%',
+                width: barcodeWidth ?? '100%',
+                maxWidth: '100%',
+                marginLeft: barcodeWidth ? 'auto' : undefined,
+                marginRight: barcodeWidth ? 'auto' : undefined,
                 overflow: 'hidden',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 flex: fill ? '1 1 0' : '0 0 auto',
                 minHeight: fill ? 0 : undefined,
-                padding: `0 ${wrapPaddingX}px`,
+                padding: barcodeWidth ? 0 : `0 ${wrapPaddingX}px`,
                 boxSizing: 'border-box',
             }}
         >
-            <svg ref={svgRef} />
+            <svg ref={inputRef} />
         </div>
     );
 }

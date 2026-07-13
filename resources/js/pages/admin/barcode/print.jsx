@@ -20,6 +20,7 @@ import {
     getEffectivePrice,
     getEffectiveLabelFontSize,
     getLabelBarcodeBarHeight,
+    getLabelBarcodeWidthIn,
     getLabelCodeLine,
     getLabelHeaderLines,
     getLabelLineHeight,
@@ -32,6 +33,7 @@ import {
     LABEL_PADDING_TOP_PX,
     LIST_BARCODE_BAR_HEIGHT,
     MAX_LABEL_FONT_PX,
+    PRINT_DPI,
     resolveLabelSettings,
     scaleLabelPreviewPx,
 } from '@/lib/barcode-label';
@@ -60,6 +62,10 @@ function LabelPreview({ row, settings }) {
         getLabelBarcodeBarHeight(settings, row),
         scale,
     );
+    const barcodeWidthPx = scaleLabelPreviewPx(
+        getLabelBarcodeWidthIn(settings) * PRINT_DPI,
+        scale,
+    );
     const nameBarcodeGap = scaleLabelPreviewPx(
         getNameBarcodeGap(effectiveFontSize),
         scale,
@@ -68,7 +74,6 @@ function LabelPreview({ row, settings }) {
     const paddingTop = scaleLabelPreviewPx(LABEL_PADDING_TOP_PX, scale);
     const paddingBottom = scaleLabelPreviewPx(LABEL_PADDING_BOTTOM_PX, scale);
     const paddingX = scaleLabelPreviewPx(LABEL_PADDING_X_PX / 2, scale);
-    const barcodePaddingX = scaleLabelPreviewPx(2, scale);
     const price = getEffectivePrice(row);
     const headerLines = getLabelHeaderLines(row);
     const codeLine = getLabelCodeLine(row);
@@ -126,7 +131,7 @@ function LabelPreview({ row, settings }) {
                 <BarcodeBars
                     code={row?.code ?? '123456789'}
                     barHeight={barHeight}
-                    wrapPaddingX={barcodePaddingX}
+                    barcodeWidth={`${barcodeWidthPx}px`}
                 />
             </div>
             <div

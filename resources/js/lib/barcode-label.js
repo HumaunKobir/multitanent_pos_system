@@ -1,5 +1,3 @@
-import JsBarcode from 'jsbarcode';
-
 export const PRINT_DPI = 96;
 export const NAME_BARCODE_GAP_PX = 1;
 export const BARCODE_PRICE_GAP_PX = 1;
@@ -29,29 +27,59 @@ export const LABEL_WIDTH_SAFETY_PX = 8;
 export const MIN_BARCODE_BAR_HEIGHT_PX = 32;
 /** Floor when scaling barcode width to fit the label. */
 export const MIN_BARCODE_FONT_PX = 18;
-/** Upper bound for JsBarcode module width when scaling up to fill the label. */
-export const MAX_BARCODE_MODULE_WIDTH = 6;
 /**
- * Leave horizontal headroom so barcode quiet zones are not clipped in print
- * (browser/print engines often render slightly wider than on-screen measurement).
+ * Total horizontal safe space for the barcode inside the label page.
+ * Actual barcode width = page width − this margin (~0.10" each side).
  */
-export const BARCODE_WIDTH_SAFETY_RATIO = 0.86;
-/** Use most of the vertical space between name and price for bar height. */
+export const BARCODE_HORIZONTAL_MARGIN_IN = 0.2;
+/** Barcode bar height scales with page height (plan: pageHeight × 0.48). */
+export const BARCODE_HEIGHT_RATIO = 0.48;
+/**
+ * Library module/bar thickness only — not the printed barcode width in inches.
+ * Printed size is controlled via CSS on the SVG wrapper.
+ */
+export const BARCODE_MODULE_WIDTH = 1.5;
+/** Use most of the vertical space between name and price when clamping bar height. */
 export const BARCODE_HEIGHT_USAGE_RATIO = 0.98;
-/** Compact bar height used in the barcode list and label preview (at 1" label height). */
+/** Compact bar height used in barcode list thumbnails. */
 export const LIST_BARCODE_BAR_HEIGHT = 28;
-/** Quiet zone scales with module width so scanners can find the barcode edges. */
-export const QUIET_ZONE_MODULE_RATIO = 5;
-/** Quiet zone never shrinks below this, even for very thin bars. */
-export const MIN_QUIET_MARGIN_PX = 2;
+/** Quiet zone around generated bars (library margin option). */
+export const BARCODE_QUIET_MARGIN_PX = 2;
+/** CDN used only by the print popup (non-React window). */
 export const JSBARCODE_CDN =
     'https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js';
 
-/** Quiet zone (margin) in px for a given JsBarcode module width. */
-export function getBarcodeQuietMargin(moduleWidth) {
+/**
+ * Printed barcode width in inches for a given label page width.
+ * Formula: pageWidth − 0.20
+ */
+export function getBarcodeWidthIn(pageWidthIn = 1.5) {
+    const width = Math.max(
+        MIN_LABEL_WIDTH_IN,
+        Math.min(pageWidthIn ?? 1.5, MAX_LABEL_WIDTH_IN),
+    );
+
+    return Number(Math.max(0.1, width - BARCODE_HORIZONTAL_MARGIN_IN).toFixed(2));
+}
+
+/**
+ * Printed barcode bar height in inches for a given label page height.
+ * Formula: pageHeight × 0.48 (rounded to 2 decimals).
+ */
+export function getBarcodeBarHeightIn(pageHeightIn = 1) {
+    const height = Math.max(
+        MIN_LABEL_HEIGHT_IN,
+        Math.min(pageHeightIn ?? 1, MAX_LABEL_HEIGHT_IN),
+    );
+
+    return Number((height * BARCODE_HEIGHT_RATIO).toFixed(2));
+}
+
+/** Bar height in CSS pixels (96 DPI) for the label page height. */
+export function getBarcodeBarHeightPx(pageHeightIn = 1) {
     return Math.max(
-        MIN_QUIET_MARGIN_PX,
-        Math.round(moduleWidth * QUIET_ZONE_MODULE_RATIO),
+        10,
+        Math.round(getBarcodeBarHeightIn(pageHeightIn) * PRINT_DPI),
     );
 }
 
@@ -249,9 +277,10 @@ export function getRequiredLabelWidthIn(settings, row, fontSize = null) {
 
 /** Barcode height target used when calculating required label height. */
 export function getTargetBarcodeBarHeightPx(heightIn = 1) {
-    const scaled = Math.round(LIST_BARCODE_BAR_HEIGHT * heightIn);
-
-    return Math.max(Math.floor(MIN_BARCODE_BAR_HEIGHT_PX * 0.75), scaled);
+    return Math.max(
+        Math.floor(MIN_BARCODE_BAR_HEIGHT_PX * 0.75),
+        getBarcodeBarHeightPx(heightIn),
+    );
 }
 
 /**
@@ -708,14 +737,33 @@ export function calculateBarcodeBarHeight(settings, row = null, fontSize = null)
 }
 
 /**
- * Bar height for labels and preview — matches the compact list thumbnail style.
+ * Bar height for labels and preview.
+ * Uses pageHeight × 0.48, clamped so header/footer text still fits.
  */
 export function getLabelBarcodeBarHeight(settings, row = null) {
     const layout = getContentLayoutSettings(settings);
-    const scaled = Math.round(LIST_BARCODE_BAR_HEIGHT * layout.height);
+    const planned = getBarcodeBarHeightPx(layout.height);
     const maxFit = calculateBarcodeBarHeight(settings, row);
 
-    return Math.max(10, Math.min(scaled, maxFit));
+    return Math.max(10, Math.min(planned, maxFit));
+}
+
+/**
+ * CSS width for the barcode wrapper based on page width − 0.20".
+ */
+export function getLabelBarcodeWidthIn(settings) {
+    const layout = getContentLayoutSettings(settings);
+
+    return getBarcodeWidthIn(layout.width);
+}
+
+/**
+ * CSS height for the barcode bars based on page height × 0.48.
+ */
+export function getLabelBarcodeHeightIn(settings, row = null) {
+    const barHeightPx = getLabelBarcodeBarHeight(settings, row);
+
+    return Number((barHeightPx / PRINT_DPI).toFixed(2));
 }
 
 function buildLabelHeaderHtml(row, fontSize, fontWeight) {
@@ -739,116 +787,40 @@ export function escapeHtmlAttr(text) {
 }
 
 /**
- * Shrink or grow JsBarcode module width so the SVG fits the target width.
- * Uses integer module widths only so bars render on pixel boundaries.
+ * Apply CSS-controlled printed size. Library `width` is bar thickness only;
+ * wrapper/SVG CSS width & height control the physical label size.
  */
-export function fitBarcodeModuleWidth(svgEl, draw, targetWidth) {
-    const minModuleWidth = 1;
-    const maxModuleWidth = Math.max(
-        MAX_BARCODE_MODULE_WIDTH,
-        Math.ceil(targetWidth / 40),
-    );
-    let moduleWidth = 2;
-
-    const measure = () => parseFloat(svgEl.getAttribute('width') || '0');
-
-    draw(moduleWidth);
-    let svgWidth = measure();
-
-    while (svgWidth > targetWidth && moduleWidth > minModuleWidth) {
-        moduleWidth -= 1;
-        draw(moduleWidth);
-        svgWidth = measure();
-    }
-
-    while (moduleWidth < maxModuleWidth) {
-        const nextModuleWidth = moduleWidth + 1;
-
-        draw(nextModuleWidth);
-        const nextWidth = measure();
-
-        if (nextWidth > targetWidth) {
-            draw(moduleWidth);
-            break;
-        }
-
-        moduleWidth = nextModuleWidth;
-        svgWidth = nextWidth;
-    }
-
-    return moduleWidth;
-}
-
-/**
- * Keep the SVG at native JsBarcode dimensions — never stretch with CSS.
- */
-export function finalizeBarcodeSvg(svgEl) {
+export function finalizeBarcodeSvg(svgEl, { width = '100%', height = null } = {}) {
     if (!svgEl) {
         return;
     }
 
-    svgEl.style.removeProperty('width');
-    svgEl.style.removeProperty('height');
-    svgEl.style.removeProperty('max-width');
+    svgEl.style.width = typeof width === 'number' ? `${width}px` : width;
+    svgEl.style.maxWidth = '100%';
+    svgEl.style.height =
+        height == null
+            ? 'auto'
+            : typeof height === 'number'
+              ? `${height}px`
+              : height;
     svgEl.style.display = 'block';
     svgEl.style.flexShrink = '0';
     svgEl.style.margin = '0 auto';
-    svgEl.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+    svgEl.setAttribute('preserveAspectRatio', 'none');
     svgEl.setAttribute('shape-rendering', 'crispEdges');
 }
 
-/**
- * Render a scannable Code 128 SVG and scale module width to fit the label.
- */
-export function renderBarcodeSvg(svgEl, containerEl, code, maxBarHeight, { fill = false } = {}) {
-    if (!svgEl || !containerEl) {
-        return maxBarHeight;
-    }
-
-    const text = String(code ?? '').trim();
-
-    if (!text) {
-        return maxBarHeight;
-    }
-
-    const containerWidth = containerEl.clientWidth;
-    const targetWidth = containerWidth * BARCODE_WIDTH_SAFETY_RATIO;
-    const availableHeight = containerEl.clientHeight;
-    const heightFromContainer =
-        fill && availableHeight > 8
-            ? Math.floor(availableHeight * BARCODE_HEIGHT_USAGE_RATIO)
-            : maxBarHeight;
-    let barHeight = Math.max(
-        10,
-        Math.min(maxBarHeight, heightFromContainer),
-    );
-
-    fitBarcodeModuleWidth(svgEl, (moduleWidth) => {
-        JsBarcode(svgEl, text, {
-            format: 'CODE128',
-            width: moduleWidth,
-            height: barHeight,
-            displayValue: false,
-            margin: getBarcodeQuietMargin(moduleWidth),
-            background: '#ffffff',
-            lineColor: '#000000',
-        });
-    }, targetWidth);
-
-    finalizeBarcodeSvg(svgEl);
-
-    return barHeight;
-}
-
-/** @deprecated Use renderBarcodeSvg */
-export function fitBarcodeToContainer(svgEl, containerEl, maxBarHeight, options = {}) {
-    return renderBarcodeSvg(
-        svgEl,
-        containerEl,
-        options.code ?? '',
-        maxBarHeight,
-        options,
-    );
+/** Shared next-barcode / JsBarcode options for Code 128 labels. */
+export function getBarcodeRenderOptions(barHeightPx) {
+    return {
+        format: 'CODE128',
+        width: BARCODE_MODULE_WIDTH,
+        height: Math.max(10, Math.round(barHeightPx)),
+        displayValue: false,
+        margin: BARCODE_QUIET_MARGIN_PX,
+        background: '#ffffff',
+        lineColor: '#000000',
+    };
 }
 
 export function buildPrintHtml(rows, settings) {
@@ -856,14 +828,18 @@ export function buildPrintHtml(rows, settings) {
     const { width, height, fontWeight, copies } = resolved;
     const fw = fontWeight === 'bold' ? 700 : 400;
     const barcodePriceGap = getBarcodePriceGap();
-    const defaultBarHeight = getLabelBarcodeBarHeight(resolved);
+    const barcodeWidthIn = getLabelBarcodeWidthIn(resolved);
+    const defaultBarHeightPx = getLabelBarcodeBarHeight(resolved);
+    const defaultBarcodeHeightIn = getLabelBarcodeHeightIn(resolved);
+    const renderOptions = getBarcodeRenderOptions(defaultBarHeightPx);
 
     const labels = rows
         .flatMap((row) => Array.from({ length: copies }, () => row))
         .map((row) => {
             const price = getEffectivePrice(row) ?? 0;
             const effectiveFontSize = getEffectiveLabelFontSize(resolved, row);
-            const barHeight = getLabelBarcodeBarHeight(resolved, row);
+            const barHeightPx = getLabelBarcodeBarHeight(resolved, row);
+            const barcodeHeightIn = getLabelBarcodeHeightIn(resolved, row);
             const headerHtml = buildLabelHeaderHtml(
                 row,
                 effectiveFontSize,
@@ -878,8 +854,8 @@ export function buildPrintHtml(rows, settings) {
         <div class="label-inner">
           <div class="label-content">
             <div class="label-header" style="margin-bottom:${rowNameBarcodeGap}px;">${headerHtml}</div>
-            <div class="bars-wrap">
-              <svg class="bars" data-code="${escapeHtmlAttr(row.code)}" data-max-bar-height="${barHeight}"></svg>
+            <div class="bars-wrap" style="width:${barcodeWidthIn}in;">
+              <svg class="bars" data-code="${escapeHtmlAttr(row.code)}" data-bar-height="${barHeightPx}" style="height:${barcodeHeightIn}in;"></svg>
             </div>
             <div class="footer">
               <div class="label-line label-code" style="font-size:${effectiveFontSize}px;line-height:${lineHeight}px;">${escapeHtml(codeLine)}</div>
@@ -960,17 +936,21 @@ export function buildPrintHtml(rows, settings) {
       font-weight: 700;
     }
     .bars-wrap {
-      width: 100%;
+      width: ${barcodeWidthIn}in;
+      max-width: 100%;
+      margin-left: auto;
+      margin-right: auto;
       flex-shrink: 0;
       display: flex;
       align-items: center;
       justify-content: center;
       overflow: hidden;
-      padding: 0 2px;
       box-sizing: border-box;
     }
     .bars {
       display: block;
+      width: 100%;
+      height: ${defaultBarcodeHeightIn}in;
       flex-shrink: 0;
     }
     .footer {
@@ -1019,51 +999,22 @@ export function buildPrintHtml(rows, settings) {
       var svg = wrap.querySelector('.bars');
       if (!svg || !window.JsBarcode) return;
       var code = svg.getAttribute('data-code') || '';
-      var maxBarHeight = parseFloat(svg.getAttribute('data-max-bar-height') || '${defaultBarHeight}');
-      var targetWidth = wrap.clientWidth * ${BARCODE_WIDTH_SAFETY_RATIO};
-      var barHeight = Math.max(10, maxBarHeight);
-      var minModuleWidth = 1;
-      var maxModuleWidth = Math.max(${MAX_BARCODE_MODULE_WIDTH}, Math.ceil(targetWidth / 40));
-      var moduleWidth = 2;
-      var draw = function(width) {
-        window.JsBarcode(svg, code, {
-          format: 'CODE128',
-          width: width,
-          height: barHeight,
-          displayValue: false,
-          margin: Math.max(${MIN_QUIET_MARGIN_PX}, Math.round(width * ${QUIET_ZONE_MODULE_RATIO})),
-          background: '#ffffff',
-          lineColor: '#000000',
-        });
-      };
-      var measure = function() {
-        return parseFloat(svg.getAttribute('width') || '0');
-      };
-      draw(moduleWidth);
-      var svgWidth = measure();
-      while (svgWidth > targetWidth && moduleWidth > minModuleWidth) {
-        moduleWidth -= 1;
-        draw(moduleWidth);
-        svgWidth = measure();
-      }
-      while (moduleWidth < maxModuleWidth) {
-        var nextModuleWidth = moduleWidth + 1;
-        draw(nextModuleWidth);
-        var nextWidth = measure();
-        if (nextWidth > targetWidth) {
-          draw(moduleWidth);
-          break;
-        }
-        moduleWidth = nextModuleWidth;
-        svgWidth = nextWidth;
-      }
-      svg.style.removeProperty('width');
-      svg.style.removeProperty('height');
-      svg.style.removeProperty('max-width');
+      var barHeight = Math.max(10, parseFloat(svg.getAttribute('data-bar-height') || '${defaultBarHeightPx}'));
+      window.JsBarcode(svg, code, {
+        format: 'CODE128',
+        width: ${renderOptions.width},
+        height: barHeight,
+        displayValue: false,
+        margin: ${renderOptions.margin},
+        background: '#ffffff',
+        lineColor: '#000000',
+      });
+      svg.style.width = '100%';
+      svg.style.maxWidth = '100%';
       svg.style.display = 'block';
       svg.style.flexShrink = '0';
       svg.style.margin = '0 auto';
-      svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
+      svg.setAttribute('preserveAspectRatio', 'none');
       svg.setAttribute('shape-rendering', 'crispEdges');
     }
 

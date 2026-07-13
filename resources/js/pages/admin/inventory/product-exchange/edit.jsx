@@ -74,6 +74,7 @@ export default function ProductExchangeEdit({
         parseFloat(exchange.settlement_amount ?? exchange.paid_amount ?? 0),
     );
     const isInitialPaidSync = useRef(true);
+    const wasOverpaidRef = useRef(false);
     const [manualDiscounts, setManualDiscounts] = useState(() =>
         buildEditExchangeDiscounts(
             exchange,
@@ -166,15 +167,23 @@ export default function ProductExchangeEdit({
     const priorIsRefund = Boolean(exchange.is_refund);
     const showPriorPayment = priorPaidAmount > 0.009 && priorIsRefund === isRefund;
     const fieldPaidAmount = isParty ? 0 : parseFloat(form.data.paid_amount || 0) || 0;
-    const totalPaidAmount = showPriorPayment
-        ? priorPaidAmount + fieldPaidAmount
-        : fieldPaidAmount;
-    // If line edits shrink a refund below what was already paid out on a prior
-    // save, the excess becomes a receivable on the customer's account instead
-    // of a due handed back to them — mirrors ProductExchangeController::update.
-    const overpaidAmount = isRefund && !isParty
-        ? Math.max(0, totalPaidAmount - settlementAmount)
+    // Gross cash already refunded above the (shrunk) settlement — before any
+    // repayment the customer hands back in this edit session.
+    const grossOverpaidAmount =
+        isRefund && !isParty && showPriorPayment
+            ? Math.max(0, priorPaidAmount - settlementAmount)
+            : 0;
+    const isOverpaid = grossOverpaidAmount > 0.009;
+    // When overpaid, the amount field is customer repayment — not more refund.
+    const customerPaymentNow = isOverpaid
+        ? Math.min(fieldPaidAmount, grossOverpaidAmount)
         : 0;
+    const overpaidAmount = Math.max(0, grossOverpaidAmount - customerPaymentNow);
+    const totalPaidAmount = isOverpaid
+        ? priorPaidAmount
+        : showPriorPayment
+          ? priorPaidAmount + fieldPaidAmount
+          : fieldPaidAmount;
 
     useEffect(() => {
         if (flash?.success) {
@@ -192,13 +201,36 @@ export default function ProductExchangeEdit({
         }
 
         const settlement = summary.settlementAmount;
+        const signed = summary.signedSettlement ?? 0;
+        const nowOverpaid =
+            paymentMode !== 'party' &&
+            showPriorPayment &&
+            signed < -0.009 &&
+            priorPaidAmount > settlement + 0.009;
 
         if (paymentMode === 'party') {
             form.setData('paid_amount', '0');
             prevSettlementRef.current = settlement;
+            wasOverpaidRef.current = false;
 
             return;
         }
+
+        // Overpaid state uses the amount field as customer repayment. Reset once
+        // when entering that state, then leave the field alone for the user.
+        if (nowOverpaid) {
+            if (!wasOverpaidRef.current) {
+                form.setData('paid_amount', '0');
+            }
+
+            wasOverpaidRef.current = true;
+            isInitialPaidSync.current = false;
+            prevSettlementRef.current = settlement;
+
+            return;
+        }
+
+        wasOverpaidRef.current = false;
 
         const syncedTotal = syncExchangeEditPaidAmount({
             currentPaid: totalPaidAmount,
@@ -252,6 +284,13 @@ export default function ProductExchangeEdit({
         }
 
         const settlement = summary?.settlementAmount ?? 0;
+
+        if (isOverpaid) {
+            form.setData('paid_amount', '0');
+            prevSettlementRef.current = settlement;
+
+            return;
+        }
 
         if (totalPaidAmount <= 0.009) {
             const target = showPriorPayment
@@ -413,6 +452,9 @@ export default function ProductExchangeEdit({
             paid_amount: paymentMode === 'party'
                 ? '0'
                 : (totalPaidAmount > 0.009 ? totalPaidAmount.toFixed(2) : '0'),
+            customer_payment_amount: paymentMode === 'party' || !isOverpaid
+                ? '0'
+                : (customerPaymentNow > 0.009 ? customerPaymentNow.toFixed(2) : '0'),
             discount_type: manualDiscounts.invoiceType || 'flat',
             discount_value: String(parseFloat(manualDiscounts.invoice || 0)),
             special_discount_id: manualDiscounts.specialDiscountId || null,
@@ -432,14 +474,17 @@ export default function ProductExchangeEdit({
         });
     }
 
-    const isOverpaid = overpaidAmount > 0.009;
     const settlementLineLabel = isRefund ? 'Refund to Customer' : 'Customer Pays';
-    const paidLabel = showPriorPayment
-        ? (isRefund ? 'Additional Refund Now' : 'Additional Payment Now')
-        : (isRefund ? 'Refund Paid' : 'Paid Amount');
+    const paidLabel = isOverpaid
+        ? 'Customer Payment'
+        : showPriorPayment
+          ? (isRefund ? 'Additional Refund Now' : 'Additional Payment Now')
+          : (isRefund ? 'Refund Paid' : 'Paid Amount');
     const dueLabel = isRefund ? 'Remaining Refund' : 'Due Amount';
     const priorPaidLabel = isRefund ? 'Already Refunded' : 'Already Received';
-    const overpaidLabel = 'Customer Pays This Back — Added to Due';
+    const overpaidLabel = customerPaymentNow > 0.009
+        ? 'Remaining Customer Due'
+        : 'Customer Pays This Back — Added to Due';
 
     return (
         <>
@@ -850,7 +895,7 @@ export default function ProductExchangeEdit({
                             paidReadOnly={false}
                             paidLabel={paidLabel}
                             settlementLineLabel={settlementLineLabel}
-                            showPaidAmount={!isParty && !isOverpaid}
+                            showPaidAmount={!isParty && (isOverpaid || settlementAmount > 0.009 || showPriorPayment)}
                             dueLabel={dueLabel}
                             dueAmountOverride={Math.max(0, settlementAmount - totalPaidAmount)}
                             priorPaidAmount={showPriorPayment && !isParty ? priorPaidAmount : null}
@@ -869,12 +914,14 @@ export default function ProductExchangeEdit({
                             paymentHint={
                                 isParty
                                     ? null
-                                    : isRefund
-                                      ? 'Cash / bank account the refund is paid from.'
-                                      : 'Cash / bank account (asset ledger). Enter the amount received in Paid Amount.'
+                                    : isOverpaid
+                                      ? 'Cash / bank account receiving the customer repayment. Leave at 0 to add the full amount to customer due.'
+                                      : isRefund
+                                        ? 'Cash / bank account the refund is paid from.'
+                                        : 'Cash / bank account (asset ledger). Enter the amount received in Paid Amount.'
                             }
-                            paidError={form.errors.paid_amount}
-                            showDue={!isParty && settlementAmount > 0}
+                            paidError={form.errors.paid_amount || form.errors.customer_payment_amount}
+                            showDue={!isParty && settlementAmount > 0 && !isOverpaid}
                         />
                     </div>
 

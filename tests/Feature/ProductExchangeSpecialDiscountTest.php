@@ -2638,6 +2638,133 @@ test('exchange edit update tracks overpayment as a customer receivable when a sh
     expect((float) $customer->balance)->toBe(0.0);
 });
 
+test('exchange edit accepts customer payment that reduces the overpaid receivable', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id, 'balance' => 0]);
+
+    // Sale: 5 x 500 = 2500. Exchange to 5 x 300 = 1500, refund 1000, paid in full.
+    $exchange = createDirectCashExchange($user, $cash, $customer, 300, '1000')['exchange'];
+    $line = $exchange->products()->firstOrFail();
+
+    // Edit to a pricier replacement: refund shrinks to 750 — 250 overpaid.
+    // Customer pays 150 back now; only 100 should remain as receivable/due.
+    $higherReplacement = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 350]);
+    Batch::factory()->for($higherReplacement)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    test()->actingAs($user)
+        ->put(route('inventory.product-exchange.update', $exchange), [
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Customer paid part of the overpaid refund back',
+            'paid_amount' => '1000',
+            'customer_payment_amount' => '150',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'items' => [
+                [
+                    'sell_product_id' => $line->sell_product_id,
+                    'product_id' => $higherReplacement->id,
+                    'variation_id' => null,
+                    'unit_price' => '350',
+                    'quantity' => (string) (int) $line->old_quantity,
+                    'return_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.product-exchange.index'));
+
+    $exchange->refresh();
+    $customer->refresh();
+
+    expect((float) $exchange->price_difference)->toBe(-750.0);
+    expect((float) $exchange->paid_amount)->toBe(750.0);
+    expect((float) $exchange->due_amount)->toBe(0.0);
+    expect((float) $exchange->overpaid_amount)->toBe(100.0);
+    expect((float) $customer->balance)->toBe(100.0);
+
+    $transactions = Transaction::query()
+        ->where('source_type', ProductExchange::class)
+        ->where('source_id', $exchange->id)
+        ->get();
+    $ledgers = Ledger::query()->whereIn('transaction_id', $transactions->pluck('id'))->get();
+    $totalDebit = round($ledgers->sum(fn (Ledger $line) => (float) $line->debit), 2);
+    $totalCredit = round($ledgers->sum(fn (Ledger $line) => (float) $line->credit), 2);
+
+    expect($totalDebit)->toBe($totalCredit);
+
+    $receivablesId = SystemAccountService::id(SystemAccountKey::CustomerReceivables, $exchange->branch_id);
+    $receivableDebit = round($ledgers->where('account_id', $receivablesId)->sum(fn (Ledger $line) => (float) $line->debit), 2);
+
+    expect($receivableDebit)->toBe(100.0);
+});
+
+test('exchange edit customer payment can clear the full overpaid amount', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser(['inventory.product-exchange.create', 'inventory.product-exchange.update', 'inventory.sell.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+    $customer = Customer::factory()->create(['branch_id' => $user->branch_id, 'balance' => 0]);
+
+    $exchange = createDirectCashExchange($user, $cash, $customer, 300, '1000')['exchange'];
+    $line = $exchange->products()->firstOrFail();
+
+    $higherReplacement = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 350]);
+    Batch::factory()->for($higherReplacement)->withStock(10)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    test()->actingAs($user)
+        ->put(route('inventory.product-exchange.update', $exchange), [
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Customer repaid the full overpaid refund',
+            'paid_amount' => '1000',
+            'customer_payment_amount' => '250',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'items' => [
+                [
+                    'sell_product_id' => $line->sell_product_id,
+                    'product_id' => $higherReplacement->id,
+                    'variation_id' => null,
+                    'unit_price' => '350',
+                    'quantity' => (string) (int) $line->old_quantity,
+                    'return_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.product-exchange.index'));
+
+    $exchange->refresh();
+    $customer->refresh();
+
+    expect((float) $exchange->overpaid_amount)->toBe(0.0);
+    expect((float) $customer->balance)->toBe(0.0);
+
+    $transactions = Transaction::query()
+        ->where('source_type', ProductExchange::class)
+        ->where('source_id', $exchange->id)
+        ->get();
+    $ledgers = Ledger::query()->whereIn('transaction_id', $transactions->pluck('id'))->get();
+    $receivablesId = SystemAccountService::id(SystemAccountKey::CustomerReceivables, $exchange->branch_id);
+    $receivableDebit = round($ledgers->where('account_id', $receivablesId)->sum(fn (Ledger $line) => (float) $line->debit), 2);
+
+    expect($receivableDebit)->toBe(0.0);
+});
+
 /**
  * Collecting a receivable credits (decreases) the Customer Receivables account, which
  * TransactionService guards with an insufficient-balance check. Give it headroom so the

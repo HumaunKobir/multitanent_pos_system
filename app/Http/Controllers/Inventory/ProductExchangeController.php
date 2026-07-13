@@ -391,6 +391,7 @@ class ProductExchangeController extends Controller
             'payment_type' => ['required', 'integer'],
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
             'paid_amount' => ['nullable', 'numeric', 'min:0'],
+            'customer_payment_amount' => ['nullable', 'numeric', 'min:0'],
             'discount_type' => ['nullable', 'in:flat,percent'],
             'discount_value' => ['nullable', 'numeric', 'min:0'],
             'special_discount_id' => ['nullable', 'integer', 'exists:special_discounts,id'],
@@ -450,11 +451,18 @@ class ProductExchangeController extends Controller
                 // If line edits shrank a refund below what was already paid out on a
                 // prior save, resolvePayment's clamp would otherwise silently drop the
                 // excess. Track it as a customer receivable instead of losing it.
+                // customer_payment_amount is cash the customer hands back now, which
+                // reduces the receivable posted on this save.
                 $overpaidAmount = 0.0;
                 if ($signedSettlement < 0 && $paymentType !== ReceivedPaymentMethod::Customer_Account) {
                     $settlementAmount = round(abs($signedSettlement), 2);
                     $submittedPaid = round(max(0, (float) ($data['paid_amount'] ?? 0)), 2);
                     $overpaidAmount = round(max(0, $submittedPaid - $settlementAmount), 2);
+                    $customerPaymentNow = round(max(0, (float) ($data['customer_payment_amount'] ?? 0)), 2);
+
+                    if ($overpaidAmount > 0.009 && $customerPaymentNow > 0.009) {
+                        $overpaidAmount = round(max(0, $overpaidAmount - min($customerPaymentNow, $overpaidAmount)), 2);
+                    }
                 }
 
                 $productExchange->update([

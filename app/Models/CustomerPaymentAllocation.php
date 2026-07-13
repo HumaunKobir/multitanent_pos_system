@@ -10,6 +10,7 @@ class CustomerPaymentAllocation extends Model
     protected $fillable = [
         'customer_payment_id',
         'sell_id',
+        'product_exchange_id',
         'amount',
     ];
 
@@ -28,5 +29,21 @@ class CustomerPaymentAllocation extends Model
     public function sell(): BelongsTo
     {
         return $this->belongsTo(Sell::class);
+    }
+
+    public function productExchange(): BelongsTo
+    {
+        return $this->belongsTo(ProductExchange::class);
+    }
+
+    /**
+     * Stable identity for the settled document, unique across both types —
+     * raw ids collide between a sale and an exchange.
+     */
+    public function documentKey(): string
+    {
+        return $this->product_exchange_id !== null
+            ? 'exchange:'.$this->product_exchange_id
+            : 'sale:'.$this->sell_id;
     }
 }

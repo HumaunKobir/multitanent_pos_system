@@ -129,6 +129,10 @@ export function PaymentSummaryCard({
     dueAmountOverride = null,
     dueOffsetAmount = null,
     paymentHint = null,
+    priorPaidAmount = null,
+    priorPaidLabel = 'Already Recorded',
+    overpaidAmount = null,
+    overpaidLabel = 'Overpaid',
 }) {
     const isParty = paymentMode === 'party';
     const paid = isParty ? 0 : parseFloat(paidAmount || 0);
@@ -202,6 +206,13 @@ export function PaymentSummaryCard({
                     </div>
                 )}
 
+                {priorPaidAmount != null && priorPaidAmount > 0.009 && (
+                    <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">{priorPaidLabel}</span>
+                        <span className="text-green-700 dark:text-green-400">৳{priorPaidAmount.toFixed(2)}</span>
+                    </div>
+                )}
+
                 {parentPaymentInfo && (parentPaymentInfo.paid > 0.009 || parentPaymentInfo.due > 0.009) && (
                     <p className="text-[10px] leading-relaxed text-muted-foreground">
                         Original sale paid ৳{parentPaymentInfo.paid.toFixed(2)}
@@ -256,6 +267,13 @@ export function PaymentSummaryCard({
                     <div className="flex justify-between border-t border-border pt-2">
                         <span className="font-semibold text-destructive">{dueLabel}</span>
                         <span className="font-bold text-destructive">৳{due.toFixed(2)}</span>
+                    </div>
+                )}
+
+                {overpaidAmount != null && overpaidAmount > 0.009 && (
+                    <div className="flex justify-between border-t border-border pt-2 text-amber-700 dark:text-amber-400">
+                        <span className="font-semibold">{overpaidLabel}</span>
+                        <span className="font-bold">৳{overpaidAmount.toFixed(2)}</span>
                     </div>
                 )}
             </div>
@@ -489,8 +507,10 @@ export function ProductExchangeDiscountsCard({
 
     const invoiceType = manualDiscounts.invoiceType || 'flat';
     const showSpecialDiscount =
-        parseFloat(sellDiscounts?.special_discount_amount || 0) > 0 ||
-        Boolean(sellDiscounts?.special_discount_id);
+        specialDiscounts.length > 0 &&
+        (parseFloat(sellDiscounts?.special_discount_amount || 0) > 0 ||
+            Boolean(sellDiscounts?.special_discount_id) ||
+            Boolean(manualDiscounts?.specialDiscountId));
 
     return (
         <InventoryCard title="Discounts & Payment Adjustments" icon={Percent}>

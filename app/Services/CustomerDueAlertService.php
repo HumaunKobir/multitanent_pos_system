@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\CustomerDueAlertStatus;
+use App\Models\Customer;
 use App\Models\CustomerDueAlert;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
@@ -52,5 +53,23 @@ class CustomerDueAlertService
             'due_given_date' => $dueGivenDate,
             'status' => CustomerDueAlertStatus::Unpaid,
         ]);
+    }
+
+    /**
+     * Mark the customer's active due alerts as paid once they no longer owe a balance.
+     */
+    public function syncPaidForCustomer(int $customerId, ?int $branchId): void
+    {
+        $balance = (float) Customer::whereKey($customerId)->value('balance');
+
+        if ($balance > 0) {
+            return;
+        }
+
+        CustomerDueAlert::query()
+            ->where('customer_id', $customerId)
+            ->when($branchId, fn (Builder $query) => $query->where('branch_id', $branchId))
+            ->active()
+            ->update(['status' => CustomerDueAlertStatus::Paid]);
     }
 }

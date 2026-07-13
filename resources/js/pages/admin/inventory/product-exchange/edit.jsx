@@ -22,27 +22,40 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { useCustomerCoinInfo } from '@/hooks/use-customer-coin-info';
-import { calcProductExchangeSummary } from '@/lib/product-exchange-summary';
+import {
+    buildEditExchangeDiscounts,
+    calcProductExchangeSummary,
+    syncExchangeEditPaidAmount,
+} from '@/lib/product-exchange-summary';
 import { formatBdDate, toDateInputValue } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 
+function mapExchangeLine(item) {
+    return {
+        ...item,
+        original_old_unit_price:
+            item.original_old_unit_price ?? item.old_unit_price,
+    };
+}
+
 export default function ProductExchangeEdit({
     exchange,
-    sellDiscounts = null,
+    sellDiscounts: sellDiscountsProp = null,
+    sell_discounts: sellDiscountsSnake = null,
     paymentAccounts = [],
     promotions = [],
     specialDiscounts = [],
     paymentOnlyEdit = false,
     totals = null,
 }) {
+    const sellDiscounts = sellDiscountsProp ?? sellDiscountsSnake;
     const { flash, walkInCustomerId } = usePage().props;
     const toast = useAppToast();
-    const [items, setItems] = useState(
-        (exchange.items ?? []).map((item) => ({
-            ...item,
-            original_old_unit_price:
-                item.original_old_unit_price ?? item.old_unit_price,
-        })),
+    const [sourceItems] = useState(() =>
+        (exchange.items ?? []).map(mapExchangeLine),
+    );
+    const [items, setItems] = useState(() =>
+        (exchange.items ?? []).map(mapExchangeLine),
     );
     const [paymentMode, setPaymentMode] = useState(() => {
         const mode = paymentTypeToMode(
@@ -57,30 +70,30 @@ export default function ProductExchangeEdit({
         return mode;
     });
     const [replaceIndex, setReplaceIndex] = useState(null);
-    const prevSettlementRef = useRef(parseFloat(exchange.paid_amount || 0));
-    const [manualDiscounts, setManualDiscounts] = useState(() => ({
-        invoiceType: exchange.discount_type ?? 'flat',
-        invoice:
-            parseFloat(exchange.discount_value || 0) > 0
-                ? String(exchange.discount_value)
-                : '',
-        specialDiscountId: exchange.special_discount_id
-            ? String(exchange.special_discount_id)
-            : '',
-        roundOff:
-            parseFloat(exchange.round_off_amount || 0) > 0
-                ? String(exchange.round_off_amount)
-                : '',
-        coinsRedeemed:
-            parseFloat(exchange.coins_redeemed || 0) > 0
-                ? String(exchange.coins_redeemed)
-                : '',
-    }));
+    const prevSettlementRef = useRef(
+        parseFloat(exchange.settlement_amount ?? exchange.paid_amount ?? 0),
+    );
+    const isInitialPaidSync = useRef(true);
+    const wasOverpaidRef = useRef(false);
+    const [manualDiscounts, setManualDiscounts] = useState(() =>
+        buildEditExchangeDiscounts(
+            exchange,
+            sellDiscountsProp ?? sellDiscountsSnake,
+            (exchange.items ?? []).map(mapExchangeLine),
+        ),
+    );
 
     const form = useForm({
         date: toDateInputValue(exchange.date),
         comment: exchange.comment ?? '',
-        paid_amount: exchange.paid_amount ?? '0',
+        // If this exchange already had money recorded against it, the field starts
+        // at 0 (no additional payment yet) — the already-paid portion is tracked
+        // separately via priorPaidAmount and the sync effect below only bumps this
+        // up if the exchange was previously fully settled.
+        paid_amount:
+            parseFloat(exchange.paid_amount ?? 0) > 0.009
+                ? '0'
+                : (exchange.paid_amount ?? '0'),
         payment_type: String(exchange.payment_type ?? '5'),
         items: [],
     });
@@ -93,8 +106,11 @@ export default function ProductExchangeEdit({
 
     const coinBalanceOffset = sellDiscounts
         ? (parseFloat(sellDiscounts.coins_redeemed || 0) || 0) -
-          (parseFloat(sellDiscounts.coins_earned || 0) || 0)
-        : 0;
+          (parseFloat(sellDiscounts.coins_earned || 0) || 0) +
+          (parseFloat(exchange.coins_redeemed || 0) || 0) -
+          (parseFloat(exchange.coins_earned || 0) || 0)
+        : (parseFloat(exchange.coins_redeemed || 0) || 0) -
+          (parseFloat(exchange.coins_earned || 0) || 0);
 
     const summary = useMemo(() => {
         if (paymentOnlyEdit) {
@@ -104,7 +120,7 @@ export default function ProductExchangeEdit({
         return calcProductExchangeSummary({
             items,
             sellDiscounts,
-            sourceItems: items,
+            sourceItems,
             promotions,
             saleDate: form.data.date,
             manualDiscounts,
@@ -116,6 +132,7 @@ export default function ProductExchangeEdit({
     }, [
         paymentOnlyEdit,
         items,
+        sourceItems,
         sellDiscounts,
         promotions,
         form.data.date,
@@ -126,6 +143,54 @@ export default function ProductExchangeEdit({
     ]);
 
     const lineTotals = paymentOnlyEdit ? totals : summary;
+
+    const signedSettlement = paymentOnlyEdit
+        ? (totals?.is_refund
+            ? -parseFloat(totals?.settlement ?? exchange.settlement_amount ?? 0)
+            : parseFloat(totals?.settlement ?? exchange.settlement_amount ?? 0))
+        : (summary?.signedSettlement ?? parseFloat(exchange.price_difference ?? 0));
+    const priceDifference = paymentOnlyEdit
+        ? signedSettlement
+        : (summary?.priceDifference ?? parseFloat(exchange.price_difference ?? 0));
+    const settlementAmount = paymentOnlyEdit
+        ? Math.abs(signedSettlement) < 0.009
+            ? 0
+            : Math.abs(signedSettlement)
+        : (summary?.settlementAmount ?? 0);
+    const isRefund = paymentOnlyEdit
+        ? Boolean(totals?.is_refund ?? exchange.is_refund)
+        : (summary?.signedSettlement ?? priceDifference) < -0.009;
+    const isParty = paymentMode === 'party';
+
+    // Cash already handed out for this refund = clamped paid_amount plus any
+    // unrecovered overpayment from a prior save. Without the overpaid due, a
+    // re-opened edit looks "fully paid" while the customer list still shows due.
+    const priorPaidRecorded = parseFloat(exchange.paid_amount ?? 0) || 0;
+    const storedOverpaidDue = parseFloat(exchange.overpaid_due_amount ?? 0) || 0;
+    const priorIsRefund = Boolean(exchange.is_refund);
+    const priorPaidAmount =
+        priorIsRefund && isRefund
+            ? priorPaidRecorded + storedOverpaidDue
+            : priorPaidRecorded;
+    const showPriorPayment = priorPaidAmount > 0.009 && priorIsRefund === isRefund;
+    const fieldPaidAmount = isParty ? 0 : parseFloat(form.data.paid_amount || 0) || 0;
+    // Gross cash already refunded above the (shrunk) settlement — before any
+    // repayment the customer hands back in this edit session.
+    const grossOverpaidAmount =
+        isRefund && !isParty && showPriorPayment
+            ? Math.max(0, priorPaidAmount - settlementAmount)
+            : 0;
+    const isOverpaid = grossOverpaidAmount > 0.009;
+    // When overpaid, the amount field is customer repayment — not more refund.
+    const customerPaymentNow = isOverpaid
+        ? Math.min(fieldPaidAmount, grossOverpaidAmount)
+        : 0;
+    const overpaidAmount = Math.max(0, grossOverpaidAmount - customerPaymentNow);
+    const totalPaidAmount = isOverpaid
+        ? priorPaidAmount
+        : showPriorPayment
+          ? priorPaidAmount + fieldPaidAmount
+          : fieldPaidAmount;
 
     useEffect(() => {
         if (flash?.success) {
@@ -143,20 +208,54 @@ export default function ProductExchangeEdit({
         }
 
         const settlement = summary.settlementAmount;
+        const signed = summary.signedSettlement ?? 0;
+        const nowOverpaid =
+            paymentMode !== 'party' &&
+            showPriorPayment &&
+            signed < -0.009 &&
+            priorPaidAmount > settlement + 0.009;
 
         if (paymentMode === 'party') {
             form.setData('paid_amount', '0');
+            prevSettlementRef.current = settlement;
+            wasOverpaidRef.current = false;
 
             return;
         }
 
-        const currentPaid = parseFloat(form.data.paid_amount || 0);
+        // Overpaid state uses the amount field as customer repayment. Reset once
+        // when entering that state, then leave the field alone for the user.
+        if (nowOverpaid) {
+            if (!wasOverpaidRef.current) {
+                form.setData('paid_amount', '0');
+            }
 
-        if (currentPaid === 0 || currentPaid === prevSettlementRef.current) {
-            form.setData(
-                'paid_amount',
-                settlement > 0 ? settlement.toFixed(2) : '0',
-            );
+            wasOverpaidRef.current = true;
+            isInitialPaidSync.current = false;
+            prevSettlementRef.current = settlement;
+
+            return;
+        }
+
+        wasOverpaidRef.current = false;
+
+        const syncedTotal = syncExchangeEditPaidAmount({
+            currentPaid: totalPaidAmount,
+            previousSettlement: prevSettlementRef.current,
+            nextSettlement: settlement,
+            skipAutoFill: isInitialPaidSync.current,
+        });
+
+        if (syncedTotal !== null) {
+            const nextTotal = parseFloat(syncedTotal);
+            const nextField = showPriorPayment
+                ? Math.max(0, nextTotal - priorPaidAmount)
+                : nextTotal;
+            form.setData('paid_amount', nextField > 0.009 ? nextField.toFixed(2) : '0');
+        }
+
+        if (isInitialPaidSync.current) {
+            isInitialPaidSync.current = false;
         }
 
         prevSettlementRef.current = settlement;
@@ -192,10 +291,21 @@ export default function ProductExchangeEdit({
         }
 
         const settlement = summary?.settlementAmount ?? 0;
-        form.setData(
-            'paid_amount',
-            settlement > 0 ? settlement.toFixed(2) : '0',
-        );
+
+        if (isOverpaid) {
+            form.setData('paid_amount', '0');
+            prevSettlementRef.current = settlement;
+
+            return;
+        }
+
+        if (totalPaidAmount <= 0.009) {
+            const target = showPriorPayment
+                ? Math.max(0, settlement - priorPaidAmount)
+                : settlement;
+            form.setData('paid_amount', target > 0.009 ? target.toFixed(2) : '0');
+        }
+
         prevSettlementRef.current = settlement;
     }
 
@@ -205,21 +315,30 @@ export default function ProductExchangeEdit({
         }
 
         setItems((prev) =>
-            prev.map((it, i) =>
-                i === replaceIndex
-                    ? {
-                          ...it,
-                          new_product_id: product.product_id,
-                          new_product_name: product.product_name,
-                          new_product_code: product.product_code,
-                          new_variation_id: product.variation_id ?? null,
-                          new_variation_label: product.variation_label ?? null,
-                          new_unit_price: String(product.unit_price ?? 0),
-                          category_id: product.category_id ?? it.category_id,
-                          brand_id: product.brand_id ?? it.brand_id,
-                      }
-                    : it,
-            ),
+            prev.map((it, i) => {
+                if (i !== replaceIndex) {
+                    return it;
+                }
+
+                const soldQty = parseInt(it.sold_quantity || 0, 10);
+                const returnQty = parseInt(it.return_quantity || 0, 10);
+                const currentQty = parseInt(it.quantity || 0, 10);
+                const defaultQty = Math.max(1, soldQty - returnQty);
+
+                return {
+                    ...it,
+                    new_product_id: product.product_id,
+                    new_product_name: product.product_name,
+                    new_product_code: product.product_code,
+                    new_variation_id: product.variation_id ?? null,
+                    new_variation_label: product.variation_label ?? null,
+                    new_unit_price: String(product.unit_price ?? 0),
+                    category_id: product.category_id ?? it.category_id,
+                    brand_id: product.brand_id ?? it.brand_id,
+                    quantity:
+                        currentQty > 0 ? it.quantity : String(defaultQty),
+                };
+            }),
         );
         setReplaceIndex(null);
     }
@@ -266,7 +385,9 @@ export default function ProductExchangeEdit({
                 comment: data.comment,
                 payment_type: paymentModeToType(paymentMode),
                 payment_account_id: paymentModeToAccountId(paymentMode),
-                paid_amount: paymentMode === 'party' ? '0' : data.paid_amount,
+                paid_amount: paymentMode === 'party'
+                    ? '0'
+                    : (totalPaidAmount > 0.009 ? totalPaidAmount.toFixed(2) : '0'),
             }));
             form.put(route('inventory.product-exchange.update', exchange.id), {
                 preserveScroll: true,
@@ -335,7 +456,12 @@ export default function ProductExchangeEdit({
             ...data,
             payment_type: paymentModeToType(paymentMode),
             payment_account_id: paymentModeToAccountId(paymentMode),
-            paid_amount: paymentMode === 'party' ? '0' : data.paid_amount,
+            paid_amount: paymentMode === 'party'
+                ? '0'
+                : (totalPaidAmount > 0.009 ? totalPaidAmount.toFixed(2) : '0'),
+            customer_payment_amount: paymentMode === 'party' || !isOverpaid
+                ? '0'
+                : (customerPaymentNow > 0.009 ? customerPaymentNow.toFixed(2) : '0'),
             discount_type: manualDiscounts.invoiceType || 'flat',
             discount_value: String(parseFloat(manualDiscounts.invoice || 0)),
             special_discount_id: manualDiscounts.specialDiscountId || null,
@@ -355,16 +481,17 @@ export default function ProductExchangeEdit({
         });
     }
 
-    const priceDifference = lineTotals?.gross_price_difference ?? lineTotals?.priceDifference ?? 0;
-    const settlementAmount = paymentOnlyEdit
-        ? (totals?.settlement ?? exchange.settlement_amount ?? 0)
-        : (summary?.settlementAmount ?? 0);
-    const isRefund = paymentOnlyEdit
-        ? Boolean(totals?.is_refund)
-        : (summary?.signedSettlement ?? priceDifference) < 0;
-    const isParty = paymentMode === 'party';
     const settlementLineLabel = isRefund ? 'Refund to Customer' : 'Customer Pays';
+    const paidLabel = isOverpaid
+        ? 'Customer Payment'
+        : showPriorPayment
+          ? (isRefund ? 'Additional Refund Now' : 'Additional Payment Now')
+          : (isRefund ? 'Refund Paid' : 'Paid Amount');
     const dueLabel = isRefund ? 'Remaining Refund' : 'Due Amount';
+    const priorPaidLabel = isRefund ? 'Already Refunded' : 'Already Received';
+    const overpaidLabel = customerPaymentNow > 0.009
+        ? 'Remaining Customer Due'
+        : 'Customer Pays This Back — Added to Due';
 
     return (
         <>
@@ -475,6 +602,11 @@ export default function ProductExchangeEdit({
                                               promoLine.promotion_discount || 0,
                                           )
                                         : 0;
+                                    const maxReturnQty = Math.max(
+                                        0,
+                                        parseInt(item.sold_quantity || 0, 10) -
+                                            parseInt(item.quantity || 0, 10),
+                                    );
 
                                     return (
                                         <tr
@@ -521,8 +653,20 @@ export default function ProductExchangeEdit({
                                                 ) : (
                                                     <Input
                                                         type="number"
-                                                        min="1"
-                                                        max={item.sold_quantity}
+                                                        min="0"
+                                                        max={Math.max(
+                                                            0,
+                                                            parseInt(
+                                                                item.sold_quantity ||
+                                                                    0,
+                                                                10,
+                                                            ) -
+                                                                parseInt(
+                                                                    item.return_quantity ||
+                                                                        0,
+                                                                    10,
+                                                                ),
+                                                        )}
                                                         step="1"
                                                         value={item.quantity}
                                                         onChange={(e) =>
@@ -548,18 +692,12 @@ export default function ProductExchangeEdit({
                                                     <Input
                                                         type="number"
                                                         min="0"
-                                                        max={item.sold_quantity}
+                                                        max={maxReturnQty}
                                                         step="1"
                                                         value={
                                                             item.return_quantity
                                                         }
                                                         onChange={(e) =>
-                                                            updateReturnQty(
-                                                                i,
-                                                                e.target.value,
-                                                            )
-                                                        }
-                                                        onBlur={(e) =>
                                                             updateReturnQty(
                                                                 i,
                                                                 e.target.value,
@@ -689,6 +827,20 @@ export default function ProductExchangeEdit({
                                         ৳{priceDifference.toFixed(2)}
                                     </strong>
                                 </span>
+                                {settlementAmount > 0.009 && (
+                                    <span>
+                                        {settlementLineLabel}:{' '}
+                                        <strong
+                                            className={
+                                                isRefund
+                                                    ? 'text-destructive'
+                                                    : 'text-primary'
+                                            }
+                                        >
+                                            ৳{settlementAmount.toFixed(2)}
+                                        </strong>
+                                    </span>
+                                )}
                                 {(lineTotals?.new_discount_total ?? lineTotals?.newDiscountTotal ?? 0) > 0.009 && (
                                     <span className="text-destructive">
                                         Discounts:{' '}
@@ -711,7 +863,7 @@ export default function ProductExchangeEdit({
                                     Net new:{' '}
                                     <strong>
                                         ৳
-                                        ৳{(lineTotals?.net ?? lineTotals?.netNewAmount ?? 0).toFixed(2)}
+                                        {(lineTotals?.net ?? lineTotals?.netNewAmount ?? 0).toFixed(2)}
                                     </strong>
                                 </span>
                             </div>
@@ -748,17 +900,35 @@ export default function ProductExchangeEdit({
                                 form.setData('paid_amount', v)
                             }
                             paidReadOnly={false}
-                            paidLabel={settlementLineLabel}
+                            paidLabel={paidLabel}
                             settlementLineLabel={settlementLineLabel}
-                            showPaidAmount={!isParty}
+                            showPaidAmount={!isParty && (isOverpaid || settlementAmount > 0.009 || showPriorPayment)}
                             dueLabel={dueLabel}
+                            dueAmountOverride={Math.max(0, settlementAmount - totalPaidAmount)}
+                            priorPaidAmount={showPriorPayment && !isParty ? priorPaidAmount : null}
+                            priorPaidLabel={priorPaidLabel}
+                            overpaidAmount={isOverpaid ? overpaidAmount : null}
+                            overpaidLabel={overpaidLabel}
                             paymentMode={paymentMode}
                             onPaymentModeChange={handlePaymentModeChange}
                             paymentAccounts={paymentAccounts}
                             partyLabel="Customer Account"
-                            partyPaidHint="The full exchange difference settles on the customer account. No cash or bank entry is posted."
-                            paidError={form.errors.paid_amount}
-                            showDue={!isParty && settlementAmount > 0}
+                            partyPaidHint={
+                                isRefund
+                                    ? 'The full refund settles on the customer account. No cash or bank entry is posted.'
+                                    : 'The full exchange difference settles on the customer account. No cash or bank entry is posted.'
+                            }
+                            paymentHint={
+                                isParty
+                                    ? null
+                                    : isOverpaid
+                                      ? 'Cash / bank account receiving the customer repayment. Leave at 0 to add the full amount to customer due.'
+                                      : isRefund
+                                        ? 'Cash / bank account the refund is paid from.'
+                                        : 'Cash / bank account (asset ledger). Enter the amount received in Paid Amount.'
+                            }
+                            paidError={form.errors.paid_amount || form.errors.customer_payment_amount}
+                            showDue={!isParty && settlementAmount > 0 && !isOverpaid}
                         />
                     </div>
 

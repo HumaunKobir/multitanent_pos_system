@@ -1,8 +1,10 @@
 <?php
 
+use App\Enums\CustomerDueAlertStatus;
 use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Customer;
+use App\Models\CustomerDueAlert;
 use App\Models\CustomerPayment;
 use App\Models\CustomerPaymentAllocation;
 use App\Models\Ledger;
@@ -439,4 +441,87 @@ test('sell show reflects customer due collection with updated due and payment de
             ->where('payments.data.0.allocations.0.amount', $collectionAmount)
             ->where('payments.data.0.allocations.0.document.paid_amount', $collectionAmount)
             ->where('payments.data.0.allocations.0.document.due_amount', fn ($due) => abs((float) $due - $remainingDue) < 0.01));
+});
+
+test('fully collecting a customer due marks their active due alert as paid', function () {
+    $this->artisan('permissions:sync');
+
+    $user = customerDueCollectionUser([
+        'party.customer-due-collection.view',
+        'party.customer-due-collection.create',
+        'inventory.sell.create',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+    $product = Product::factory()->create(['branch_id' => $user->branch_id]);
+    Batch::factory()->for($product)->withStock(10)->create(['branch_id' => $user->branch_id]);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '0',
+            'comment' => null,
+            'due_given_date' => now()->format('Y-m-d'),
+            'items' => [[
+                'product_id' => $product->id,
+                'variation_id' => null,
+                'unit_price' => '2000',
+                'quantity' => '1',
+            ]],
+        ])
+        ->assertRedirect();
+
+    $sell = Sell::query()->where('customer_id', $customer->id)->latest('id')->first();
+    $invoiceDue = round((float) $sell->net_amount - (float) $sell->paid_amount, 2);
+    expect($invoiceDue)->toBeGreaterThan(0);
+
+    $alert = CustomerDueAlert::query()->where('customer_id', $customer->id)->first();
+    expect($alert)->not->toBeNull();
+    expect($alert->status)->toBe(CustomerDueAlertStatus::Unpaid);
+
+    $partialAmount = round($invoiceDue / 2, 2);
+
+    $this->actingAs($user)
+        ->post('/party/customer-due-collection', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'payment_account_id' => $cash->id,
+            'allocations' => [
+                ['sell_id' => $sell->id, 'amount' => $partialAmount],
+            ],
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    // Partially collecting the due must not mark the alert as paid yet.
+    expect($alert->fresh()->status)->toBe(CustomerDueAlertStatus::Unpaid);
+
+    $customer->refresh();
+    $remainingDue = round((float) $customer->balance, 2);
+    expect($remainingDue)->toBeGreaterThan(0);
+
+    $this->actingAs($user)
+        ->post('/party/customer-due-collection', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'payment_account_id' => $cash->id,
+            'allocations' => [
+                ['sell_id' => $sell->id, 'amount' => $remainingDue],
+            ],
+        ])
+        ->assertRedirect()
+        ->assertSessionHas('success');
+
+    $customer->refresh();
+    expect((float) $customer->balance)->toBe(0.0);
+    expect($alert->fresh()->status)->toBe(CustomerDueAlertStatus::Paid);
 });

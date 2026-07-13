@@ -166,7 +166,7 @@ export default function ProductExchangeCreate({
     async function lookupSale() {
         setLookupError('');
         const res = await fetch(
-            `${route('api.sales.lookup')}?invoice=${encodeURIComponent(invoiceQuery)}`,
+            `${route('api.sales.lookup')}?invoice=${encodeURIComponent(invoiceQuery)}&for=exchange`,
             {
                 credentials: 'include',
                 headers: {

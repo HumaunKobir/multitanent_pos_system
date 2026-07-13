@@ -5,6 +5,7 @@ use App\Models\Branch;
 use App\Models\Product;
 use App\Models\ProductExchange;
 use App\Models\ProductExchangeProduct;
+use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\SellProduct;
 use App\Models\User;
@@ -270,4 +271,62 @@ test('sell index exposes effective totals for exchanged sales', function () {
             ->where('sells.data.0.has_exchange', true)
             ->where('sells.data.0.gross_amount', '1000.00')
             ->whereNot('sells.data.0.exchange_invoice_number', null));
+});
+
+test('sell index shows returned badge when sale has a return', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    $user->givePermissionTo('inventory.sell.view');
+    $product = Product::factory()->create(['branch_id' => $branch->id]);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+        'gross_amount' => 500,
+        'paid_amount' => 500,
+        'vat' => 0,
+    ]);
+
+    $sellProduct = SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'quantity' => 1,
+        'unit_price' => 500,
+        'batches' => [],
+    ]);
+
+    $saleReturn = SaleReturn::query()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'sell_id' => $sell->id,
+        'date' => now(),
+        'gross_amount' => 500,
+        'vat_amount' => 0,
+        'discount_amount' => 0,
+        'paid_amount' => 0,
+        'due_amount' => 500,
+        'payment_type' => 5,
+    ]);
+
+    $saleReturn->products()->create([
+        'branch_id' => $branch->id,
+        'sell_product_id' => $sellProduct->id,
+        'product_id' => $product->id,
+        'quantity' => 1,
+        'unit_price' => 500,
+        'batches' => [],
+    ]);
+
+    $this->actingAs($user)
+        ->get('/inventory/sell')
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('sells.data', 1)
+            ->where('sells.data.0.has_return', true)
+            ->where('sells.data.0.return_invoice_number', $saleReturn->invoice_number)
+            ->where('sells.data.0.has_exchange', false));
 });

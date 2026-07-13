@@ -38,6 +38,8 @@ class ProductExchange extends Model
         'net_amount',
         'paid_amount',
         'due_amount',
+        'overpaid_amount',
+        'overpaid_collected_amount',
         'price_difference',
         'payment_type',
         'payment_account_id',
@@ -61,6 +63,8 @@ class ProductExchange extends Model
         'net_amount' => 'decimal:2',
         'paid_amount' => 'decimal:2',
         'due_amount' => 'decimal:2',
+        'overpaid_amount' => 'decimal:2',
+        'overpaid_collected_amount' => 'decimal:2',
         'price_difference' => 'decimal:2',
         'payment_type' => ReceivedPaymentMethod::class,
     ];
@@ -117,6 +121,22 @@ class ProductExchange extends Model
         return round(max(0, $this->settlementAmount() - (float) $this->paid_amount), 2);
     }
 
+    /**
+     * Overpaid refund the customer still owes back, net of what's been collected.
+     */
+    public function overpaidDueAmount(): float
+    {
+        return round(max(
+            0,
+            (float) $this->overpaid_amount - (float) $this->overpaid_collected_amount,
+        ), 2);
+    }
+
+    public function hasCollectedOverpayment(): bool
+    {
+        return (float) $this->overpaid_collected_amount > 0.009;
+    }
+
     public function isPartiallyPaid(): bool
     {
         return (float) $this->paid_amount > 0 && $this->dueAmount() > 0;
@@ -124,30 +144,32 @@ class ProductExchange extends Model
 
     public function isFullyPaid(): bool
     {
-        return $this->dueAmount() <= 0 && $this->settlementAmount() > 0;
+        return $this->dueAmount() <= 0
+            && $this->settlementAmount() > 0
+            && $this->overpaidDueAmount() <= 0.009;
     }
 
     public function isEditable(): bool
     {
-        if ($this->payment_type === ReceivedPaymentMethod::Customer_Account && $this->settlementAmount() > 0) {
-            return false;
-        }
-
-        return ! $this->isPartiallyPaid() && ! $this->isFullyPaid();
+        return true;
     }
 
     public function isPaymentOnlyEditable(): bool
     {
-        return $this->isPartiallyPaid();
+        return false;
     }
 
     public function canAccessEdit(): bool
     {
-        return $this->isEditable() || $this->isPaymentOnlyEditable();
+        return true;
     }
 
     public function paymentStatusLabel(): string
     {
+        if ($this->overpaidDueAmount() > 0.009) {
+            return 'customer_due';
+        }
+
         if ($this->settlementAmount() <= 0) {
             return 'settled';
         }

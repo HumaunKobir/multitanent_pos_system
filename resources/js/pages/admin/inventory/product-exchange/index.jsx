@@ -19,6 +19,7 @@ const PAYMENT_STATUS_LABELS = {
     unpaid: 'Unpaid',
     partially_paid: 'Partially Paid',
     fully_paid: 'Fully Paid',
+    customer_due: 'Customer Due',
     settled: 'Settled',
 };
 
@@ -79,22 +80,40 @@ export default function ProductExchangeIndex({ exchanges = { data: [] }, filters
         {
             id: 'due',
             header: 'Due',
-            render: (row) => (
-                <span
-                    className={
-                        parseFloat(row.due_amount ?? 0) > 0
-                            ? 'font-semibold text-destructive'
-                            : 'font-semibold text-green-700 dark:text-green-400'
-                    }
-                >
-                    ৳{parseFloat(row.due_amount ?? 0).toFixed(2)}
-                </span>
-            ),
+            render: (row) => {
+                const due = parseFloat(row.due_amount ?? 0);
+                const isCustomerDue = row.payment_status === 'customer_due'
+                    || parseFloat(row.overpaid_due_amount ?? 0) > 0.009;
+
+                return (
+                    <span
+                        className={
+                            due > 0.009
+                                ? isCustomerDue
+                                    ? 'font-semibold text-amber-700 dark:text-amber-400'
+                                    : 'font-semibold text-destructive'
+                                : 'font-semibold text-green-700 dark:text-green-400'
+                        }
+                    >
+                        ৳{due.toFixed(2)}
+                    </span>
+                );
+            },
         },
         {
             id: 'payment',
             header: 'Status',
-            render: (row) => PAYMENT_STATUS_LABELS[row.payment_status] ?? '—',
+            render: (row) => (
+                <span
+                    className={
+                        row.payment_status === 'customer_due'
+                            ? 'font-medium text-amber-700 dark:text-amber-400'
+                            : undefined
+                    }
+                >
+                    {PAYMENT_STATUS_LABELS[row.payment_status] ?? '—'}
+                </span>
+            ),
         },
         {
             id: 'actions',
@@ -172,6 +191,7 @@ function SettlePaymentDialog({ exchange, paymentAccounts, onClose }) {
     const isRefund = Boolean(exchange?.is_refund);
     const settlement = parseFloat(exchange?.settlement_amount ?? 0);
     const alreadyPaid = parseFloat(exchange?.paid_amount ?? 0);
+    const remainingDue = parseFloat(exchange?.due_amount ?? 0);
 
     const form = useForm({
         payment_type: '0',
@@ -192,7 +212,7 @@ function SettlePaymentDialog({ exchange, paymentAccounts, onClose }) {
         form.setData({
             payment_type: paymentModeToType(mode),
             payment_account_id: paymentModeToAccountId(mode),
-            paid_amount: settlement > 0 ? settlement.toFixed(2) : '0',
+            paid_amount: mode === 'party' ? '0' : remainingDue > 0 ? remainingDue.toFixed(2) : '0',
         });
     }, [exchange?.id]);
 
@@ -202,7 +222,7 @@ function SettlePaymentDialog({ exchange, paymentAccounts, onClose }) {
             ...form.data,
             payment_type: paymentModeToType(mode),
             payment_account_id: paymentModeToAccountId(mode),
-            paid_amount: mode === 'party' ? '0' : settlement > 0 ? settlement.toFixed(2) : '0',
+            paid_amount: mode === 'party' ? '0' : remainingDue > 0 ? remainingDue.toFixed(2) : '0',
         });
     }
 
@@ -261,6 +281,12 @@ function SettlePaymentDialog({ exchange, paymentAccounts, onClose }) {
                                 <span className="text-green-700 dark:text-green-400">৳{alreadyPaid.toFixed(2)}</span>
                             </div>
                         )}
+                        {remainingDue > 0.009 && (
+                            <div className="mt-1 flex items-center justify-between text-xs">
+                                <span className="text-muted-foreground">Remaining due</span>
+                                <span className="font-semibold text-destructive">৳{remainingDue.toFixed(2)}</span>
+                            </div>
+                        )}
                     </div>
 
                     <div>
@@ -292,7 +318,7 @@ function SettlePaymentDialog({ exchange, paymentAccounts, onClose }) {
                             <Input
                                 type="number"
                                 min="0"
-                                max={settlement}
+                                max={remainingDue > 0 ? remainingDue : settlement}
                                 step="0.01"
                                 value={form.data.paid_amount}
                                 onChange={(e) => form.setData('paid_amount', e.target.value)}

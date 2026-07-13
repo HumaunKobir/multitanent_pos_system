@@ -18,6 +18,7 @@ use App\Models\Purchase;
 use App\Models\PurchaseReturn;
 use App\Models\PurchaseReturnPayment;
 use App\Models\SaleReturn;
+use App\Models\SaleReturnPayment;
 use App\Models\Sell;
 use App\Models\StockDistribution;
 use App\Models\StockDistributionProduct;
@@ -229,6 +230,36 @@ class InventoryAccountingService
             $sell->id,
             $sell->date->format('Y-m-d'),
             "Sale {$invoice}",
+            $lines,
+            validateBalance: false,
+        );
+    }
+
+    /**
+     * Record an incremental cash refund against an outstanding sale return due.
+     * Dr Customer Receivables, Cr Cash — clears the store credit posted at return creation.
+     */
+    public function postSaleReturnRefundPayment(SaleReturnPayment $payment): void
+    {
+        $payment->loadMissing(['saleReturn.customer:id,name']);
+
+        $saleReturn = $payment->saleReturn;
+        $invoice = $saleReturn?->invoice_number ?? "SR#{$payment->sale_return_id}";
+        $customerName = $saleReturn?->customer?->name ?? 'Customer';
+        $branchId = $payment->branch_id ?? $saleReturn?->branch_id;
+        $amount = round((float) $payment->amount, 2);
+        $date = $payment->date ?? $saleReturn?->date ?? now();
+
+        $lines = [
+            $this->debitLine(SystemAccountKey::CustomerReceivables, $amount, "Refund payable cleared — Sale Return {$invoice}, {$customerName}", $branchId),
+            $this->creditPaymentAccount($payment->payment_account_id, $amount, "Cash refunded — Sale Return {$invoice}, {$customerName}", $branchId),
+        ];
+
+        $this->postJournal(
+            SaleReturnPayment::class,
+            $payment->id,
+            $date->format('Y-m-d'),
+            "Sale Return Refund {$invoice}",
             $lines,
             validateBalance: false,
         );
@@ -690,6 +721,35 @@ class InventoryAccountingService
             $exchange->id,
             $exchange->date->format('Y-m-d'),
             "Product Exchange {$invoice}",
+            $lines,
+            false,
+        );
+    }
+
+    /**
+     * When an edit shrinks a refund below what was already paid out in cash on a
+     * prior save, the excess doesn't vanish — it becomes a customer receivable.
+     * Posted as its own balanced journal (rather than an extra line on the main
+     * exchange journal) so it stays self-consistent and is swept up by
+     * reverseFor() on the next edit or delete like any other exchange posting.
+     */
+    public function postExchangeOverpaymentReceivable(ProductExchange $exchange, int $paymentAccountId, float $amount): Transaction
+    {
+        $amount = round($amount, 2);
+        $exchange->loadMissing('customer:id,name');
+        $invoice = $exchange->invoice_number;
+        $customerName = $exchange->customer?->name ?? 'Customer';
+
+        $lines = [
+            $this->debitLine(SystemAccountKey::CustomerReceivables, $amount, "Receivable — Exchange overpayment {$invoice}, {$customerName}"),
+            $this->creditPaymentAccount($paymentAccountId, $amount, "Overpaid refund recovered — Exchange {$invoice}"),
+        ];
+
+        return $this->postJournal(
+            ProductExchange::class,
+            $exchange->id,
+            $exchange->date->format('Y-m-d'),
+            "Product Exchange overpayment {$invoice}",
             $lines,
             false,
         );

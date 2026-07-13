@@ -3,7 +3,7 @@ import { formatBdDate } from '@/lib/format-bd-date';
 import { buildSellRowSummary, resolveSellEditAccess } from '@/lib/sell-summary';
 import { route } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Edit, Eye, Plus, Search, ShoppingCart, Trash2, ArrowLeftRight } from 'lucide-react';
+import { Edit, Eye, Plus, Search, ShoppingCart, Trash2, ArrowLeftRight, RotateCcw } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -59,6 +59,13 @@ export default function SellIndex({ sells, filters }) {
                             <ArrowLeftRight className="size-3" />
                             Exchanged
                             {row.exchange_invoice_number ? ` · ${row.exchange_invoice_number}` : ''}
+                        </Badge>
+                    )}
+                    {row.has_return && (
+                        <Badge variant="outline" className="gap-1 border-sky-300 bg-sky-50 text-[10px] text-sky-800">
+                            <RotateCcw className="size-3" />
+                            Returned
+                            {row.return_invoice_number ? ` · ${row.return_invoice_number}` : ''}
                         </Badge>
                     )}
                 </div>

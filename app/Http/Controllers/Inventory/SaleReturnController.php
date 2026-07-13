@@ -9,9 +9,13 @@ use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Customer;
+use App\Models\ProductVariation;
 use App\Models\Promotion;
 use App\Models\SaleReturn;
+use App\Models\SaleReturnPayment;
+use App\Models\SaleReturnProduct;
 use App\Models\Sell;
+use App\Models\SellProduct;
 use App\Services\CoinService;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
@@ -20,6 +24,7 @@ use App\Services\PromotionService;
 use App\Services\SaleReturnDiscountService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -54,11 +59,21 @@ class SaleReturnController extends Controller
             }))
             ->latest()
             ->paginate(20)
-            ->withQueryString();
+            ->withQueryString()
+            ->through(fn (SaleReturn $saleReturn) => [
+                ...$saleReturn->toArray(),
+                'is_editable' => $saleReturn->isEditable(),
+                'can_access_edit' => $saleReturn->canAccessEdit(),
+                'payment_only_edit' => $saleReturn->isPaymentOnlyEditable(),
+                'payment_status' => $saleReturn->paymentStatusLabel(),
+                'refund_amount' => $saleReturn->refundAmount(),
+                'due_amount' => $saleReturn->dueAmount(),
+            ]);
 
         return Inertia::render('admin/inventory/sale-return/index', [
             'returns' => $returns,
             'filters' => $request->only('search'),
+            'paymentAccounts' => $this->paymentAccountsForBranch(Auth::user()?->branch_id),
         ]);
     }
 
@@ -109,12 +124,6 @@ class SaleReturnController extends Controller
                     ->findOrFail($data['sell_id']);
 
                 $branchId = $this->resolveSaleReturnBranchId($branchId, $parent);
-
-                if (SaleReturn::where('sell_id', $parent->id)->exists()) {
-                    throw ValidationException::withMessages([
-                        'sell_id' => 'This sale has already been returned.',
-                    ]);
-                }
 
                 $returnedByLine = $this->returnedQuantities($parent->id);
                 $grossAmount = 0.0;
@@ -211,6 +220,7 @@ class SaleReturnController extends Controller
 
                 $refund = $this->resolveReturnRefund($data, $request, $netReturnAmount);
                 $paidAmount = $refund['paid_amount'];
+                $dueAmount = $refund['due_amount'];
                 $paymentType = $refund['payment_type'];
                 $paymentAccountId = $refund['payment_account_id'];
                 $paymentLines = $refund['payment_lines'];
@@ -231,6 +241,7 @@ class SaleReturnController extends Controller
                     'invoice_discount_value' => $breakdown['invoice_discount_value'],
                     'round_off_amount' => $breakdown['round_off_amount'],
                     'paid_amount' => $paidAmount,
+                    'due_amount' => $dueAmount,
                     'payment_type' => $paymentType,
                     'payment_account_id' => $paymentAccountId,
                     'comment' => $data['comment'] ?? null,
@@ -347,7 +358,7 @@ class SaleReturnController extends Controller
                 'vat_percent' => (float) $saleReturn->vat_percent,
                 'net' => $net,
                 'refund' => $refund,
-                'due_refund' => round(max(0, $net - $refund), 2),
+                'due_refund' => $saleReturn->dueAmount(),
             ],
         ]);
     }
@@ -362,7 +373,7 @@ class SaleReturnController extends Controller
         $parent = Sell::query()
             ->ownBranchUser()
             ->sale()
-            ->with(['products.product:id,name,code,category_id,brand_id', 'payments'])
+            ->with(['products.product:id,name,code,category_id,brand_id', 'products.variation:id,variation_data', 'payments'])
             ->findOrFail($saleReturn->sell_id);
 
         $returnedByLine = $this->returnedQuantities($parent->id, $saleReturn->id);
@@ -375,7 +386,8 @@ class SaleReturnController extends Controller
 
         $items = $parent->products
             ->map(function ($sp) use ($returnedByLine, $linesOnReturn, $promotionMap) {
-                $maxReturn = max(0, (float) $sp->quantity - ($returnedByLine[$sp->id] ?? 0));
+                $returnedElsewhere = (float) ($returnedByLine[$sp->id] ?? 0);
+                $maxReturn = max(0, (float) $sp->quantity - $returnedElsewhere);
                 $current = $linesOnReturn->get($sp->id);
 
                 if ($maxReturn <= 0 && ! $current) {
@@ -392,6 +404,9 @@ class SaleReturnController extends Controller
                     ];
                 }
 
+                $currentQty = $current ? (float) $current->quantity : 0.0;
+                $returnedOnSale = $returnedElsewhere + $currentQty;
+
                 return [
                     'sell_product_id' => $sp->id,
                     'product_id' => $sp->product_id,
@@ -400,12 +415,16 @@ class SaleReturnController extends Controller
                     'brand_id' => $sp->product?->brand_id,
                     'product_name' => $sp->product?->name,
                     'product_code' => $sp->product?->code,
+                    'variation_label' => $sp->variation?->variation_data['label'] ?? null,
                     'unit_price' => (float) ($sp->original_unit_price ?? $sp->unit_price),
                     'line_discount' => (float) $sp->discount,
                     'promotion_discount' => (float) $sp->promotion_discount,
                     'promotion_id' => $sp->promotion_id,
                     'promotion_details' => $promotionDetails,
                     'sold_quantity' => (float) $sp->quantity,
+                    'returned_elsewhere' => (int) $returnedElsewhere,
+                    'returned_quantity' => (int) $returnedOnSale,
+                    'available_quantity' => (int) max(0, (float) $sp->quantity - $returnedOnSale),
                     'max_return_quantity' => (int) $maxReturn,
                     'quantity' => $current ? (string) (int) $current->quantity : '0',
                 ];
@@ -417,6 +436,7 @@ class SaleReturnController extends Controller
 
         return Inertia::render('admin/inventory/sale-return/edit', [
             'today' => now()->format('Y-m-d'),
+            'paymentOnlyEdit' => false,
             'paymentAccounts' => $this->paymentAccountsForBranch($parent->branch_id),
             'saleReturn' => [
                 'id' => $saleReturn->id,
@@ -430,6 +450,7 @@ class SaleReturnController extends Controller
                 'invoice_discount_value' => $breakdown['invoice_discount_value'],
                 'saved_round_off_amount' => $breakdown['round_off_amount'],
                 'paid_amount' => (string) $saleReturn->paid_amount,
+                'due_amount' => (string) $saleReturn->due_amount,
                 'payment_type' => $saleReturn->payment_type?->value,
                 'payment_account_id' => $saleReturn->payment_account_id
                     ?? ($saleReturn->payment_type === ReceivedPaymentMethod::Cash
@@ -441,6 +462,11 @@ class SaleReturnController extends Controller
                         'amount' => (float) $payment->amount,
                     ])
                     ->values(),
+                'is_editable' => $saleReturn->isEditable(),
+                'can_access_edit' => $saleReturn->canAccessEdit(),
+                'payment_only_edit' => false,
+                'payment_status' => $saleReturn->paymentStatusLabel(),
+                'refund_amount' => $saleReturn->refundAmount(),
                 'items' => $items,
                 'sell_discounts' => [
                     'gross_amount' => (float) $parent->gross_amount,
@@ -467,6 +493,7 @@ class SaleReturnController extends Controller
 
     public function update(Request $request, SaleReturn $saleReturn): RedirectResponse
     {
+        $this->authorize('inventory.sale-return.update');
         $this->authorizeBranchUserRecord($saleReturn);
 
         $data = $request->validate([
@@ -487,16 +514,18 @@ class SaleReturnController extends Controller
             'manual_vat_percent' => ['nullable', 'numeric', 'min:0'],
         ]);
 
+        $saleReturn->loadMissing(['products', 'sell']);
+
+        if ($this->isPaymentOnlySaleReturnUpdate($saleReturn, $data)) {
+            return $this->updateSaleReturnPaymentOnly($request, $saleReturn, $data);
+        }
+
         $branchId = Auth::user()?->branch_id;
 
         try {
             DB::transaction(function () use ($request, $saleReturn, $data, &$branchId) {
-                $this->accounting->reverseFor($saleReturn);
-                $saleReturn->load(['products']);
-
-                $this->rollbackSaleReturn($saleReturn);
-                $saleReturn->products()->delete();
-                $saleReturn->payments()->delete();
+                $saleReturn->load(['products', 'payments']);
+                $oldProducts = $saleReturn->products->keyBy('sell_product_id');
 
                 $parent = Sell::query()
                     ->ownBranchUser()
@@ -507,73 +536,21 @@ class SaleReturnController extends Controller
 
                 $branchId = $this->resolveSaleReturnBranchId($branchId, $parent);
 
-                $returnedByLine = $this->returnedQuantities($parent->id, $saleReturn->id);
-                $grossAmount = 0.0;
-                $returnLineDiscount = 0.0;
-                $returnPromotionDiscount = 0.0;
-                $lines = [];
+                $built = $this->buildSaleReturnLines($parent, $saleReturn, $data, $branchId);
+                $lines = $built['lines'];
+                $grossAmount = $built['gross_amount'];
+                $returnLineDiscount = $built['return_line_discount'];
+                $returnPromotionDiscount = $built['return_promotion_discount'];
 
-                foreach ($data['items'] as $item) {
-                    $returnQty = (float) $item['quantity'];
+                $saleReturn->payments->each(fn (SaleReturnPayment $payment) => $this->accounting->reverseFor($payment));
+                $this->accounting->reverseFor($saleReturn);
+                $this->rollbackIncrementalRefundCustomerBalance($saleReturn);
+                $this->rollbackSaleReturnCustomerEffects($saleReturn);
 
-                    if ($returnQty <= 0) {
-                        continue;
-                    }
+                $saleReturn->products()->delete();
+                $saleReturn->payments()->delete();
 
-                    $sellProduct = $parent->products
-                        ->firstWhere('id', (int) $item['sell_product_id']);
-
-                    if (! $sellProduct) {
-                        throw new \RuntimeException('Invalid sale line.');
-                    }
-
-                    $maxReturn = (float) $sellProduct->quantity - ($returnedByLine[$sellProduct->id] ?? 0);
-
-                    if ($returnQty > $maxReturn) {
-                        throw new \RuntimeException('Return quantity exceeds available quantity.');
-                    }
-
-                    $batchMap = $this->scaleBatchMapForReturn($sellProduct->batches ?? [], $returnQty);
-
-                    if ($batchMap !== []) {
-                        $this->stock->restoreFromBatchMap(
-                            $batchMap,
-                            fn (Batch $batch, float $qty) => $batch->saleReturnStock($qty)
-                        );
-                    } elseif ($sellProduct->variation_id) {
-                        $this->stock->restoreVariation((int) $sellProduct->variation_id, $returnQty);
-                    } else {
-                        throw new \RuntimeException('Unable to restore stock for a sale line.');
-                    }
-
-                    $catalogUnitPrice = (float) ($sellProduct->original_unit_price ?? $sellProduct->unit_price);
-                    $grossAmount += $returnQty * $catalogUnitPrice;
-
-                    $soldQty = (float) $sellProduct->quantity;
-                    if ($soldQty > 0) {
-                        $ratio = $returnQty / $soldQty;
-                        $returnLineDiscount += (float) $sellProduct->discount * $ratio;
-                        $returnPromotionDiscount += $this->returnDiscounts->promotionClawback(
-                            $sellProduct,
-                            $returnQty,
-                            $parent,
-                        );
-                    }
-
-                    $lines[] = [
-                        'branch_id' => $branchId,
-                        'sell_product_id' => $sellProduct->id,
-                        'product_id' => $sellProduct->product_id,
-                        'variation_id' => $sellProduct->variation_id,
-                        'quantity' => $returnQty,
-                        'unit_price' => $catalogUnitPrice,
-                        'batches' => $batchMap,
-                    ];
-                }
-
-                if ($lines === []) {
-                    throw new \RuntimeException('At least one line with return quantity greater than zero is required.');
-                }
+                $this->applySaleReturnStockDelta($oldProducts, $lines, $parent);
 
                 $totals = $this->returnDiscounts->calculate(
                     $parent,
@@ -602,6 +579,7 @@ class SaleReturnController extends Controller
 
                 $refund = $this->resolveReturnRefund($data, $request, $netReturnAmount);
                 $paidAmount = $refund['paid_amount'];
+                $dueAmount = $refund['due_amount'];
                 $paymentType = $refund['payment_type'];
                 $paymentAccountId = $refund['payment_account_id'];
                 $paymentLines = $refund['payment_lines'];
@@ -618,6 +596,7 @@ class SaleReturnController extends Controller
                     'invoice_discount_value' => $breakdown['invoice_discount_value'],
                     'round_off_amount' => $breakdown['round_off_amount'],
                     'paid_amount' => $paidAmount,
+                    'due_amount' => $dueAmount,
                     'payment_type' => $paymentType,
                     'payment_account_id' => $paymentAccountId,
                     'comment' => $data['comment'] ?? null,
@@ -667,16 +646,142 @@ class SaleReturnController extends Controller
             ->with('success', 'Sale return updated successfully.');
     }
 
+    /**
+     * Record an incremental cash refund against outstanding sale return due from the list.
+     */
+    public function settleRefund(Request $request, SaleReturn $saleReturn): RedirectResponse
+    {
+        $this->authorize('inventory.sale-return.update');
+        $this->authorizeBranchUserRecord($saleReturn);
+
+        $currentDue = $saleReturn->dueAmount();
+
+        if ($currentDue <= 0) {
+            return back()->with('error', 'This sale return has no outstanding refund due.');
+        }
+
+        $data = $request->validate([
+            'date' => ['required', 'date'],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'payment_account_id' => ['required', 'integer', 'exists:chart_of_accounts,id'],
+        ]);
+
+        $amount = round((float) $data['amount'], 2);
+
+        if ($amount > $currentDue + 0.009) {
+            return back()->withErrors([
+                'amount' => "Amount cannot exceed the remaining refund due of ৳{$currentDue}.",
+            ])->withInput();
+        }
+
+        try {
+            DB::transaction(function () use ($saleReturn, $data, $amount) {
+                $payment = SaleReturnPayment::create([
+                    'sale_return_id' => $saleReturn->id,
+                    'branch_id' => $saleReturn->branch_id,
+                    'date' => $data['date'],
+                    'payment_account_id' => (int) $data['payment_account_id'],
+                    'amount' => $amount,
+                ]);
+
+                $saleReturn->increment('paid_amount', $amount);
+                $saleReturn->decrement('due_amount', $amount);
+                $saleReturn->update([
+                    'payment_type' => ReceivedPaymentMethod::Cash,
+                    'payment_account_id' => (int) $data['payment_account_id'],
+                ]);
+
+                if ($saleReturn->customer_id) {
+                    Customer::whereKey($saleReturn->customer_id)->increment('balance', $amount);
+                }
+
+                $this->accounting->postSaleReturnRefundPayment($payment->load('saleReturn.customer'));
+            });
+        } catch (\Throwable $e) {
+            return back()->with('error', 'Unable to record refund: '.$e->getMessage());
+        }
+
+        return back()->with('success', 'Refund recorded successfully.');
+    }
+
+    private function updateSaleReturnPaymentOnly(Request $request, SaleReturn $saleReturn, array $data): RedirectResponse
+    {
+        try {
+            DB::transaction(function () use ($request, $saleReturn, $data) {
+                $saleReturn->load(['products', 'payments']);
+
+                $saleReturn->payments->each(fn (SaleReturnPayment $payment) => $this->accounting->reverseFor($payment));
+                $this->accounting->reverseFor($saleReturn);
+                $this->rollbackIncrementalRefundCustomerBalance($saleReturn);
+                $this->rollbackSaleReturnCustomerBalance($saleReturn);
+
+                $netReturnAmount = (float) $saleReturn->net_amount;
+                $refund = $this->resolveReturnRefund($data, $request, $netReturnAmount);
+
+                $saleReturn->update([
+                    'date' => $data['date'],
+                    'paid_amount' => $refund['paid_amount'],
+                    'due_amount' => $refund['due_amount'],
+                    'payment_type' => $refund['payment_type'],
+                    'payment_account_id' => $refund['payment_account_id'],
+                    'comment' => $data['comment'] ?? $saleReturn->comment,
+                ]);
+
+                if ($saleReturn->customer_id) {
+                    $this->syncSaleReturnCustomerBalance(
+                        (int) $saleReturn->customer_id,
+                        $netReturnAmount,
+                        $refund['payment_type'],
+                        $refund['paid_amount'],
+                    );
+                }
+
+                $this->syncSaleReturnPayments($saleReturn, $refund['payment_lines']);
+                $this->accounting->postSaleReturn(
+                    $saleReturn->fresh(['customer', 'sell']),
+                    $refund['payment_lines'],
+                    $this->costService->costForSaleReturn($saleReturn->load('products')),
+                );
+            });
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            return back()
+                ->withErrors([
+                    'paid_amount' => $e instanceof \RuntimeException
+                        ? $e->getMessage()
+                        : 'Unable to update sale return payment.',
+                ])
+                ->withInput();
+        }
+
+        return redirect()->route('inventory.sale-return.index')
+            ->with('success', 'Sale return updated successfully.');
+    }
+
     public function destroy(SaleReturn $saleReturn): RedirectResponse
     {
         $this->authorizeBranchUserRecord($saleReturn);
 
-        $saleReturn->load(['products']);
+        $returnLines = $saleReturn->products()->get();
+
+        if ($returnLines->isEmpty() && (float) $saleReturn->gross_amount > 0.009) {
+            return back()->with('error', 'Cannot cancel this sale return because product lines are missing.');
+        }
 
         try {
-            DB::transaction(function () use ($saleReturn) {
+            $this->assertStockAvailableForSaleReturnRollback($returnLines, (int) $saleReturn->sell_id);
+        } catch (\RuntimeException $e) {
+            return back()->with('error', $e->getMessage());
+        }
+
+        try {
+            DB::transaction(function () use ($saleReturn, $returnLines) {
                 $this->accounting->reverseFor($saleReturn);
-                $this->rollbackSaleReturn($saleReturn);
+                $saleReturn->payments()->each(function (SaleReturnPayment $payment) {
+                    $this->accounting->reverseFor($payment);
+                });
+                $this->rollbackSaleReturn($saleReturn, $returnLines);
                 $saleReturn->products()->delete();
                 $saleReturn->payments()->delete();
                 $saleReturn->delete();
@@ -689,24 +794,179 @@ class SaleReturnController extends Controller
             ->with('success', 'Sale return deleted successfully.');
     }
 
-    private function rollbackSaleReturn(SaleReturn $saleReturn): void
+    /**
+     * @param  Collection<int, SaleReturnProduct>  $returnLines
+     */
+    private function rollbackSaleReturn(SaleReturn $saleReturn, Collection $returnLines): void
     {
-        foreach ($saleReturn->products as $line) {
+        $this->rollbackSaleReturnStock($saleReturn, $returnLines);
+        $this->rollbackSaleReturnCustomerEffects($saleReturn);
+    }
+
+    /**
+     * @param  Collection<int, SaleReturnProduct>  $returnLines
+     */
+    private function rollbackSaleReturnStock(SaleReturn $saleReturn, Collection $returnLines): void
+    {
+        $sellProducts = SellProduct::query()
+            ->where('sell_id', $saleReturn->sell_id)
+            ->get()
+            ->keyBy('id');
+
+        foreach ($returnLines as $line) {
             $qty = (float) $line->quantity;
 
-            if ($line->variation_id) {
-                $this->stock->deductVariation((int) $line->variation_id, $qty);
-            } else {
+            if ($qty <= 0) {
+                continue;
+            }
+
+            $variationId = $line->variation_id
+                ?? $sellProducts->get($line->sell_product_id)?->variation_id;
+
+            if ($variationId) {
+                $this->stock->deductVariation((int) $variationId, $qty);
+
+                continue;
+            }
+
+            $batches = $line->batches ?? [];
+
+            if ($batches !== []) {
                 $this->stock->deductFromBatchMap(
-                    $line->batches ?? [],
+                    $batches,
                     fn (Batch $batch, float $batchQty) => $batch->outStock($batchQty)
                 );
+
+                continue;
             }
+
+            throw new \RuntimeException('Unable to reverse stock for a returned product. Insufficient stock or missing batch information.');
+        }
+    }
+
+    /**
+     * @param  Collection<int, SaleReturnProduct>  $returnLines
+     */
+    private function assertStockAvailableForSaleReturnRollback(Collection $returnLines, int $sellId): void
+    {
+        if ($returnLines->isEmpty()) {
+            return;
         }
 
+        $sellProducts = SellProduct::query()
+            ->where('sell_id', $sellId)
+            ->get()
+            ->keyBy('id');
+
+        foreach ($returnLines as $line) {
+            $qty = (float) $line->quantity;
+
+            if ($qty <= 0) {
+                continue;
+            }
+
+            $variationId = $line->variation_id
+                ?? $sellProducts->get($line->sell_product_id)?->variation_id;
+
+            if ($variationId) {
+                $variation = ProductVariation::query()->find($variationId);
+
+                if ($variation === null || (float) $variation->stock < $qty) {
+                    throw new \RuntimeException('Insufficient stock for variation.');
+                }
+
+                continue;
+            }
+
+            $batches = $line->batches ?? [];
+
+            if ($batches !== []) {
+                foreach ($batches as $batchId => $deductQty) {
+                    $batch = Batch::query()->find($batchId);
+
+                    if ($batch === null || (float) $batch->available < (float) $deductQty) {
+                        throw new \RuntimeException('Insufficient stock in batch.');
+                    }
+                }
+
+                continue;
+            }
+
+            throw new \RuntimeException('Unable to reverse stock for a returned product. Insufficient stock or missing batch information.');
+        }
+    }
+
+    private function rollbackSaleReturnCustomerEffects(SaleReturn $saleReturn): void
+    {
         if ($saleReturn->customer_id) {
             $this->rollbackSaleReturnCustomerBalance($saleReturn);
             $this->rollbackSaleReturnCustomerCoins($saleReturn);
+        }
+    }
+
+    /**
+     * @param  Collection<int, SaleReturnProduct>  $oldProducts
+     * @param  array<int, array<string, mixed>>  $newLines
+     */
+    private function applySaleReturnStockDelta($oldProducts, array $newLines, Sell $parent): void
+    {
+        $newBySellProduct = collect($newLines)->keyBy('sell_product_id');
+        $sellProductIds = $oldProducts->keys()->merge($newBySellProduct->keys())->unique();
+
+        foreach ($sellProductIds as $sellProductId) {
+            $oldLine = $oldProducts->get($sellProductId);
+            $newLine = $newBySellProduct->get($sellProductId);
+            $oldQty = $oldLine ? (float) $oldLine->quantity : 0.0;
+            $newQty = $newLine ? (float) $newLine['quantity'] : 0.0;
+            $delta = round($newQty - $oldQty, 2);
+
+            if (abs($delta) < 0.001) {
+                continue;
+            }
+
+            $sellProduct = $parent->products->firstWhere('id', (int) $sellProductId);
+
+            if ($sellProduct === null) {
+                throw new \RuntimeException('Invalid sale line.');
+            }
+
+            if ($delta > 0) {
+                $this->restoreStockForReturnLine($sellProduct, $delta);
+
+                continue;
+            }
+
+            $deductQty = abs($delta);
+
+            if ($oldLine?->variation_id) {
+                $this->stock->deductVariation((int) $oldLine->variation_id, $deductQty);
+            } elseif (! empty($oldLine?->batches)) {
+                $batchMap = $this->scaleBatchMapForReturn($oldLine->batches, $deductQty);
+                $this->stock->deductFromBatchMap(
+                    $batchMap,
+                    fn (Batch $batch, float $batchQty) => $batch->outStock($batchQty)
+                );
+            } elseif ($sellProduct->variation_id) {
+                $this->stock->deductVariation((int) $sellProduct->variation_id, $deductQty);
+            } else {
+                throw new \RuntimeException('Unable to adjust stock for a sale line.');
+            }
+        }
+    }
+
+    private function restoreStockForReturnLine(SellProduct $sellProduct, float $returnQty): void
+    {
+        $batchMap = $this->scaleBatchMapForReturn($sellProduct->batches ?? [], $returnQty);
+
+        if ($batchMap !== []) {
+            $this->stock->restoreFromBatchMap(
+                $batchMap,
+                fn (Batch $batch, float $qty) => $batch->saleReturnStock($qty)
+            );
+        } elseif ($sellProduct->variation_id) {
+            $this->stock->restoreVariation((int) $sellProduct->variation_id, $returnQty);
+        } else {
+            throw new \RuntimeException('Unable to restore stock for a sale line.');
         }
     }
 
@@ -840,6 +1100,154 @@ class SaleReturnController extends Controller
             'invoice_discount_value' => round($invoiceLevel, 2),
             'round_off_amount' => 0.0,
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $data
+     * @return array{
+     *     lines: array<int, array<string, mixed>>,
+     *     gross_amount: float,
+     *     return_line_discount: float,
+     *     return_promotion_discount: float
+     * }
+     */
+    private function buildSaleReturnLines(Sell $parent, SaleReturn $saleReturn, array $data, ?int $branchId): array
+    {
+        $returnedByLine = $this->returnedQuantities($parent->id, $saleReturn->id);
+        $grossAmount = 0.0;
+        $returnLineDiscount = 0.0;
+        $returnPromotionDiscount = 0.0;
+        $lines = [];
+
+        foreach ($data['items'] as $item) {
+            $returnQty = (float) $item['quantity'];
+
+            if ($returnQty <= 0) {
+                continue;
+            }
+
+            $sellProduct = $parent->products
+                ->firstWhere('id', (int) $item['sell_product_id']);
+
+            if (! $sellProduct) {
+                throw new \RuntimeException('Invalid sale line.');
+            }
+
+            $maxReturn = (float) $sellProduct->quantity - ($returnedByLine[$sellProduct->id] ?? 0);
+
+            if ($returnQty > $maxReturn) {
+                throw new \RuntimeException('Return quantity exceeds available quantity.');
+            }
+
+            $batchMap = $this->scaleBatchMapForReturn($sellProduct->batches ?? [], $returnQty);
+            $catalogUnitPrice = (float) ($sellProduct->original_unit_price ?? $sellProduct->unit_price);
+            $grossAmount += $returnQty * $catalogUnitPrice;
+
+            $soldQty = (float) $sellProduct->quantity;
+            if ($soldQty > 0) {
+                $ratio = $returnQty / $soldQty;
+                $returnLineDiscount += (float) $sellProduct->discount * $ratio;
+                $returnPromotionDiscount += $this->returnDiscounts->promotionClawback(
+                    $sellProduct,
+                    $returnQty,
+                    $parent,
+                );
+            }
+
+            $lines[] = [
+                'branch_id' => $branchId,
+                'sell_product_id' => $sellProduct->id,
+                'product_id' => $sellProduct->product_id,
+                'variation_id' => $sellProduct->variation_id,
+                'quantity' => $returnQty,
+                'unit_price' => $catalogUnitPrice,
+                'batches' => $batchMap,
+            ];
+        }
+
+        if ($lines === []) {
+            throw new \RuntimeException('At least one line with return quantity greater than zero is required.');
+        }
+
+        return [
+            'lines' => $lines,
+            'gross_amount' => $grossAmount,
+            'return_line_discount' => $returnLineDiscount,
+            'return_promotion_discount' => $returnPromotionDiscount,
+        ];
+    }
+
+    /** @param  array<string, mixed>  $data */
+    private function isPaymentOnlySaleReturnUpdate(SaleReturn $saleReturn, array $data): bool
+    {
+        if ($saleReturn->products->isEmpty()) {
+            return false;
+        }
+
+        $submitted = collect($data['items'])->mapWithKeys(
+            fn (array $item) => [(int) $item['sell_product_id'] => (int) $item['quantity']]
+        );
+
+        $existing = $saleReturn->products->mapWithKeys(
+            fn (SaleReturnProduct $line) => [(int) $line->sell_product_id => (int) $line->quantity]
+        );
+
+        if ($submitted->count() !== $existing->count()) {
+            return false;
+        }
+
+        foreach ($existing as $sellProductId => $quantity) {
+            if ((int) ($submitted[$sellProductId] ?? -1) !== $quantity) {
+                return false;
+            }
+        }
+
+        $parent = $saleReturn->sell ?? Sell::query()->find($saleReturn->sell_id);
+
+        if ($parent === null) {
+            return false;
+        }
+
+        $breakdown = $this->resolveEditBreakdown($saleReturn, $parent);
+        $manualType = $data['manual_invoice_discount_type'] ?? 'flat';
+        $manualInvoice = (float) ($data['manual_invoice_discount_value'] ?? 0);
+        $manualRound = (float) ($data['manual_round_off'] ?? 0);
+        $manualVat = (float) ($data['manual_vat_percent'] ?? 0);
+
+        if ($manualType !== ($breakdown['invoice_discount_type'] ?? 'flat')) {
+            return false;
+        }
+
+        if (abs($manualInvoice - (float) $breakdown['invoice_discount_value']) > 0.009) {
+            return false;
+        }
+
+        if (abs($manualRound - (float) $breakdown['round_off_amount']) > 0.009) {
+            return false;
+        }
+
+        if (abs($manualVat - (float) $saleReturn->vat_percent) > 0.009) {
+            return false;
+        }
+
+        return true;
+    }
+
+    private function rollbackIncrementalRefundCustomerBalance(SaleReturn $saleReturn): void
+    {
+        if ($saleReturn->customer_id === null) {
+            return;
+        }
+
+        $saleReturn->loadMissing('payments');
+
+        foreach ($saleReturn->payments as $payment) {
+            $amount = round((float) $payment->amount, 2);
+
+            if ($amount > 0) {
+                Customer::whereKey($saleReturn->customer_id)->decrement('balance', $amount);
+            }
+        }
     }
 
     /** @return array<int, float> */

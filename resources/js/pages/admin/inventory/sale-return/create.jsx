@@ -14,7 +14,7 @@ import {
     inputCls,
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
-import { buildInitialReturnDiscounts, calcSaleReturnSummary, derivedVatPercent } from '@/lib/sale-return-summary';
+import { buildInitialReturnDiscounts, calcSaleReturnSummary, derivedVatPercent, saleReturnLineStats } from '@/lib/sale-return-summary';
 import { buildInitialSalePayments, computeSplitSalePayment, serializeSalePayments, splitPaymentValidationError } from '@/lib/sale-payment';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
@@ -79,25 +79,26 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
             }
             return;
         }
-        const lines = json.items
-            .filter((i) => i.max_return_quantity > 0)
-            .map((i) => ({
-                sell_product_id: i.sell_product_id,
-                product_id: i.product_id,
-                variation_id: i.variation_id,
-                category_id: i.category_id,
-                brand_id: i.brand_id,
-                product_name: i.product_name,
-                product_code: i.product_code,
-                max_return_quantity: i.max_return_quantity,
-                sold_quantity: i.sold_quantity,
-                line_discount: i.line_discount,
-                promotion_discount: i.promotion_discount,
-                promotion_id: i.promotion_id,
-                promotion_details: i.promotion_details ?? null,
-                unit_price: i.unit_price,
-                quantity: String(i.max_return_quantity),
-            }));
+        const lines = json.items.map((i) => ({
+            sell_product_id: i.sell_product_id,
+            product_id: i.product_id,
+            variation_id: i.variation_id,
+            category_id: i.category_id,
+            brand_id: i.brand_id,
+            product_name: i.product_name,
+            product_code: i.product_code,
+            variation_label: i.variation_label ?? null,
+            max_return_quantity: i.max_return_quantity,
+            sold_quantity: i.sold_quantity,
+            returned_elsewhere: i.returned_quantity ?? 0,
+            returned_quantity: i.returned_quantity ?? 0,
+            line_discount: i.line_discount,
+            promotion_discount: i.promotion_discount,
+            promotion_id: i.promotion_id,
+            promotion_details: i.promotion_details ?? null,
+            unit_price: i.unit_price,
+            quantity: '0',
+        }));
         const sd = json.sell_discounts ?? {};
         const initialManual = buildInitialReturnDiscounts(sd);
         setSource(json);
@@ -220,23 +221,32 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                             <LineItemsTable
                                 columns={[
                                     { id: 'product', header: 'Product' },
-                                    { id: 'max', header: 'Max', align: 'right' },
+                                    { id: 'sold', header: 'Sold', align: 'right' },
+                                    { id: 'returned', header: 'Returned', align: 'right' },
+                                    { id: 'available', header: 'Available', align: 'right' },
                                     { id: 'price', header: 'Unit Price', align: 'right' },
                                     { id: 'qty', header: 'Return Qty', align: 'right' },
                                     { id: 'sub', header: 'Sub Total', align: 'right' },
                                 ]}
                             >
                                 {items.map((item, i) => {
-                                    const sub = parseFloat(item.quantity || 0) * parseFloat(item.unit_price || 0);
-                                    const overMax =
-                                        parseFloat(item.quantity || 0) > parseFloat(item.max_return_quantity);
+                                    const stats = saleReturnLineStats(item);
+                                    const sub = stats.returning * parseFloat(item.unit_price || 0);
+                                    const overMax = stats.returning > stats.maxReturn;
+                                    const isFullyReturned = stats.available <= 0 && stats.returning <= 0;
                                     return (
-                                        <tr key={i} className="hover:bg-muted/20">
+                                        <tr key={i} className={isFullyReturned ? 'bg-muted/30 text-muted-foreground' : 'hover:bg-muted/20'}>
                                             <td className="px-3 py-2">
-                                                <ProductNameWithCode name={item.product_name} code={item.product_code} />
+                                                <ProductNameWithCode
+                                                    name={item.product_name}
+                                                    code={item.product_code}
+                                                    variation={item.variation_label}
+                                                />
                                             </td>
-                                            <td className="px-3 py-2 text-right text-muted-foreground">
-                                                {formatQty(item.max_return_quantity)}
+                                            <td className="px-3 py-2 text-right">{formatQty(stats.sold)}</td>
+                                            <td className="px-3 py-2 text-right">{formatQty(stats.returnedOnSale)}</td>
+                                            <td className="px-3 py-2 text-right font-medium">
+                                                {formatQty(stats.available)}
                                             </td>
                                             <td className="px-3 py-2 text-right">৳{parseFloat(item.unit_price).toFixed(2)}</td>
                                             <td className="px-2 py-1.5 text-right">
@@ -246,6 +256,7 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                                                     max={item.max_return_quantity}
                                                     step="1"
                                                     value={item.quantity}
+                                                    disabled={isFullyReturned}
                                                     onChange={(e) => updateReturnQty(i, e.target.value)}
                                                     onBlur={(e) => updateReturnQty(i, e.target.value)}
                                                     className={`${inputCls} ml-auto w-24 text-right ${overMax ? 'border-destructive' : ''}`}

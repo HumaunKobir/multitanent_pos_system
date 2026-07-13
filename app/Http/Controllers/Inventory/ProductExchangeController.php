@@ -10,6 +10,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Customer;
 use App\Models\ProductExchange;
+use App\Models\Promotion;
 use App\Models\Sell;
 use App\Models\SpecialDiscount;
 use App\Services\CoinService;
@@ -62,7 +63,10 @@ class ProductExchangeController extends Controller
                 'payment_only_edit' => $exchange->isPaymentOnlyEditable(),
                 'payment_status' => $exchange->paymentStatusLabel(),
                 'settlement_amount' => $exchange->settlementAmount(),
-                'due_amount' => $exchange->dueAmount(),
+                // Include unrecovered overpaid refund so the Due column matches
+                // customer balance / due-collection, not just settlement remainder.
+                'due_amount' => round($exchange->dueAmount() + $exchange->overpaidDueAmount(), 2),
+                'overpaid_due_amount' => $exchange->overpaidDueAmount(),
                 'is_refund' => (float) $exchange->price_difference < 0,
             ]);
 
@@ -243,7 +247,8 @@ class ProductExchangeController extends Controller
 
         $productExchange->load([
             'customer',
-            'sell.products',
+            'sell.products.product',
+            'sell.products.variation',
             'products.oldProduct',
             'products.newProduct',
             'products.newVariation',
@@ -257,35 +262,73 @@ class ProductExchangeController extends Controller
         }
 
         if (! $productExchange->canAccessEdit()) {
-            abort(403, 'This exchange cannot be edited because payment has been recorded.');
+            abort(403, 'This exchange cannot be edited.');
         }
 
-        $paymentOnlyEdit = $productExchange->isPaymentOnlyEditable();
+        $paymentOnlyEdit = false;
 
-        $items = $productExchange->products->map(fn ($line) => [
-            'sell_product_id' => $line->sell_product_id,
-            'old_product_name' => $line->oldProduct?->name,
-            'old_product_code' => $line->oldProduct?->code,
-            'old_unit_price' => (float) $line->old_unit_price,
-            'sold_quantity' => (int) ($parent->products->firstWhere('id', $line->sell_product_id)?->quantity ?? $line->old_quantity),
-            'quantity' => (string) (int) $line->old_quantity,
-            'return_quantity' => (string) (int) $line->return_quantity,
-            'new_product_id' => (float) $line->old_quantity > 0 ? $line->new_product_id : '',
-            'new_product_name' => (float) $line->old_quantity > 0 ? $line->newProduct?->name : '',
-            'new_product_code' => (float) $line->old_quantity > 0 ? $line->newProduct?->code : null,
-            'new_variation_id' => $line->new_variation_id,
-            'new_variation_label' => $line->newVariation?->variation_data['label'] ?? null,
-            'new_unit_price' => (string) $line->new_unit_price,
-            'new_original_unit_price' => $line->new_original_unit_price ? (string) $line->new_original_unit_price : (string) $line->new_unit_price,
-            'new_free_quantity' => (string) (float) $line->new_free_quantity,
-            'new_promotion_id' => $line->new_promotion_id,
-            'new_promotion_name' => $line->newPromotion?->name,
-            'new_promotion_discount' => (string) $line->new_promotion_discount,
-            'new_line_discount' => (string) (float) $line->new_line_discount,
-            'old_product_id' => $line->old_product_id,
-            'line_discount' => (float) $parent->products->firstWhere('id', $line->sell_product_id)?->discount,
-            'promotion_id' => $parent->products->firstWhere('id', $line->sell_product_id)?->promotion_id,
-        ])->values();
+        $linesOnExchange = $productExchange->products->keyBy('sell_product_id');
+
+        $promotionIds = $parent->products->pluck('promotion_id')->filter()->unique()->values()->all();
+        $promotionMap = $promotionIds !== []
+            ? Promotion::whereIn('id', $promotionIds)->get()->keyBy('id')
+            : collect();
+
+        $items = $parent->products->map(function ($sp) use ($linesOnExchange, $promotionMap) {
+            $current = $linesOnExchange->get($sp->id);
+            $hasSwap = $current && (float) $current->old_quantity > 0;
+
+            $promotionDetails = null;
+            if ($sp->promotion_id && $promotionMap->has($sp->promotion_id)) {
+                $promo = $promotionMap->get($sp->promotion_id);
+                $promotionDetails = [
+                    'type' => $promo->type->value,
+                    'name' => $promo->name,
+                    'min_qty' => $promo->min_qty,
+                    'buy_qty' => $promo->buy_qty,
+                ];
+            }
+
+            $catalogPrice = (float) ($sp->original_unit_price ?? $sp->unit_price);
+            $sellPrice = $sp->variation_id
+                ? (float) ($sp->variation?->price ?? $sp->unit_price)
+                : (float) ($sp->product?->sale_price ?? $sp->unit_price);
+
+            return [
+                'sell_product_id' => $sp->id,
+                'product_id' => $sp->product_id,
+                'old_product_id' => $sp->product_id,
+                'old_product_name' => $sp->product?->name,
+                'old_product_code' => $sp->product?->code,
+                'old_variation_id' => $sp->variation_id,
+                'old_variation_label' => $sp->variation?->variation_data['label'] ?? null,
+                'old_unit_price' => $catalogPrice,
+                'original_old_unit_price' => $catalogPrice,
+                'sold_quantity' => (int) $sp->quantity,
+                'quantity' => $current ? (string) (int) $current->old_quantity : '0',
+                'return_quantity' => $current ? (string) (int) $current->return_quantity : '0',
+                'new_product_id' => $hasSwap ? $current->new_product_id : '',
+                'new_product_name' => $hasSwap ? $current->newProduct?->name : '',
+                'new_product_code' => $hasSwap ? $current->newProduct?->code : null,
+                'new_variation_id' => $hasSwap ? $current->new_variation_id : null,
+                'new_variation_label' => $hasSwap ? ($current->newVariation?->variation_data['label'] ?? null) : null,
+                'new_unit_price' => $hasSwap ? (string) $current->new_unit_price : (string) $sellPrice,
+                'new_original_unit_price' => $hasSwap
+                    ? ($current->new_original_unit_price ? (string) $current->new_original_unit_price : (string) $current->new_unit_price)
+                    : (string) $sellPrice,
+                'new_free_quantity' => $hasSwap ? (string) (float) $current->new_free_quantity : '0',
+                'new_promotion_id' => $hasSwap ? $current->new_promotion_id : null,
+                'new_promotion_name' => $hasSwap ? $current->newPromotion?->name : null,
+                'new_promotion_discount' => $hasSwap ? (string) $current->new_promotion_discount : '0',
+                'new_line_discount' => $hasSwap ? (string) (float) $current->new_line_discount : '0',
+                'line_discount' => (float) $sp->discount,
+                'promotion_id' => $sp->promotion_id,
+                'promotion_details' => $promotionDetails,
+                'promotion_discount' => (float) $sp->promotion_discount,
+                'category_id' => $sp->product?->category_id,
+                'brand_id' => $sp->product?->brand_id,
+            ];
+        })->values();
 
         $branchId = Auth::user()?->branch_id;
 
@@ -306,6 +349,9 @@ class ProductExchangeController extends Controller
                 'comment' => $productExchange->comment,
                 'paid_amount' => (string) $productExchange->paid_amount,
                 'due_amount' => (string) $productExchange->due_amount,
+                'overpaid_amount' => (float) $productExchange->overpaid_amount,
+                'overpaid_collected_amount' => (float) $productExchange->overpaid_collected_amount,
+                'overpaid_due_amount' => $productExchange->overpaidDueAmount(),
                 'payment_type' => $productExchange->payment_type?->value,
                 'payment_account_id' => $productExchange->payment_account_id,
                 'is_editable' => $productExchange->isEditable(),
@@ -313,6 +359,7 @@ class ProductExchangeController extends Controller
                 'payment_only_edit' => $paymentOnlyEdit,
                 'payment_status' => $productExchange->paymentStatusLabel(),
                 'settlement_amount' => $productExchange->settlementAmount(),
+                'is_refund' => (float) $productExchange->price_difference < 0,
                 'gross_amount' => (float) $productExchange->gross_amount,
                 'discount' => (float) $productExchange->discount,
                 'discount_type' => $productExchange->discount_type?->value,
@@ -329,7 +376,7 @@ class ProductExchangeController extends Controller
                 'price_difference' => (float) $productExchange->price_difference,
                 'items' => $items,
             ],
-            'sell_discounts' => array_merge($this->saleDiscountsPayload($parent), [
+            'sellDiscounts' => array_merge($this->saleDiscountsPayload($parent), [
                 'coin_settings' => $this->coinService->settingsPayloadForBranch($branchId),
             ]),
         ]);
@@ -341,15 +388,7 @@ class ProductExchangeController extends Controller
         $this->authorizeBranchUserRecord($productExchange);
 
         if (! $productExchange->canAccessEdit()) {
-            abort(403, 'This exchange cannot be edited because payment has been recorded.');
-        }
-
-        if ($productExchange->isPaymentOnlyEditable()) {
-            return $this->updateExchangePaymentOnly($request, $productExchange);
-        }
-
-        if (! $productExchange->isEditable()) {
-            abort(403, 'This exchange cannot be edited because payment has been recorded.');
+            abort(403, 'This exchange cannot be edited.');
         }
 
         $data = $request->validate([
@@ -358,6 +397,7 @@ class ProductExchangeController extends Controller
             'payment_type' => ['required', 'integer'],
             'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
             'paid_amount' => ['nullable', 'numeric', 'min:0'],
+            'customer_payment_amount' => ['nullable', 'numeric', 'min:0'],
             'discount_type' => ['nullable', 'in:flat,percent'],
             'discount_value' => ['nullable', 'numeric', 'min:0'],
             'special_discount_id' => ['nullable', 'integer', 'exists:special_discounts,id'],
@@ -414,6 +454,23 @@ class ProductExchangeController extends Controller
                 $customerAccountEffect = $signedSettlement;
                 $payment = $this->exchangeDiscounts->resolvePayment($data, $signedSettlement, (int) $data['payment_type']);
 
+                // If line edits shrank a refund below what was already paid out on a
+                // prior save, resolvePayment's clamp would otherwise silently drop the
+                // excess. Track it as a customer receivable instead of losing it.
+                // customer_payment_amount is cash the customer hands back now, which
+                // reduces the receivable posted on this save.
+                $overpaidAmount = 0.0;
+                if ($signedSettlement < 0 && $paymentType !== ReceivedPaymentMethod::Customer_Account) {
+                    $settlementAmount = round(abs($signedSettlement), 2);
+                    $submittedPaid = round(max(0, (float) ($data['paid_amount'] ?? 0)), 2);
+                    $overpaidAmount = round(max(0, $submittedPaid - $settlementAmount), 2);
+                    $customerPaymentNow = round(max(0, (float) ($data['customer_payment_amount'] ?? 0)), 2);
+
+                    if ($overpaidAmount > 0.009 && $customerPaymentNow > 0.009) {
+                        $overpaidAmount = round(max(0, $overpaidAmount - min($customerPaymentNow, $overpaidAmount)), 2);
+                    }
+                }
+
                 $productExchange->update([
                     'date' => $data['date'],
                     'gross_amount' => $grossAmount,
@@ -432,6 +489,7 @@ class ProductExchangeController extends Controller
                     'net_amount' => $totals['net_amount'],
                     'paid_amount' => $payment['paid_amount'],
                     'due_amount' => $payment['due_amount'],
+                    'overpaid_amount' => $overpaidAmount,
                     'price_difference' => $priceDifference,
                     'payment_type' => $paymentType,
                     'payment_account_id' => $paymentAccountId,
@@ -443,9 +501,24 @@ class ProductExchangeController extends Controller
                 }
 
                 $this->applyExchangeCustomerEffects($parent, $productExchange, $customerAccountEffect, $paymentType, $totals);
+
+                if ($overpaidAmount > 0.009 && $parent->customer_id) {
+                    Customer::whereKey($parent->customer_id)->increment('balance', $overpaidAmount);
+                }
+
                 $this->accounting->postExchange($productExchange->fresh(['customer', 'sell', 'products']), $paymentAccountId);
+
+                if ($overpaidAmount > 0.009 && $paymentAccountId !== null) {
+                    $this->accounting->postExchangeOverpaymentReceivable($productExchange->fresh(['customer']), $paymentAccountId, $overpaidAmount);
+                }
             });
         } catch (\Throwable $e) {
+            \Log::error('Product exchange update failed', [
+                'message' => $e->getMessage(),
+                'exception' => get_class($e),
+                'file' => $e->getFile().':'.$e->getLine(),
+            ]);
+
             return back()
                 ->withErrors([
                     'items' => $e instanceof \RuntimeException
@@ -463,6 +536,15 @@ class ProductExchangeController extends Controller
     {
         $this->authorize('inventory.product-exchange.delete');
         $this->authorizeBranchUserRecord($productExchange);
+
+        // A collection already recorded against this exchange's overpayment would be
+        // orphaned by the delete (and the FK restricts it anyway) — say so plainly.
+        if ($productExchange->hasCollectedOverpayment()) {
+            return back()->with(
+                'error',
+                'Delete the overpayment collection for this exchange before deleting the exchange.',
+            );
+        }
 
         $productExchange->load(['products', 'sell']);
 
@@ -564,62 +646,6 @@ class ProductExchangeController extends Controller
         }
     }
 
-    private function updateExchangePaymentOnly(Request $request, ProductExchange $productExchange): RedirectResponse
-    {
-        $data = $request->validate([
-            'comment' => ['nullable', 'string'],
-            'payment_type' => ['required', 'integer'],
-            'payment_account_id' => ['nullable', 'integer', 'exists:chart_of_accounts,id'],
-            'paid_amount' => ['nullable', 'numeric', 'min:0'],
-        ]);
-
-        $branchId = Auth::user()?->branch_id;
-        $paymentType = ReceivedPaymentMethod::from((int) $data['payment_type']);
-        $paymentAccountId = $paymentType === ReceivedPaymentMethod::Cash
-            ? $this->requirePaymentAccountId($request)
-            : null;
-
-        try {
-            DB::transaction(function () use ($productExchange, $data, $paymentType, $paymentAccountId) {
-                $productExchange->load(['products', 'sell', 'customer']);
-
-                $this->accounting->reverseFor($productExchange);
-                $this->reverseExchangeCustomerAccountEffect($productExchange);
-
-                $payment = $this->exchangeDiscounts->resolvePayment(
-                    $data,
-                    (float) $productExchange->price_difference,
-                    (int) $data['payment_type'],
-                );
-
-                $productExchange->update([
-                    'paid_amount' => $payment['paid_amount'],
-                    'due_amount' => $payment['due_amount'],
-                    'payment_type' => $paymentType,
-                    'payment_account_id' => $paymentAccountId,
-                    'comment' => $data['comment'] ?? $productExchange->comment,
-                ]);
-
-                $this->applyExchangeCustomerAccountEffect($productExchange->fresh(), $paymentType);
-                $this->accounting->postExchange(
-                    $productExchange->fresh(['customer', 'sell', 'products']),
-                    $paymentAccountId,
-                );
-            });
-        } catch (\Throwable $e) {
-            return back()
-                ->withErrors([
-                    'paid_amount' => $e instanceof \RuntimeException
-                        ? $e->getMessage()
-                        : 'Unable to update exchange payment.',
-                ])
-                ->withInput();
-        }
-
-        return redirect()->route('inventory.product-exchange.show', $productExchange)
-            ->with('success', 'Exchange payment updated successfully.');
-    }
-
     private function reverseExchangeCustomerAccountEffect(ProductExchange $productExchange): void
     {
         if (! $productExchange->customer_id
@@ -707,6 +733,12 @@ class ProductExchangeController extends Controller
             } elseif ($priceDifference < 0) {
                 Customer::whereKey($productExchange->customer_id)->decrement('balance', abs($priceDifference));
             }
+        }
+
+        $overpaidAmount = (float) $productExchange->overpaid_amount;
+
+        if ($productExchange->customer_id && $overpaidAmount > 0.009) {
+            Customer::whereKey($productExchange->customer_id)->decrement('balance', $overpaidAmount);
         }
     }
 
@@ -1108,6 +1140,9 @@ class ProductExchangeController extends Controller
             'is_refund' => $signedSettlement < 0,
             'paid' => (float) $exchange->paid_amount,
             'due' => (float) $exchange->due_amount,
+            'overpaid' => (float) $exchange->overpaid_amount,
+            'overpaid_collected' => (float) $exchange->overpaid_collected_amount,
+            'overpaid_due' => $exchange->overpaidDueAmount(),
             'payment_status' => $exchange->paymentStatusLabel(),
         ];
     }

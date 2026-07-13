@@ -28,6 +28,7 @@ const PAYMENT_STATUS_LABELS = {
     unpaid: 'Unpaid',
     partially_paid: 'Partially Paid',
     fully_paid: 'Fully Paid',
+    customer_due: 'Customer Due',
     settled: 'Settled',
 };
 
@@ -360,8 +361,25 @@ export default function ProductExchangeShow({ exchange, totals = {} }) {
                                                     : 'font-semibold text-green-700 dark:text-green-400'
                                             }
                                         />
+                                        {(totals.overpaid_due ?? 0) > 0.009 && (
+                                            <SummaryRow
+                                                label="Customer Due (overpaid refund)"
+                                                value={`৳${(totals.overpaid_due ?? 0).toFixed(2)}`}
+                                                accent="font-semibold text-amber-700 dark:text-amber-400"
+                                            />
+                                        )}
                                     </div>
                                 )}
+                                {(totals.settlement ?? 0) <= 0.009 &&
+                                    (totals.overpaid_due ?? 0) > 0.009 && (
+                                        <div className="border-t border-border pt-2">
+                                            <SummaryRow
+                                                label="Customer Due (overpaid refund)"
+                                                value={`৳${(totals.overpaid_due ?? 0).toFixed(2)}`}
+                                                accent="font-semibold text-amber-700 dark:text-amber-400"
+                                            />
+                                        </div>
+                                    )}
                             </SummaryCard>
                         </div>
 

@@ -4,6 +4,7 @@ use App\Models\Branch;
 use App\Models\CoinSettings;
 use App\Models\Customer;
 use App\Models\CustomerCoinTransaction;
+use App\Models\ProductExchange;
 use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\User;
@@ -217,4 +218,73 @@ test('restore for sale return rolls back proportional coin reversal', function (
     $customer->refresh();
 
     expect((float) $customer->point)->toBe(35.0);
+});
+
+test('reverse for exchange only reverses unreversed redeem and earn rows', function () {
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    $customer = Customer::factory()->create([
+        'branch_id' => $branch->id,
+        'point' => 100,
+        'is_default' => false,
+    ]);
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'customer_id' => $customer->id,
+        'user_id' => $user->id,
+    ]);
+    $exchange = ProductExchange::query()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'sell_id' => $sell->id,
+        'customer_id' => $customer->id,
+        'date' => now()->format('Y-m-d'),
+        'gross_amount' => 1000,
+        'net_amount' => 980,
+        'coins_redeemed' => 20,
+        'coin_discount_amount' => 20,
+        'coins_earned' => 5,
+        'paid_amount' => 0,
+        'due_amount' => 0,
+        'price_difference' => 0,
+    ]);
+
+    $this->coinService->applyToExchange($exchange, $customer->fresh(), [
+        'coins_redeemed' => 20,
+        'coin_discount_amount' => 20,
+        'coins_earned' => 5,
+        'effective_paid' => 0,
+    ]);
+
+    $customer->refresh();
+    expect((float) $customer->point)->toBe(85.0);
+
+    $this->coinService->reverseForExchange($exchange);
+    $customer->refresh();
+    expect((float) $customer->point)->toBe(100.0);
+
+    // Second reverse must be a no-op (previously double-reversed and inflated balance).
+    $this->coinService->reverseForExchange($exchange);
+    $customer->refresh();
+    expect((float) $customer->point)->toBe(100.0);
+
+    $this->coinService->applyToExchange($exchange, $customer->fresh(), [
+        'coins_redeemed' => 10,
+        'coin_discount_amount' => 10,
+        'coins_earned' => 2,
+        'effective_paid' => 0,
+    ]);
+    $customer->refresh();
+    expect((float) $customer->point)->toBe(92.0);
+
+    $this->coinService->reverseForExchange($exchange);
+    $this->coinService->reverseForExchange($exchange);
+    $customer->refresh();
+    expect((float) $customer->point)->toBe(100.0);
+
+    expect(
+        CustomerCoinTransaction::query()
+            ->where('product_exchange_id', $exchange->id)
+            ->count()
+    )->toBe(8);
 });

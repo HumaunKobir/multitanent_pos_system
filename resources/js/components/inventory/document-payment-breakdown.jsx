@@ -76,6 +76,11 @@ export function AllocationSummaryTable({ title, rows, documentLabel, amountLabel
                             <tr key={allocation.id} className="border-t">
                                 <td className="px-3 py-2 font-mono">
                                     {allocation.document?.invoice_number ?? '—'}
+                                    {allocation.type === 'exchange' && (
+                                        <div className="font-sans text-[10px] text-amber-700 dark:text-amber-400">
+                                            Exchange overpayment
+                                        </div>
+                                    )}
                                 </td>
                                 <td className="px-3 py-2 text-right tabular-nums">
                                     ৳{parseFloat(allocation.document?.net_amount ?? 0).toFixed(2)}

@@ -314,6 +314,88 @@ export function buildInitialExchangeDiscounts(sellDiscounts = {}) {
     };
 }
 
+/**
+ * Restore editable discount inputs on the exchange edit page.
+ * Starts from the source sale defaults (like create) and overlays saved exchange overrides.
+ * Round off is stored on the exchange as an applied amount, so recover the raw input.
+ */
+export function buildEditExchangeDiscounts(exchange = {}, sellDiscounts = {}, sourceItems = []) {
+    const base = buildInitialExchangeDiscounts(sellDiscounts);
+
+    if (exchange.discount_type) {
+        base.invoiceType = exchange.discount_type;
+    }
+
+    if (exchange.discount_value != null) {
+        const discountValue = parseFloat(exchange.discount_value || 0);
+        base.invoice = discountValue > 0 ? String(exchange.discount_value) : '';
+    }
+
+    if (exchange.special_discount_id) {
+        base.specialDiscountId = String(exchange.special_discount_id);
+    } else if (parseFloat(exchange.special_discount_amount || 0) <= 0) {
+        base.specialDiscountId = '';
+    }
+
+    const appliedRoundOff = parseFloat(exchange.round_off_amount || 0);
+    if (appliedRoundOff <= 0) {
+        base.roundOff = '';
+    } else {
+        // Exchange stores the applied (proportioned) amount. Always recover the
+        // raw input the user can edit — do not prefer the parent sale's raw
+        // value, or a custom round-off override from create is lost on edit.
+        const parentGross = parseFloat(sellDiscounts?.gross_amount || 0);
+        const oldExchangeTotal = resolveOldExchangeTotal(sourceItems);
+        const proportion = resolveExchangeCatalogProportion(oldExchangeTotal, parentGross);
+        const rawRoundOff =
+            proportion > 0.0001
+                ? Math.round((appliedRoundOff / proportion) * 100) / 100
+                : appliedRoundOff;
+        base.roundOff = rawRoundOff > 0 ? String(rawRoundOff.toFixed(2)) : '';
+    }
+
+    if (parseFloat(exchange.coins_redeemed || 0) > 0) {
+        base.coinsRedeemed = String(exchange.coins_redeemed);
+    } else if (parseFloat(exchange.coin_discount_amount || 0) <= 0) {
+        base.coinsRedeemed = '';
+    }
+
+    return base;
+}
+
+/**
+ * Keep recorded refund/payment amounts on edit unless settlement changes for a
+ * previously fully-settled exchange, or paid exceeds the new settlement.
+ */
+export function syncExchangeEditPaidAmount({
+    currentPaid,
+    previousSettlement,
+    nextSettlement,
+    skipAutoFill = false,
+}) {
+    const paid = parseFloat(currentPaid || 0);
+    const prev = parseFloat(previousSettlement || 0);
+    const next = parseFloat(nextSettlement || 0);
+
+    if (skipAutoFill) {
+        if (paid > next + 0.009) {
+            return next > 0.009 ? next.toFixed(2) : '0';
+        }
+
+        return null;
+    }
+
+    if (prev > 0.009 && Math.abs(paid - prev) < 0.01) {
+        return next > 0.009 ? next.toFixed(2) : '0';
+    }
+
+    if (paid > next + 0.009) {
+        return next > 0.009 ? next.toFixed(2) : '0';
+    }
+
+    return null;
+}
+
 export function calcProductExchangeSummary({
     items = [],
     sellDiscounts = null,

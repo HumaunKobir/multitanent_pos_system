@@ -266,6 +266,8 @@ trait UsesInventoryAccounting
 
         foreach ($paymentLines as $paymentLine) {
             $saleReturn->payments()->create([
+                'branch_id' => $saleReturn->branch_id,
+                'date' => $saleReturn->date,
                 'payment_account_id' => $paymentLine['payment_account_id'],
                 'amount' => $paymentLine['amount'],
             ]);
@@ -299,6 +301,7 @@ trait UsesInventoryAccounting
 
             return [
                 'paid_amount' => $effectivePaid,
+                'due_amount' => round(max(0, $netReturnAmount - $effectivePaid), 2),
                 'payment_type' => ReceivedPaymentMethod::Cash,
                 'payment_account_id' => $paymentLines[0]['payment_account_id'] ?? null,
                 'payment_lines' => $paymentLines,
@@ -324,6 +327,7 @@ trait UsesInventoryAccounting
 
         return [
             'paid_amount' => $paidAmount,
+            'due_amount' => round(max(0, $netReturnAmount - $paidAmount), 2),
             'payment_type' => $paymentType,
             'payment_account_id' => $paymentAccountId,
             'payment_lines' => $lines,

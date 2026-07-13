@@ -63,7 +63,7 @@ class SellController extends Controller
         $sells = $this->forCurrentBranchUser(Sell::query())
             ->sale()
             ->withSum('products as line_discount_total', 'discount')
-            ->with(['customer:id,name,phone', 'productExchange:id,sell_id,invoice_sequence'])
+            ->with(['customer:id,name,phone', 'productExchange:id,sell_id,invoice_sequence', 'saleReturns:id,sell_id,invoice_sequence'])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('invoice_sequence', 'like', "%{$s}%")
                     ->orWhere('id', 'like', "%{$s}%")
@@ -620,9 +620,13 @@ class SellController extends Controller
 
         try {
             DB::transaction(function () use ($sell, $data, $branchId, $payment, $saleTotals) {
+                $sell = Sell::query()->whereKey($sell->getKey())->lockForUpdate()->firstOrFail();
+
                 $this->accounting->reverseFor($sell);
                 $this->coinService->reverseForSell($sell);
                 $sell->load(['products']);
+
+                $previousCustomerId = $sell->customer_id;
 
                 $oldDue = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
                 if ($sell->customer_id && $oldDue > 0) {
@@ -716,6 +720,10 @@ class SellController extends Controller
                     );
                 }
 
+                foreach (array_unique(array_filter([$previousCustomerId, $sell->customer_id])) as $customerId) {
+                    $this->dueAlertService->syncPaidForCustomer((int) $customerId, $branchId);
+                }
+
                 $this->syncSellPayments($sell, $payment['payment_lines']);
 
                 $this->accounting->postSale(
@@ -746,12 +754,12 @@ class SellController extends Controller
         $this->authorize('inventory.sell.delete');
         $this->authorizeBranchUserRecord($sell);
 
-        $sell->load(['products']);
-
         try {
             DB::transaction(function () use ($sell) {
+                $sell = Sell::query()->whereKey($sell->getKey())->lockForUpdate()->firstOrFail();
+
                 if ($sell->type !== SaleType::Paused) {
-                    $sell->refresh();
+                    $sell->load('products');
                     $this->accounting->reverseFor($sell);
                     $this->coinService->reverseForSell($sell);
 
@@ -1369,6 +1377,7 @@ class SellController extends Controller
 
         try {
             DB::transaction(function () use ($sell, $data, $branchId, $payment) {
+                $sell = Sell::query()->whereKey($sell->getKey())->lockForUpdate()->firstOrFail();
                 $sell->load(['products', 'payments']);
 
                 $oldDue = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
@@ -1393,6 +1402,10 @@ class SellController extends Controller
                         $data['due_given_date'] ?? null,
                         $data['due_alert_action'] ?? null,
                     );
+                }
+
+                if ($sell->customer_id) {
+                    $this->dueAlertService->syncPaidForCustomer((int) $sell->customer_id, $branchId);
                 }
 
                 $this->syncSellPayments($sell, $payment['payment_lines']);

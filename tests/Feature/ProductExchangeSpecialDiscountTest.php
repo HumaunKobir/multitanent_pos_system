@@ -5,7 +5,9 @@ use App\Enums\PromotionScope;
 use App\Enums\ReceivedPaymentMethod;
 use App\Enums\SystemAccountKey;
 use App\Models\Batch;
+use App\Models\Branch;
 use App\Models\ChartOfAccount;
+use App\Models\CoinSettings;
 use App\Models\Customer;
 use App\Models\CustomerPayment;
 use App\Models\Ledger;
@@ -3095,4 +3097,193 @@ test('an exchange overpayment collection cannot exceed the overpaid amount', fun
     $exchange->refresh();
 
     expect((float) $exchange->overpaid_collected_amount)->toBe(0.0);
+});
+
+test('exchange create and edit apply invoice discount round off and coins the same way', function () {
+    $this->artisan('permissions:sync');
+
+    $user = productExchangeUser([
+        'inventory.product-exchange.create',
+        'inventory.product-exchange.update',
+        'inventory.product-exchange.view',
+        'inventory.sell.create',
+    ]);
+    if (! $user->branch_id) {
+        $user->update(['branch_id' => Branch::factory()->create()->id]);
+        $user->refresh();
+    }
+    $cash = seedAccountingAccounts(user: $user);
+    seedExchangeAccountingBalances($user);
+
+    CoinSettings::query()->create([
+        'branch_id' => $user->branch_id,
+        'enabled' => true,
+        'earn_spend_amount' => 100,
+        'earn_coins' => 1,
+        'coin_value' => 1,
+        'min_redeem_coins' => 0,
+        'max_redeem_percent' => 100,
+    ]);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 0,
+        'point' => 80,
+        'is_default' => false,
+    ]);
+
+    $oldProduct = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 500]);
+    Batch::factory()->for($oldProduct)->withStock(20)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+    $newProduct = Product::factory()->create(['branch_id' => $user->branch_id, 'sale_price' => 600]);
+    Batch::factory()->for($newProduct)->withStock(20)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 100,
+    ]);
+
+    test()->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => $customer->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '2500',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [
+                ['product_id' => $oldProduct->id, 'variation_id' => null, 'unit_price' => '500', 'quantity' => '5'],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $sell = Sell::query()->latest('id')->firstOrFail();
+    $sellProductId = $sell->products()->first()->id;
+    $startingPoints = (float) $customer->fresh()->point;
+
+    test()->actingAs($user)
+        ->post('/inventory/product-exchange', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => null,
+            'paid_amount' => '360',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '100',
+            'round_off_amount' => '20',
+            'coins_redeemed' => '20',
+            'items' => [
+                [
+                    'sell_product_id' => $sellProductId,
+                    'product_id' => $newProduct->id,
+                    'variation_id' => null,
+                    'unit_price' => '600',
+                    'quantity' => '5',
+                    'return_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $exchange = ProductExchange::query()->latest('id')->firstOrFail();
+    $customer->refresh();
+
+    expect((float) $exchange->discount)->toBe(100.0);
+    expect((float) $exchange->discount_value)->toBe(100.0);
+    expect((float) $exchange->round_off_amount)->toBe(20.0);
+    expect((float) $exchange->coins_redeemed)->toBe(20.0);
+    expect((float) $exchange->coin_discount_amount)->toBe(20.0);
+    expect((float) $exchange->coins_earned)->toBeGreaterThan(0);
+    expect((float) $customer->point)->toBe(
+        round($startingPoints - (float) $exchange->coins_redeemed + (float) $exchange->coins_earned, 2),
+    );
+
+    $pointsAfterCreate = (float) $customer->point;
+    $line = $exchange->products()->firstOrFail();
+
+    // First edit — change discount/coins and ensure reverse+reapply lands correctly.
+    test()->actingAs($user)
+        ->put(route('inventory.product-exchange.update', $exchange), [
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Updated discounts and coins',
+            'paid_amount' => '430',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '50',
+            'round_off_amount' => '10',
+            'coins_redeemed' => '10',
+            'items' => [
+                [
+                    'sell_product_id' => $line->sell_product_id,
+                    'product_id' => $line->new_product_id,
+                    'variation_id' => null,
+                    'unit_price' => '600',
+                    'quantity' => '5',
+                    'return_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $exchange->refresh();
+    $customer->refresh();
+
+    expect((float) $exchange->discount)->toBe(50.0);
+    expect((float) $exchange->round_off_amount)->toBe(10.0);
+    expect((float) $exchange->coins_redeemed)->toBe(10.0);
+    expect((float) $exchange->coin_discount_amount)->toBe(10.0);
+    expect((float) $customer->point)->toBe(
+        round($startingPoints - (float) $exchange->coins_redeemed + (float) $exchange->coins_earned, 2),
+    );
+
+    $pointsAfterFirstEdit = (float) $customer->point;
+
+    // Second edit with the same coin values must not inflate the balance
+    // (regression for double-reverse on reverseForExchange).
+    test()->actingAs($user)
+        ->put(route('inventory.product-exchange.update', $exchange), [
+            'date' => now()->format('Y-m-d'),
+            'comment' => 'Second edit same coins',
+            'paid_amount' => '430',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'discount_type' => DiscountType::Flat->value,
+            'discount_value' => '50',
+            'round_off_amount' => '10',
+            'coins_redeemed' => '10',
+            'items' => [
+                [
+                    'sell_product_id' => $line->sell_product_id,
+                    'product_id' => $line->new_product_id,
+                    'variation_id' => null,
+                    'unit_price' => '600',
+                    'quantity' => '5',
+                    'return_quantity' => '0',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors();
+
+    $exchange->refresh();
+    $customer->refresh();
+
+    expect((float) $customer->point)->toBe($pointsAfterFirstEdit);
+    expect((float) $exchange->coins_redeemed)->toBe(10.0);
+
+    test()->actingAs($user)
+        ->get(route('inventory.product-exchange.edit', $exchange))
+        ->assertOk()
+        ->assertInertia(fn ($assert) => $assert
+            ->component('admin/inventory/product-exchange/edit')
+            ->where('exchange.discount_value', 50)
+            ->where('exchange.round_off_amount', 10)
+            ->where('exchange.coins_redeemed', 10)
+        );
+
+    expect($pointsAfterCreate)->not->toBe($pointsAfterFirstEdit);
 });

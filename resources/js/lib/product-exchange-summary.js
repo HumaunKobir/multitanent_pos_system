@@ -341,19 +341,17 @@ export function buildEditExchangeDiscounts(exchange = {}, sellDiscounts = {}, so
     if (appliedRoundOff <= 0) {
         base.roundOff = '';
     } else {
-        const parentRawRoundOff = parseFloat(sellDiscounts?.round_off_amount || 0);
-        if (parentRawRoundOff > 0) {
-            base.roundOff = String(parentRawRoundOff.toFixed(2));
-        } else {
-            const parentGross = parseFloat(sellDiscounts?.gross_amount || 0);
-            const oldExchangeTotal = resolveOldExchangeTotal(sourceItems);
-            const proportion = resolveExchangeCatalogProportion(oldExchangeTotal, parentGross);
-            const rawRoundOff =
-                proportion > 0.0001
-                    ? Math.round((appliedRoundOff / proportion) * 100) / 100
-                    : appliedRoundOff;
-            base.roundOff = rawRoundOff > 0 ? String(rawRoundOff.toFixed(2)) : '';
-        }
+        // Exchange stores the applied (proportioned) amount. Always recover the
+        // raw input the user can edit — do not prefer the parent sale's raw
+        // value, or a custom round-off override from create is lost on edit.
+        const parentGross = parseFloat(sellDiscounts?.gross_amount || 0);
+        const oldExchangeTotal = resolveOldExchangeTotal(sourceItems);
+        const proportion = resolveExchangeCatalogProportion(oldExchangeTotal, parentGross);
+        const rawRoundOff =
+            proportion > 0.0001
+                ? Math.round((appliedRoundOff / proportion) * 100) / 100
+                : appliedRoundOff;
+        base.roundOff = rawRoundOff > 0 ? String(rawRoundOff.toFixed(2)) : '';
     }
 
     if (parseFloat(exchange.coins_redeemed || 0) > 0) {

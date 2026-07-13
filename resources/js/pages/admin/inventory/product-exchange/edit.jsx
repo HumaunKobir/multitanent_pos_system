@@ -106,8 +106,11 @@ export default function ProductExchangeEdit({
 
     const coinBalanceOffset = sellDiscounts
         ? (parseFloat(sellDiscounts.coins_redeemed || 0) || 0) -
-          (parseFloat(sellDiscounts.coins_earned || 0) || 0)
-        : 0;
+          (parseFloat(sellDiscounts.coins_earned || 0) || 0) +
+          (parseFloat(exchange.coins_redeemed || 0) || 0) -
+          (parseFloat(exchange.coins_earned || 0) || 0)
+        : (parseFloat(exchange.coins_redeemed || 0) || 0) -
+          (parseFloat(exchange.coins_earned || 0) || 0);
 
     const summary = useMemo(() => {
         if (paymentOnlyEdit) {

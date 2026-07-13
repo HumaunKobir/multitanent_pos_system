@@ -432,9 +432,15 @@ class CoinService
             return;
         }
 
+        $reversedTransactionIds = $this->reversedOriginalExchangeTransactionIds($exchange);
+
         $transactions = CustomerCoinTransaction::query()
             ->where('product_exchange_id', $exchange->id)
             ->whereIn('type', [CoinTransactionType::Redeem, CoinTransactionType::Earn])
+            ->when(
+                $reversedTransactionIds !== [],
+                fn ($query) => $query->whereNotIn('id', $reversedTransactionIds),
+            )
             ->orderBy('id')
             ->get();
 
@@ -472,6 +478,21 @@ class CoinService
         }
 
         $customer->update(['point' => max(0, $balance)]);
+    }
+
+    /**
+     * @return array<int, int>
+     */
+    private function reversedOriginalExchangeTransactionIds(ProductExchange $exchange): array
+    {
+        return CustomerCoinTransaction::query()
+            ->where('product_exchange_id', $exchange->id)
+            ->whereIn('type', [CoinTransactionType::ReverseRedeem, CoinTransactionType::ReverseEarn])
+            ->get()
+            ->map(fn (CustomerCoinTransaction $transaction): ?int => $transaction->meta['reversed_transaction_id'] ?? null)
+            ->filter()
+            ->values()
+            ->all();
     }
 
     /**

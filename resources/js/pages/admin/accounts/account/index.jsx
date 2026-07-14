@@ -82,17 +82,20 @@ function AccountRow({ node, depth, onEdit, onDelete, expandedIds, toggleExpand }
                 </div>
 
                 {/* Account Number */}
-                <span className="w-24 shrink-0 font-mono text-xs text-muted-foreground">
+                <span
+                    className="w-52 shrink-0 truncate font-mono text-xs text-muted-foreground"
+                    title={node.account_number ?? undefined}
+                >
                     {node.account_number ?? '—'}
                 </span>
 
                 {/* Balance */}
-                <span className="w-28 shrink-0 text-right font-mono text-xs text-foreground">
+                <span className="w-36 shrink-0 text-right font-mono text-xs tabular-nums text-foreground">
                     {parseFloat(node.current_balance).toLocaleString('en-BD', { minimumFractionDigits: 2 })}
                 </span>
 
                 {/* Actions */}
-                <div className="flex shrink-0 gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                <div className="flex w-16 shrink-0 justify-end gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                     {can('accounts.update') && !node.is_system && (
                         <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => onEdit(node)}>
                             <Pencil className="size-3" />
@@ -134,9 +137,9 @@ function AccountTypeSection({ group, onEdit, onDelete, expandedIds, toggleExpand
 
             <div className="flex items-center gap-3 border-b border-border/60 bg-muted/40 px-3 py-2.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
                 <div className="size-5 shrink-0" />
-                <span className="flex-1">Account</span>
-                <span className="w-24 shrink-0">Acc. Number</span>
-                <span className="w-28 shrink-0 text-right">Balance</span>
+                <span className="min-w-0 flex-1">Account</span>
+                <span className="w-52 shrink-0">Acc. Number</span>
+                <span className="w-36 shrink-0 text-right">Balance</span>
                 <span className="w-16 shrink-0" />
             </div>
 

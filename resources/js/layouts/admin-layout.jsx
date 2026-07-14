@@ -9,8 +9,8 @@ export default function AdminLayout({ children }) {
             <PanelSidebarProvider>
                 <div data-panel-shell className="flex h-dvh w-full overflow-hidden bg-background">
                     <PanelSidebar />
-                    <div className="relative flex min-h-0 flex-1 flex-col border-l border-border">
-                        <main data-panel-main className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
+                    <div className="relative flex min-h-0 min-w-0 flex-1 flex-col border-l border-border">
+                        <main data-panel-main className="min-h-0 min-w-0 flex-1 overflow-x-auto overflow-y-auto overscroll-contain">
                             <PanelMain>{children}</PanelMain>
                         </main>
                     </div>

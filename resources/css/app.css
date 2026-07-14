@@ -258,6 +258,16 @@
         overflow-y: auto;
         overscroll-behavior: contain;
     }
+
+    /* Native date fields have a large intrinsic min-width; allow filter grids to shrink at zoom. */
+    input[type='date'],
+    input[type='datetime-local'],
+    input[type='month'],
+    input[type='week'],
+    input[type='time'] {
+        min-width: 0;
+        max-width: 100%;
+    }
 }
 
 @layer utilities {

@@ -71,7 +71,7 @@ export function DataTable({
         <div
             data-slot="data-table"
             className={cn(
-                'overflow-x-auto rounded-none bg-card shadow-sm ring-1 ring-blue-950/10 dark:border-blue-500/22 dark:ring-blue-400/14',
+                'w-full max-w-full min-w-0 overflow-x-auto rounded-none bg-card shadow-sm ring-1 ring-blue-950/10 dark:border-blue-500/22 dark:ring-blue-400/14',
                 className,
             )}
             {...props}

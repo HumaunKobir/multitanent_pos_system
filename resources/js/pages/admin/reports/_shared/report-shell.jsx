@@ -34,15 +34,17 @@ export function useLiveReportFilters(routeName, query, deps) {
 
 export function ReportPage({ title, description, filterBar, filterGridClassName, filterActions, children }) {
     return (
-        <div className="min-w-0 px-2 py-1 sm:px-3">
-            <div className="mb-3 flex items-center justify-between rounded-lg bg-blue-950 px-4 py-3 shadow-sm sm:px-5">
-                <div className="flex min-w-0 items-center gap-3">
+        <div className="@container/report w-full min-w-0 max-w-full px-2 py-1 sm:px-3">
+            <div className="mb-3 flex min-w-0 items-center justify-between rounded-lg bg-blue-950 px-3 py-3 shadow-sm sm:px-5">
+                <div className="flex min-w-0 items-center gap-2.5 sm:gap-3">
                     <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-white/15">
                         <BarChart2 className="size-4 text-white" />
                     </div>
                     <div className="min-w-0">
-                        <h1 className="text-base font-semibold text-white">{title}</h1>
-                        <p className="text-xs text-white/60">{description}</p>
+                        <h1 className="truncate text-base font-semibold text-white">{title}</h1>
+                        {description ? (
+                            <p className="line-clamp-2 text-xs text-white/60 sm:line-clamp-none">{description}</p>
+                        ) : null}
                     </div>
                 </div>
             </div>
@@ -53,15 +55,15 @@ export function ReportPage({ title, description, filterBar, filterGridClassName,
                 </ReportFilterPanel>
             ) : null}
 
-            {children}
+            <div className="min-w-0 max-w-full">{children}</div>
         </div>
     );
 }
 
 export function ReportFilterPanel({ children, className, actions }) {
     return (
-        <div className="mb-4 overflow-hidden rounded-lg border border-blue-950/10 bg-card shadow-sm">
-            <div className="flex flex-wrap items-center gap-2.5 bg-blue-950 px-4 py-2.5">
+        <div className="mb-4 max-w-full rounded-lg border border-blue-950/10 bg-card shadow-sm">
+            <div className="flex flex-wrap items-center gap-2.5 bg-blue-950 px-3 py-2.5 sm:px-4">
                 <div className="flex size-6 items-center justify-center rounded bg-white/15">
                     <SlidersHorizontal className="size-3.5 text-white" />
                 </div>
@@ -75,7 +77,7 @@ export function ReportFilterPanel({ children, className, actions }) {
             </div>
             <div
                 className={cn(
-                    'grid gap-4 bg-gradient-to-br from-slate-50 via-white to-blue-50/40 p-4 dark:from-slate-900/40 dark:via-card dark:to-blue-950/10 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
+                    'grid w-full min-w-0 grid-cols-1 gap-3 bg-gradient-to-br from-slate-50 via-white to-blue-50/40 p-3 dark:from-slate-900/40 dark:via-card dark:to-blue-950/10 sm:gap-4 sm:p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4',
                     className,
                 )}
             >
@@ -103,16 +105,16 @@ export function ReportFilterReset({ onClick, disabled = false }) {
 
 export function ReportFilterField({ label, icon: Icon, children, className = '' }) {
     return (
-        <div className={['min-w-0', className].filter(Boolean).join(' ')}>
+        <div className={['min-w-0 max-w-full', className].filter(Boolean).join(' ')}>
             <Label className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-blue-950 dark:text-blue-100">
                 {Icon && (
-                    <span className="flex size-5 items-center justify-center rounded bg-blue-950/10 text-blue-950 dark:bg-white/10 dark:text-blue-100">
+                    <span className="flex size-5 shrink-0 items-center justify-center rounded bg-blue-950/10 text-blue-950 dark:bg-white/10 dark:text-blue-100">
                         <Icon className="size-3" />
                     </span>
                 )}
-                {label}
+                <span className="truncate">{label}</span>
             </Label>
-            <div className="rounded-md border border-blue-950/10 bg-white shadow-xs ring-1 ring-blue-950/5 dark:bg-slate-950/50">
+            <div className="min-w-0 max-w-full rounded-md border border-blue-950/10 bg-white shadow-xs ring-1 ring-blue-950/5 dark:bg-slate-950/50">
                 {children}
             </div>
         </div>
@@ -120,7 +122,7 @@ export function ReportFilterField({ label, icon: Icon, children, className = '' 
 }
 
 const selectTriggerClassName =
-    'h-9 w-full border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0';
+    'h-9 w-full min-w-0 max-w-full border-0 bg-transparent shadow-none focus-visible:ring-0 focus-visible:ring-offset-0';
 
 export function ReportSelect({ value, onChange, placeholder, options = [], className = '' }) {
     const hasValue = value !== '' && value != null;
@@ -143,12 +145,16 @@ export function ReportSelect({ value, onChange, placeholder, options = [], class
 
 export function ReportDateInput({ value, onChange, className = '' }) {
     return (
-        <div className="relative">
+        <div className="relative min-w-0 max-w-full">
             <Input
                 type="date"
                 value={toDateInputValue(value)}
                 onChange={(e) => onChange(e.target.value)}
-                className={cn('h-9 w-full border-0 bg-transparent pl-3 shadow-none focus-visible:ring-0', dateInputRightIconClassName, className)}
+                className={cn(
+                    'h-9 w-full min-w-0 max-w-full border-0 bg-transparent pl-3 shadow-none focus-visible:ring-0',
+                    dateInputRightIconClassName,
+                    className,
+                )}
             />
             <Calendar
                 className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-blue-900/70 dark:text-blue-300/80"
@@ -368,14 +374,14 @@ export function ReportProductSearch({
             : null;
 
     return (
-        <div ref={containerRef} className="relative">
+        <div ref={containerRef} className="relative min-w-0 max-w-full">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
                 value={displayValue}
                 onChange={handleChange}
                 onFocus={handleFocus}
                 placeholder={hasSelection && !open ? selectedLabel : placeholder}
-                className="h-9 border-0 bg-transparent pr-8 pl-8 shadow-none focus-visible:ring-0"
+                className="h-9 min-w-0 max-w-full border-0 bg-transparent pr-8 pl-8 shadow-none focus-visible:ring-0"
             />
             {hasSelection && !open ? (
                 <button

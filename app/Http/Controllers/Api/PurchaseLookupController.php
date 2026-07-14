@@ -76,8 +76,9 @@ class PurchaseLookupController extends Controller
             ];
         })->values();
 
-        $vatPercent = (float) $purchase->gross_amount > 0
-            ? ((float) $purchase->vat / (float) $purchase->gross_amount) * 100
+        $taxableAmount = max(0, (float) $purchase->gross_amount - (float) $purchase->discount);
+        $vatPercent = $taxableAmount > 0
+            ? ((float) $purchase->vat / $taxableAmount) * 100
             : 0;
 
         $netAmount = (float) $purchase->gross_amount + (float) $purchase->vat - (float) $purchase->discount;

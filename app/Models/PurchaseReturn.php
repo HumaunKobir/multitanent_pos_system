@@ -59,9 +59,9 @@ class PurchaseReturn extends Model
 
     public function getVatPercentAttribute(): float
     {
-        $gross = (float) $this->gross_amount;
+        $taxable = max(0, (float) $this->gross_amount - (float) $this->discount);
 
-        return $gross > 0 ? ((float) $this->vat / $gross) * 100 : 0;
+        return $taxable > 0 ? ((float) $this->vat / $taxable) * 100 : 0;
     }
 
     public function purchase(): BelongsTo

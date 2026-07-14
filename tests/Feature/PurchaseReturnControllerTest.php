@@ -69,8 +69,8 @@ test('purchase lookup includes discount and vat fields', function () {
     $purchase = purchaseReturnPurchase($user, $supplier, [
         'gross' => 1000,
         'discount' => 100,
-        'vat' => 50,
-        'paid' => 950,
+        'vat' => 45,
+        'paid' => 945,
     ]);
 
     PurchaseProduct::factory()
@@ -84,7 +84,7 @@ test('purchase lookup includes discount and vat fields', function () {
         ->assertSuccessful()
         ->assertJsonPath('gross_amount', 1000)
         ->assertJsonPath('discount', 100)
-        ->assertJsonPath('vat', 50)
+        ->assertJsonPath('vat', 45)
         ->assertJsonPath('vat_percent', 5);
 });
 

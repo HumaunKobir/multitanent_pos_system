@@ -54,8 +54,9 @@ export default function PurchaseReturnEdit({ purchaseReturn, paymentAccounts = [
     );
     const discountAmount = parseFloat(form.data.discount || 0);
     const vatPercent = parseFloat(purchaseReturn?.purchase_vat_percent || 0);
-    const vatAmount = roundCurrency(subtotalAmount * vatPercent / 100);
-    const grossAmount = subtotalAmount + vatAmount - discountAmount;
+    const taxableAmount = Math.max(0, subtotalAmount - discountAmount);
+    const vatAmount = roundCurrency(taxableAmount * vatPercent / 100);
+    const grossAmount = taxableAmount + vatAmount;
 
     // Purchase payment info (restored due = original due before this return was applied).
     const purchaseDue = parseFloat(purchaseReturn.purchase_due_amount || 0);

@@ -260,8 +260,10 @@ export default function PurchaseCreate({
     const branchOptions = branches.map((branch) => ({ value: String(branch.id), label: branch.name }));
 
     const grossAmount = items.reduce((sum, it) => sum + parseFloat(it.quantity || 0) * parseFloat(it.unit_price || 0), 0);
-    const vatAmount = grossAmount * (parseFloat(form.data.vat || 0) / 100);
-    const netAmount = grossAmount + vatAmount - parseFloat(form.data.discount || 0);
+    const discountAmount = parseFloat(form.data.discount || 0);
+    const taxableAmount = Math.max(0, grossAmount - discountAmount);
+    const vatAmount = taxableAmount * (parseFloat(form.data.vat || 0) / 100);
+    const netAmount = taxableAmount + vatAmount;
     const dueAmount = Math.max(0, netAmount - parseFloat(form.data.paid_amount || 0));
 
     function addItem(item) {

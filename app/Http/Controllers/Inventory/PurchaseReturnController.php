@@ -246,6 +246,11 @@ class PurchaseReturnController extends Controller
             ->filter()
             ->values();
 
+        $parentTaxable = max(0, (float) $parent->gross_amount - (float) $parent->discount);
+        $parentVatPercent = $parentTaxable > 0
+            ? ((float) $parent->vat / $parentTaxable) * 100
+            : 0;
+
         return Inertia::render('admin/inventory/purchase-return/edit', [
             'today' => now()->format('Y-m-d'),
             'paymentAccounts' => $this->paymentAccountsForBranch($purchaseReturn->branch_id),
@@ -266,9 +271,7 @@ class PurchaseReturnController extends Controller
                 'purchase_gross_amount' => (float) $parent->gross_amount,
                 'purchase_discount' => (float) $parent->discount,
                 'purchase_vat' => (float) $parent->vat,
-                'purchase_vat_percent' => (float) $parent->gross_amount > 0
-                    ? ((float) $parent->vat / (float) $parent->gross_amount) * 100
-                    : 0,
+                'purchase_vat_percent' => $parentVatPercent,
                 // Restore the offset so the edit form reflects what purchase due will be
                 // available after rollback (rollback adds purchase_due_offset back to purchase.due_amount).
                 'purchase_paid_amount' => (float) $parent->paid_amount,
@@ -624,13 +627,15 @@ class PurchaseReturnController extends Controller
         $discount = $parentGross > 0
             ? round(max(0, $discount) * $grossAmount / $parentGross, 2)
             : round(max(0, $discount), 2);
-        $vatPercent = $parentGross > 0 ? ((float) $parent->vat / $parentGross) * 100 : 0;
-        $vat = round($grossAmount * $vatPercent / 100, 2);
+        $parentTaxable = max(0, $parentGross - (float) $parent->discount);
+        $vatPercent = $parentTaxable > 0 ? ((float) $parent->vat / $parentTaxable) * 100 : 0;
+        $taxableAmount = max(0, $grossAmount - $discount);
+        $vat = round($taxableAmount * $vatPercent / 100, 2);
 
         return [
             'discount' => $discount,
             'vat' => $vat,
-            'net' => $grossAmount + $vat - $discount,
+            'net' => $taxableAmount + $vat,
             'vat_percent' => $vatPercent,
         ];
     }

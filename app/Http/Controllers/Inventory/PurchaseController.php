@@ -201,8 +201,10 @@ class PurchaseController extends Controller
                     ];
                 }
 
-                $vatAmount = $grossAmount * ((float) $data['vat'] / 100);
-                $netAmount = $grossAmount + $vatAmount - (float) $data['discount'];
+                $discountAmount = (float) $data['discount'];
+                $taxableAmount = max(0, $grossAmount - $discountAmount);
+                $vatAmount = $taxableAmount * ((float) $data['vat'] / 100);
+                $netAmount = $taxableAmount + $vatAmount;
                 $dueAmount = max(0, $netAmount - (float) $data['paid_amount']);
 
                 $purchase = Purchase::create([
@@ -327,7 +329,8 @@ class PurchaseController extends Controller
             ->all();
 
         $grossAmount = (float) $purchase->gross_amount;
-        $vatPercent = $grossAmount > 0 ? ((float) $purchase->vat / $grossAmount) * 100 : 0;
+        $taxableAmount = max(0, $grossAmount - (float) $purchase->discount);
+        $vatPercent = $taxableAmount > 0 ? ((float) $purchase->vat / $taxableAmount) * 100 : 0;
 
         $existingDistribution = StockDistribution::query()
             ->where('purchase_id', $purchase->id)
@@ -618,8 +621,10 @@ class PurchaseController extends Controller
                     ];
                 }
 
-                $vatAmount = $grossAmount * ((float) $data['vat'] / 100);
-                $netAmount = $grossAmount + $vatAmount - (float) $data['discount'];
+                $discountAmount = (float) $data['discount'];
+                $taxableAmount = max(0, $grossAmount - $discountAmount);
+                $vatAmount = $taxableAmount * ((float) $data['vat'] / 100);
+                $netAmount = $taxableAmount + $vatAmount;
                 $totalPaid = round(min($netAmount, $formPaid), 2);
                 $directPaid = round(max(0, $totalPaid - $allocationTotal), 2);
                 $dueAmount = max(0, $netAmount - $totalPaid);

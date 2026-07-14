@@ -56,8 +56,9 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
     );
     const discountAmount = parseFloat(form.data.discount || 0);
     const vatPercent = parseFloat(source?.vat_percent || 0);
-    const vatAmount = roundCurrency(subtotalAmount * vatPercent / 100);
-    const grossAmount = subtotalAmount + vatAmount - discountAmount;
+    const taxableAmount = Math.max(0, subtotalAmount - discountAmount);
+    const vatAmount = roundCurrency(taxableAmount * vatPercent / 100);
+    const grossAmount = taxableAmount + vatAmount;
 
     // How much of the return will be offset against the purchase's existing due.
     const purchaseDue = parseFloat(source?.due_amount || 0);

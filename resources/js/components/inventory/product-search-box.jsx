@@ -1,8 +1,55 @@
 import { route } from '@/lib/route';
-import { Package, Search } from 'lucide-react';
+import { Barcode, Package, Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { Input } from '@/components/ui/input';
+
+function resolveBarcodeMatch(data, term) {
+    for (const product of data) {
+        const barcodeHit = (product.barcodes ?? []).find((barcode) => String(barcode.code) === term);
+        if (barcodeHit) {
+            if (barcodeHit.product_variation_id) {
+                const variation = (product.variations ?? []).find(
+                    (item) => String(item.id) === String(barcodeHit.product_variation_id),
+                );
+                if (variation) {
+                    return { product, variation };
+                }
+            }
+
+            if (!product.has_variations) {
+                return { product, variation: null };
+            }
+        }
+    }
+
+    const variationMatch = data
+        .flatMap((product) => (product.variations ?? []).map((variation) => ({ product, variation })))
+        .find(({ variation }) => String(variation.sku) === term);
+
+    if (variationMatch) {
+        return variationMatch;
+    }
+
+    const exact = data.find((product) => String(product.code) === term);
+    if (exact && !exact.has_variations) {
+        return { product: exact, variation: null };
+    }
+
+    if (exact?.has_variations) {
+        return { product: exact, variation: null, needsVariantPick: true };
+    }
+
+    if (data.length === 1 && !data[0].has_variations) {
+        return { product: data[0], variation: null };
+    }
+
+    if (data.length === 1 && data[0].has_variations) {
+        return { product: data[0], variation: null, needsVariantPick: true };
+    }
+
+    return null;
+}
 
 export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell', listMaxHeightClassName = 'max-h-64' }) {
     const [query, setQuery] = useState('');
@@ -11,6 +58,8 @@ export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell', listMa
     const [open, setOpen] = useState(false);
     const timerRef = useRef(null);
     const ref = useRef(null);
+    const inputRef = useRef(null);
+    const skipOpenOnFocusRef = useRef(false);
     const apiUrl = route(apiRoute);
 
     async function fetchProducts(search) {
@@ -20,7 +69,9 @@ export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell', listMa
                 credentials: 'include',
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             });
-            if (!res.ok) return;
+            if (!res.ok) {
+                return;
+            }
             const data = await res.json();
             setResults(Array.isArray(data) ? data : []);
         } catch {
@@ -31,8 +82,14 @@ export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell', listMa
     }
 
     function handleFocus() {
+        if (skipOpenOnFocusRef.current) {
+            skipOpenOnFocusRef.current = false;
+            return;
+        }
         setOpen(true);
-        if (results.length === 0) fetchProducts('');
+        if (results.length === 0) {
+            fetchProducts('');
+        }
     }
 
     function handleChange(e) {
@@ -45,7 +102,9 @@ export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell', listMa
 
     useEffect(() => {
         function handleClick(e) {
-            if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+            if (ref.current && !ref.current.contains(e.target)) {
+                setOpen(false);
+            }
         }
         document.addEventListener('mousedown', handleClick);
         return () => document.removeEventListener('mousedown', handleClick);
@@ -55,7 +114,7 @@ export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell', listMa
         const availableStock = variation ? parseFloat(variation.stock ?? 0) : parseFloat(product.stock ?? 0);
 
         if (availableStock <= 0) {
-            return;
+            return false;
         }
 
         onAdd({
@@ -71,7 +130,107 @@ export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell', listMa
         setOpen(false);
         setQuery('');
         setResults([]);
+        return true;
     }
+
+    function addFromScan(product, variation) {
+        const added = addItem(product, variation);
+        if (!added) {
+            return;
+        }
+        // Keep focus ready for the next scan, but do not reopen the picker.
+        skipOpenOnFocusRef.current = true;
+        requestAnimationFrame(() => inputRef.current?.focus());
+    }
+
+    async function triggerBarcodeSearch(term) {
+        const trimmed = term.trim();
+        if (!trimmed) {
+            return;
+        }
+
+        clearTimeout(timerRef.current);
+        setLoading(true);
+        try {
+            const res = await fetch(`${apiUrl}?search=${encodeURIComponent(trimmed)}`, {
+                credentials: 'include',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            if (!res.ok) {
+                return;
+            }
+            const json = await res.json();
+            const data = Array.isArray(json) ? json : [];
+            const match = resolveBarcodeMatch(data, trimmed);
+
+            if (match?.needsVariantPick) {
+                setResults([match.product]);
+                setQuery('');
+                setOpen(true);
+                return;
+            }
+
+            if (match) {
+                addFromScan(match.product, match.variation);
+                return;
+            }
+
+            setQuery(trimmed);
+            setResults(data);
+            setOpen(true);
+        } catch {
+            setResults([]);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    function handleKeyDown(e) {
+        if (e.key !== 'Enter') {
+            return;
+        }
+
+        // Scanners send Enter after the code — never submit the parent form.
+        e.preventDefault();
+        e.stopPropagation();
+
+        const term = (e.target.value ?? query).trim();
+        if (term) {
+            triggerBarcodeSearch(term);
+        }
+    }
+
+    const triggerRef = useRef(null);
+    triggerRef.current = triggerBarcodeSearch;
+    const globalBufRef = useRef('');
+    const globalLastKeyRef = useRef(0);
+
+    useEffect(() => {
+        function onGlobalKey(e) {
+            const tag = document.activeElement?.tagName ?? '';
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) {
+                return;
+            }
+            const now = Date.now();
+            if (now - globalLastKeyRef.current > 100) {
+                globalBufRef.current = '';
+            }
+            globalLastKeyRef.current = now;
+            if (e.key === 'Enter') {
+                const term = globalBufRef.current.trim();
+                globalBufRef.current = '';
+                if (term) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    triggerRef.current(term);
+                }
+            } else if (e.key.length === 1) {
+                globalBufRef.current += e.key;
+            }
+        }
+        document.addEventListener('keydown', onGlobalKey);
+        return () => document.removeEventListener('keydown', onGlobalKey);
+    }, []);
 
     function variationRows(product) {
         return (product.variations ?? []).filter((v) => parseFloat(v.stock ?? 0) > 0);
@@ -89,12 +248,19 @@ export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell', listMa
         <div ref={ref} className="relative">
             <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
+                ref={inputRef}
                 value={query}
                 onChange={handleChange}
                 onFocus={handleFocus}
-                placeholder="Search product by name or code…"
-                className="h-8 pl-8 text-xs"
+                onKeyDown={handleKeyDown}
+                placeholder="Search or scan barcode…"
+                className="h-8 pr-16 pl-8 text-xs"
+                autoComplete="off"
             />
+            <div className="pointer-events-none absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                <Barcode className="size-3" />
+                Scan
+            </div>
             {open && (
                 <div className="absolute z-50 mt-1 w-full rounded-md border border-border bg-popover shadow-md">
                     {loading ? (
@@ -119,7 +285,7 @@ export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell', listMa
                                                 <Package className="size-3 text-muted-foreground" />
                                                 <span className="text-xs font-semibold">{p.name}</span>
                                             </div>
-                                            {(variationRows(p)).map((v) => (
+                                            {variationRows(p).map((v) => (
                                                 <div
                                                     key={v.id}
                                                     className="flex cursor-pointer items-center justify-between py-1.5 pr-3 pl-7 text-xs hover:bg-accent"

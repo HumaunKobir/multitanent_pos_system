@@ -312,6 +312,42 @@ test('purchase search finds variant by variation barcode', function () {
         ->and((int) $barcodeMatch['product_variation_id'])->toBe($variation->id);
 });
 
+test('sell search finds product by barcode and returns barcode payload', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = ensureMainBranch();
+    $mainUser = User::factory()->create(['branch_id' => $mainBranchId]);
+    Permission::findOrCreate('inventory.sell.create', 'web');
+    $mainUser->givePermissionTo('inventory.sell.create');
+
+    $barcodeCode = 'SC'.fake()->unique()->numerify('######');
+    $product = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Sell Barcode Product '.fake()->unique()->numerify('###'),
+        'code' => 'PRD-'.fake()->unique()->numerify('####'),
+    ]);
+    Batch::factory()->for($product)->withStock(8)->create(['branch_id' => $mainBranchId]);
+
+    Barcode::query()->create([
+        'branch_id' => $mainBranchId,
+        'product_id' => $product->id,
+        'product_variation_id' => null,
+        'code' => $barcodeCode,
+        'name' => $product->name,
+    ]);
+
+    $response = $this->actingAs($mainUser)
+        ->getJson('/api/products/for-sell?search='.urlencode($barcodeCode));
+
+    $response->assertOk();
+
+    $match = collect($response->json())->firstWhere('id', $product->id);
+
+    expect($match)->not->toBeNull()
+        ->and($match['barcodes'])->toBeArray()
+        ->and(collect($match['barcodes'])->pluck('code'))->toContain($barcodeCode);
+});
+
 test('sell search can filter products by category', function () {
     $this->artisan('permissions:sync');
 

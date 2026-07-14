@@ -108,6 +108,9 @@ class ProductSearchController extends Controller
                 'batches' => fn ($q) => $q->atBranchWarehouse($branchId)
                     ->where('available', '>', 0)
                     ->select(['id', 'product_id', 'branch_id', 'available']),
+                'barcodes' => fn ($q) => $q
+                    ->where('branch_id', $branchId)
+                    ->select(['id', 'product_id', 'product_variation_id', 'code']),
             ])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s, $branchId) {
                 $q->where('name', 'like', "%{$s}%")
@@ -140,6 +143,10 @@ class ProductSearchController extends Controller
                 'image' => StorageUrl::public($product->image),
                 'has_variations' => $product->variations->isNotEmpty(),
                 'stock' => (float) $product->batches->sum('available'),
+                'barcodes' => $product->barcodes->map(fn ($barcode) => [
+                    'code' => $barcode->code,
+                    'product_variation_id' => $barcode->product_variation_id,
+                ])->values(),
                 'variations' => $product->variations
                     ->map(fn ($v) => [
                         'id' => $v->id,

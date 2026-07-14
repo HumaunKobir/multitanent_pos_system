@@ -25,11 +25,12 @@ import {
     serializeSalePayments,
     splitPaymentValidationError,
 } from '@/lib/sale-payment';
+import { resolveBarcodeMatch } from '@/lib/resolve-barcode-match';
 import { customerModalDefaultsFromSearch } from '@/lib/customer-modal-defaults';
 import { formatBdDate, toDateInputValue } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 import { Head, Link, useForm, usePage } from '@inertiajs/react';
-import { ArrowLeft, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Save, Search, ShoppingCart, Trash2, User } from 'lucide-react';
+import { ArrowLeft, Barcode, CalendarDays, Check, HandCoins, MessageSquare, Package, Plus, Save, Search, ShoppingCart, Trash2, User } from 'lucide-react';
 import { useCan } from '@/hooks/use-can';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { applyPromotionsToCart, canApplyManualLineDiscount } from '@/lib/pos-promotion';
@@ -321,6 +322,8 @@ function ProductSearchBox({ onAdd }) {
     const [open, setOpen] = useState(false);
     const timerRef = useRef(null);
     const ref = useRef(null);
+    const inputRef = useRef(null);
+    const skipOpenOnFocusRef = useRef(false);
     const apiUrl = route('api.products.sell');
 
     async function fetchProducts(search) {
@@ -330,7 +333,9 @@ function ProductSearchBox({ onAdd }) {
                 credentials: 'include',
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             });
-            if (!res.ok) return;
+            if (!res.ok) {
+                return;
+            }
             const data = await res.json();
             setResults(Array.isArray(data) ? data : []);
         } catch {
@@ -341,8 +346,14 @@ function ProductSearchBox({ onAdd }) {
     }
 
     function handleFocus() {
+        if (skipOpenOnFocusRef.current) {
+            skipOpenOnFocusRef.current = false;
+            return;
+        }
         setOpen(true);
-        if (results.length === 0) fetchProducts('');
+        if (results.length === 0) {
+            fetchProducts('');
+        }
     }
 
     function handleChange(e) {
@@ -353,84 +364,13 @@ function ProductSearchBox({ onAdd }) {
         timerRef.current = setTimeout(() => fetchProducts(val), 350);
     }
 
-    async function triggerBarcodeSearch(term) {
-        clearTimeout(timerRef.current);
-        setLoading(true);
-        try {
-            const res = await fetch(`${apiUrl}?search=${encodeURIComponent(term)}`, {
-                credentials: 'include',
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-            });
-            if (!res.ok) return;
-            const json = await res.json();
-            const data = Array.isArray(json) ? json : [];
-            const variationMatch = data
-                .flatMap((product) => (product.variations ?? []).map((variation) => ({ product, variation })))
-                .find(({ variation }) => variation.sku === term);
-            if (variationMatch) {
-                addItem(variationMatch.product, variationMatch.variation);
-                return;
-            }
-            const exact = data.find((p) => p.code === term);
-            const match = exact ?? (data.length === 1 ? data[0] : null);
-            if (match && !match.has_variations) {
-                addItem(match, null);
-            } else if (match && match.has_variations) {
-                setResults([match]);
-                setQuery('');
-                setOpen(true);
-            } else {
-                setQuery(term);
-                setResults(data);
-                setOpen(true);
-            }
-        } catch {
-            setResults([]);
-        } finally {
-            setLoading(false);
-        }
-    }
-
-    async function handleKeyDown(e) {
-        if (e.key !== 'Enter') return;
-        e.preventDefault();
-        const term = query.trim();
-        if (term) triggerBarcodeSearch(term);
-    }
-
-    const triggerRef = useRef(null);
-    triggerRef.current = triggerBarcodeSearch;
-    const globalBufRef = useRef('');
-    const globalLastKeyRef = useRef(0);
-
-    useEffect(() => {
-        function handleClick(e) { if (ref.current && !ref.current.contains(e.target)) setOpen(false); }
-        document.addEventListener('mousedown', handleClick);
-        return () => document.removeEventListener('mousedown', handleClick);
-    }, []);
-
-    useEffect(() => {
-        function onGlobalKey(e) {
-            const tag = document.activeElement?.tagName ?? '';
-            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
-            const now = Date.now();
-            if (now - globalLastKeyRef.current > 100) globalBufRef.current = '';
-            globalLastKeyRef.current = now;
-            if (e.key === 'Enter') {
-                const term = globalBufRef.current.trim();
-                globalBufRef.current = '';
-                if (term) triggerRef.current(term);
-            } else if (e.key.length === 1) {
-                globalBufRef.current += e.key;
-            }
-        }
-        document.addEventListener('keydown', onGlobalKey);
-        return () => document.removeEventListener('keydown', onGlobalKey);
-    }, []);
-
     function addItem(product, variation) {
         const unitPrice = variation ? parseFloat(variation.sale_price ?? 0) : parseFloat(product.sale_price ?? 0);
         const stock = variation ? parseFloat(variation.stock ?? 0) : parseFloat(product.stock ?? 0);
+        if (stock <= 0) {
+            return false;
+        }
+
         onAdd({
             product_id: product.id,
             product_name: product.name,
@@ -447,20 +387,137 @@ function ProductSearchBox({ onAdd }) {
             quantity: 1,
             available_stock: stock,
         });
+        setOpen(false);
+        setQuery('');
+        setResults([]);
+        return true;
     }
+
+    function addFromScan(product, variation) {
+        const added = addItem(product, variation);
+        if (!added) {
+            return;
+        }
+        skipOpenOnFocusRef.current = true;
+        requestAnimationFrame(() => inputRef.current?.focus());
+    }
+
+    async function triggerBarcodeSearch(term) {
+        const trimmed = term.trim();
+        if (!trimmed) {
+            return;
+        }
+
+        clearTimeout(timerRef.current);
+        setLoading(true);
+        try {
+            const res = await fetch(`${apiUrl}?search=${encodeURIComponent(trimmed)}`, {
+                credentials: 'include',
+                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            });
+            if (!res.ok) {
+                return;
+            }
+            const json = await res.json();
+            const data = Array.isArray(json) ? json : [];
+            const match = resolveBarcodeMatch(data, trimmed);
+
+            if (match?.needsVariantPick) {
+                setResults([match.product]);
+                setQuery('');
+                setOpen(true);
+                return;
+            }
+
+            if (match) {
+                addFromScan(match.product, match.variation);
+                return;
+            }
+
+            setQuery(trimmed);
+            setResults(data);
+            setOpen(true);
+        } catch {
+            setResults([]);
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    function handleKeyDown(e) {
+        if (e.key !== 'Enter') {
+            return;
+        }
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const term = (e.target.value ?? query).trim();
+        if (term) {
+            triggerBarcodeSearch(term);
+        }
+    }
+
+    const triggerRef = useRef(null);
+    triggerRef.current = triggerBarcodeSearch;
+    const globalBufRef = useRef('');
+    const globalLastKeyRef = useRef(0);
+
+    useEffect(() => {
+        function handleClick(e) {
+            if (ref.current && !ref.current.contains(e.target)) {
+                setOpen(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, []);
+
+    useEffect(() => {
+        function onGlobalKey(e) {
+            const tag = document.activeElement?.tagName ?? '';
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) {
+                return;
+            }
+            const now = Date.now();
+            if (now - globalLastKeyRef.current > 100) {
+                globalBufRef.current = '';
+            }
+            globalLastKeyRef.current = now;
+            if (e.key === 'Enter') {
+                const term = globalBufRef.current.trim();
+                globalBufRef.current = '';
+                if (term) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    triggerRef.current(term);
+                }
+            } else if (e.key.length === 1) {
+                globalBufRef.current += e.key;
+            }
+        }
+        document.addEventListener('keydown', onGlobalKey);
+        return () => document.removeEventListener('keydown', onGlobalKey);
+    }, []);
 
     return (
         <div ref={ref} className="relative">
             <div className="relative">
                 <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
+                    ref={inputRef}
                     value={query}
                     onChange={handleChange}
                     onFocus={handleFocus}
                     onKeyDown={handleKeyDown}
-                    placeholder="Click or search product by name / code…"
-                    className="h-8 pl-8 text-xs"
+                    placeholder="Search or scan barcode…"
+                    className="h-8 pr-16 pl-8 text-xs"
+                    autoComplete="off"
                 />
+                <div className="pointer-events-none absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <Barcode className="size-3" />
+                    Scan
+                </div>
             </div>
 
             {open && (
@@ -476,7 +533,9 @@ function ProductSearchBox({ onAdd }) {
                                     {!p.has_variations ? (
                                         <div
                                             className="flex cursor-pointer items-center justify-between px-3 py-2 text-xs hover:bg-accent"
-                                            onClick={() => { addItem(p, null); setOpen(false); setQuery(''); }}
+                                            onClick={() => {
+                                                addItem(p, null);
+                                            }}
                                         >
                                             <span>
                                                 <span className="font-medium">{p.name}</span>
@@ -495,7 +554,9 @@ function ProductSearchBox({ onAdd }) {
                                                 <div
                                                     key={v.id}
                                                     className="flex cursor-pointer items-center justify-between py-1.5 pr-3 pl-7 text-xs hover:bg-accent"
-                                                    onClick={() => { addItem(p, v); }}
+                                                    onClick={() => {
+                                                        addItem(p, v);
+                                                    }}
                                                 >
                                                     <span className="inline-flex items-center rounded-none bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 ring-1 ring-blue-200">
                                                         {v.label}
@@ -827,7 +888,23 @@ export default function SellEdit({
                     </div>
                 )}
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form
+                    onSubmit={handleSubmit}
+                    onKeyDown={(e) => {
+                        // Barcode scanners send Enter after the code — never submit the form that way.
+                        if (e.key !== 'Enter') {
+                            return;
+                        }
+                        if (e.target instanceof HTMLTextAreaElement) {
+                            return;
+                        }
+                        if (e.target instanceof HTMLButtonElement && e.target.type === 'submit') {
+                            return;
+                        }
+                        e.preventDefault();
+                    }}
+                    className="space-y-4"
+                >
                     <Card title="Sale Details" icon={CalendarDays}>
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <div>

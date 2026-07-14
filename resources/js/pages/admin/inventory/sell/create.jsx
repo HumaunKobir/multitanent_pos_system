@@ -25,6 +25,7 @@ import { useAppToast } from '@/contexts/app-toast-context';
 import { customerModalDefaultsFromSearch } from '@/lib/customer-modal-defaults';
 import { emptyWhenZero, normalizeOptionalNumeric } from '@/lib/form-numeric';
 import { toDateInputValue } from '@/lib/format-bd-date';
+import { resolveBarcodeMatch } from '@/lib/resolve-barcode-match';
 import { route } from '@/lib/route';
 import { hasRichTextContent } from '@/lib/pos-print';
 import { cn } from '@/lib/utils';
@@ -442,34 +443,38 @@ function PosProductPicker({ categories = [], onAdd }) {
     }, [query, categoryId]);
 
     async function triggerBarcodeSearch(term) {
+        const trimmed = term.trim();
+        if (!trimmed) {
+            return;
+        }
+
         clearTimeout(timerRef.current);
         setLoading(true);
         try {
-            const res = await fetch(`${apiUrl}?search=${encodeURIComponent(term)}`, {
+            const res = await fetch(`${apiUrl}?search=${encodeURIComponent(trimmed)}`, {
                 credentials: 'include',
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             });
-            if (!res.ok) return;
-            const json = await res.json();
-            const data = Array.isArray(json) ? json : [];
-            const variationMatch = data
-                .flatMap((product) => (product.variations ?? []).map((variation) => ({ product, variation })))
-                .find(({ variation }) => variation.sku === term);
-            if (variationMatch) {
-                addItem(variationMatch.product, variationMatch.variation);
+            if (!res.ok) {
                 return;
             }
-            const exact = data.find((p) => p.code === term);
-            const match = exact ?? (data.length === 1 ? data[0] : null);
-            if (match && !match.has_variations) {
-                addItem(match, null);
-            } else if (match && match.has_variations) {
-                setResults([match]);
+            const json = await res.json();
+            const data = Array.isArray(json) ? json : [];
+            const match = resolveBarcodeMatch(data, trimmed);
+
+            if (match?.needsVariantPick) {
+                setResults([match.product]);
                 setQuery('');
-            } else {
-                setQuery(term);
-                setResults(data);
+                return;
             }
+
+            if (match) {
+                addItem(match.product, match.variation);
+                return;
+            }
+
+            setQuery(trimmed);
+            setResults(data);
         } catch {
             setResults([]);
         } finally {
@@ -477,11 +482,19 @@ function PosProductPicker({ categories = [], onAdd }) {
         }
     }
 
-    async function handleKeyDown(e) {
-        if (e.key !== 'Enter') return;
+    function handleKeyDown(e) {
+        if (e.key !== 'Enter') {
+            return;
+        }
+
+        // Scanners send Enter after the code — never submit the sale form.
         e.preventDefault();
-        const term = query.trim();
-        if (term) triggerBarcodeSearch(term);
+        e.stopPropagation();
+
+        const term = (e.target.value ?? query).trim();
+        if (term) {
+            triggerBarcodeSearch(term);
+        }
     }
 
     const triggerRef = useRef(null);
@@ -492,14 +505,22 @@ function PosProductPicker({ categories = [], onAdd }) {
     useEffect(() => {
         function onGlobalKey(e) {
             const tag = document.activeElement?.tagName ?? '';
-            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
+            if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) {
+                return;
+            }
             const now = Date.now();
-            if (now - globalLastKeyRef.current > 100) globalBufRef.current = '';
+            if (now - globalLastKeyRef.current > 100) {
+                globalBufRef.current = '';
+            }
             globalLastKeyRef.current = now;
             if (e.key === 'Enter') {
                 const term = globalBufRef.current.trim();
                 globalBufRef.current = '';
-                if (term) triggerRef.current(term);
+                if (term) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    triggerRef.current(term);
+                }
             } else if (e.key.length === 1) {
                 globalBufRef.current += e.key;
             }
@@ -511,7 +532,9 @@ function PosProductPicker({ categories = [], onAdd }) {
     function addItem(product, variation) {
         const unitPrice = variation ? parseFloat(variation.sale_price ?? 0) : parseFloat(product.sale_price ?? 0);
         const stock = variation ? parseFloat(variation.stock ?? 0) : parseFloat(product.stock ?? 0);
-        if (stock <= 0) return;
+        if (stock <= 0) {
+            return;
+        }
 
         onAdd({
             product_id: product.id,
@@ -562,7 +585,8 @@ function PosProductPicker({ categories = [], onAdd }) {
                     onChange={(e) => setQuery(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Search or scan barcode…"
-                    className="h-7 rounded-none border-blue-200 bg-white pl-7 pr-20 text-[11px] focus:border-blue-600 lg:h-9 lg:pl-8 lg:pr-24 lg:text-xs"
+                    autoComplete="off"
+                    className="h-7 rounded-none border-blue-200 bg-white pr-20 pl-7 text-[11px] focus:border-blue-600 lg:h-9 lg:pr-24 lg:pl-8 lg:text-xs"
                 />
                 <div className="pointer-events-none absolute top-1/2 right-1.5 flex -translate-y-1/2 items-center gap-0.5 border border-blue-200 bg-blue-50 px-1 py-0.5 text-[8px] font-semibold uppercase tracking-wide text-blue-900 lg:right-2 lg:gap-1 lg:px-1.5 lg:text-[9px]">
                     <Barcode className="size-2.5 lg:size-3" />
@@ -1294,7 +1318,23 @@ export default function SellCreate({
                     </div>
                 </header>
 
-                <form onSubmit={handleSubmit} className="grid min-h-0 flex-1 grid-cols-1 gap-1 bg-slate-100 p-1 md:grid-cols-5 md:grid-rows-[1fr_auto] md:gap-1.5 md:p-1.5 lg:grid-cols-11 lg:grid-rows-1 lg:gap-1.5 lg:p-1.5 2xl:grid-cols-12 2xl:gap-2 2xl:p-2">
+                <form
+                    onSubmit={handleSubmit}
+                    onKeyDown={(e) => {
+                        // Barcode scanners send Enter after the code — never submit the form that way.
+                        if (e.key !== 'Enter') {
+                            return;
+                        }
+                        if (e.target instanceof HTMLTextAreaElement) {
+                            return;
+                        }
+                        if (e.target instanceof HTMLButtonElement && e.target.type === 'submit') {
+                            return;
+                        }
+                        e.preventDefault();
+                    }}
+                    className="grid min-h-0 flex-1 grid-cols-1 gap-1 bg-slate-100 p-1 md:grid-cols-5 md:grid-rows-[1fr_auto] md:gap-1.5 md:p-1.5 lg:grid-cols-11 lg:grid-rows-1 lg:gap-1.5 lg:p-1.5 2xl:grid-cols-12 2xl:gap-2 2xl:p-2"
+                >
                     {/* Left — Products */}
                     <section className="pos-panel flex h-[50vh] flex-col overflow-hidden border border-blue-200 bg-white text-blue-950 shadow-sm md:h-auto md:min-h-0 md:col-span-2 md:row-span-2 lg:col-span-3 lg:row-span-1 2xl:col-span-3">
                         <PosPanelHeader title="Products" icon={Grid3x3} />

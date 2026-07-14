@@ -514,7 +514,23 @@ export default function ProductExchangeEdit({
                     </div>
                 )}
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form
+                    onSubmit={handleSubmit}
+                    onKeyDown={(e) => {
+                        // Barcode scanners send Enter after the code — never submit the form that way.
+                        if (e.key !== 'Enter') {
+                            return;
+                        }
+                        if (e.target instanceof HTMLTextAreaElement) {
+                            return;
+                        }
+                        if (e.target instanceof HTMLButtonElement && e.target.type === 'submit') {
+                            return;
+                        }
+                        e.preventDefault();
+                    }}
+                    className="space-y-4"
+                >
                     <InventoryCard title="Source Sale" icon={CalendarDays}>
                         <p className="text-xs text-muted-foreground">
                             Customer: {exchange.customer_name ?? 'Walk-in'} ·

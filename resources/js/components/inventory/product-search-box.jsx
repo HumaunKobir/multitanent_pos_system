@@ -1,55 +1,9 @@
+import { resolveBarcodeMatch } from '@/lib/resolve-barcode-match';
 import { route } from '@/lib/route';
 import { Barcode, Package, Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { Input } from '@/components/ui/input';
-
-function resolveBarcodeMatch(data, term) {
-    for (const product of data) {
-        const barcodeHit = (product.barcodes ?? []).find((barcode) => String(barcode.code) === term);
-        if (barcodeHit) {
-            if (barcodeHit.product_variation_id) {
-                const variation = (product.variations ?? []).find(
-                    (item) => String(item.id) === String(barcodeHit.product_variation_id),
-                );
-                if (variation) {
-                    return { product, variation };
-                }
-            }
-
-            if (!product.has_variations) {
-                return { product, variation: null };
-            }
-        }
-    }
-
-    const variationMatch = data
-        .flatMap((product) => (product.variations ?? []).map((variation) => ({ product, variation })))
-        .find(({ variation }) => String(variation.sku) === term);
-
-    if (variationMatch) {
-        return variationMatch;
-    }
-
-    const exact = data.find((product) => String(product.code) === term);
-    if (exact && !exact.has_variations) {
-        return { product: exact, variation: null };
-    }
-
-    if (exact?.has_variations) {
-        return { product: exact, variation: null, needsVariantPick: true };
-    }
-
-    if (data.length === 1 && !data[0].has_variations) {
-        return { product: data[0], variation: null };
-    }
-
-    if (data.length === 1 && data[0].has_variations) {
-        return { product: data[0], variation: null, needsVariantPick: true };
-    }
-
-    return null;
-}
 
 export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell', listMaxHeightClassName = 'max-h-64' }) {
     const [query, setQuery] = useState('');

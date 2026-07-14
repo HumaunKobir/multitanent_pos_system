@@ -12,6 +12,7 @@ import {
     buildPrintHtml,
     BARCODE_HORIZONTAL_MARGIN_IN,
     BARCODE_HEIGHT_RATIO,
+    BARCODE_PRICE_GAP_PX,
     JSBARCODE_CDN,
     getLabelTitle,
     getLabelProductName,
@@ -19,6 +20,7 @@ import {
     getLabelCodeLine,
     getLabelSkuLine,
     getEffectiveLabelFontSize,
+    getLabelFooterFontSize,
     getLabelBarcodeBarHeight,
     getLabelBarcodeWidthIn,
     getLabelBarcodeHeightIn,
@@ -39,6 +41,10 @@ import {
 
 if (BARCODE_HORIZONTAL_MARGIN_IN !== 0.2) {
     process.exit(1);
+}
+
+if (BARCODE_PRICE_GAP_PX !== 0) {
+    process.exit(79);
 }
 
 if (BARCODE_HEIGHT_RATIO !== 0.48) {
@@ -183,8 +189,14 @@ const variantCrowdedSettings = {
     autoHeight: false,
 };
 const crowdedVariantBarHeight = getLabelBarcodeBarHeight(variantCrowdedSettings, variantRow);
-const variantChrome =
-    getLabelTextChromePx(9, getLabelHeaderLineCount(variantRow));
+const crowdedEffectiveFont = getEffectiveLabelFontSize(
+    variantCrowdedSettings,
+    variantRow,
+);
+const variantChrome = getLabelTextChromePx(
+    crowdedEffectiveFont,
+    getLabelHeaderLineCount(variantRow),
+);
 
 if (crowdedVariantBarHeight + variantChrome > 1 * 96) {
     process.exit(71);
@@ -192,6 +204,14 @@ if (crowdedVariantBarHeight + variantChrome > 1 * 96) {
 
 if (getLabelHeaderLineCount(variantRow) < 3) {
     process.exit(72);
+}
+
+if (getLabelFooterFontSize(9, getLabelHeaderLineCount(variantRow)) !== 11) {
+    process.exit(80);
+}
+
+if (getLabelFooterFontSize(9, 1) !== 9) {
+    process.exit(81);
 }
 
 const variantAuto = resolveLabelSettings(
@@ -421,8 +441,16 @@ if (! autoHtml.includes(`@page { size: ${resolvedAuto.width}in ${resolvedAuto.he
     process.exit(34);
 }
 
-if (! autoHtml.includes('font-size:15px')) {
+if (autoHtml.includes('font-size:15px')) {
     process.exit(35);
+}
+
+if (! autoHtml.includes('font-size:17px')) {
+    process.exit(82);
+}
+
+if (! autoHtml.includes('margin-top: 0px')) {
+    process.exit(83);
 }
 
 const svg = {

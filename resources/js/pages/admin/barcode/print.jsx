@@ -22,6 +22,7 @@ import {
     getLabelBarcodeBarHeight,
     getLabelBarcodeWidthIn,
     getLabelCodeLine,
+    getLabelFooterFontSize,
     getLabelHeaderLines,
     getLabelLineHeight,
     getLabelPreviewDisplaySize,
@@ -52,11 +53,16 @@ function LabelPreview({ row, settings }) {
             PREVIEW_MAX_H,
         );
     const effectiveFontSize = getEffectiveLabelFontSize(settings, row);
+    const headerLines = getLabelHeaderLines(row);
+    const textFontSize = getLabelFooterFontSize(
+        effectiveFontSize,
+        headerLines.length,
+    );
 
     const fw = settings.fontWeight === 'bold' ? 700 : 400;
-    const scaledFontSize = scaleLabelPreviewPx(effectiveFontSize, scale);
+    const scaledFontSize = scaleLabelPreviewPx(textFontSize, scale);
     const lineHeight = scaleLabelPreviewPx(
-        getLabelLineHeight(effectiveFontSize),
+        getLabelLineHeight(textFontSize),
         scale,
     );
     const barHeight = scaleLabelPreviewPx(
@@ -69,7 +75,7 @@ function LabelPreview({ row, settings }) {
         scale,
     );
     const nameBarcodeGap = scaleLabelPreviewPx(
-        getNameBarcodeGap(effectiveFontSize),
+        getNameBarcodeGap(textFontSize),
         scale,
     );
     const barcodePriceGap = scaleLabelPreviewPx(getBarcodePriceGap(), scale);
@@ -81,7 +87,6 @@ function LabelPreview({ row, settings }) {
         scale,
     );
     const price = getEffectivePrice(row);
-    const headerLines = getLabelHeaderLines(row);
     const codeLine = getLabelCodeLine(row);
 
     const lineStyle = {

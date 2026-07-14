@@ -1,8 +1,14 @@
 export const PRINT_DPI = 96;
 export const NAME_BARCODE_GAP_PX = 1;
-export const BARCODE_PRICE_GAP_PX = 1;
+/** Space between the barcode bars and the code/price footer — keep tight. */
+export const BARCODE_PRICE_GAP_PX = 0;
 export const MIN_LABEL_FONT_PX = 5;
 export const MAX_LABEL_FONT_PX = 24;
+/**
+ * Extra px on all label text when the header is multi-line (variants), so
+ * header and footer stay readable without changing the label format.
+ */
+export const LABEL_FOOTER_FONT_BOOST_PX = 2;
 export const MIN_LABEL_HEIGHT_IN = 0.3;
 export const MAX_LABEL_HEIGHT_IN = 10;
 export const MIN_LABEL_WIDTH_IN = 0.5;
@@ -190,12 +196,27 @@ export function getLabelLineHeight(fontSize) {
 }
 
 /**
+ * Printed text size for header + footer. Multi-line variant labels get a
+ * small boost so name/code/price stay the same (larger) size.
+ */
+export function getLabelFooterFontSize(fontSize, headerLineCount = 1) {
+    const fs = clampLabelFontSize(fontSize);
+    const lines = Math.max(1, headerLineCount);
+
+    if (lines <= 1) {
+        return fs;
+    }
+
+    return Math.min(MAX_LABEL_FONT_PX, fs + LABEL_FOOTER_FONT_BOOST_PX);
+}
+
+/**
  * Fixed vertical space used by padding, header lines, gaps, and footer text.
  * Barcode bar height is NOT included — callers add that separately.
  */
 export function getLabelTextChromePx(fontSize, headerLineCount = 1) {
-    const fs = clampLabelFontSize(fontSize);
     const lines = Math.max(1, headerLineCount);
+    const fs = getLabelFooterFontSize(fontSize, lines);
     const lineHeightPx = getLabelLineHeight(fs);
     const headerBlockPx = lines * lineHeightPx + LABEL_HEADER_PAD_TOP_PX;
     const footerBlockPx =
@@ -258,8 +279,10 @@ function estimateLabelLineWidthPx(text, fontSize, bold = false) {
  * Minimum label width in pixels so header, code, and price lines are not clipped.
  */
 export function getRequiredLabelWidthPx(settings, row, fontSize = null) {
-    const fs = clampLabelFontSize(fontSize ?? settings.fontSize);
+    const baseFs = clampLabelFontSize(fontSize ?? settings.fontSize);
     const fw = settings.fontWeight === 'bold';
+    const headerLines = row ? getLabelHeaderLineCount(row) : 1;
+    const fs = getLabelFooterFontSize(baseFs, headerLines);
     let maxLineWidth = 0;
 
     if (row) {
@@ -469,6 +492,10 @@ export function getLabelPreviewScale(
 
 /** Round a print-pixel value for on-screen preview rendering. */
 export function scaleLabelPreviewPx(px, scale) {
+    if (px <= 0) {
+        return 0;
+    }
+
     return Math.max(1, Math.round(px * scale));
 }
 
@@ -880,6 +907,8 @@ export function getBarcodeRenderOptions(barHeightPx) {
         height: Math.max(10, Math.round(barHeightPx)),
         displayValue: false,
         margin: BARCODE_QUIET_MARGIN_PX,
+        // Keep side quiet zones for scanning; pull the footer up tightly.
+        marginBottom: 0,
         background: '#ffffff',
         lineColor: '#000000',
     };
@@ -900,15 +929,20 @@ export function buildPrintHtml(rows, settings) {
         .map((row) => {
             const price = getEffectivePrice(row) ?? 0;
             const effectiveFontSize = getEffectiveLabelFontSize(resolved, row);
+            const headerLineCount = getLabelHeaderLineCount(row);
+            const textFontSize = getLabelFooterFontSize(
+                effectiveFontSize,
+                headerLineCount,
+            );
             const barHeightPx = getLabelBarcodeBarHeight(resolved, row);
             const headerHtml = buildLabelHeaderHtml(
                 row,
-                effectiveFontSize,
+                textFontSize,
                 fontWeight,
             );
             const codeLine = getLabelCodeLine(row);
-            const lineHeight = getLabelLineHeight(effectiveFontSize);
-            const rowNameBarcodeGap = getNameBarcodeGap(effectiveFontSize);
+            const lineHeight = getLabelLineHeight(textFontSize);
+            const rowNameBarcodeGap = getNameBarcodeGap(textFontSize);
 
             return `
       <div class="label">
@@ -919,8 +953,8 @@ export function buildPrintHtml(rows, settings) {
               <svg class="bars" data-code="${escapeHtmlAttr(row.code)}" data-bar-height="${barHeightPx}"></svg>
             </div>
             <div class="footer">
-              <div class="label-line label-code" style="font-size:${effectiveFontSize}px;line-height:${lineHeight}px;">${escapeHtml(codeLine)}</div>
-              <div class="label-line label-price" style="font-size:${effectiveFontSize}px;font-weight:700;line-height:${lineHeight}px;">${escapeHtml(formatLabelPrice(price))}</div>
+              <div class="label-line label-code" style="font-size:${textFontSize}px;line-height:${lineHeight}px;">${escapeHtml(codeLine)}</div>
+              <div class="label-line label-price" style="font-size:${textFontSize}px;font-weight:700;line-height:${lineHeight}px;">${escapeHtml(formatLabelPrice(price))}</div>
             </div>
           </div>
         </div>

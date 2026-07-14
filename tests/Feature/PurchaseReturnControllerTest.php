@@ -800,3 +800,44 @@ test('purchase return destroy reverses cash and supplier ledger balances for par
     expect((float) $inventory->current_balance)->toBe($inventoryBefore);
     expect((float) $payables->current_balance)->toBe($payablesBefore);
 });
+
+test('purchase index shows returned badge data for purchases with a return', function () {
+    $user = purchaseReturnUser([
+        'inventory.purchase.view',
+        'inventory.purchase-return.view',
+        'inventory.purchase-return.create',
+    ]);
+    ['product' => $product, 'batch' => $batch] = purchaseReturnProduct(10, $user->branch_id);
+    $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id]);
+
+    $purchase = purchaseReturnPurchase($user, $supplier, [
+        'gross' => 1000,
+        'discount' => 0,
+        'vat' => 0,
+        'paid' => 1000,
+    ]);
+
+    PurchaseProduct::factory()
+        ->forPurchase($purchase)
+        ->forProduct($product)
+        ->withBatch($batch->id, 10)
+        ->create();
+
+    $purchaseReturn = PurchaseReturn::factory()->forPurchase($purchase)->create([
+        'user_id' => $user->id,
+        'gross_amount' => 100,
+        'discount' => 0,
+        'vat' => 0,
+        'paid_amount' => 0,
+        'due_amount' => 100,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('inventory.purchase.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/inventory/purchase/index')
+            ->has('purchases.data', 1)
+            ->where('purchases.data.0.has_return', true)
+            ->where('purchases.data.0.return_invoice_number', $purchaseReturn->invoice_number));
+});

@@ -45,7 +45,10 @@ class PurchaseController extends Controller
 
         $purchases = Purchase::query()->ownBranchUser()
             ->purchase()
-            ->with('supplier:id,name,company_name,phone')
+            ->with([
+                'supplier:id,name,company_name,phone',
+                'purchaseReturns:id,purchase_id,invoice_sequence',
+            ])
             ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                 $q->where('invoice_sequence', 'like', "%{$s}%")
                     ->orWhere('serial', 'like', "%{$s}%")
@@ -58,10 +61,16 @@ class PurchaseController extends Controller
             ->paginate(20)
             ->withQueryString();
 
-        $purchases->through(fn (Purchase $purchase): array => [
-            ...$purchase->toArray(),
-            'can_edit' => $this->canEditPurchase($purchase),
-        ]);
+        $purchases->through(function (Purchase $purchase): array {
+            $latestReturn = $purchase->purchaseReturns->sortByDesc('id')->first();
+
+            return [
+                ...$purchase->toArray(),
+                'can_edit' => $this->canEditPurchase($purchase),
+                'has_return' => $latestReturn !== null,
+                'return_invoice_number' => $latestReturn?->invoice_number,
+            ];
+        });
 
         return Inertia::render('admin/inventory/purchase/index', [
             'purchases' => $purchases,

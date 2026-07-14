@@ -54,7 +54,8 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
         (s, it) => s + parseFloat(it.quantity || 0) * parseFloat(it.unit_price || 0),
         0,
     );
-    const discountAmount = parseFloat(form.data.discount || 0);
+    // Discount is return-level (defaults to parent purchase discount). Cap at subtotal for VAT base.
+    const discountAmount = Math.min(parseFloat(form.data.discount || 0), subtotalAmount);
     const vatPercent = parseFloat(source?.vat_percent || 0);
     const taxableAmount = Math.max(0, subtotalAmount - discountAmount);
     const vatAmount = roundCurrency(taxableAmount * vatPercent / 100);
@@ -91,7 +92,12 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
                 quantity: String(i.max_return_quantity),
             }));
         setItems(lines);
-        form.setData({ ...form.data, purchase_id: String(json.id), discount: String(json.discount ?? 0) });
+        // Seed with the parent purchase discount (editable). Backend stores it as return-level — no re-scale.
+        form.setData({
+            ...form.data,
+            purchase_id: String(json.id),
+            discount: String(json.discount ?? 0),
+        });
     }
 
     function updateItem(index, field, value) {
@@ -131,7 +137,7 @@ export default function PurchaseReturnCreate({ today, paymentAccounts = [] }) {
 
         form.transform((data) => ({
             ...data,
-            discount: String(parseFloat(data.discount || 0) || 0),
+            discount: String(Math.min(parseFloat(data.discount || 0) || 0, subtotalAmount)),
             payment_type: paymentModeToType(paymentMode),
             payment_account_id: paymentModeToAccountId(paymentMode),
             items: returnItems,

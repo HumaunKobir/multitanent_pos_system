@@ -2,7 +2,7 @@ import { useAppToast } from '@/contexts/app-toast-context';
 import { formatBdDate } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Edit, Eye, HandCoins, Plus, Search, Trash2 } from 'lucide-react';
+import { Edit, Eye, HandCoins, Plus, RotateCcw, Search, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
@@ -50,9 +50,18 @@ export default function PurchaseIndex({ purchases, filters }) {
             id: 'invoice',
             header: 'Invoice',
             render: (row) => (
-                <span className="font-mono text-xs font-semibold text-primary">
-                    {row.invoice_number ?? `INVP${String(row.id).padStart(8, '0')}`}
-                </span>
+                <div className="flex items-center gap-2">
+                    <span className="font-mono text-xs font-semibold text-primary">
+                        {row.invoice_number ?? `INVP${String(row.id).padStart(8, '0')}`}
+                    </span>
+                    {row.has_return && (
+                        <Badge variant="outline" className="gap-1 border-sky-300 bg-sky-50 text-[10px] text-sky-800">
+                            <RotateCcw className="size-3" />
+                            Returned
+                            {row.return_invoice_number ? ` · ${row.return_invoice_number}` : ''}
+                        </Badge>
+                    )}
+                </div>
             ),
         },
         { id: 'date', header: 'Date', render: (row) => formatBdDate(row.date) },

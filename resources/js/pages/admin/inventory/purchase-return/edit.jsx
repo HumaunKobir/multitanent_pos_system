@@ -52,7 +52,8 @@ export default function PurchaseReturnEdit({ purchaseReturn, paymentAccounts = [
         (s, it) => s + parseFloat(it.quantity || 0) * parseFloat(it.unit_price || 0),
         0,
     );
-    const discountAmount = parseFloat(form.data.discount || 0);
+    // Cap discount at subtotal so VAT base never goes negative.
+    const discountAmount = Math.min(parseFloat(form.data.discount || 0), subtotalAmount);
     const vatPercent = parseFloat(purchaseReturn?.purchase_vat_percent || 0);
     const taxableAmount = Math.max(0, subtotalAmount - discountAmount);
     const vatAmount = roundCurrency(taxableAmount * vatPercent / 100);
@@ -100,7 +101,8 @@ export default function PurchaseReturnEdit({ purchaseReturn, paymentAccounts = [
 
         form.transform((data) => ({
             ...data,
-            discount: String(parseFloat(data.discount || 0) || 0),
+            // Persist the same capped return-level discount shown in the summary.
+            discount: String(Math.min(parseFloat(data.discount || 0) || 0, subtotalAmount)),
             payment_type: paymentModeToType(paymentMode),
             payment_account_id: paymentModeToAccountId(paymentMode),
             items: returnItems,

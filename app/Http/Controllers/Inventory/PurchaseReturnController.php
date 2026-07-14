@@ -145,7 +145,11 @@ class PurchaseReturnController extends Controller
                     throw new \RuntimeException('At least one line with return quantity greater than zero is required.');
                 }
 
-                $adjustments = $this->purchaseReturnAdjustments($parent, $grossAmount, (float) ($data['discount'] ?? $parent->discount));
+                $adjustments = $this->purchaseReturnAdjustments(
+                    $parent,
+                    $grossAmount,
+                    array_key_exists('discount', $data) ? (float) $data['discount'] : null,
+                );
                 $payment = $this->resolvePurchaseReturnPayment($data, $adjustments['net']);
 
                 [$payment, $purchaseDueOffset] = $this->applyPurchaseDueOffset($parent, $payment);
@@ -365,7 +369,11 @@ class PurchaseReturnController extends Controller
                     throw new \RuntimeException('At least one line with return quantity greater than zero is required.');
                 }
 
-                $adjustments = $this->purchaseReturnAdjustments($parent, $grossAmount, (float) ($data['discount'] ?? $parent->discount));
+                $adjustments = $this->purchaseReturnAdjustments(
+                    $parent,
+                    $grossAmount,
+                    array_key_exists('discount', $data) ? (float) $data['discount'] : null,
+                );
                 $payment = $this->resolvePurchaseReturnPayment($data, $adjustments['net']);
 
                 [$payment, $purchaseDueOffset] = $this->applyPurchaseDueOffset($parent, $payment);
@@ -621,13 +629,24 @@ class PurchaseReturnController extends Controller
     /**
      * @return array{discount: float, vat: float, net: float, vat_percent: float}
      */
-    private function purchaseReturnAdjustments(Purchase $parent, float $grossAmount, float $discount): array
+    private function purchaseReturnAdjustments(Purchase $parent, float $grossAmount, ?float $discount = null): array
     {
         $parentGross = (float) $parent->gross_amount;
-        $discount = $parentGross > 0
-            ? round(max(0, $discount) * $grossAmount / $parentGross, 2)
-            : round(max(0, $discount), 2);
-        $parentTaxable = max(0, $parentGross - (float) $parent->discount);
+        $parentDiscount = (float) $parent->discount;
+
+        // Null = default to the return's proportional share of the parent purchase discount.
+        // A submitted value is treated as the return-level discount (already scaled / edited).
+        if ($discount === null) {
+            $discount = $parentGross > 0
+                ? round(max(0, $parentDiscount) * $grossAmount / $parentGross, 2)
+                : 0.0;
+        } else {
+            $discount = round(max(0, $discount), 2);
+        }
+
+        $discount = min($discount, max(0, $grossAmount));
+
+        $parentTaxable = max(0, $parentGross - $parentDiscount);
         $vatPercent = $parentTaxable > 0 ? ((float) $parent->vat / $parentTaxable) * 100 : 0;
         $taxableAmount = max(0, $grossAmount - $discount);
         $vat = round($taxableAmount * $vatPercent / 100, 2);

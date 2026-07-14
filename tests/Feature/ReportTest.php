@@ -4,6 +4,7 @@ use App\Enums\AccountType;
 use App\Enums\CommonStatus;
 use App\Enums\ProductLogType;
 use App\Enums\PurchaseType;
+use App\Enums\ReceivedPaymentMethod;
 use App\Enums\SaleType;
 use App\Enums\VoucherType;
 use App\Http\Controllers\Reports\ReportController;
@@ -170,6 +171,132 @@ test('user can view customer ledger report with customer filter', function () {
             ->where('customer.id', $customer->id)
             ->has('entries')
             ->has('customers'));
+});
+
+test('customer ledger closes to customer balance for cash sales returns and zero settlement exchange', function () {
+    $user = reportUser([ReportController::PERMISSION_CUSTOMER_LEDGER]);
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        // Unpaid sale-return refund remainder (909.65 − 909).
+        'balance' => -0.65,
+    ]);
+
+    $cashSale = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'customer_id' => $customer->id,
+        'date' => '2026-07-06',
+        'gross_amount' => 2300,
+        'discount' => 0,
+        'vat' => 0,
+        'paid_amount' => 2300,
+        'type' => SaleType::Sale,
+    ]);
+
+    SaleReturn::query()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'sell_id' => $cashSale->id,
+        'customer_id' => $customer->id,
+        'date' => '2026-07-06',
+        'gross_amount' => 980,
+        'vat_amount' => 0,
+        'discount_amount' => 70.35,
+        'paid_amount' => 909,
+        'due_amount' => 0.65,
+        'payment_type' => ReceivedPaymentMethod::Cash,
+    ]);
+
+    $exchangeSale = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'customer_id' => $customer->id,
+        'date' => '2026-07-02',
+        'gross_amount' => 3640,
+        'discount' => 0,
+        'vat' => 0,
+        'paid_amount' => 3640,
+        'type' => SaleType::Sale,
+    ]);
+
+    ProductExchange::query()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'sell_id' => $exchangeSale->id,
+        'customer_id' => $customer->id,
+        'date' => '2026-07-12',
+        'gross_amount' => 980,
+        'net_amount' => 910,
+        'paid_amount' => 0,
+        'due_amount' => 0,
+        'price_difference' => 0,
+        'payment_type' => ReceivedPaymentMethod::Cash,
+    ]);
+
+    $ledger = app(ReportService::class)->customerLedger($customer->id, null, null);
+
+    expect($ledger['totals']['balance'])->toBe(-0.65)
+        ->and($ledger['customer']['balance'])->toBe(-0.65);
+
+    $byType = collect($ledger['entries'])->groupBy('type');
+
+    $saleRows = $byType->get('Sale');
+    expect($saleRows)->toHaveCount(2);
+    expect($saleRows->every(fn (array $row) => $row['debit'] === $row['credit']))->toBeTrue();
+
+    $returnRow = $byType->get('Sale Return')->first();
+    expect($returnRow['debit'])->toBe(909.0)
+        ->and($returnRow['credit'])->toBe(909.65)
+        ->and($returnRow['balance'])->toBe(-0.65);
+
+    $exchangeRow = $byType->get('Product Exchange')->first();
+    expect($exchangeRow['debit'])->toBe(0.0)
+        ->and($exchangeRow['credit'])->toBe(0.0)
+        ->and($exchangeRow['balance'])->toBe(-0.65);
+});
+
+test('customer ledger posts customer-account exchange settlement to running balance', function () {
+    $user = reportUser([ReportController::PERMISSION_CUSTOMER_LEDGER]);
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'balance' => 1000,
+    ]);
+
+    $sale = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'customer_id' => $customer->id,
+        'date' => '2026-07-10',
+        'gross_amount' => 1500,
+        'discount' => 0,
+        'vat' => 0,
+        'paid_amount' => 1500,
+        'type' => SaleType::Sale,
+    ]);
+
+    ProductExchange::query()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'sell_id' => $sale->id,
+        'customer_id' => $customer->id,
+        'date' => '2026-07-11',
+        'gross_amount' => 500,
+        'net_amount' => 500,
+        'return_refund_amount' => 1000,
+        'paid_amount' => 0,
+        'due_amount' => 1000,
+        'price_difference' => -1000,
+        'payment_type' => ReceivedPaymentMethod::Customer_Account,
+    ]);
+
+    $ledger = app(ReportService::class)->customerLedger($customer->id, null, null);
+
+    $exchangeRow = collect($ledger['entries'])->firstWhere('type', 'Product Exchange');
+
+    expect($exchangeRow['debit'])->toBe(1000.0)
+        ->and($exchangeRow['credit'])->toBe(0.0)
+        ->and($ledger['totals']['balance'])->toBe(1000.0)
+        ->and($ledger['customer']['balance'])->toBe(1000.0);
 });
 
 test('superadmin can access all report routes', function () {

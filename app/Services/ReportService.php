@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AccountType;
 use App\Enums\ProductLogType;
 use App\Enums\PurchaseType;
+use App\Enums\ReceivedPaymentMethod;
 use App\Enums\SaleType;
 use App\Enums\VoucherType;
 use App\Models\Batch;
@@ -72,18 +73,19 @@ class ReportService
             ->orderBy('id')
             ->get()
             ->each(function (Sell $sell) use ($entries) {
-                $net = $sell->net_amount;
-                $paid = (float) $sell->paid_amount;
-                $due = max(0, $net - $paid);
+                $net = round((float) $sell->net_amount, 2);
+                $paid = round((float) $sell->paid_amount, 2);
 
+                // Invoice-style: debit bill, credit cash received. Net effect = due,
+                // so fully paid cash sales do not move the running AR balance.
                 $entries->push([
                     'sort_key' => $sell->date->format('Y-m-d').'-1-'.$sell->id,
                     'date' => $sell->date->format('Y-m-d'),
                     'type' => 'Sale',
                     'reference' => $sell->invoice_number,
                     'description' => $sell->comment ?: 'Sale invoice',
-                    'debit' => round($due, 2),
-                    'credit' => round($paid, 2),
+                    'debit' => $net,
+                    'credit' => $paid,
                 ]);
             });
 
@@ -96,17 +98,45 @@ class ReportService
             ->orderBy('id')
             ->get()
             ->each(function (SaleReturn $return) use ($entries) {
-                $gross = (float) $return->gross_amount;
-                $paid = (float) $return->paid_amount;
+                $net = round((float) $return->net_amount, 2);
+                $paid = round((float) $return->paid_amount, 2);
+                $cashRefund = $return->payment_type === ReceivedPaymentMethod::Cash
+                    ? round(min($paid, $net), 2)
+                    : 0.0;
 
+                // Credit the return net (reduces customer due / opens credit). Cash
+                // actually refunded is a debit so only the unpaid refund remainder
+                // moves the running balance — matching syncSaleReturnCustomerBalance.
                 $entries->push([
                     'sort_key' => $return->date->format('Y-m-d').'-2-'.$return->id,
                     'date' => $return->date->format('Y-m-d'),
                     'type' => 'Sale Return',
                     'reference' => $return->invoice_number,
                     'description' => $return->comment ?: 'Sale return',
-                    'debit' => round($paid, 2),
-                    'credit' => round($gross, 2),
+                    'debit' => $cashRefund,
+                    'credit' => $net,
+                ]);
+            });
+
+        ProductExchange::query()
+            ->where('customer_id', $customerId)
+            ->when($this->branchId(), fn (Builder $q, int $id) => $q->where('branch_id', $id))
+            ->when($dateFrom, fn (Builder $q, string $d) => $q->whereDate('date', '>=', $d))
+            ->when($dateTo, fn (Builder $q, string $d) => $q->whereDate('date', '<=', $d))
+            ->orderBy('date')
+            ->orderBy('id')
+            ->get()
+            ->each(function (ProductExchange $exchange) use ($entries) {
+                [$debit, $credit] = $this->customerLedgerExchangeAmounts($exchange);
+
+                $entries->push([
+                    'sort_key' => $exchange->date->format('Y-m-d').'-3-'.$exchange->id,
+                    'date' => $exchange->date->format('Y-m-d'),
+                    'type' => 'Product Exchange',
+                    'reference' => $exchange->invoice_number,
+                    'description' => $exchange->comment ?: 'Product exchange',
+                    'debit' => $debit,
+                    'credit' => $credit,
                 ]);
             });
 
@@ -120,7 +150,7 @@ class ReportService
             ->get()
             ->each(function (CustomerPayment $payment) use ($entries) {
                 $entries->push([
-                    'sort_key' => $payment->date->format('Y-m-d').'-3-'.$payment->id,
+                    'sort_key' => $payment->date->format('Y-m-d').'-4-'.$payment->id,
                     'date' => $payment->date->format('Y-m-d'),
                     'type' => 'Due Collection',
                     'reference' => $payment->invoice_number,
@@ -167,6 +197,38 @@ class ReportService
                 'balance' => round($balance, 2),
             ],
         ];
+    }
+
+    /**
+     * Debit/credit amounts for a product exchange on the customer AR ledger.
+     * Mirrors applyExchangeCustomerEffects / overpaid balance adjustments so
+     * settlement difference 0 leaves the running balance unchanged.
+     *
+     * @return array{0: float, 1: float}
+     */
+    private function customerLedgerExchangeAmounts(ProductExchange $exchange): array
+    {
+        $debit = 0.0;
+        $credit = 0.0;
+        $priceDifference = round((float) $exchange->price_difference, 2);
+
+        if ($exchange->payment_type === ReceivedPaymentMethod::Customer_Account) {
+            if ($priceDifference > 0) {
+                // Applied via decrement('balance') — customer paid more with account credit.
+                $credit = $priceDifference;
+            } elseif ($priceDifference < 0) {
+                // Applied via increment('balance') — refund sitting on the customer account.
+                $debit = abs($priceDifference);
+            }
+        }
+
+        $overpaid = round((float) ($exchange->overpaid_amount ?? 0), 2);
+
+        if ($overpaid > 0) {
+            $debit = round($debit + $overpaid, 2);
+        }
+
+        return [$debit, $credit];
     }
 
     /**

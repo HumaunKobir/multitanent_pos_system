@@ -475,6 +475,7 @@ class SaleReturnController extends Controller
                     'invoice_discount' => (float) $parent->discount,
                     'invoice_discount_type' => $parent->discount_type?->value ?? 'flat',
                     'invoice_discount_value' => (float) $parent->discount_value,
+                    'special_discount_amount' => (float) $parent->special_discount_amount,
                     'round_off_amount' => (float) $parent->round_off_amount,
                     'net_amount' => (float) $parent->net_amount,
                     'paid_amount' => (float) $parent->paid_amount,

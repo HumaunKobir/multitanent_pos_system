@@ -1201,6 +1201,7 @@ test('due sale can apply round off when no payment is received', function () {
             'round_off_amount' => '2',
             'vat' => '0',
             'paid_amount' => '0',
+            'due_given_date' => now()->format('Y-m-d'),
             'payments' => [
                 ['payment_account_id' => $cash->id, 'amount' => 0],
             ],

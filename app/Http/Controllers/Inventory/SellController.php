@@ -161,19 +161,25 @@ class SellController extends Controller
                 [
                     'grossAmount' => $grossAmount,
                     'lineDiscountTotal' => $lineDiscountTotal,
-                    'vatAmount' => $vatAmount,
                     'sellProductsData' => $sellProductsData,
                     'promotionDiscountTotal' => $promotionDiscountTotal,
                     'promotionStacking' => $promotionStacking,
                 ] = $this->processSellItems(
                     $data['items'],
                     $branchId,
-                    (float) $data['vat'],
                     deductStock: false,
                     saleDate: $data['date'] ?? null,
                 );
 
                 $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId, $promotionStacking);
+                $saleTotals = $this->resolveSaleTotals(
+                    $data,
+                    $grossAmount,
+                    $lineDiscountTotal,
+                    (float) $data['vat'],
+                    $branchId,
+                    $promotionStacking,
+                );
 
                 if ($pausedSellId !== null) {
                     $sell = $this->forCurrentBranchUser(Sell::query())->paused()->findOrFail($pausedSellId);
@@ -196,7 +202,10 @@ class SellController extends Controller
                     'special_discount_id' => $discountFields['special_discount_id'],
                     'special_discount_amount' => $discountFields['special_discount_amount'],
                     'promotion_discount_total' => $promotionDiscountTotal,
-                    'vat' => $vatAmount,
+                    'round_off_amount' => $saleTotals['round_off_amount'],
+                    'coins_redeemed' => $saleTotals['coins_redeemed'],
+                    'coin_discount_amount' => $saleTotals['coin_discount_amount'],
+                    'vat' => $saleTotals['vat'],
                     'paid_amount' => 0,
                     'comment' => $data['comment'] ?? null,
                 ]);
@@ -233,17 +242,15 @@ class SellController extends Controller
         [
             'grossAmount' => $grossAmount,
             'lineDiscountTotal' => $lineDiscountTotal,
-            'vatAmount' => $vatAmount,
             'promotionStacking' => $promotionStacking,
         ] = $this->processSellItems(
             $data['items'],
             $branchId,
-            (float) $data['vat'],
             deductStock: false,
             saleDate: $data['date'] ?? null,
         );
 
-        $saleTotals = $this->resolveSaleTotals($data, $grossAmount, $lineDiscountTotal, $vatAmount, $branchId, $promotionStacking);
+        $saleTotals = $this->resolveSaleTotals($data, $grossAmount, $lineDiscountTotal, (float) $data['vat'], $branchId, $promotionStacking);
         $payment = $this->resolveSalePayments($data, $saleTotals['net_amount']);
         $this->assertCustomerForDueSale($data['customer_id'] ? (int) $data['customer_id'] : null, $payment['due_amount']);
         $this->assertDueAlertFields($data, $branchId, $payment['due_amount']);
@@ -253,14 +260,12 @@ class SellController extends Controller
                 [
                     'grossAmount' => $grossAmount,
                     'lineDiscountTotal' => $lineDiscountTotal,
-                    'vatAmount' => $vatAmount,
                     'sellProductsData' => $sellProductsData,
                     'promotionDiscountTotal' => $promotionDiscountTotal,
                     'promotionStacking' => $promotionStacking,
                 ] = $this->processSellItems(
                     $data['items'],
                     $branchId,
-                    (float) $data['vat'],
                     saleDate: $data['date'] ?? null,
                 );
 
@@ -281,7 +286,7 @@ class SellController extends Controller
                     $settings,
                     $saleTotals['net_before_coin'],
                     $saleTotals['coins_redeemed'],
-                    $saleTotals['net_before_coin'],
+                    $saleTotals['net_amount'],
                 );
 
                 $sell->fill([
@@ -298,7 +303,7 @@ class SellController extends Controller
                     'coins_redeemed' => $coinResult['coins_redeemed'],
                     'coin_discount_amount' => $coinResult['coin_discount_amount'],
                     'coins_earned' => $coinResult['coins_earned'],
-                    'vat' => $vatAmount,
+                    'vat' => $saleTotals['vat'],
                     'paid_amount' => $payment['effective_paid'],
                     'type' => SaleType::Sale,
                     'comment' => $data['comment'] ?? null,
@@ -489,8 +494,7 @@ class SellController extends Controller
         })->values();
 
         $grossAmount = (float) $sell->gross_amount;
-        $taxableBase = max(0, $grossAmount - $sell->lineDiscountTotal());
-        $vatPercent = $taxableBase > 0 ? ((float) $sell->vat / $taxableBase) * 100 : 0;
+        $vatPercent = $this->resolveVatPercentFromSell($sell);
 
         $walkInCustomerId = Customer::query()
             ->where('is_default', true)
@@ -594,12 +598,10 @@ class SellController extends Controller
         [
             'grossAmount' => $grossAmount,
             'lineDiscountTotal' => $lineDiscountTotal,
-            'vatAmount' => $vatAmount,
             'promotionStacking' => $promotionStacking,
         ] = $this->processSellItems(
             $data['items'],
             $branchId,
-            (float) $data['vat'],
             deductStock: false,
             saleDate: $data['date'] ?? null,
         );
@@ -608,7 +610,7 @@ class SellController extends Controller
             $data,
             $grossAmount,
             $lineDiscountTotal,
-            $vatAmount,
+            (float) $data['vat'],
             $branchId,
             $promotionStacking,
             $this->coinBalanceOffsetForSaleEdit($sell, $data),
@@ -657,14 +659,12 @@ class SellController extends Controller
                 [
                     'grossAmount' => $grossAmount,
                     'lineDiscountTotal' => $lineDiscountTotal,
-                    'vatAmount' => $vatAmount,
                     'sellProductsData' => $sellProductsData,
                     'promotionDiscountTotal' => $promotionDiscountTotal,
                     'promotionStacking' => $promotionStacking,
                 ] = $this->processSellItems(
                     $data['items'],
                     $branchId,
-                    (float) $data['vat'],
                     saleDate: $data['date'] ?? null,
                 );
 
@@ -677,7 +677,7 @@ class SellController extends Controller
                     $settings,
                     $saleTotals['net_before_coin'],
                     $saleTotals['coins_redeemed'],
-                    $saleTotals['net_before_coin'],
+                    $saleTotals['net_amount'],
                 );
 
                 $sell->update([
@@ -694,7 +694,7 @@ class SellController extends Controller
                     'coins_redeemed' => $coinResult['coins_redeemed'],
                     'coin_discount_amount' => $coinResult['coin_discount_amount'],
                     'coins_earned' => $coinResult['coins_earned'],
-                    'vat' => $vatAmount,
+                    'vat' => $saleTotals['vat'],
                     'paid_amount' => $payment['effective_paid'],
                     'comment' => $data['comment'] ?? null,
                 ]);
@@ -878,6 +878,7 @@ class SellController extends Controller
      *     discount_value: float,
      *     special_discount_id: int|null,
      *     special_discount_amount: float,
+     *     vat: float,
      *     round_off_amount: float,
      *     net_amount: float
      * }
@@ -886,27 +887,85 @@ class SellController extends Controller
         array $data,
         float $grossAmount,
         float $lineDiscountTotal,
-        float $vatAmount,
+        float $vatPercent,
         ?int $branchId,
         ?array $promotionStacking = null,
         float $coinBalanceOffset = 0,
     ): array {
         $discountFields = $this->resolveSaleDiscounts($data, $grossAmount, $lineDiscountTotal, $branchId, $promotionStacking);
-        $netBeforeCoin = round(
-            $grossAmount + $vatAmount - $discountFields['discount'] - $discountFields['special_discount_amount'] - $lineDiscountTotal,
-            2,
+
+        // All commercial discounts first (promotion is already in unit prices / gross).
+        $afterCommercialDiscounts = max(
+            0,
+            $grossAmount - $lineDiscountTotal - $discountFields['discount'] - $discountFields['special_discount_amount'],
         );
-        $coinFields = $this->resolveCoinFields($data, $netBeforeCoin, $branchId, $coinBalanceOffset);
-        $netBeforeRoundOff = round($netBeforeCoin - $coinFields['coin_discount_amount'], 2);
-        $roundOffAmount = $this->resolveRoundOffAmount($data, $netBeforeRoundOff);
+
+        // Coin reduces the VAT base; round off is applied after VAT.
+        $coinFields = $this->resolveCoinFields($data, $afterCommercialDiscounts, $branchId, $coinBalanceOffset);
+        $vatBase = max(0, $afterCommercialDiscounts - $coinFields['coin_discount_amount']);
+        $vatAmount = round($vatBase * (max(0, $vatPercent) / 100), 2);
+        $beforeRoundOff = round($vatBase + $vatAmount, 2);
+        $roundOffAmount = $this->resolveRoundOffAmount($data, $beforeRoundOff);
+        $netAmount = round(max(0, $beforeRoundOff - $roundOffAmount), 2);
 
         return [
             ...$discountFields,
             ...$coinFields,
-            'net_before_coin' => $netBeforeCoin,
+            'vat' => $vatAmount,
+            // Coin redeem/earn base before VAT (after line/invoice/special discounts).
+            'net_before_coin' => $afterCommercialDiscounts,
             'round_off_amount' => $roundOffAmount,
-            'net_amount' => round($netBeforeRoundOff - $roundOffAmount, 2),
+            'net_amount' => $netAmount,
         ];
+    }
+
+    private function resolveVatBase(
+        float $grossAmount,
+        float $lineDiscountTotal,
+        float $invoiceDiscount,
+        float $specialDiscountAmount,
+        float $coinDiscountAmount = 0,
+    ): float {
+        return max(
+            0,
+            $grossAmount
+            - $lineDiscountTotal
+            - $invoiceDiscount
+            - $specialDiscountAmount
+            - $coinDiscountAmount,
+        );
+    }
+
+    private function resolveVatAmount(
+        float $grossAmount,
+        float $lineDiscountTotal,
+        float $invoiceDiscount,
+        float $specialDiscountAmount,
+        float $vatPercent,
+        float $coinDiscountAmount = 0,
+    ): float {
+        $vatBase = $this->resolveVatBase(
+            $grossAmount,
+            $lineDiscountTotal,
+            $invoiceDiscount,
+            $specialDiscountAmount,
+            $coinDiscountAmount,
+        );
+
+        return round($vatBase * (max(0, $vatPercent) / 100), 2);
+    }
+
+    private function resolveVatPercentFromSell(Sell $sell): float
+    {
+        $vatBase = $this->resolveVatBase(
+            (float) $sell->gross_amount,
+            $sell->lineDiscountTotal(),
+            (float) $sell->discount,
+            (float) $sell->special_discount_amount,
+            (float) $sell->coin_discount_amount,
+        );
+
+        return $vatBase > 0 ? ((float) $sell->vat / $vatBase) * 100 : 0;
     }
 
     /**
@@ -1119,8 +1178,7 @@ class SellController extends Controller
         })->values();
 
         $grossAmount = (float) $sell->gross_amount;
-        $taxableBase = max(0, $grossAmount - $sell->lineDiscountTotal());
-        $vatPercent = $taxableBase > 0 ? ((float) $sell->vat / $taxableBase) * 100 : 0;
+        $vatPercent = $this->resolveVatPercentFromSell($sell);
 
         return [
             'id' => $sell->id,
@@ -1141,7 +1199,6 @@ class SellController extends Controller
     /** @return array{
      *     grossAmount: float,
      *     lineDiscountTotal: float,
-     *     vatAmount: float,
      *     promotionDiscountTotal: float,
      *     promotionStacking: array<string, bool>,
      *     sellProductsData: array<int, array<string, mixed>>
@@ -1149,7 +1206,6 @@ class SellController extends Controller
     private function processSellItems(
         array $items,
         ?int $branchId,
-        float $vatPercent,
         bool $deductStock = true,
         ?string $saleDate = null,
     ): array {
@@ -1211,13 +1267,9 @@ class SellController extends Controller
             ];
         }
 
-        $taxableBase = max(0, $grossAmount - $lineDiscountTotal);
-        $vatAmount = $taxableBase * ($vatPercent / 100);
-
         return [
             'grossAmount' => $grossAmount,
             'lineDiscountTotal' => $lineDiscountTotal,
-            'vatAmount' => $vatAmount,
             'promotionDiscountTotal' => $promotionDiscountTotal,
             'promotionStacking' => $promotionStacking,
             'sellProductsData' => $sellProductsData,

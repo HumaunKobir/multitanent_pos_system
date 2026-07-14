@@ -474,17 +474,11 @@ export function calcProductExchangeSummary({
               )
             : 0;
 
-    const vatPercent = derivedVatPercent(sellDiscounts);
-    const vatAmount = vatPercent > 0 ? Math.round(taxableBase * (vatPercent / 100) * 100) / 100 : 0;
-
-    const netBeforeCoin = Math.max(
-        0,
-        grossAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount - lineDiscountTotal,
-    );
+    const afterCommercialDiscounts = Math.max(0, taxableBase - invoiceDiscountAmount - specialDiscountAmount);
 
     const effectiveBalance = Math.max(0, parseFloat(customerBalance || 0) + parseFloat(coinBalanceOffset || 0));
     const maxRedeemable = coinSettings?.enabled
-        ? maxRedeemableCoins(effectiveBalance, coinSettings, netBeforeCoin)
+        ? maxRedeemableCoins(effectiveBalance, coinSettings, afterCommercialDiscounts)
         : 0;
     const coinsRedeemed = resolveEffectiveCoinsRedeemed(
         manualDiscounts.coinsRedeemed ?? '',
@@ -492,15 +486,18 @@ export function calcProductExchangeSummary({
         false,
     );
     const coinDiscountAmount = coinSettings?.enabled
-        ? computeCoinDiscount(coinsRedeemed, coinSettings, netBeforeCoin)
+        ? computeCoinDiscount(coinsRedeemed, coinSettings, afterCommercialDiscounts)
         : 0;
 
-    const netBeforeRoundOff = Math.max(0, netBeforeCoin - coinDiscountAmount);
+    const vatPercent = derivedVatPercent(sellDiscounts);
+    const vatBase = Math.max(0, afterCommercialDiscounts - coinDiscountAmount);
+    const vatAmount = vatPercent > 0 ? Math.round(vatBase * (vatPercent / 100) * 100) / 100 : 0;
+    const beforeRoundOff = vatBase + vatAmount;
     const roundOffAmount = Math.min(
         Math.max(0, parseFloat(manualDiscounts.roundOff || 0)) * exchangeProportion,
-        netBeforeRoundOff,
+        beforeRoundOff,
     );
-    const netNewAmount = Math.max(0, netBeforeRoundOff - roundOffAmount);
+    const netNewAmount = Math.max(0, beforeRoundOff - roundOffAmount);
 
     const oldTotal = oldExchangeTotal;
     const oldPromotionTotal = resolveOldPromotionTotal(items);
@@ -533,7 +530,7 @@ export function calcProductExchangeSummary({
         specialDiscountAmount,
         vatPercent,
         vatAmount,
-        netBeforeCoin,
+        netBeforeCoin: afterCommercialDiscounts,
         coinsRedeemed,
         maxRedeemable,
         coinDiscountAmount,

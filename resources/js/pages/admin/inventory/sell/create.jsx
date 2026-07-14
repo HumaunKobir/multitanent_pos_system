@@ -993,7 +993,6 @@ export default function SellCreate({
     const selectedSpecialDiscount = promotionStacking.special_discount
         ? findSpecialDiscountById(specialDiscounts, form.data.special_discount_id)
         : null;
-    const vatAmount = taxableAmount * (parseFloat(form.data.vat || 0) / 100);
     const invoiceDiscountAmount = computeDiscountAmount(
         form.data.discount_type,
         form.data.discount_value,
@@ -1006,26 +1005,29 @@ export default function SellCreate({
               taxableAmount,
           )
         : 0;
-    const netBeforeCoin = taxableAmount + vatAmount - invoiceDiscountAmount - specialDiscountAmount;
+    // Promotion already reduces unit_price (gross). Coin reduces VAT base; round off is after VAT.
+    const afterCommercialDiscounts = Math.max(0, taxableAmount - invoiceDiscountAmount - specialDiscountAmount);
     const resumedCoinOffset =
         (parseFloat(resumedSell?.coins_redeemed ?? 0) || 0) - (parseFloat(resumedSell?.coins_earned ?? 0) || 0);
     const rawCoinBalance = parseFloat(customerCoinInfo.balance ?? 0) || 0;
     const deferCoinClamp = coinInfoLoading || (resumedCoinOffset > 0 && rawCoinBalance <= 0);
     const maxRedeemable = isWalkInCustomer
         ? 0
-        : maxRedeemableCoins(customerCoinInfo.balance + resumedCoinOffset, activeCoinSettings, netBeforeCoin);
+        : maxRedeemableCoins(customerCoinInfo.balance + resumedCoinOffset, activeCoinSettings, afterCommercialDiscounts);
     const effectiveCoinsRedeemed = resolveEffectiveCoinsRedeemed(
         form.data.coins_redeemed,
         maxRedeemable,
         deferCoinClamp,
     );
-    const coinDiscountAmount = computeCoinDiscount(effectiveCoinsRedeemed, activeCoinSettings, netBeforeCoin);
-    const netBeforeRoundOff = netBeforeCoin - coinDiscountAmount;
+    const coinDiscountAmount = computeCoinDiscount(effectiveCoinsRedeemed, activeCoinSettings, afterCommercialDiscounts);
+    const vatBase = Math.max(0, afterCommercialDiscounts - coinDiscountAmount);
+    const vatAmount = vatBase * (parseFloat(form.data.vat || 0) / 100);
+    const beforeRoundOff = vatBase + vatAmount;
     const hasSaleItems = promotedItems.length > 0;
     const roundOffAmount = hasSaleItems
-        ? Math.min(Math.max(0, parseFloat(form.data.round_off_amount || 0)), Math.max(0, netBeforeRoundOff))
+        ? Math.min(Math.max(0, parseFloat(form.data.round_off_amount || 0)), beforeRoundOff)
         : 0;
-    const netAmount = netBeforeRoundOff - roundOffAmount;
+    const netAmount = Math.max(0, beforeRoundOff - roundOffAmount);
 
     const { totalPaid, dueAmount, changeAmount } = computeSplitSalePayment(form.data.payments, netAmount);
     const customerRequiredError = saleCustomerRequiredError(form.data.customer_id);
@@ -1545,8 +1547,8 @@ export default function SellCreate({
                                     coinInfoLoading={coinInfoLoading}
                                     coinsRedeemed={form.data.coins_redeemed}
                                     onCoinsRedeemedChange={(value) => form.setData('coins_redeemed', value)}
-                                    netBeforeCoin={netBeforeCoin}
-                                    earnBase={netBeforeCoin}
+                                    netBeforeCoin={afterCommercialDiscounts}
+                                    earnBase={netAmount}
                                     error={form.errors.coins_redeemed}
                                     inputClassName={inputCls}
                                 />

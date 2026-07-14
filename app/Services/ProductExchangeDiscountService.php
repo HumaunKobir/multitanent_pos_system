@@ -199,15 +199,18 @@ class ProductExchangeDiscountService
 
         $parentGross = (float) $parent->gross_amount;
         $parentLineDiscount = $parent->lineDiscountTotal();
-        $parentTaxableBase = max(0, $parentGross - $parentLineDiscount);
-        $parentVat = (float) $parent->vat;
-        $vatPercent = $parentTaxableBase > 0 ? ($parentVat / $parentTaxableBase) * 100 : 0.0;
-        $vat = round($taxableBase * (max(0, $vatPercent) / 100), 2);
-
-        $netBeforeCoin = round(
-            $grossAmount + $vat - $invoiceDiscount - $specialDiscountAmount - $lineDiscountTotal,
-            2,
+        $parentVatBase = max(
+            0,
+            $parentGross
+            - $parentLineDiscount
+            - (float) $parent->discount
+            - (float) $parent->special_discount_amount
+            - (float) $parent->coin_discount_amount,
         );
+        $parentVat = (float) $parent->vat;
+        $vatPercent = $parentVatBase > 0 ? ($parentVat / $parentVatBase) * 100 : 0.0;
+
+        $afterCommercialDiscounts = max(0, $taxableBase - $invoiceDiscount - $specialDiscountAmount);
 
         $coinsRedeemed = round(max(0, (float) ($data['coins_redeemed'] ?? $parent->coins_redeemed ?? 0)), 2);
         $coinDiscountAmount = 0.0;
@@ -223,7 +226,7 @@ class ProductExchangeDiscountService
                     $coinResult = $this->coinService->resolveForSale(
                         $customer,
                         $settings,
-                        $netBeforeCoin,
+                        $afterCommercialDiscounts,
                         $coinsRedeemed,
                         0,
                         $coinBalanceOffset,
@@ -231,16 +234,23 @@ class ProductExchangeDiscountService
                     $coinsRedeemed = $coinResult['coins_redeemed'];
                     $coinDiscountAmount = $coinResult['coin_discount_amount'];
                 }
-
-                $earnBase = max(0, $netBeforeCoin - $coinDiscountAmount);
-                $coinsEarned = $this->coinService->earnCoins($earnBase > 0 ? $earnBase : 0, $settings);
             }
         }
 
-        $netBeforeRoundOff = round($netBeforeCoin - $coinDiscountAmount, 2);
-        $roundOffAmount = $this->resolveRoundOffAmount($data, $parent, $netBeforeRoundOff, $exchangeProportion);
+        $vatBase = max(0, $afterCommercialDiscounts - $coinDiscountAmount);
+        $vat = round($vatBase * (max(0, $vatPercent) / 100), 2);
+        $beforeRoundOff = round($vatBase + $vat, 2);
+        $roundOffAmount = $this->resolveRoundOffAmount($data, $parent, $beforeRoundOff, $exchangeProportion);
+        $netAmount = round(max(0, $beforeRoundOff - $roundOffAmount), 2);
 
-        $netAmount = round(max(0, $netBeforeRoundOff - $roundOffAmount), 2);
+        if ($parent->customer_id) {
+            $settings = $this->coinService->settingsForBranch($branchId);
+            $customer = Customer::find($parent->customer_id);
+
+            if ($settings && $settings->isActive() && $customer && ! $customer->is_default) {
+                $coinsEarned = $this->coinService->earnCoins($netAmount > 0 ? $netAmount : 0, $settings);
+            }
+        }
 
         return [
             'discount' => $invoiceDiscount,

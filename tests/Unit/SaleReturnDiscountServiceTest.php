@@ -94,19 +94,34 @@ function saleReturnParentSell(array $overrides = []): Sell
     return $sell->fresh();
 }
 
-test('vat is charged on the taxable base before invoice discount and round off', function () {
+test('vat is charged after invoice discount then round off is applied', function () {
     $service = app(SaleReturnDiscountService::class);
     $parent = saleReturnParentSell();
 
-    // 10% VAT with a flat 100 invoice discount: VAT must be 10% of the taxable base (1000),
-    // not 10% of the post-discount base (900).
+    // 10% VAT with flat 100 invoice: VAT on 900 → 90; then round off 10 → net 980
+    $totals = $service->calculate($parent, 1000, 0, 0, 'flat', 100, 10, 10);
+
+    expect($totals['vat_amount'])->toBe(90.0);
+    expect($totals['return_invoice_discount'])->toBe(100.0);
+    expect($totals['return_round_off'])->toBe(10.0);
+    expect($totals['discount_amount'])->toBe(110.0);
+    // net = (gross - discounts) + vat = (1000 - 110) + 90 = 980
+    expect($totals['net_return_amount'])->toBe(980.0);
+});
+
+test('vat is charged after invoice discount', function () {
+    $service = app(SaleReturnDiscountService::class);
+    $parent = saleReturnParentSell();
+
+    // 10% VAT with a flat 100 invoice discount: VAT must be 10% of the post-discount base (900),
+    // not 10% of the pre-discount base (1000).
     $totals = $service->calculate($parent, 1000, 0, 0, 'flat', 100, 0, 10);
 
-    expect($totals['vat_amount'])->toBe(100.0);
+    expect($totals['vat_amount'])->toBe(90.0);
     expect($totals['return_invoice_discount'])->toBe(100.0);
     expect($totals['discount_amount'])->toBe(100.0);
-    // net = (gross - discount) + vat = (1000 - 100) + 100 = 1000
-    expect($totals['net_return_amount'])->toBe(1000.0);
+    // net = (gross - discount) + vat = (1000 - 100) + 90 = 990
+    expect($totals['net_return_amount'])->toBe(990.0);
 });
 
 test('percent invoice discount is computed on the taxable base', function () {

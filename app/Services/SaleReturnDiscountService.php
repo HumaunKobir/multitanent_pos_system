@@ -148,9 +148,8 @@ class SaleReturnDiscountService
     }
 
     /**
-     * Invoice discount, round off and VAT mirror how the parent sale builds its totals:
-     * VAT is charged on the taxable base (gross − line − promotion discounts), BEFORE the
-     * invoice discount and round off are applied — never on the fully discounted base.
+     * Invoice discount and VAT mirror how the parent sale builds its totals:
+     * VAT is charged after line, promotion, and invoice discounts; round off is applied after VAT.
      *
      * @return array{
      *     discount_amount: float,
@@ -192,18 +191,19 @@ class SaleReturnDiscountService
             ), 2)
             : round($proportion * (float) $parent->discount, 2);
 
-        $roundOffCap = max(0, $taxableBase - $returnInvoiceDiscount);
+        $vatPercent = max(0, $manualVatPercent ?? 0);
+        $vatBase = round(max(0, $taxableBase - $returnInvoiceDiscount), 2);
+        $returnVat = $vatPercent > 0 ? round($vatBase * ($vatPercent / 100), 2) : 0.0;
+
+        $beforeRoundOff = round($vatBase + $returnVat, 2);
         $returnRoundOff = $manualRoundOff !== null
-            ? round(min(max(0, $manualRoundOff), $roundOffCap), 2)
-            : round(min($proportion * (float) $parent->round_off_amount, $roundOffCap), 2);
+            ? round(min(max(0, $manualRoundOff), $beforeRoundOff), 2)
+            : round(min($proportion * (float) $parent->round_off_amount, $beforeRoundOff), 2);
 
         $discountAmount = round(
             $returnLineDiscount + $returnPromotionDiscount + $returnInvoiceDiscount + $returnRoundOff,
             2,
         );
-
-        $vatPercent = max(0, $manualVatPercent ?? 0);
-        $returnVat = $vatPercent > 0 ? round($taxableBase * ($vatPercent / 100), 2) : 0.0;
 
         $returnBase = round(max(0, $returnGross - $discountAmount), 2);
         $netReturnAmount = round($returnBase + $returnVat, 2);

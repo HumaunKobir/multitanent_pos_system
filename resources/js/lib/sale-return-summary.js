@@ -64,12 +64,22 @@ function promotionClawback(item, returnQty, promotions, saleDate) {
 }
 
 export function derivedVatPercent(sellDiscounts) {
-    // The parent sale charges VAT on its taxable base (gross − line discounts), before the
-    // invoice discount and round off. Derive the rate from that same base so the return matches.
+    // Parent sale charges VAT after line, invoice, special, and coin discounts.
+    // Round off is applied after VAT. Promotion is already reflected in a lower gross.
     const parentVat = parseFloat(sellDiscounts?.vat || 0);
     const parentGross = parseFloat(sellDiscounts?.gross_amount || 0);
     const parentLineDiscount = parseFloat(sellDiscounts?.line_discount_total || 0);
-    const parentBase = Math.max(0, parentGross - parentLineDiscount);
+    const parentInvoiceDiscount = parseFloat(sellDiscounts?.invoice_discount || 0);
+    const parentSpecialDiscount = parseFloat(sellDiscounts?.special_discount_amount || 0);
+    const parentCoinDiscount = parseFloat(sellDiscounts?.coin_discount_amount || 0);
+    const parentBase = Math.max(
+        0,
+        parentGross
+            - parentLineDiscount
+            - parentInvoiceDiscount
+            - parentSpecialDiscount
+            - parentCoinDiscount,
+    );
     if (parentBase <= 0 || parentVat <= 0) {
         return 0;
     }
@@ -119,15 +129,14 @@ export function calcSaleReturnSummary(lines, sellDiscounts, context = {}, manual
         0,
     );
 
-    // Taxable base mirrors the parent sale: gross − line − promotion discounts, before the
-    // invoice discount and round off. VAT and percent invoice discounts are charged on this.
+    // Line/promotion discounts come first; invoice discount is computed on that base, then VAT.
     const taxableBase = Math.max(0, grossAmount - returnLineDiscount - returnPromotionDiscount);
     const proportion = parentNetForProportion > 0 ? taxableBase / parentNetForProportion : 0;
 
     const autoInvoice = proportion * parseFloat(sd.invoice_discount || 0);
     const autoRoundOff = proportion * parseFloat(sd.round_off_amount || 0);
 
-    // invoice/roundOff: null → auto proportional; '' or number → manual ('' treated as 0 via `|| 0` fallback)
+    // invoice: null → auto proportional; '' or number → manual ('' treated as 0 via `|| 0` fallback)
     const returnInvoiceDiscount =
         manualOverrides.invoice != null
             ? Math.min(
@@ -135,11 +144,17 @@ export function calcSaleReturnSummary(lines, sellDiscounts, context = {}, manual
                   taxableBase,
               )
             : autoInvoice;
-    const roundOffCap = Math.max(0, taxableBase - returnInvoiceDiscount);
+
+    const vatPercent = Math.max(0, parseFloat(manualOverrides.vatPercent || 0));
+    // VAT after line, promotion, and invoice discounts; round off is applied after VAT.
+    const vatBase = Math.max(0, taxableBase - returnInvoiceDiscount);
+    const returnVat = vatPercent > 0 ? Math.round(vatBase * (vatPercent / 100) * 100) / 100 : 0;
+    const beforeRoundOff = vatBase + returnVat;
+
     const returnRoundOff =
         manualOverrides.roundOff != null
-            ? Math.min(Math.max(0, parseFloat(manualOverrides.roundOff || 0)), roundOffCap)
-            : Math.min(autoRoundOff, roundOffCap);
+            ? Math.min(Math.max(0, parseFloat(manualOverrides.roundOff || 0)), beforeRoundOff)
+            : Math.min(autoRoundOff, beforeRoundOff);
 
     const returnInvoiceLevelDiscount = returnInvoiceDiscount + returnRoundOff;
 
@@ -156,10 +171,6 @@ export function calcSaleReturnSummary(lines, sellDiscounts, context = {}, manual
 
     const discountAmount = returnLineDiscount + returnPromotionDiscount + returnInvoiceLevelDiscount;
     const returnBase = Math.max(0, grossAmount - discountAmount);
-
-    const vatPercent = Math.max(0, parseFloat(manualOverrides.vatPercent || 0));
-    const returnVat = vatPercent > 0 ? Math.round(taxableBase * (vatPercent / 100) * 100) / 100 : 0;
-
     const netAmount = Math.max(0, returnBase + returnVat);
 
     const parentNet = parseFloat(sd.net_amount || 0);

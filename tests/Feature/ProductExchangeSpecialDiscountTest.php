@@ -113,8 +113,8 @@ function createSaleWithSpecialDiscount(User $user, Product $product, SpecialDisc
 function createSaleWithVatAndDiscount(User $user, Product $product, ChartOfAccount $cash, float $vatPercent = 10, float $invoiceDiscount = 100): Sell
 {
     $grossAmount = 2500.0;
-    $vatAmount = $grossAmount * ($vatPercent / 100);
-    $netAmount = $grossAmount + $vatAmount - $invoiceDiscount;
+    $vatAmount = ($grossAmount - $invoiceDiscount) * ($vatPercent / 100);
+    $netAmount = $grossAmount - $invoiceDiscount + $vatAmount;
 
     $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
 
@@ -419,13 +419,13 @@ test('product exchange mirrors sale vat and invoice discount on new gross', func
 
     $exchange = ProductExchange::query()->latest('id')->first();
 
-    // New gross = 5 × 600 = 3000. Sale VAT rate = 250/2500 = 10%.
-    // Exchange VAT = 3000 × 10% = 300.
-    expect((float) $exchange->vat)->toBe(300.0);
+    // New gross = 5 × 600 = 3000. Sale VAT rate = 240/2400 = 10%.
+    // Exchange VAT base = 3000 − 100 = 2900; VAT = 290.
+    expect((float) $exchange->vat)->toBe(290.0);
     // Invoice discount = 100 (flat, carried from sale).
     expect((float) $exchange->discount)->toBe(100.0);
-    // net = 3000 + 300 − 100 = 3200
-    expect((float) $exchange->net_amount)->toBe(3200.0);
+    // net = 2900 + 290 = 3190
+    expect((float) $exchange->net_amount)->toBe(3190.0);
 });
 
 test('product exchange show and edit expose sale source discounts payload', function () {
@@ -1034,7 +1034,7 @@ test('product exchange refund uses gross difference plus new invoice and round o
             'round_off_amount' => '2',
             'special_discount_id' => null,
             'vat' => '5',
-            'paid_amount' => '1630',
+            'paid_amount' => '1627.6',
             'payment_account_id' => $cash->id,
             'comment' => null,
             'items' => [
@@ -1078,7 +1078,7 @@ test('product exchange refund uses gross difference plus new invoice and round o
 
     expect((float) $exchange->discount)->toBe(21.0);
     expect((float) $exchange->round_off_amount)->toBe(2.0);
-    expect((float) $exchange->net_amount)->toBe(712.0);
+    expect((float) $exchange->net_amount)->toBe(710.95);
     expect((float) $exchange->price_difference)->toBe(-923.0);
     expect($exchange->settlementAmount())->toBe(923.0);
 });
@@ -2139,7 +2139,7 @@ test('exchange edit exposes refund settlement labels for refund exchanges', func
             'round_off_amount' => '2',
             'special_discount_id' => null,
             'vat' => '5',
-            'paid_amount' => '1630',
+            'paid_amount' => '1627.6',
             'payment_account_id' => $cash->id,
             'comment' => null,
             'items' => [

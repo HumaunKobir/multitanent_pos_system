@@ -20,7 +20,7 @@ test('converts myisam tables to innodb and restores missing primary keys', funct
 
     DB::table($table)->insert(['id' => 1, 'name' => 'alpha']);
 
-    $migration = require database_path('migrations/2026_07_13_170630_convert_myisam_tables_to_innodb.php');
+    $migration = require database_path('migrations/2026_07_12_195000_convert_myisam_tables_to_innodb.php');
     $migration->up();
 
     $status = collect(DB::select("SHOW TABLE STATUS LIKE '{$table}'"))->first();

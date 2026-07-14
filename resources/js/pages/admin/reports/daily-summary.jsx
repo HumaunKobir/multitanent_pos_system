@@ -40,7 +40,7 @@ const sections = [
         ringClass: 'ring-emerald-500/20',
         rows: (s) => [
             { label: 'Invoices', value: s.sales?.count ?? 0, plain: true },
-            { label: 'Gross', value: <MoneyCell value={s.sales?.gross} /> },
+            { label: 'Gross (after returns)', value: <MoneyCell value={s.sales?.gross} /> },
             { label: 'Collected', value: <MoneyCell value={s.sales?.paid} /> },
             { label: 'Due', value: <MoneyCell value={s.sales?.due} />, highlight: true },
             ...((s.sales?.refund_due ?? 0) > 0
@@ -64,7 +64,7 @@ const sections = [
         ringClass: 'ring-blue-500/20',
         rows: (s) => [
             { label: 'Orders', value: s.purchases?.count ?? 0, plain: true },
-            { label: 'Gross', value: <MoneyCell value={s.purchases?.gross} /> },
+            { label: 'Gross (after returns)', value: <MoneyCell value={s.purchases?.gross} /> },
             { label: 'Paid', value: <MoneyCell value={s.purchases?.paid} /> },
             { label: 'Due', value: <MoneyCell value={s.purchases?.due} />, highlight: true },
         ],
@@ -790,13 +790,13 @@ export default function DailySummaryReport({
                     <KpiTile
                         label="Sales gross"
                         value={<MoneyCell value={salesGross} />}
-                        sub={`${s.sales?.count ?? 0} invoice(s)`}
+                        sub={`After returns · ${s.sales?.count ?? 0} invoice(s)`}
                         className="border-emerald-200/80 bg-emerald-50 text-emerald-900 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-100"
                     />
                     <KpiTile
                         label="Purchase gross"
                         value={<MoneyCell value={purchaseGross} />}
-                        sub={`${s.purchases?.count ?? 0} order(s)`}
+                        sub={`After returns · ${s.purchases?.count ?? 0} order(s)`}
                         className="border-blue-200/80 bg-blue-50 text-blue-900 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-100"
                     />
                     <KpiTile

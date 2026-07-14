@@ -1163,8 +1163,10 @@ class ReportService
 
         $salesNet = $this->exchangeOverlay->sumEffectiveNet($sales);
         $salesPaid = $this->exchangeOverlay->sumEffectivePaid($sales);
+        $saleReturnAmount = round($returns->sum(fn (SaleReturn $return) => $return->net_amount), 2);
         $purchaseNet = $purchases->sum(fn (Purchase $p) => $p->net_amount);
         $purchasePaid = $purchases->sum(fn (Purchase $p) => (float) $p->paid_amount);
+        $purchaseReturnAmount = round($purchaseReturns->sum(fn (PurchaseReturn $return) => $return->net_amount), 2);
         $expenseVouchers = $vouchers->where('type', VoucherType::Expense);
         $otherVouchers = $vouchers->where('type', '!=', VoucherType::Expense);
         $initialStock = $this->dailyInitialStockSummary($date, $effectiveBranchId, $effectiveUserId);
@@ -1173,14 +1175,14 @@ class ReportService
             'date' => $date,
             'sales' => [
                 'count' => $sales->count(),
-                'gross' => round($salesNet, 2),
+                'gross' => round($salesNet - $saleReturnAmount, 2),
                 'paid' => round($salesPaid, 2),
                 'due' => $this->exchangeOverlay->sumEffectiveDue($sales),
                 'refund_due' => $this->exchangeOverlay->sumEffectiveRefundDue($sales),
             ],
             'purchases' => [
                 'count' => $purchases->count(),
-                'gross' => round($purchaseNet, 2),
+                'gross' => round($purchaseNet - $purchaseReturnAmount, 2),
                 'paid' => round($purchasePaid, 2),
                 'due' => round(max(0, $purchaseNet - $purchasePaid), 2),
             ],
@@ -1198,13 +1200,13 @@ class ReportService
             ],
             'sale_returns' => [
                 'count' => $returns->count(),
-                'amount' => round($returns->sum(fn (SaleReturn $return) => $return->net_amount), 2),
+                'amount' => $saleReturnAmount,
                 'paid' => round($returns->sum(fn (SaleReturn $return) => (float) $return->paid_amount), 2),
                 'due' => round($returns->sum(fn (SaleReturn $return) => max(0, $return->net_amount - (float) $return->paid_amount)), 2),
             ],
             'purchase_returns' => [
                 'count' => $purchaseReturns->count(),
-                'amount' => round($purchaseReturns->sum(fn (PurchaseReturn $return) => $return->net_amount), 2),
+                'amount' => $purchaseReturnAmount,
                 'paid' => round($purchaseReturns->sum(fn (PurchaseReturn $return) => (float) $return->paid_amount), 2),
                 'due' => round($purchaseReturns->sum(fn (PurchaseReturn $return) => (float) $return->due_amount), 2),
             ],
@@ -1553,8 +1555,10 @@ class ReportService
 
                 $salesGross = $this->exchangeOverlay->sumEffectiveNet($sales);
                 $salesPaid = $this->exchangeOverlay->sumEffectivePaid($sales);
+                $saleReturnAmount = round($saleReturns->sum(fn (SaleReturn $return) => $return->net_amount), 2);
                 $purchaseGross = $purchases->sum(fn (Purchase $purchase) => $purchase->net_amount);
                 $purchasePaid = $purchases->sum(fn (Purchase $purchase) => (float) $purchase->paid_amount);
+                $purchaseReturnAmount = round($purchaseReturns->sum(fn (PurchaseReturn $return) => $return->net_amount), 2);
                 $user = $sample instanceof Sell
                     ? $sample->user
                     : ($sample instanceof Purchase ? $sample->user : null);
@@ -1568,14 +1572,14 @@ class ReportService
                     'user_name' => $user?->name ?? ($staffUserId !== null ? ($userNames[$staffUserId] ?? '—') : '—'),
                     'sales' => [
                         'count' => $sales->count(),
-                        'gross' => round($salesGross, 2),
+                        'gross' => round($salesGross - $saleReturnAmount, 2),
                         'paid' => round($salesPaid, 2),
                         'due' => $this->exchangeOverlay->sumEffectiveDue($sales),
                         'refund_due' => $this->exchangeOverlay->sumEffectiveRefundDue($sales),
                     ],
                     'purchases' => [
                         'count' => $purchases->count(),
-                        'gross' => round($purchaseGross, 2),
+                        'gross' => round($purchaseGross - $purchaseReturnAmount, 2),
                         'paid' => round($purchasePaid, 2),
                         'due' => round(max(0, $purchaseGross - $purchasePaid), 2),
                     ],
@@ -1589,7 +1593,7 @@ class ReportService
                     ],
                     'sale_returns' => [
                         'count' => $saleReturns->count(),
-                        'amount' => round($saleReturns->sum(fn (SaleReturn $return) => $return->net_amount), 2),
+                        'amount' => $saleReturnAmount,
                     ],
                     'product_exchanges' => [
                         'count' => $exchanges->count(),
@@ -1597,7 +1601,7 @@ class ReportService
                     ],
                     'purchase_returns' => [
                         'count' => $purchaseReturns->count(),
-                        'amount' => round($purchaseReturns->sum(fn (PurchaseReturn $return) => $return->net_amount), 2),
+                        'amount' => $purchaseReturnAmount,
                     ],
                     'damages' => [
                         'count' => $damages->count(),

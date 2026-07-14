@@ -862,7 +862,7 @@ test('daily summary applies all sell discount types and sale return net amount',
     $saleReturn = SaleReturn::query()->where('sell_id', $sell->id)->firstOrFail();
 
     $supplier = Supplier::factory()->create(['branch_id' => $branch->id]);
-    $purchase = Purchase::factory()->create([
+    $purchase = Purchase::factory()->withAmounts(1000, 100, 50, 400)->create([
         'branch_id' => $branch->id,
         'user_id' => $staff->id,
         'supplier_id' => $supplier->id,
@@ -882,6 +882,8 @@ test('daily summary applies all sell discount types and sale return net amount',
         'due_amount' => 80,
     ]);
     $purchaseReturn = PurchaseReturn::query()->where('purchase_id', $purchase->id)->firstOrFail();
+    // Purchase net 950 − purchase return 480 = 470
+    $expectedPurchaseGross = 470;
 
     ProductExchange::query()->create([
         'branch_id' => $branch->id,
@@ -918,7 +920,8 @@ test('daily summary applies all sell discount types and sale return net amount',
         ->get('/report/daily-summary?date='.$date.'&branch_id='.$branch->id)
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->where('summary.sales.gross', 810)
+            ->where('summary.sales.gross', 555)
+            ->where('summary.purchases.gross', $expectedPurchaseGross)
             ->where('summary.sale_returns.amount', 255)
             ->where('summary.sale_returns.paid', 200)
             ->where('summary.sale_returns.due', 55)
@@ -932,7 +935,8 @@ test('daily summary applies all sell discount types and sale return net amount',
             ->where('summary.product_exchanges.difference', 25)
             ->where('summary.damages.count', 1)
             ->where('summary.damages.amount', 100)
-            ->where('summary.staff_breakdown.0.sales.gross', 810)
+            ->where('summary.staff_breakdown.0.sales.gross', 555)
+            ->where('summary.staff_breakdown.0.purchases.gross', $expectedPurchaseGross)
             ->where('summary.staff_breakdown.0.sale_returns.count', 1)
             ->where('summary.staff_breakdown.0.sale_returns.amount', 255)
             ->where('summary.staff_breakdown.0.product_exchanges.count', 1)

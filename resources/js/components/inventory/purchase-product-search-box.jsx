@@ -1,5 +1,5 @@
 import { route } from '@/lib/route';
-import { Search } from 'lucide-react';
+import { Barcode, Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
 import { Checkbox } from '@/components/ui/checkbox';
@@ -35,6 +35,53 @@ function buildItem(product, variation) {
     };
 }
 
+function resolveBarcodeMatch(data, term) {
+    for (const product of data) {
+        const barcodeHit = (product.barcodes ?? []).find((barcode) => String(barcode.code) === term);
+        if (barcodeHit) {
+            if (barcodeHit.product_variation_id) {
+                const variation = (product.variations ?? []).find(
+                    (item) => String(item.id) === String(barcodeHit.product_variation_id),
+                );
+                if (variation) {
+                    return { product, variation };
+                }
+            }
+
+            if (!product.has_variations) {
+                return { product, variation: null };
+            }
+        }
+    }
+
+    const variationMatch = data
+        .flatMap((product) => (product.variations ?? []).map((variation) => ({ product, variation })))
+        .find(({ variation }) => String(variation.sku) === term);
+
+    if (variationMatch) {
+        return variationMatch;
+    }
+
+    const exact = data.find((product) => String(product.code) === term);
+    if (exact && !exact.has_variations) {
+        return { product: exact, variation: null };
+    }
+
+    if (exact?.has_variations) {
+        return { product: exact, variation: null, needsVariantPick: true };
+    }
+
+    if (data.length === 1 && !data[0].has_variations) {
+        return { product: data[0], variation: null };
+    }
+
+    if (data.length === 1 && data[0].has_variations) {
+        return { product: data[0], variation: null, needsVariantPick: true };
+    }
+
+    return null;
+}
+
 export function PurchaseProductSearchBox({ items, onAdd, onRemove }) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState([]);
@@ -42,6 +89,8 @@ export function PurchaseProductSearchBox({ items, onAdd, onRemove }) {
     const [open, setOpen] = useState(false);
     const timerRef = useRef(null);
     const ref = useRef(null);
+    const inputRef = useRef(null);
+    const skipOpenOnFocusRef = useRef(false);
     const apiUrl = route('api.products.purchase');
 
     function isSelected(productId, variationId) {
@@ -70,6 +119,10 @@ export function PurchaseProductSearchBox({ items, onAdd, onRemove }) {
     }
 
     function handleFocus() {
+        if (skipOpenOnFocusRef.current) {
+            skipOpenOnFocusRef.current = false;
+            return;
+        }
         setOpen(true);
         if (results.length === 0) {
             fetchProducts('');
@@ -120,11 +173,26 @@ export function PurchaseProductSearchBox({ items, onAdd, onRemove }) {
     const allSelected = allLines.length > 0 && allLines.every(({ product, variation }) => isSelected(product.id, variation?.id));
     const someSelected = allLines.some(({ product, variation }) => isSelected(product.id, variation?.id));
 
+    function addFromScan(product, variation) {
+        onAdd(buildItem(product, variation));
+        setQuery('');
+        setResults([]);
+        setOpen(false);
+        // Keep focus ready for the next scan, but do not reopen the picker.
+        skipOpenOnFocusRef.current = true;
+        requestAnimationFrame(() => inputRef.current?.focus());
+    }
+
     async function triggerBarcodeSearch(term) {
+        const trimmed = term.trim();
+        if (!trimmed) {
+            return;
+        }
+
         clearTimeout(timerRef.current);
         setLoading(true);
         try {
-            const res = await fetch(`${apiUrl}?search=${encodeURIComponent(term)}`, {
+            const res = await fetch(`${apiUrl}?search=${encodeURIComponent(trimmed)}`, {
                 credentials: 'include',
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
             });
@@ -133,19 +201,23 @@ export function PurchaseProductSearchBox({ items, onAdd, onRemove }) {
             }
             const json = await res.json();
             const data = Array.isArray(json) ? json : [];
-            const exact = data.find((p) => p.code === term);
-            const match = exact ?? (data.length === 1 ? data[0] : null);
-            if (match && !match.has_variations) {
-                toggleLine(match, null, true);
-            } else if (match && match.has_variations) {
-                setResults([match]);
+            const match = resolveBarcodeMatch(data, trimmed);
+
+            if (match?.needsVariantPick) {
+                setResults([match.product]);
                 setQuery('');
                 setOpen(true);
-            } else {
-                setQuery(term);
-                setResults(data);
-                setOpen(true);
+                return;
             }
+
+            if (match) {
+                addFromScan(match.product, match.variation);
+                return;
+            }
+
+            setQuery(trimmed);
+            setResults(data);
+            setOpen(true);
         } catch {
             setResults([]);
         } finally {
@@ -153,12 +225,16 @@ export function PurchaseProductSearchBox({ items, onAdd, onRemove }) {
         }
     }
 
-    async function handleKeyDown(e) {
+    function handleKeyDown(e) {
         if (e.key !== 'Enter') {
             return;
         }
+
+        // Scanners send Enter after the code — never submit the purchase form.
         e.preventDefault();
-        const term = query.trim();
+        e.stopPropagation();
+
+        const term = (e.target.value ?? query).trim();
         if (term) {
             triggerBarcodeSearch(term);
         }
@@ -194,6 +270,8 @@ export function PurchaseProductSearchBox({ items, onAdd, onRemove }) {
                 const term = globalBufRef.current.trim();
                 globalBufRef.current = '';
                 if (term) {
+                    e.preventDefault();
+                    e.stopPropagation();
                     triggerRef.current(term);
                 }
             } else if (e.key.length === 1) {
@@ -209,13 +287,19 @@ export function PurchaseProductSearchBox({ items, onAdd, onRemove }) {
             <div className="relative">
                 <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
+                    ref={inputRef}
                     value={query}
                     onChange={handleChange}
                     onFocus={handleFocus}
                     onKeyDown={handleKeyDown}
-                    placeholder="Click or search product by name / code…"
-                    className="h-8 pl-8 text-xs"
+                    placeholder="Search or scan barcode…"
+                    className="h-8 pr-16 pl-8 text-xs"
+                    autoComplete="off"
                 />
+                <div className="pointer-events-none absolute top-1/2 right-2 flex -translate-y-1/2 items-center gap-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
+                    <Barcode className="size-3" />
+                    Scan
+                </div>
             </div>
 
             {open && (

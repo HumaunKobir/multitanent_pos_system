@@ -426,7 +426,23 @@ export default function PurchaseEdit({
                     </Button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="space-y-4">
+                <form
+                    onSubmit={handleSubmit}
+                    onKeyDown={(e) => {
+                        // Barcode scanners send Enter after the code — never submit the form that way.
+                        if (e.key !== 'Enter') {
+                            return;
+                        }
+                        if (e.target instanceof HTMLTextAreaElement) {
+                            return;
+                        }
+                        if (e.target instanceof HTMLButtonElement && e.target.type === 'submit') {
+                            return;
+                        }
+                        e.preventDefault();
+                    }}
+                    className="space-y-4"
+                >
                     <Card title="Purchase Details" icon={CalendarDays}>
                         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                             <Field label="Supplier" required error={form.errors.supplier_id}>

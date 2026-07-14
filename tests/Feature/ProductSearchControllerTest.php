@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Barcode;
 use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Category;
@@ -228,6 +229,87 @@ test('purchase search returns branch stock for simple and variant products', fun
 
     expect($variantMatch)->not->toBeNull()
         ->and((float) $redMatch['stock'])->toBe(7.0);
+});
+
+test('purchase search finds product by barcode and returns barcode payload', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = ensureMainBranch();
+    $mainUser = User::factory()->create(['branch_id' => $mainBranchId]);
+    Permission::findOrCreate('inventory.purchase.create', 'web');
+    $mainUser->givePermissionTo('inventory.purchase.create');
+
+    $barcodeCode = 'BC'.fake()->unique()->numerify('######');
+    $product = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Purchase Barcode Product '.fake()->unique()->numerify('###'),
+        'code' => 'PRD-'.fake()->unique()->numerify('####'),
+    ]);
+
+    Barcode::query()->create([
+        'branch_id' => $mainBranchId,
+        'product_id' => $product->id,
+        'product_variation_id' => null,
+        'code' => $barcodeCode,
+        'name' => $product->name,
+    ]);
+
+    $response = $this->actingAs($mainUser)
+        ->getJson('/api/products/for-purchase?search='.urlencode($barcodeCode));
+
+    $response->assertOk();
+
+    $match = collect($response->json())->firstWhere('id', $product->id);
+
+    expect($match)->not->toBeNull()
+        ->and($match['barcodes'])->toBeArray()
+        ->and(collect($match['barcodes'])->pluck('code'))->toContain($barcodeCode);
+});
+
+test('purchase search finds variant by variation barcode', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranchId = ensureMainBranch();
+    $mainUser = User::factory()->create(['branch_id' => $mainBranchId]);
+    Permission::findOrCreate('inventory.purchase.create', 'web');
+    $mainUser->givePermissionTo('inventory.purchase.create');
+
+    $product = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Purchase Variant Barcode Product '.fake()->unique()->numerify('###'),
+    ]);
+
+    $variation = ProductVariation::query()->create([
+        'product_id' => $product->id,
+        'branch_id' => $mainBranchId,
+        'sku' => 'SKU-'.fake()->unique()->numerify('####'),
+        'price' => 150,
+        'purchase_price' => 100,
+        'stock' => 5,
+        'variation_data' => ['label' => 'Large'],
+    ]);
+
+    $barcodeCode = 'VB'.fake()->unique()->numerify('######');
+
+    Barcode::query()->create([
+        'branch_id' => $mainBranchId,
+        'product_id' => $product->id,
+        'product_variation_id' => $variation->id,
+        'code' => $barcodeCode,
+        'name' => $product->name.' Large',
+    ]);
+
+    $response = $this->actingAs($mainUser)
+        ->getJson('/api/products/for-purchase?search='.urlencode($barcodeCode));
+
+    $response->assertOk();
+
+    $match = collect($response->json())->firstWhere('id', $product->id);
+    $barcodeMatch = collect($match['barcodes'] ?? [])->firstWhere('code', $barcodeCode);
+
+    expect($match)->not->toBeNull()
+        ->and($barcodeMatch)->not->toBeNull()
+        ->and((int) $barcodeMatch['product_variation_id'])->toBe($variation->id);
 });
 
 test('sell search can filter products by category', function () {

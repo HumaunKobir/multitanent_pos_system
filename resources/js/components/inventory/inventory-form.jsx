@@ -187,34 +187,38 @@ export function PaymentSummaryCard({
                         )}
                     </>
                 )}
-                <div className="flex justify-between">
-                    <span className="text-muted-foreground">Total Amount</span>
-                    <span className="font-semibold">৳{grossAmount.toFixed(2)}</span>
+                <div className="flex items-center justify-between gap-2">
+                    <span className="text-[15px] font-semibold text-foreground">Total Amount</span>
+                    <span className="text-[15px] font-bold tabular-nums tracking-tight text-primary">
+                        ৳{grossAmount.toFixed(2)}
+                    </span>
                 </div>
 
                 {dueOffsetAmount > 0.009 && (
-                    <div className="flex justify-between text-green-700 dark:text-green-400">
+                    <div className="flex justify-between text-[15px] text-green-700 dark:text-green-400">
                         <span>Purchase Due Reversed</span>
                         <span>-৳{dueOffsetAmount.toFixed(2)}</span>
                     </div>
                 )}
 
                 {showSettlementLine && (
-                    <div className="flex justify-between border-t border-border pt-2">
-                        <span className="text-muted-foreground">{settlementLineLabel}</span>
-                        <span className="font-semibold">৳{grossAmount.toFixed(2)}</span>
+                    <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
+                        <span className="text-[15px] font-semibold text-foreground">{settlementLineLabel}</span>
+                        <span className="text-[15px] font-bold tabular-nums tracking-tight text-primary">
+                            ৳{grossAmount.toFixed(2)}
+                        </span>
                     </div>
                 )}
 
                 {priorPaidAmount != null && priorPaidAmount > 0.009 && (
-                    <div className="flex justify-between text-xs">
+                    <div className="flex justify-between text-[15px]">
                         <span className="text-muted-foreground">{priorPaidLabel}</span>
                         <span className="text-green-700 dark:text-green-400">৳{priorPaidAmount.toFixed(2)}</span>
                     </div>
                 )}
 
                 {parentPaymentInfo && (parentPaymentInfo.paid > 0.009 || parentPaymentInfo.due > 0.009) && (
-                    <p className="text-[10px] leading-relaxed text-muted-foreground">
+                    <p className="text-[15px] leading-relaxed text-muted-foreground">
                         Original sale paid ৳{parentPaymentInfo.paid.toFixed(2)}
                         {parentPaymentInfo.due > 0.009 ? ` · due ৳${parentPaymentInfo.due.toFixed(2)}` : ''}. Refund
                         cannot exceed the paid portion; remaining return value reduces customer due.
@@ -223,7 +227,7 @@ export function PaymentSummaryCard({
 
                 <InventoryField label="Payment Option">
                     <select
-                        className="h-8 w-full rounded-md border border-input bg-background px-2 text-xs shadow-xs outline-none focus:border-primary focus:ring-[3px] focus:ring-ring/50"
+                        className="h-11 w-full rounded-md border border-input bg-background px-2.5 text-[15px] font-medium shadow-xs outline-none focus:border-primary focus:ring-[3px] focus:ring-ring/50"
                         value={paymentMode}
                         onChange={(e) => handlePaymentModeChange(e.target.value)}
                     >
@@ -235,11 +239,11 @@ export function PaymentSummaryCard({
                         ))}
                     </select>
                     {paymentHint ? (
-                        <p className="mt-1 text-[10px] text-muted-foreground">{paymentHint}</p>
+                        <p className="mt-1.5 text-[15px] text-muted-foreground">{paymentHint}</p>
                     ) : isParty ? (
-                        <p className="mt-1 text-[10px] text-muted-foreground">{partyPaidHint}</p>
+                        <p className="mt-1.5 text-[15px] text-muted-foreground">{partyPaidHint}</p>
                     ) : (
-                        <p className="mt-1 text-[10px] text-muted-foreground">
+                        <p className="mt-1.5 text-[15px] text-muted-foreground">
                             Cash / bank account (asset ledger). Enter the refund received in Paid Amount.
                         </p>
                     )}
@@ -248,7 +252,7 @@ export function PaymentSummaryCard({
                 {showPaidAmount && (
                     <>
                         <div className="flex items-center justify-between gap-4">
-                            <Label className="text-xs text-muted-foreground">{paidLabel}</Label>
+                            <Label className="text-[15px] font-semibold text-foreground">{paidLabel}</Label>
                             <Input
                                 type="number"
                                 min="0"
@@ -256,24 +260,28 @@ export function PaymentSummaryCard({
                                 value={paidAmount}
                                 onChange={(e) => onPaidAmountChange(e.target.value)}
                                 readOnly={paidReadOnly || isParty}
-                                className={`${inputCls} w-28 text-right ${paidReadOnly || isParty ? 'bg-muted/50' : ''}`}
+                                className={`h-11 w-36 rounded-md border-border/60 px-2.5 text-right text-[15px] font-bold tabular-nums focus:border-primary ${paidReadOnly || isParty ? 'bg-muted/50' : ''}`}
                             />
                         </div>
-                        {paidError && <p className="text-xs text-destructive">{paidError}</p>}
+                        {paidError && <p className="text-[15px] text-destructive">{paidError}</p>}
                     </>
                 )}
 
                 {showDue && (
-                    <div className="flex justify-between border-t border-border pt-2">
-                        <span className="font-semibold text-destructive">{dueLabel}</span>
-                        <span className="font-bold text-destructive">৳{due.toFixed(2)}</span>
+                    <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
+                        <span className="text-[15px] font-semibold text-destructive">{dueLabel}</span>
+                        <span className="text-[15px] font-bold tabular-nums tracking-tight text-destructive">
+                            ৳{due.toFixed(2)}
+                        </span>
                     </div>
                 )}
 
                 {overpaidAmount != null && overpaidAmount > 0.009 && (
-                    <div className="flex justify-between border-t border-border pt-2 text-amber-700 dark:text-amber-400">
-                        <span className="font-semibold">{overpaidLabel}</span>
-                        <span className="font-bold">৳{overpaidAmount.toFixed(2)}</span>
+                    <div className="flex items-center justify-between gap-2 border-t border-border pt-2 text-amber-700 dark:text-amber-400">
+                        <span className="text-[15px] font-semibold">{overpaidLabel}</span>
+                        <span className="text-[15px] font-bold tabular-nums tracking-tight">
+                            ৳{overpaidAmount.toFixed(2)}
+                        </span>
                     </div>
                 )}
             </div>

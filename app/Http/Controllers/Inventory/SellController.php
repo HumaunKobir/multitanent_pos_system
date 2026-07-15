@@ -345,6 +345,7 @@ class SellController extends Controller
                         $payment['due_amount'],
                         $data['due_given_date'] ?? null,
                         $data['due_alert_action'] ?? null,
+                        $sell->id,
                     );
                 }
 
@@ -734,6 +735,7 @@ class SellController extends Controller
                         $payment['due_amount'],
                         $data['due_given_date'] ?? null,
                         $data['due_alert_action'] ?? null,
+                        $sell->id,
                     );
                 }
 
@@ -783,6 +785,12 @@ class SellController extends Controller
                     $dueAmount = max(0, (float) $sell->net_amount - (float) $sell->paid_amount);
                     if ($sell->customer_id && $dueAmount > 0) {
                         Customer::whereKey($sell->customer_id)->decrement('balance', $dueAmount);
+                    }
+
+                    $this->dueAlertService->deleteUnpaidForSell((int) $sell->id);
+
+                    if ($sell->customer_id) {
+                        $this->dueAlertService->syncPaidForCustomer((int) $sell->customer_id, $sell->branch_id);
                     }
 
                     foreach ($sell->products as $sp) {
@@ -1470,6 +1478,7 @@ class SellController extends Controller
                         $payment['due_amount'],
                         $data['due_given_date'] ?? null,
                         $data['due_alert_action'] ?? null,
+                        $sell->id,
                     );
                 }
 

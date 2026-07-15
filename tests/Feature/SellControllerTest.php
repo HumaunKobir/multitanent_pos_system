@@ -851,6 +851,76 @@ test('due sale with due given date creates a customer due alert', function () {
     expect($alert->branch_id)->toBe($user->branch_id);
     expect($alert->due_given_date->format('Y-m-d'))->toBe('2026-08-15');
     expect($alert->status)->toBe(CustomerDueAlertStatus::Unpaid);
+    expect($alert->sell_id)->not->toBeNull();
+    expect($alert->sell->invoice_number)->toStartWith('INVS');
+});
+
+test('deleting a due sale removes its unpaid customer due alert', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    ['product' => $product] = sellProduct(10, $user->branch_id);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'is_default' => false,
+        'balance' => 0,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', dueSalePayload($user, $product, $customer, $cash, [
+            'due_given_date' => '2026-08-15',
+        ]))
+        ->assertRedirect();
+
+    $sell = Sell::query()->where('customer_id', $customer->id)->latest('id')->first();
+    $alert = CustomerDueAlert::query()->where('sell_id', $sell->id)->first();
+
+    expect($sell)->not->toBeNull();
+    expect($alert)->not->toBeNull();
+    expect($alert->status)->toBe(CustomerDueAlertStatus::Unpaid);
+
+    $this->actingAs($user)
+        ->delete("/inventory/sell/{$sell->id}")
+        ->assertRedirect('/inventory/sell');
+
+    expect(Sell::find($sell->id))->toBeNull();
+    expect(CustomerDueAlert::find($alert->id))->toBeNull();
+    expect((float) $customer->fresh()->balance)->toBe(0.0);
+});
+
+test('deleting a sale keeps a paid customer due alert linked to it', function () {
+    $user = sellUser();
+    $customer = Customer::factory()->create([
+        'branch_id' => $user->branch_id,
+        'is_default' => false,
+        'balance' => 0,
+    ]);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'customer_id' => $customer->id,
+        'gross_amount' => 500,
+        'paid_amount' => 500,
+        'type' => SaleType::Sale,
+    ]);
+
+    $alert = CustomerDueAlert::create([
+        'branch_id' => $user->branch_id,
+        'customer_id' => $customer->id,
+        'sell_id' => $sell->id,
+        'due_given_date' => '2026-08-15',
+        'status' => CustomerDueAlertStatus::Paid,
+    ]);
+
+    $this->actingAs($user)
+        ->delete("/inventory/sell/{$sell->id}")
+        ->assertRedirect('/inventory/sell');
+
+    expect(Sell::find($sell->id))->toBeNull();
+    expect(CustomerDueAlert::find($alert->id))->not->toBeNull();
+    expect($alert->fresh()->sell_id)->toBeNull();
+    expect($alert->fresh()->status)->toBe(CustomerDueAlertStatus::Paid);
 });
 
 test('full due sale with zero payment lines is allowed', function () {

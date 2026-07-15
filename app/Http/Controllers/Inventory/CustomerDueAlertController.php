@@ -6,6 +6,7 @@ use App\Enums\CustomerDueAlertStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\CustomerDueAlert;
+use App\Models\Sell;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -22,24 +23,77 @@ class CustomerDueAlertController extends Controller
 
         $alerts = CustomerDueAlert::query()
             ->ownBranch()
-            ->with(['customer:id,name,phone'])
+            ->with([
+                'customer:id,name,phone',
+                'sell:id,invoice_sequence,branch_id',
+            ])
             ->when($request->search, function ($query, string $search) {
-                $query->whereHas('customer', fn ($q) => $q
-                    ->where('name', 'like', "%{$search}%")
-                    ->orWhere('phone', 'like', "%{$search}%")
-                );
+                $query->where(function ($query) use ($search) {
+                    $query->whereHas('customer', fn ($q) => $q
+                        ->where('name', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%")
+                    );
+
+                    $sequence = Sell::extractInvoiceSequence($search);
+
+                    if ($sequence !== null && (
+                        str_starts_with(strtoupper(trim($search)), Sell::invoicePrefix())
+                        || (ctype_digit(trim($search)) && strlen(trim($search)) <= 8)
+                    )) {
+                        $query->orWhereHas('sell', fn ($q) => $q->where('invoice_sequence', $sequence));
+                    }
+                });
             })
             ->latest()
             ->paginate(20)
-            ->withQueryString();
+            ->withQueryString()
+            ->through(fn (CustomerDueAlert $alert) => [
+                ...$alert->toArray(),
+                'invoice_number' => $alert->sell?->invoice_number,
+            ]);
 
         $customers = Customer::ownBranch()
             ->orderBy('name')
             ->get(['id', 'name', 'phone', 'balance']);
 
+        $customerIds = $customers->pluck('id');
+        $linkedSellIds = CustomerDueAlert::query()
+            ->ownBranch()
+            ->whereNotNull('sell_id')
+            ->pluck('sell_id');
+
+        $dueSales = Sell::query()
+            ->ownBranch()
+            ->sale()
+            ->where(function ($query) use ($customerIds, $linkedSellIds) {
+                $query->whereIn('customer_id', $customerIds);
+
+                if ($linkedSellIds->isNotEmpty()) {
+                    $query->orWhereIn('id', $linkedSellIds);
+                }
+            })
+            ->withSum('products as line_discount_total', 'discount')
+            ->latest('id')
+            ->get()
+            ->filter(function (Sell $sell) use ($linkedSellIds) {
+                if ($linkedSellIds->contains($sell->id)) {
+                    return true;
+                }
+
+                return round((float) $sell->net_amount - (float) $sell->paid_amount, 2) > 0;
+            })
+            ->map(fn (Sell $sell) => [
+                'id' => $sell->id,
+                'customer_id' => $sell->customer_id,
+                'invoice_number' => $sell->invoice_number,
+                'due_amount' => round(max(0, (float) $sell->net_amount - (float) $sell->paid_amount), 2),
+            ])
+            ->values();
+
         return Inertia::render('admin/inventory/customer-due-alert/index', [
             'alerts' => $alerts,
             'customers' => $customers,
+            'dueSales' => $dueSales,
             'filters' => $request->only('search'),
             'today' => now()->format('Y-m-d'),
             'statuses' => collect(CustomerDueAlertStatus::cases())
@@ -53,6 +107,7 @@ class CustomerDueAlertController extends Controller
 
         $data = $request->validate([
             'customer_id' => ['required', 'exists:customers,id'],
+            'sell_id' => ['nullable', 'exists:sells,id'],
             'due_given_date' => ['required', 'date'],
             'status' => ['required', new Enum(CustomerDueAlertStatus::class)],
         ]);
@@ -71,6 +126,10 @@ class CustomerDueAlertController extends Controller
             ]);
         }
 
+        $data['sell_id'] = $this->validatedSellIdForCustomer(
+            $data['sell_id'] ?? null,
+            (int) $customer->id,
+        );
         $data['branch_id'] = Auth::user()?->branch_id;
 
         CustomerDueAlert::create($data);
@@ -85,9 +144,15 @@ class CustomerDueAlertController extends Controller
 
         $data = $request->validate([
             'customer_id' => ['required', 'exists:customers,id'],
+            'sell_id' => ['nullable', 'exists:sells,id'],
             'due_given_date' => ['required', 'date'],
             'status' => ['required', new Enum(CustomerDueAlertStatus::class)],
         ]);
+
+        $data['sell_id'] = $this->validatedSellIdForCustomer(
+            $data['sell_id'] ?? null,
+            (int) $data['customer_id'],
+        );
 
         $customerDueAlert->update($data);
 
@@ -102,6 +167,28 @@ class CustomerDueAlertController extends Controller
         $customerDueAlert->delete();
 
         return back()->with('success', 'Customer due alert deleted successfully.');
+    }
+
+    private function validatedSellIdForCustomer(mixed $sellId, int $customerId): ?int
+    {
+        if ($sellId === null || $sellId === '') {
+            return null;
+        }
+
+        $sell = Sell::query()
+            ->ownBranch()
+            ->sale()
+            ->whereKey($sellId)
+            ->where('customer_id', $customerId)
+            ->first();
+
+        if ($sell === null) {
+            throw ValidationException::withMessages([
+                'sell_id' => 'Sale invoice not found for this customer.',
+            ]);
+        }
+
+        return (int) $sell->id;
     }
 
     private function authorizeBranch(CustomerDueAlert $customerDueAlert): void

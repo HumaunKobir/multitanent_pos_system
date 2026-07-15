@@ -16,6 +16,7 @@ class CustomerDueAlert extends Model
     protected $fillable = [
         'branch_id',
         'customer_id',
+        'sell_id',
         'due_given_date',
         'status',
     ];
@@ -28,6 +29,11 @@ class CustomerDueAlert extends Model
     public function customer(): BelongsTo
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function sell(): BelongsTo
+    {
+        return $this->belongsTo(Sell::class);
     }
 
     public function branch(): BelongsTo

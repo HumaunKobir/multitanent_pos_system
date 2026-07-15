@@ -17,10 +17,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useCan } from '@/hooks/use-can';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 
-function AlertForm({ form, customers, statuses, onSubmit, onCancel, isEditing }) {
+function AlertForm({ form, customers, dueSales, statuses, onSubmit, onCancel, isEditing }) {
     const selected = useMemo(
         () => customers.find((c) => String(c.id) === String(form.data.customer_id)),
         [customers, form.data.customer_id],
+    );
+
+    const customerSales = useMemo(
+        () => dueSales.filter((sale) => String(sale.customer_id) === String(form.data.customer_id)),
+        [dueSales, form.data.customer_id],
     );
 
     return (
@@ -28,7 +33,13 @@ function AlertForm({ form, customers, statuses, onSubmit, onCancel, isEditing })
             <FormField label="Customer" required name="customer_id" error={form.errors.customer_id}>
                 <Select
                     value={form.data.customer_id ? String(form.data.customer_id) : undefined}
-                    onValueChange={(value) => form.setData('customer_id', value)}
+                    onValueChange={(value) => {
+                        form.setData((data) => ({
+                            ...data,
+                            customer_id: value,
+                            sell_id: '',
+                        }));
+                    }}
                 >
                     <SelectTrigger id="customer_id" className="mt-1 w-full" aria-invalid={!!form.errors.customer_id}>
                         <SelectValue placeholder="Select customer" />
@@ -48,6 +59,26 @@ function AlertForm({ form, customers, statuses, onSubmit, onCancel, isEditing })
                     Current due: <strong>৳{parseFloat(selected.balance).toFixed(2)}</strong>
                 </p>
             )}
+
+            <FormField label="Sale Invoice" name="sell_id" error={form.errors.sell_id}>
+                <Select
+                    value={form.data.sell_id ? String(form.data.sell_id) : undefined}
+                    onValueChange={(value) => form.setData('sell_id', value === 'none' ? '' : value)}
+                    disabled={!form.data.customer_id}
+                >
+                    <SelectTrigger id="sell_id" className="mt-1 w-full" aria-invalid={!!form.errors.sell_id}>
+                        <SelectValue placeholder={form.data.customer_id ? 'Select sale invoice (optional)' : 'Select a customer first'} />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="none">No invoice</SelectItem>
+                        {customerSales.map((sale) => (
+                            <SelectItem key={sale.id} value={String(sale.id)}>
+                                {sale.invoice_number} — ৳{parseFloat(sale.due_amount).toFixed(2)} due
+                            </SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </FormField>
 
             <FormField label="Due Given Date" required name="due_given_date" error={form.errors.due_given_date}>
                 <Input
@@ -101,7 +132,7 @@ function AlertForm({ form, customers, statuses, onSubmit, onCancel, isEditing })
     );
 }
 
-export default function CustomerDueAlertIndex({ alerts, customers, filters, today, statuses }) {
+export default function CustomerDueAlertIndex({ alerts, customers, dueSales = [], filters, today, statuses }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const { can } = useCan();
@@ -110,7 +141,7 @@ export default function CustomerDueAlertIndex({ alerts, customers, filters, toda
     const [editing, setEditing] = useState(null);
     const [deleting, setDeleting] = useState(null);
 
-    const blank = { customer_id: '', due_given_date: today, status: 1 };
+    const blank = { customer_id: '', sell_id: '', due_given_date: today, status: 1 };
     const createForm = useForm(blank);
     const editForm = useForm(blank);
 
@@ -135,6 +166,7 @@ export default function CustomerDueAlertIndex({ alerts, customers, filters, toda
     function openEdit(row) {
         editForm.setData({
             customer_id: String(row.customer_id),
+            sell_id: row.sell_id ? String(row.sell_id) : '',
             due_given_date: row.due_given_date?.slice(0, 10) ?? today,
             status: row.status,
         });
@@ -147,7 +179,7 @@ export default function CustomerDueAlertIndex({ alerts, customers, filters, toda
             onSuccess: () => {
                 setCreating(false);
                 createForm.reset();
-                createForm.setData('due_given_date', today);
+                createForm.setData({ due_given_date: today, sell_id: '' });
             },
         });
     }
@@ -159,7 +191,7 @@ export default function CustomerDueAlertIndex({ alerts, customers, filters, toda
             onSuccess: () => {
                 setEditing(null);
                 editForm.reset();
-                editForm.setData('due_given_date', today);
+                editForm.setData({ due_given_date: today, sell_id: '' });
             },
         });
     }
@@ -183,6 +215,16 @@ export default function CustomerDueAlertIndex({ alerts, customers, filters, toda
 
     const columns = [
         { id: 'num', header: '#', render: (_, i) => (alerts.from ?? 0) + i },
+        {
+            id: 'invoice',
+            header: 'Invoice',
+            render: (row) =>
+                row.invoice_number ? (
+                    <span className="font-mono text-xs font-semibold text-primary">{row.invoice_number}</span>
+                ) : (
+                    <span className="text-muted-foreground">—</span>
+                ),
+        },
         {
             id: 'customer',
             header: 'Customer',
@@ -239,7 +281,7 @@ export default function CustomerDueAlertIndex({ alerts, customers, filters, toda
                         <Input
                             value={search}
                             onChange={(e) => setSearch(e.target.value)}
-                            placeholder="Search by customer name or phone…"
+                            placeholder="Search by invoice, name, or phone…"
                             className="pl-9"
                         />
                     </div>
@@ -272,7 +314,7 @@ export default function CustomerDueAlertIndex({ alerts, customers, filters, toda
                         if (!open) {
                             setCreating(false);
                             createForm.reset();
-                            createForm.setData('due_given_date', today);
+                            createForm.setData({ due_given_date: today, sell_id: '' });
                         }
                     }}
                 >
@@ -286,6 +328,7 @@ export default function CustomerDueAlertIndex({ alerts, customers, filters, toda
                         <AlertForm
                             form={createForm}
                             customers={customers}
+                            dueSales={dueSales}
                             statuses={statuses}
                             onSubmit={handleCreate}
                             onCancel={() => setCreating(false)}
@@ -307,6 +350,7 @@ export default function CustomerDueAlertIndex({ alerts, customers, filters, toda
                         <AlertForm
                             form={editForm}
                             customers={customers}
+                            dueSales={dueSales}
                             statuses={statuses}
                             onSubmit={handleUpdate}
                             onCancel={() => setEditing(null)}
@@ -328,7 +372,14 @@ export default function CustomerDueAlertIndex({ alerts, customers, filters, toda
                         <div className="px-5 pb-5 pt-4">
                             <p className="text-sm text-muted-foreground">
                                 Are you sure you want to delete the due alert for{' '}
-                                <strong>{deleting?.customer?.name}</strong>?
+                                <strong>{deleting?.customer?.name}</strong>
+                                {deleting?.invoice_number ? (
+                                    <>
+                                        {' '}
+                                        (<span className="font-mono">{deleting.invoice_number}</span>)
+                                    </>
+                                ) : null}
+                                ?
                             </p>
                             <div className="mt-4 flex justify-end gap-3 border-t pt-4">
                                 <DialogClose asChild>

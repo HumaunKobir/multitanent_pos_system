@@ -26,6 +26,7 @@ class CustomerDueAlertService
         float $dueAmount,
         ?string $dueGivenDate,
         ?string $dueAlertAction = null,
+        ?int $sellId = null,
     ): void {
         if ($dueAmount <= 0 || blank($dueGivenDate)) {
             return;
@@ -42,6 +43,9 @@ class CustomerDueAlertService
                 'status' => $dateChanged
                     ? CustomerDueAlertStatus::DateChanged
                     : $existingAlert->status,
+                ...($sellId !== null && $existingAlert->sell_id === null
+                    ? ['sell_id' => $sellId]
+                    : []),
             ]);
 
             return;
@@ -50,6 +54,7 @@ class CustomerDueAlertService
         CustomerDueAlert::create([
             'branch_id' => $branchId,
             'customer_id' => $customerId,
+            'sell_id' => $sellId,
             'due_given_date' => $dueGivenDate,
             'status' => CustomerDueAlertStatus::Unpaid,
         ]);
@@ -71,5 +76,19 @@ class CustomerDueAlertService
             ->when($branchId, fn (Builder $query) => $query->where('branch_id', $branchId))
             ->active()
             ->update(['status' => CustomerDueAlertStatus::Paid]);
+    }
+
+    /**
+     * Remove unpaid (or date-changed) due alerts that belong to a deleted sale.
+     */
+    public function deleteUnpaidForSell(int $sellId): void
+    {
+        CustomerDueAlert::query()
+            ->where('sell_id', $sellId)
+            ->whereIn('status', [
+                CustomerDueAlertStatus::Unpaid,
+                CustomerDueAlertStatus::DateChanged,
+            ])
+            ->delete();
     }
 }

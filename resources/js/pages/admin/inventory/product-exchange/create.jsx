@@ -165,6 +165,7 @@ export default function ProductExchangeCreate({
 
     async function lookupSale() {
         setLookupError('');
+        form.clearErrors();
         const res = await fetch(
             `${route('api.sales.lookup')}?invoice=${encodeURIComponent(invoiceQuery)}&for=exchange`,
             {
@@ -178,7 +179,23 @@ export default function ProductExchangeCreate({
         const json = await res.json();
 
         if (!res.ok) {
-            setLookupError(json.message ?? 'Sale not found.');
+            const message = json.message ?? 'Sale not found.';
+            setLookupError(message);
+            setSource(null);
+            setItems([]);
+            setManualDiscounts({});
+            setReplaceIndex(null);
+            setPaymentMode('party');
+            prevSettlementRef.current = 0;
+            form.setData({
+                ...form.data,
+                sell_id: '',
+                paid_amount: '0',
+                payment_type: '5',
+            });
+            if (res.status === 422) {
+                toast.warning(message);
+            }
 
             return;
         }
@@ -407,14 +424,16 @@ export default function ProductExchangeCreate({
                                     : 'Enter invoice number and press Enter or click Load.'
                             }
                         />
-                        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <DateField
-                                label="Exchange Date"
-                                value={form.data.date}
-                                onChange={(v) => form.setData('date', v)}
-                                error={form.errors.date}
-                            />
-                        </div>
+                        {source && (
+                            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <DateField
+                                    label="Exchange Date"
+                                    value={form.data.date}
+                                    onChange={(v) => form.setData('date', v)}
+                                    error={form.errors.date}
+                                />
+                            </div>
+                        )}
                     </InventoryCard>
 
                     {items.length > 0 && (
@@ -697,7 +716,7 @@ export default function ProductExchangeCreate({
                         </InventoryCard>
                     )}
 
-                    {summary && (
+                    {source && summary && (
                         <ProductExchangeDiscountsCard
                             summary={summary}
                             manualDiscounts={manualDiscounts}
@@ -713,53 +732,57 @@ export default function ProductExchangeCreate({
                         />
                     )}
 
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <CommentCard
-                            value={form.data.comment}
-                            onChange={(v) => form.setData('comment', v)}
-                            error={form.errors.comment}
-                        />
-                        <PaymentSummaryCard
-                            Icon={ArrowLeftRight}
-                            grossAmount={settlementAmount}
-                            paidAmount={form.data.paid_amount}
-                            onPaidAmountChange={(v) =>
-                                form.setData('paid_amount', v)
-                            }
-                            paidReadOnly={false}
-                            paidLabel={settlementLineLabel}
-                            settlementLineLabel={settlementLineLabel}
-                            showPaidAmount={!isParty}
-                            dueLabel={dueLabel}
-                            paymentMode={paymentMode}
-                            onPaymentModeChange={handlePaymentModeChange}
-                            paymentAccounts={paymentAccounts}
-                            partyLabel="Customer Account"
-                            partyPaidHint="The full exchange difference settles on the customer account. No cash or bank entry is posted."
-                            paidError={form.errors.paid_amount}
-                            showDue={!isParty && settlementAmount > 0}
-                        />
-                    </div>
+                    {source && (
+                        <>
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <CommentCard
+                                    value={form.data.comment}
+                                    onChange={(v) => form.setData('comment', v)}
+                                    error={form.errors.comment}
+                                />
+                                <PaymentSummaryCard
+                                    Icon={ArrowLeftRight}
+                                    grossAmount={settlementAmount}
+                                    paidAmount={form.data.paid_amount}
+                                    onPaidAmountChange={(v) =>
+                                        form.setData('paid_amount', v)
+                                    }
+                                    paidReadOnly={false}
+                                    paidLabel={settlementLineLabel}
+                                    settlementLineLabel={settlementLineLabel}
+                                    showPaidAmount={!isParty}
+                                    dueLabel={dueLabel}
+                                    paymentMode={paymentMode}
+                                    onPaymentModeChange={handlePaymentModeChange}
+                                    paymentAccounts={paymentAccounts}
+                                    partyLabel="Customer Account"
+                                    partyPaidHint="The full exchange difference settles on the customer account. No cash or bank entry is posted."
+                                    paidError={form.errors.paid_amount}
+                                    showDue={!isParty && settlementAmount > 0}
+                                />
+                            </div>
 
-                    <InventoryFormActions
-                        cancelRoute="inventory.product-exchange.index"
-                        submitLabel="Save Exchange"
-                        processing={form.processing}
-                        disabled={
-                            !form.data.sell_id ||
-                            items.length === 0 ||
-                            !items.some(
-                                (it) =>
-                                    parseInt(it.quantity || 0, 10) > 0 ||
-                                    parseInt(it.return_quantity || 0, 10) > 0,
-                            ) ||
-                            items.some(
-                                (it) =>
-                                    parseInt(it.quantity || 0, 10) > 0 &&
-                                    !it.new_product_id,
-                            )
-                        }
-                    />
+                            <InventoryFormActions
+                                cancelRoute="inventory.product-exchange.index"
+                                submitLabel="Save Exchange"
+                                processing={form.processing}
+                                disabled={
+                                    !form.data.sell_id ||
+                                    items.length === 0 ||
+                                    !items.some(
+                                        (it) =>
+                                            parseInt(it.quantity || 0, 10) > 0 ||
+                                            parseInt(it.return_quantity || 0, 10) > 0,
+                                    ) ||
+                                    items.some(
+                                        (it) =>
+                                            parseInt(it.quantity || 0, 10) > 0 &&
+                                            !it.new_product_id,
+                                    )
+                                }
+                            />
+                        </>
+                    )}
                 </form>
             </div>
         </>

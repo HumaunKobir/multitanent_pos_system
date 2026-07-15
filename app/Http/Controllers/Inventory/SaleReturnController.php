@@ -9,6 +9,7 @@ use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Customer;
+use App\Models\ProductExchange;
 use App\Models\ProductVariation;
 use App\Models\Promotion;
 use App\Models\SaleReturn;
@@ -52,11 +53,28 @@ class SaleReturnController extends Controller
 
         $returns = SaleReturn::query()->ownBranchUser()
             ->with(['customer:id,name', 'sell:id'])
-            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
-                $q->where('invoice_sequence', 'like', "%{$s}%")
-                    ->orWhere('id', 'like', "%{$s}%")
-                    ->orWhereHas('customer', fn ($q) => $q->where('name', 'like', "%{$s}%"));
-            }))
+            ->when($request->search, function ($q, string $s): void {
+                $q->where(function ($q) use ($s): void {
+                    $term = trim($s);
+                    $sequence = SaleReturn::extractInvoiceSequence($term);
+                    $isInvoiceQuery = $sequence !== null && (
+                        str_starts_with(strtoupper($term), SaleReturn::invoicePrefix())
+                        || (ctype_digit($term) && strlen($term) <= 8)
+                    );
+
+                    if ($isInvoiceQuery) {
+                        $q->where('invoice_sequence', $sequence)
+                            ->orWhere(fn ($q) => $q->whereNull('invoice_sequence')->where('id', $sequence));
+
+                        return;
+                    }
+
+                    $q->whereHas(
+                        'customer',
+                        fn ($q) => $q->where('name', 'like', "%{$term}%"),
+                    );
+                });
+            })
             ->latest()
             ->paginate(20)
             ->withQueryString()
@@ -122,6 +140,10 @@ class SaleReturnController extends Controller
                     ->with(['products', 'customer'])
                     ->lockForUpdate()
                     ->findOrFail($data['sell_id']);
+
+                if (ProductExchange::query()->where('sell_id', $parent->id)->exists()) {
+                    throw new \RuntimeException('This sale has been exchanged and cannot be returned.');
+                }
 
                 $branchId = $this->resolveSaleReturnBranchId($branchId, $parent);
 

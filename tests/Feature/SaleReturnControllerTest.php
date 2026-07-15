@@ -11,6 +11,7 @@ use App\Models\Customer;
 use App\Models\CustomerCoinTransaction;
 use App\Models\Ledger;
 use App\Models\Product;
+use App\Models\ProductExchange;
 use App\Models\ProductVariation;
 use App\Models\Promotion;
 use App\Models\PromotionTarget;
@@ -72,6 +73,106 @@ function saleReturnCashPayment(ChartOfAccount $cash, float|string $amount): arra
         ],
     ];
 }
+
+test('sale return index can search by full invoice number', function () {
+    $user = saleReturnUser();
+
+    $matchingSell = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+    ]);
+    $otherSell = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+    ]);
+
+    $matching = SaleReturn::query()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'sell_id' => $matchingSell->id,
+        'date' => now(),
+        'gross_amount' => 500,
+        'vat_amount' => 0,
+        'discount_amount' => 0,
+        'paid_amount' => 0,
+        'due_amount' => 500,
+        'payment_type' => 5,
+    ]);
+
+    SaleReturn::query()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'sell_id' => $otherSell->id,
+        'date' => now(),
+        'gross_amount' => 300,
+        'vat_amount' => 0,
+        'discount_amount' => 0,
+        'paid_amount' => 0,
+        'due_amount' => 300,
+        'payment_type' => 5,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('inventory.sale-return.index', ['search' => $matching->invoice_number]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/inventory/sale-return/index')
+            ->has('returns.data', 1)
+            ->where('returns.data.0.id', $matching->id)
+            ->where('returns.data.0.invoice_number', $matching->invoice_number)
+            ->where('filters.search', $matching->invoice_number));
+});
+
+test('sale return index can search by invoice sequence digits', function () {
+    $user = saleReturnUser();
+
+    $matchingSell = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+    ]);
+    $otherSell = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+    ]);
+
+    $matching = SaleReturn::query()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'sell_id' => $matchingSell->id,
+        'date' => now(),
+        'gross_amount' => 500,
+        'vat_amount' => 0,
+        'discount_amount' => 0,
+        'paid_amount' => 0,
+        'due_amount' => 500,
+        'payment_type' => 5,
+    ]);
+
+    SaleReturn::query()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'sell_id' => $otherSell->id,
+        'date' => now(),
+        'gross_amount' => 300,
+        'vat_amount' => 0,
+        'discount_amount' => 0,
+        'paid_amount' => 0,
+        'due_amount' => 300,
+        'payment_type' => 5,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('inventory.sale-return.index', ['search' => (string) $matching->invoice_sequence]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/inventory/sale-return/index')
+            ->has('returns.data', 1)
+            ->where('returns.data.0.id', $matching->id));
+});
 
 test('sale lookup shows remaining returnable quantities after a partial return', function () {
     $user = saleReturnUser();
@@ -236,7 +337,9 @@ test('product exchange create is blocked when sale has a return', function () {
         'inventory.sale-return.create',
         'inventory.product-exchange.create',
     ]);
+    $cash = seedAccountingAccounts(user: $user);
     ['product' => $oldProduct, 'batch' => $oldBatch] = saleReturnProduct(10, $user->branch_id);
+    ['product' => $newProduct, 'batch' => $newBatch] = saleReturnProduct(10, $user->branch_id);
 
     $sell = Sell::factory()->create([
         'branch_id' => $user->branch_id,
@@ -277,9 +380,109 @@ test('product exchange create is blocked when sale has a return', function () {
     ]);
 
     $this->actingAs($user)
+        ->post('/inventory/product-exchange', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => null,
+            'paid_amount' => '0',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'items' => [
+                [
+                    'sell_product_id' => $sellProduct->id,
+                    'product_id' => $newProduct->id,
+                    'variation_id' => null,
+                    'unit_price' => '500',
+                    'quantity' => '1',
+                ],
+            ],
+        ])
+        ->assertRedirect()
+        ->assertSessionHasErrors([
+            'items' => 'This sale has a sale return and cannot be exchanged.',
+        ]);
+
+    expect(ProductExchange::query()->where('sell_id', $sell->id)->exists())->toBeFalse();
+    expect((float) $newBatch->fresh()->available)->toBe(10.0);
+});
+
+test('sale return create and lookup are blocked when sale has been exchanged', function () {
+    $user = saleReturnUser([
+        'inventory.sale-return.view',
+        'inventory.sale-return.create',
+        'inventory.product-exchange.create',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+    ['product' => $oldProduct, 'batch' => $oldBatch] = saleReturnProduct(10, $user->branch_id);
+    ['product' => $newProduct] = saleReturnProduct(10, $user->branch_id);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'gross_amount' => 500,
+        'vat' => 0,
+        'paid_amount' => 500,
+        'type' => SaleType::Sale,
+    ]);
+
+    $sellProduct = SellProduct::query()->create([
+        'branch_id' => $user->branch_id,
+        'sell_id' => $sell->id,
+        'product_id' => $oldProduct->id,
+        'quantity' => 1,
+        'unit_price' => 500,
+        'batches' => [(string) $oldBatch->id => 1],
+    ]);
+
+    ProductExchange::query()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'sell_id' => $sell->id,
+        'date' => now()->format('Y-m-d'),
+        'gross_amount' => 500,
+        'net_amount' => 500,
+        'paid_amount' => 0,
+        'price_difference' => 0,
+    ])->products()->create([
+        'branch_id' => $user->branch_id,
+        'sell_product_id' => $sellProduct->id,
+        'old_product_id' => $oldProduct->id,
+        'old_quantity' => 1,
+        'old_unit_price' => 500,
+        'new_product_id' => $newProduct->id,
+        'new_quantity' => 1,
+        'new_unit_price' => 500,
+        'new_line_discount' => 0,
+    ]);
+
+    $this->actingAs($user)
+        ->getJson('/api/sales/lookup?invoice='.$sell->invoice_number)
+        ->assertUnprocessable()
+        ->assertJsonPath(
+            'message',
+            'This sale has been exchanged ('.ProductExchange::query()->where('sell_id', $sell->id)->first()->invoice_number.') and cannot be returned.',
+        );
+
+    $this->actingAs($user)
         ->getJson('/api/sales/lookup?invoice='.$sell->invoice_number.'&for=exchange')
         ->assertUnprocessable()
-        ->assertJsonPath('message', 'This sale has a sale return and cannot be exchanged.');
+        ->assertJsonPath('message', 'This sale has already been exchanged.');
+
+    $this->actingAs($user)
+        ->post('/inventory/sale-return', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            ...saleReturnCashPayment($cash, '500'),
+            'items' => [
+                ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
+            ],
+        ])
+        ->assertRedirect()
+        ->assertSessionHasErrors([
+            'items' => 'This sale has been exchanged and cannot be returned.',
+        ]);
+
+    expect(SaleReturn::query()->where('sell_id', $sell->id)->exists())->toBeFalse();
 });
 
 test('can create second return for remaining products on the same sale', function () {

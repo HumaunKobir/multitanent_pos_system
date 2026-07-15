@@ -49,6 +49,98 @@ function seedExchangeAccountingBalances(User $user, float $amount = 100000): voi
     $accounting->postAccountOpeningBalance($salesReturns, $amount, $date);
 }
 
+test('product exchange index can search by full invoice number', function () {
+    $user = productExchangeUser(['inventory.product-exchange.view', 'inventory.product-exchange.create']);
+    $branch = Branch::factory()->create();
+    $user->update(['branch_id' => $branch->id]);
+
+    $matchingSell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+    ]);
+    $otherSell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+    ]);
+
+    $matching = ProductExchange::query()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'sell_id' => $matchingSell->id,
+        'date' => now()->format('Y-m-d'),
+        'gross_amount' => 500,
+        'net_amount' => 500,
+        'paid_amount' => 0,
+        'price_difference' => 0,
+    ]);
+
+    ProductExchange::query()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'sell_id' => $otherSell->id,
+        'date' => now()->format('Y-m-d'),
+        'gross_amount' => 300,
+        'net_amount' => 300,
+        'paid_amount' => 0,
+        'price_difference' => 0,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('inventory.product-exchange.index', ['search' => $matching->invoice_number]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/inventory/product-exchange/index')
+            ->has('exchanges.data', 1)
+            ->where('exchanges.data.0.id', $matching->id)
+            ->where('exchanges.data.0.invoice_number', $matching->invoice_number)
+            ->where('filters.search', $matching->invoice_number));
+});
+
+test('product exchange index can search by invoice sequence digits', function () {
+    $user = productExchangeUser(['inventory.product-exchange.view', 'inventory.product-exchange.create']);
+    $branch = Branch::factory()->create();
+    $user->update(['branch_id' => $branch->id]);
+
+    $matchingSell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+    ]);
+    $otherSell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+    ]);
+
+    $matching = ProductExchange::query()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'sell_id' => $matchingSell->id,
+        'date' => now()->format('Y-m-d'),
+        'gross_amount' => 500,
+        'net_amount' => 500,
+        'paid_amount' => 0,
+        'price_difference' => 0,
+    ]);
+
+    ProductExchange::query()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'sell_id' => $otherSell->id,
+        'date' => now()->format('Y-m-d'),
+        'gross_amount' => 300,
+        'net_amount' => 300,
+        'paid_amount' => 0,
+        'price_difference' => 0,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('inventory.product-exchange.index', ['search' => (string) $matching->invoice_sequence]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/inventory/product-exchange/index')
+            ->has('exchanges.data', 1)
+            ->where('exchanges.data.0.id', $matching->id));
+});
+
 /**
  * @return array{cash_debit: float, cash_credit: float, ar_debit: float, ar_credit: float}
  */

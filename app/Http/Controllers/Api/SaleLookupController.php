@@ -53,11 +53,19 @@ class SaleLookupController extends Controller
             return response()->json(['message' => 'Sale not found.'], 404);
         }
 
-        if (ProductExchange::where('sell_id', $sell->id)->exists()) {
-            return response()->json(['message' => 'This sale has already been exchanged.'], 422);
+        $purpose = $request->string('for')->toString();
+
+        if ($exchange = ProductExchange::query()->where('sell_id', $sell->id)->first()) {
+            if ($purpose === 'exchange') {
+                $message = 'This sale has already been exchanged.';
+            } else {
+                $message = "This sale has been exchanged ({$exchange->invoice_number}) and cannot be returned.";
+            }
+
+            return response()->json(['message' => $message], 422);
         }
 
-        if ($request->string('for')->toString() === 'exchange'
+        if ($purpose === 'exchange'
             && SaleReturn::query()->where('sell_id', $sell->id)->exists()) {
             return response()->json(['message' => 'This sale has a sale return and cannot be exchanged.'], 422);
         }

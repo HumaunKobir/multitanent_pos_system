@@ -65,6 +65,7 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
 
     async function lookupSale() {
         setLookupError('');
+        form.clearErrors();
         const res = await fetch(`${route('api.sales.lookup')}?invoice=${encodeURIComponent(invoiceQuery)}`, {
             credentials: 'include',
             headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
@@ -75,6 +76,16 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
             setLookupError(message);
             setSource(null);
             setItems([]);
+            setManualDiscounts({});
+            setVatPercent('');
+            paymentsSeededForSellId.current = null;
+            setPayments(buildInitialReturnPayments([], 0, paymentAccounts));
+            form.setData({
+                ...form.data,
+                sell_id: '',
+                paid_amount: '0',
+                payment_type: '5',
+            });
             if (res.status === 422) {
                 toast.warning(message);
             }
@@ -225,14 +236,16 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                                     : 'Enter invoice number and press Enter or click Load.'
                             }
                         />
-                        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-                            <DateField
-                                label="Return Date"
-                                value={form.data.date}
-                                onChange={(v) => form.setData('date', v)}
-                                error={form.errors.date}
-                            />
-                        </div>
+                        {source && (
+                            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <DateField
+                                    label="Return Date"
+                                    value={form.data.date}
+                                    onChange={(v) => form.setData('date', v)}
+                                    error={form.errors.date}
+                                />
+                            </div>
+                        )}
                     </InventoryCard>
 
                     {items.length > 0 && (
@@ -301,40 +314,44 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                         />
                     )}
 
-                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                        <CommentCard
-                            value={form.data.comment}
-                            onChange={(v) => form.setData('comment', v)}
-                            error={form.errors.comment}
-                        />
-                        <SaleReturnRefundCard
-                            Icon={RotateCcw}
-                            grossAmount={returnSummary?.netAmount ?? 0}
-                            subtotalAmount={returnSummary?.grossAmount ?? null}
-                            discountAmount={returnSummary?.discountAmount ?? 0}
-                            vatAmount={returnSummary?.returnVat ?? 0}
-                            vatPercent={parseFloat(vatPercent || 0)}
-                            parentPaymentInfo={
-                                returnSummary
-                                    ? { paid: returnSummary.parentPaid, due: returnSummary.parentDue }
-                                    : null
-                            }
-                            payments={payments}
-                            paymentAccounts={paymentAccounts}
-                            onPaymentsChange={setPayments}
-                            errors={form.errors}
-                            exceedsSale={returnSummary?.exceedsSale ?? false}
-                            maxAmount={returnSummary?.maxNetAmount ?? null}
-                            paymentRequired={paymentRequired}
-                        />
-                    </div>
+                    {source && (
+                        <>
+                            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                <CommentCard
+                                    value={form.data.comment}
+                                    onChange={(v) => form.setData('comment', v)}
+                                    error={form.errors.comment}
+                                />
+                                <SaleReturnRefundCard
+                                    Icon={RotateCcw}
+                                    grossAmount={returnSummary?.netAmount ?? 0}
+                                    subtotalAmount={returnSummary?.grossAmount ?? null}
+                                    discountAmount={returnSummary?.discountAmount ?? 0}
+                                    vatAmount={returnSummary?.returnVat ?? 0}
+                                    vatPercent={parseFloat(vatPercent || 0)}
+                                    parentPaymentInfo={
+                                        returnSummary
+                                            ? { paid: returnSummary.parentPaid, due: returnSummary.parentDue }
+                                            : null
+                                    }
+                                    payments={payments}
+                                    paymentAccounts={paymentAccounts}
+                                    onPaymentsChange={setPayments}
+                                    errors={form.errors}
+                                    exceedsSale={returnSummary?.exceedsSale ?? false}
+                                    maxAmount={returnSummary?.maxNetAmount ?? null}
+                                    paymentRequired={paymentRequired}
+                                />
+                            </div>
 
-                    <InventoryFormActions
-                        cancelRoute="inventory.sale-return.index"
-                        submitLabel="Save Return"
-                        processing={form.processing}
-                        disabled={!form.data.sell_id || items.length === 0}
-                    />
+                            <InventoryFormActions
+                                cancelRoute="inventory.sale-return.index"
+                                submitLabel="Save Return"
+                                processing={form.processing}
+                                disabled={!form.data.sell_id || items.length === 0}
+                            />
+                        </>
+                    )}
                 </form>
             </div>
         </>

@@ -64,11 +64,28 @@ class SellController extends Controller
             ->sale()
             ->withSum('products as line_discount_total', 'discount')
             ->with(['customer:id,name,phone', 'productExchange:id,sell_id,invoice_sequence', 'saleReturns:id,sell_id,invoice_sequence'])
-            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
-                $q->where('invoice_sequence', 'like', "%{$s}%")
-                    ->orWhere('id', 'like', "%{$s}%")
-                    ->orWhereHas('customer', fn ($q) => $q->where('name', 'like', "%{$s}%")->orWhere('phone', 'like', "%{$s}%"));
-            }))
+            ->when($request->search, function ($q, string $s): void {
+                $q->where(function ($q) use ($s): void {
+                    $term = trim($s);
+                    $sequence = Sell::extractInvoiceSequence($term);
+                    $isInvoiceQuery = $sequence !== null && (
+                        str_starts_with(strtoupper($term), Sell::invoicePrefix())
+                        || (ctype_digit($term) && strlen($term) <= 8)
+                    );
+
+                    if ($isInvoiceQuery) {
+                        $q->where('invoice_sequence', $sequence)
+                            ->orWhere(fn ($q) => $q->whereNull('invoice_sequence')->where('id', $sequence));
+
+                        return;
+                    }
+
+                    $q->whereHas(
+                        'customer',
+                        fn ($q) => $q->where('name', 'like', "%{$term}%")->orWhere('phone', 'like', "%{$term}%"),
+                    );
+                });
+            })
             ->latest()
             ->paginate(20)
             ->withQueryString()

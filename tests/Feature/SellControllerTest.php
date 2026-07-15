@@ -74,6 +74,135 @@ test('authenticated user can view sell index', function () {
         ->assertInertia(fn (Assert $page) => $page->component('admin/inventory/sell/index')->has('sells'));
 });
 
+test('sell index can search by full invoice number', function () {
+    $branch = Branch::factory()->create();
+    $user = sellUser();
+    $user->update(['branch_id' => $branch->id]);
+
+    $customer = sellCustomer($branch->id);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'customer_id' => $customer->id,
+        'type' => SaleType::Sale,
+    ]);
+
+    Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'customer_id' => $customer->id,
+        'type' => SaleType::Sale,
+    ]);
+
+    expect($sell->invoice_number)->toStartWith('INVS');
+
+    $this->actingAs($user)
+        ->get(route('inventory.sell.index', ['search' => $sell->invoice_number]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/sell/index')
+            ->has('sells.data', 1)
+            ->where('sells.data.0.id', $sell->id)
+            ->where('sells.data.0.invoice_number', $sell->invoice_number)
+            ->where('filters.search', $sell->invoice_number));
+});
+
+test('sell index can search by invoice sequence digits', function () {
+    $branch = Branch::factory()->create();
+    $user = sellUser();
+    $user->update(['branch_id' => $branch->id]);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+    ]);
+
+    Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('inventory.sell.index', ['search' => (string) $sell->invoice_sequence]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/sell/index')
+            ->has('sells.data', 1)
+            ->where('sells.data.0.id', $sell->id));
+});
+
+test('sell index digit search does not match customer phones containing that digit', function () {
+    $branch = Branch::factory()->create();
+    $user = sellUser();
+    $user->update(['branch_id' => $branch->id]);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $branch->id,
+        'name' => 'Phone Has Ones',
+        'phone' => '01711111111',
+        'is_default' => false,
+    ]);
+
+    $matching = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'customer_id' => $customer->id,
+        'type' => SaleType::Sale,
+    ]);
+
+    Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'customer_id' => $customer->id,
+        'type' => SaleType::Sale,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('inventory.sell.index', ['search' => (string) $matching->invoice_sequence]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/sell/index')
+            ->has('sells.data', 1)
+            ->where('sells.data.0.id', $matching->id));
+});
+
+test('sell index can search by customer name', function () {
+    $branch = Branch::factory()->create();
+    $user = sellUser();
+    $user->update(['branch_id' => $branch->id]);
+
+    $customer = Customer::factory()->create([
+        'branch_id' => $branch->id,
+        'name' => 'UniqueSellSearch '.Str::random(8),
+        'phone' => '019'.fake()->unique()->numerify('########'),
+        'is_default' => false,
+    ]);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'customer_id' => $customer->id,
+        'type' => SaleType::Sale,
+    ]);
+
+    Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('inventory.sell.index', ['search' => $customer->name]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/sell/index')
+            ->has('sells.data', 1)
+            ->where('sells.data.0.id', $sell->id));
+});
+
 test('sell index includes all discount fields for table total', function () {
     $user = sellUser();
     ['product' => $product] = sellProduct(20, $user->branch_id);

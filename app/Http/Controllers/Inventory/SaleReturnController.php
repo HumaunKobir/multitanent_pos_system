@@ -218,7 +218,12 @@ class SaleReturnController extends Controller
                     ]);
                 }
 
-                $refund = $this->resolveReturnRefund($data, $request, $netReturnAmount);
+                $refund = $this->resolveReturnRefund(
+                    $data,
+                    $request,
+                    $netReturnAmount,
+                    (float) $parent->paid_amount,
+                );
                 $paidAmount = $refund['paid_amount'];
                 $dueAmount = $refund['due_amount'];
                 $paymentType = $refund['payment_type'];
@@ -578,7 +583,12 @@ class SaleReturnController extends Controller
                     ]);
                 }
 
-                $refund = $this->resolveReturnRefund($data, $request, $netReturnAmount);
+                $refund = $this->resolveReturnRefund(
+                    $data,
+                    $request,
+                    $netReturnAmount,
+                    (float) $parent->paid_amount,
+                );
                 $paidAmount = $refund['paid_amount'];
                 $dueAmount = $refund['due_amount'];
                 $paymentType = $refund['payment_type'];
@@ -717,7 +727,13 @@ class SaleReturnController extends Controller
                 $this->rollbackSaleReturnCustomerBalance($saleReturn);
 
                 $netReturnAmount = (float) $saleReturn->net_amount;
-                $refund = $this->resolveReturnRefund($data, $request, $netReturnAmount);
+                $saleReturn->loadMissing('sell');
+                $refund = $this->resolveReturnRefund(
+                    $data,
+                    $request,
+                    $netReturnAmount,
+                    (float) ($saleReturn->sell?->paid_amount ?? $netReturnAmount),
+                );
 
                 $saleReturn->update([
                     'date' => $data['date'],

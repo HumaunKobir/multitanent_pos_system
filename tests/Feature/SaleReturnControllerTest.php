@@ -11,7 +11,6 @@ use App\Models\Customer;
 use App\Models\CustomerCoinTransaction;
 use App\Models\Ledger;
 use App\Models\Product;
-use App\Models\ProductExchange;
 use App\Models\ProductVariation;
 use App\Models\Promotion;
 use App\Models\PromotionTarget;
@@ -52,6 +51,26 @@ function saleReturnProduct(float $available = 20, ?int $branchId = null): array
     $batch = Batch::factory()->for($product)->withStock($available)->create(['branch_id' => $branchId]);
 
     return compact('product', 'batch');
+}
+
+/**
+ * @return array{payment_type: string, payment_account_id: int, payments: list<array{payment_account_id: int, amount: string}>, paid_amount: string}
+ */
+function saleReturnCashPayment(ChartOfAccount $cash, float|string $amount): array
+{
+    $paid = (string) $amount;
+
+    return [
+        'paid_amount' => $paid,
+        'payment_type' => (string) ReceivedPaymentMethod::Cash->value,
+        'payment_account_id' => $cash->id,
+        'payments' => [
+            [
+                'payment_account_id' => $cash->id,
+                'amount' => $paid,
+            ],
+        ],
+    ];
 }
 
 test('sale lookup shows remaining returnable quantities after a partial return', function () {
@@ -217,9 +236,7 @@ test('product exchange create is blocked when sale has a return', function () {
         'inventory.sale-return.create',
         'inventory.product-exchange.create',
     ]);
-    $cash = seedAccountingAccounts(user: $user);
     ['product' => $oldProduct, 'batch' => $oldBatch] = saleReturnProduct(10, $user->branch_id);
-    ['product' => $newProduct, 'batch' => $newBatch] = saleReturnProduct(10, $user->branch_id);
 
     $sell = Sell::factory()->create([
         'branch_id' => $user->branch_id,
@@ -260,32 +277,14 @@ test('product exchange create is blocked when sale has a return', function () {
     ]);
 
     $this->actingAs($user)
-        ->from(route('inventory.product-exchange.create'))
-        ->post('/inventory/product-exchange', [
-            'sell_id' => $sell->id,
-            'date' => now()->format('Y-m-d'),
-            'paid_amount' => '100',
-            'payment_type' => (string) ReceivedPaymentMethod::Cash->value,
-            'payment_account_id' => $cash->id,
-            'items' => [
-                [
-                    'sell_product_id' => $sellProduct->id,
-                    'product_id' => $newProduct->id,
-                    'variation_id' => null,
-                    'unit_price' => '600',
-                    'quantity' => '1',
-                ],
-            ],
-        ])
-        ->assertRedirect(route('inventory.product-exchange.create'))
-        ->assertSessionHasErrors(['items' => 'This sale has a sale return and cannot be exchanged.']);
-
-    expect(ProductExchange::query()->where('sell_id', $sell->id)->exists())->toBeFalse();
+        ->getJson('/api/sales/lookup?invoice='.$sell->invoice_number.'&for=exchange')
+        ->assertUnprocessable()
+        ->assertJsonPath('message', 'This sale has a sale return and cannot be exchanged.');
 });
 
 test('can create second return for remaining products on the same sale', function () {
     $user = saleReturnUser();
-    seedAccountingAccounts(user: $user);
+    $cash = seedAccountingAccounts(user: $user);
     ['product' => $product, 'batch' => $batch] = saleReturnProduct(10, $user->branch_id);
 
     $sell = Sell::factory()->create([
@@ -311,8 +310,7 @@ test('can create second return for remaining products on the same sale', functio
         ->post('/inventory/sale-return', [
             'sell_id' => $sell->id,
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '500',
-            'payment_type' => '5',
+            ...saleReturnCashPayment($cash, '500'),
             'items' => [
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
             ],
@@ -323,8 +321,7 @@ test('can create second return for remaining products on the same sale', functio
         ->post('/inventory/sale-return', [
             'sell_id' => $sell->id,
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '500',
-            'payment_type' => '5',
+            ...saleReturnCashPayment($cash, '500'),
             'items' => [
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
             ],
@@ -374,7 +371,7 @@ test('sale lookup includes payment and discount fields for returns', function ()
 
 test('partial paid sale return stores proportional discount and caps refund', function () {
     $user = saleReturnUser();
-    seedAccountingAccounts(user: $user);
+    $cash = seedAccountingAccounts(user: $user);
     ['product' => $product, 'batch' => $batch] = saleReturnProduct(10, $user->branch_id);
     $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
 
@@ -404,8 +401,7 @@ test('partial paid sale return stores proportional discount and caps refund', fu
         ->post('/inventory/sale-return', [
             'sell_id' => $sell->id,
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '300',
-            'payment_type' => '5',
+            ...saleReturnCashPayment($cash, '300'),
             'items' => [
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '2'],
             ],
@@ -423,9 +419,50 @@ test('partial paid sale return stores proportional discount and caps refund', fu
     expect((float) $saleReturn->paid_amount)->toBe(300.0);
 });
 
-test('due sale return stores zero refund for unpaid sale', function () {
+test('paid sale return requires a payment option', function () {
     $user = saleReturnUser();
     seedAccountingAccounts(user: $user);
+    ['product' => $product, 'batch' => $batch] = saleReturnProduct(10, $user->branch_id);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'gross_amount' => 500,
+        'discount' => 0,
+        'vat' => 0,
+        'paid_amount' => 500,
+        'type' => SaleType::Sale,
+    ]);
+
+    $sellProduct = SellProduct::query()->create([
+        'branch_id' => $user->branch_id,
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'quantity' => 1,
+        'unit_price' => 500,
+        'batches' => [(string) $batch->id => 1],
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sale-return', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            'paid_amount' => '0',
+            'payment_type' => '5',
+            'items' => [
+                ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
+            ],
+        ])
+        ->assertSessionHasErrors([
+            'payments' => 'Select a payment option and enter the refund amount.',
+        ]);
+
+    expect(SaleReturn::query()->where('sell_id', $sell->id)->exists())->toBeFalse();
+});
+
+test('due sale return from unpaid sale still requires a payment option', function () {
+    $user = saleReturnUser();
+    $cash = seedAccountingAccounts(user: $user);
     ['product' => $product, 'batch' => $batch] = saleReturnProduct(10, $user->branch_id);
     $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
 
@@ -460,17 +497,30 @@ test('due sale return stores zero refund for unpaid sale', function () {
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
             ],
         ])
+        ->assertSessionHasErrors([
+            'payments' => 'Select a payment option and enter the refund amount.',
+        ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sale-return', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            ...saleReturnCashPayment($cash, '500'),
+            'items' => [
+                ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
+            ],
+        ])
         ->assertRedirect(route('inventory.sale-return.index'));
 
     $saleReturn = SaleReturn::query()->latest('id')->first();
 
-    expect((float) $saleReturn->paid_amount)->toBe(0.0);
+    expect((float) $saleReturn->paid_amount)->toBe(500.0);
     expect((float) $saleReturn->net_amount)->toBe(500.0);
 });
 
 test('sale return claws back promotion only when return qty meets the promotion min qty', function () {
     $user = saleReturnUser();
-    seedAccountingAccounts(user: $user);
+    $cash = seedAccountingAccounts(user: $user);
     ['product' => $product, 'batch' => $batch] = saleReturnProduct(10, $user->branch_id);
     $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
 
@@ -513,8 +563,7 @@ test('sale return claws back promotion only when return qty meets the promotion 
         ->post('/inventory/sale-return', [
             'sell_id' => $sell->id,
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '200',
-            'payment_type' => '5',
+            ...saleReturnCashPayment($cash, '200'),
             'items' => [
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '2'],
             ],
@@ -556,8 +605,7 @@ test('sale return claws back promotion only when return qty meets the promotion 
         ->post('/inventory/sale-return', [
             'sell_id' => $sell2->id,
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '170',
-            'payment_type' => '5',
+            ...saleReturnCashPayment($cash, '170'),
             'items' => [
                 ['sell_product_id' => $sellProduct2->id, 'quantity' => '3'],
             ],
@@ -573,7 +621,7 @@ test('sale return claws back promotion only when return qty meets the promotion 
 
 test('sale return net amount equals gross when sale had no invoice-level discounts', function () {
     $user = saleReturnUser();
-    seedAccountingAccounts(user: $user);
+    $cash = seedAccountingAccounts(user: $user);
     ['product' => $product, 'batch' => $batch] = saleReturnProduct(10, $user->branch_id);
 
     $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
@@ -604,8 +652,7 @@ test('sale return net amount equals gross when sale had no invoice-level discoun
         ->post('/inventory/sale-return', [
             'sell_id' => $sell->id,
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '500',
-            'payment_type' => '5',
+            ...saleReturnCashPayment($cash, '500'),
             'items' => [
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
             ],
@@ -623,7 +670,7 @@ test('sale return reverses customer coin balance proportionally', function () {
     $branch = Branch::factory()->create();
     $user = saleReturnUser();
     $user->update(['branch_id' => $branch->id]);
-    seedAccountingAccounts(user: $user, branchId: $branch->id);
+    $cash = seedAccountingAccounts(user: $user, branchId: $branch->id);
     ['product' => $product, 'batch' => $batch] = saleReturnProduct(10, $branch->id);
     $customer = Customer::factory()->create([
         'branch_id' => $branch->id,
@@ -660,8 +707,7 @@ test('sale return reverses customer coin balance proportionally', function () {
         ->post('/inventory/sale-return', [
             'sell_id' => $sell->id,
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '500',
-            'payment_type' => '5',
+            ...saleReturnCashPayment($cash, '500'),
             'items' => [
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
             ],
@@ -684,7 +730,7 @@ test('deleting a sale return restores customer coin balance', function () {
     $branch = Branch::factory()->create();
     $user = saleReturnUser();
     $user->update(['branch_id' => $branch->id]);
-    seedAccountingAccounts(user: $user, branchId: $branch->id);
+    $cash = seedAccountingAccounts(user: $user, branchId: $branch->id);
     ['product' => $product, 'batch' => $batch] = saleReturnProduct(10, $branch->id);
     $customer = Customer::factory()->create([
         'branch_id' => $branch->id,
@@ -721,8 +767,7 @@ test('deleting a sale return restores customer coin balance', function () {
         ->post('/inventory/sale-return', [
             'sell_id' => $sell->id,
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '500',
-            'payment_type' => '5',
+            ...saleReturnCashPayment($cash, '500'),
             'items' => [
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
             ],
@@ -923,9 +968,30 @@ test('customer account sale return can receive incremental cash refund from list
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
             ],
         ])
-        ->assertRedirect(route('inventory.sale-return.index'));
+        ->assertSessionHasErrors(['payments']);
 
-    $saleReturn = SaleReturn::query()->latest('id')->firstOrFail();
+    $saleReturn = SaleReturn::query()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'sell_id' => $sell->id,
+        'customer_id' => $customer->id,
+        'date' => now(),
+        'gross_amount' => 500,
+        'vat_amount' => 0,
+        'discount_amount' => 0,
+        'paid_amount' => 0,
+        'due_amount' => 500,
+        'payment_type' => ReceivedPaymentMethod::Customer_Account,
+    ]);
+
+    $saleReturn->products()->create([
+        'branch_id' => $user->branch_id,
+        'sell_product_id' => $sellProduct->id,
+        'product_id' => $product->id,
+        'quantity' => 1,
+        'unit_price' => 500,
+        'batches' => [(string) $batch->id => 1],
+    ]);
 
     expect((float) $saleReturn->due_amount)->toBe(500.0);
     expect($saleReturn->fresh()->isEditable())->toBeTrue();
@@ -954,7 +1020,7 @@ test('customer account sale return can receive incremental cash refund from list
 
 test('sale return edit includes returned elsewhere and available quantities per line', function () {
     $user = saleReturnUser();
-    seedAccountingAccounts(user: $user);
+    $cash = seedAccountingAccounts(user: $user);
     ['product' => $product, 'batch' => $batch] = saleReturnProduct(10, $user->branch_id);
 
     $sell = Sell::factory()->create([
@@ -980,8 +1046,7 @@ test('sale return edit includes returned elsewhere and available quantities per 
         ->post('/inventory/sale-return', [
             'sell_id' => $sell->id,
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '1000',
-            'payment_type' => '5',
+            ...saleReturnCashPayment($cash, '1000'),
             'items' => [
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
             ],
@@ -994,8 +1059,7 @@ test('sale return edit includes returned elsewhere and available quantities per 
         ->post('/inventory/sale-return', [
             'sell_id' => $sell->id,
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '1000',
-            'payment_type' => '5',
+            ...saleReturnCashPayment($cash, '1000'),
             'items' => [
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
             ],
@@ -1029,7 +1093,7 @@ test('sale return edit includes returned elsewhere and available quantities per 
 
 test('sale return update with unchanged variation qty does not require stock rollback', function () {
     $user = saleReturnUser();
-    seedAccountingAccounts(user: $user);
+    $cash = seedAccountingAccounts(user: $user);
     $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
 
     $product = Product::factory()->create(['branch_id' => $user->branch_id]);
@@ -1069,8 +1133,7 @@ test('sale return update with unchanged variation qty does not require stock rol
         ->post('/inventory/sale-return', [
             'sell_id' => $sell->id,
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '950',
-            'payment_type' => '5',
+            ...saleReturnCashPayment($cash, '950'),
             'items' => [
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
             ],
@@ -1095,8 +1158,7 @@ test('sale return update with unchanged variation qty does not require stock rol
     $this->actingAs($user)
         ->put(route('inventory.sale-return.update', $saleReturn), [
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '900',
-            'payment_type' => '5',
+            ...saleReturnCashPayment($cash, '900'),
             'items' => [
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
             ],
@@ -1109,7 +1171,7 @@ test('sale return update with unchanged variation qty does not require stock rol
     expect((float) $variation->fresh()->stock)->toBe(0.0);
 });
 
-test('sale return edit can set refund to zero while keeping return lines', function () {
+test('sale return edit requires payment option and rejects clearing refund to zero', function () {
     $user = saleReturnUser();
     $cash = seedAccountingAccounts(user: $user);
     $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
@@ -1139,9 +1201,7 @@ test('sale return edit can set refund to zero while keeping return lines', funct
         ->post('/inventory/sale-return', [
             'sell_id' => $sell->id,
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '1000',
-            'payment_type' => '0',
-            'payment_account_id' => $cash->id,
+            ...saleReturnCashPayment($cash, '1000'),
             'items' => [
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '2'],
             ],
@@ -1163,19 +1223,17 @@ test('sale return edit can set refund to zero while keeping return lines', funct
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '2'],
             ],
         ])
-        ->assertRedirect(route('inventory.sale-return.index'));
+        ->assertSessionHasErrors(['payments']);
 
     $saleReturn->refresh();
 
     expect($saleReturn->products)->toHaveCount(1);
     expect((float) $saleReturn->products->first()->quantity)->toBe(2.0);
-    expect((float) $saleReturn->paid_amount)->toBe(0.0);
-    expect((float) $saleReturn->due_amount)->toBe(1000.0);
-    expect($saleReturn->payment_type)->toBe(ReceivedPaymentMethod::Customer_Account);
-    expect($saleReturn->paymentStatusLabel())->toBe('unpaid');
+    expect((float) $saleReturn->paid_amount)->toBe(1000.0);
+    expect((float) $saleReturn->due_amount)->toBe(0.0);
 });
 
-test('sale return edit can clear cash refund after incremental settlement while keeping lines', function () {
+test('sale return create and edit reject missing payment option on paid sales', function () {
     $user = saleReturnUser();
     $cash = seedAccountingAccounts(user: $user);
     $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
@@ -1227,8 +1285,19 @@ test('sale return edit can clear cash refund after incremental settlement while 
         ->post('/inventory/sale-return', [
             'sell_id' => $sell->id,
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '0',
-            'payment_type' => '5',
+            ...saleReturnCashPayment($cash, '0'),
+            'items' => [
+                ['sell_product_id' => $sellProductA->id, 'quantity' => '1'],
+                ['sell_product_id' => $sellProductB->id, 'quantity' => '1'],
+            ],
+        ])
+        ->assertSessionHasErrors(['payments']);
+
+    $this->actingAs($user)
+        ->post('/inventory/sale-return', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            ...saleReturnCashPayment($cash, '1440'),
             'items' => [
                 ['sell_product_id' => $sellProductA->id, 'quantity' => '1'],
                 ['sell_product_id' => $sellProductB->id, 'quantity' => '1'],
@@ -1239,17 +1308,6 @@ test('sale return edit can clear cash refund after incremental settlement while 
     $saleReturn = SaleReturn::query()->latest('id')->firstOrFail();
 
     expect($saleReturn->products)->toHaveCount(2);
-
-    $this->actingAs($user)
-        ->put(route('inventory.sale-return.refund', $saleReturn), [
-            'date' => now()->format('Y-m-d'),
-            'amount' => (string) $saleReturn->dueAmount(),
-            'payment_account_id' => $cash->id,
-        ])
-        ->assertSessionDoesntHaveErrors();
-
-    $saleReturn->refresh();
-
     expect((float) $saleReturn->paid_amount)->toBe(1440.0);
     expect((float) $saleReturn->due_amount)->toBe(0.0);
 
@@ -1263,14 +1321,13 @@ test('sale return edit can clear cash refund after incremental settlement while 
                 ['sell_product_id' => $sellProductB->id, 'quantity' => '1'],
             ],
         ])
-        ->assertRedirect(route('inventory.sale-return.index'));
+        ->assertSessionHasErrors(['payments']);
 
     $saleReturn->refresh();
 
     expect($saleReturn->products)->toHaveCount(2);
-    expect((float) $saleReturn->paid_amount)->toBe(0.0);
-    expect((float) $saleReturn->due_amount)->toBe(1440.0);
-    expect($saleReturn->paymentStatusLabel())->toBe('unpaid');
+    expect((float) $saleReturn->paid_amount)->toBe(1440.0);
+    expect((float) $saleReturn->due_amount)->toBe(0.0);
 });
 
 test('sale return payment-only update preserves product lines and stock', function () {
@@ -1303,9 +1360,7 @@ test('sale return payment-only update preserves product lines and stock', functi
         ->post('/inventory/sale-return', [
             'sell_id' => $sell->id,
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '500',
-            'payment_type' => '0',
-            'payment_account_id' => $cash->id,
+            ...saleReturnCashPayment($cash, '500'),
             'items' => [
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
             ],
@@ -1318,14 +1373,12 @@ test('sale return payment-only update preserves product lines and stock', functi
     $this->actingAs($user)
         ->put(route('inventory.sale-return.update', $saleReturn), [
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '0',
-            'payment_type' => '5',
+            ...saleReturnCashPayment($cash, '0'),
             'items' => [
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
             ],
         ])
-        ->assertSessionDoesntHaveErrors()
-        ->assertRedirect(route('inventory.sale-return.index'));
+        ->assertSessionHasErrors(['payments']);
 
     $saleReturn->refresh();
 
@@ -1336,7 +1389,7 @@ test('sale return payment-only update preserves product lines and stock', functi
 
 test('sale return delete is blocked when variation stock is insufficient', function () {
     $user = saleReturnUser();
-    seedAccountingAccounts(user: $user);
+    $cash = seedAccountingAccounts(user: $user);
     $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
 
     $product = Product::factory()->create(['branch_id' => $user->branch_id]);
@@ -1376,8 +1429,7 @@ test('sale return delete is blocked when variation stock is insufficient', funct
         ->post('/inventory/sale-return', [
             'sell_id' => $sell->id,
             'date' => now()->format('Y-m-d'),
-            'paid_amount' => '0',
-            'payment_type' => '5',
+            ...saleReturnCashPayment($cash, '950'),
             'items' => [
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
             ],

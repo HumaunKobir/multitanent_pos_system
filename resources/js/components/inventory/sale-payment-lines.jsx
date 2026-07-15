@@ -3,11 +3,12 @@ import { cn } from '@/lib/utils';
 import { Plus, Trash2 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+import { RequiredMark } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
-function PaymentLineRow({ line, index, paymentAccounts, onUpdate, onRemove, selectClassName, inputClassName, errors }) {
+function PaymentLineRow({ line, index, paymentAccounts, onUpdate, onRemove, selectClassName, inputClassName, errors, requireAccount }) {
     const [localAmount, setLocalAmount] = useState(line.amount ?? '');
     const lastSentRef = useRef(line.amount ?? '');
 
@@ -34,8 +35,10 @@ function PaymentLineRow({ line, index, paymentAccounts, onUpdate, onRemove, sele
                     className={selectClassName}
                     value={line.payment_account_id ?? ''}
                     onChange={(e) => onUpdate(index, 'payment_account_id', e.target.value)}
+                    required={requireAccount}
                 >
-                    <option value="">Account</option>
+                    {!requireAccount && <option value="">Account</option>}
+                    {requireAccount && !line.payment_account_id && <option value="">Select payment option</option>}
                     {paymentAccounts.map((account) => (
                         <option key={account.id} value={String(account.id)}>
                             {account.label}
@@ -51,12 +54,13 @@ function PaymentLineRow({ line, index, paymentAccounts, onUpdate, onRemove, sele
             <div>
                 <Input
                     type="number"
-                    min="0"
+                    min={requireAccount ? '0.01' : '0'}
                     step="0.01"
                     value={localAmount}
                     onChange={handleAmountChange}
                     className={cn(inputClassName, 'text-right tabular-nums')}
                     placeholder="0"
+                    required={requireAccount}
                 />
                 {errors[`payments.${index}.amount`] && (
                     <p className="mt-0.5 text-[10px] text-destructive">{errors[`payments.${index}.amount`]}</p>
@@ -111,6 +115,7 @@ export function SalePaymentLines({
     compact = false,
     hideSummary = false,
     dueLabel = 'Due',
+    required = false,
 }) {
     const paymentSummary =
         collectionPayments.length > 0
@@ -157,7 +162,8 @@ export function SalePaymentLines({
         <div className="space-y-2">
             <div className="flex items-center justify-between gap-2">
                 <Label className={cn('text-muted-foreground', compact ? 'text-[10px]' : 'text-xs')}>
-                    Payment Accounts
+                    Payment Option
+                    {required && <RequiredMark />}
                 </Label>
                 <Button
                     type="button"
@@ -182,6 +188,7 @@ export function SalePaymentLines({
                     selectClassName={selectClassName}
                     inputClassName={inputClassName}
                     errors={errors}
+                    requireAccount={required}
                 />
             ))}
 

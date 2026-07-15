@@ -296,6 +296,7 @@ export function SaleReturnRefundCard({
     errors = {},
     exceedsSale = false,
     maxAmount = null,
+    paymentRequired = false,
 }) {
     const showDiscountBreakdown = subtotalAmount != null;
 
@@ -374,6 +375,7 @@ export function SaleReturnRefundCard({
                             errors={errors}
                             inputClassName={inputCls}
                             dueLabel="Due Refund"
+                            required={paymentRequired}
                         />
                     </div>
                 )}

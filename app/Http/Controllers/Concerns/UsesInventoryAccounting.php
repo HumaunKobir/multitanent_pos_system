@@ -283,21 +283,27 @@ trait UsesInventoryAccounting
      *     payment_lines: array<int, array{payment_account_id: int, amount: float}>
      * }
      */
-    protected function resolveReturnRefund(array $data, Request $request, float $netReturnAmount): array
+    protected function resolveReturnRefund(array $data, Request $request, float $netReturnAmount, float $parentPaidAmount = 0.0): array
     {
         $paymentLines = $this->normalizeSalePaymentLines($data);
         $maxRefund = round(min((float) ($data['paid_amount'] ?? 0), $netReturnAmount), 2);
 
+        if ($netReturnAmount > 0.009 && $paymentLines === []) {
+            throw ValidationException::withMessages([
+                'payments' => 'Select a payment option and enter the refund amount.',
+            ]);
+        }
+
         if ($paymentLines !== []) {
             $totalTendered = round(array_sum(array_column($paymentLines, 'amount')), 2);
 
-            if ($totalTendered > $maxRefund + 0.009) {
+            if ($totalTendered > $netReturnAmount + 0.009) {
                 throw ValidationException::withMessages([
                     'payments' => 'Refund total cannot exceed the refundable amount.',
                 ]);
             }
 
-            $effectivePaid = round(min($totalTendered, $maxRefund), 2);
+            $effectivePaid = round(min($totalTendered, $netReturnAmount), 2);
 
             return [
                 'paid_amount' => $effectivePaid,

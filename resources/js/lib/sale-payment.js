@@ -85,6 +85,27 @@ export function splitPaymentValidationError(payments) {
 }
 
 /**
+ * Sale returns require a payment option whenever the return net amount is greater than zero.
+ *
+ * @param {Array<{ payment_account_id?: number|string, amount?: number|string }>} payments
+ * @param {number|string} netAmount
+ * @returns {string|null}
+ */
+export function saleReturnPaymentRequiredError(payments, netAmount) {
+    const net = Math.max(0, parseFloat(netAmount) || 0);
+
+    if (net > 0.009) {
+        const hasRefundLine = serializeSalePayments(payments).length > 0;
+
+        if (!hasRefundLine) {
+            return 'Select a payment option and enter the refund amount.';
+        }
+    }
+
+    return splitPaymentValidationError(payments);
+}
+
+/**
  * @param {number|string|null|undefined} customerId
  * @returns {string|null}
  */

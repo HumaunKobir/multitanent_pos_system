@@ -14,12 +14,12 @@ import {
     inputCls,
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
-import { buildInitialReturnDiscounts, calcSaleReturnSummary, derivedVatPercent, saleReturnLineStats } from '@/lib/sale-return-summary';
-import { buildInitialSalePayments, computeSplitSalePayment, serializeSalePayments, splitPaymentValidationError } from '@/lib/sale-payment';
+import { buildInitialReturnDiscounts, buildInitialReturnPayments, calcSaleReturnSummary, derivedVatPercent, saleReturnLineStats } from '@/lib/sale-return-summary';
+import { computeSplitSalePayment, saleReturnPaymentRequiredError, serializeSalePayments } from '@/lib/sale-payment';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
 import { CalendarDays, Package, RotateCcw } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import { Input } from '@/components/ui/input';
 
@@ -32,7 +32,8 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
     const [items, setItems] = useState([]);
     const [manualDiscounts, setManualDiscounts] = useState({});
     const [vatPercent, setVatPercent] = useState('');
-    const [payments, setPayments] = useState(() => buildInitialSalePayments([], paymentAccounts));
+    const [payments, setPayments] = useState(() => buildInitialReturnPayments([], 0, paymentAccounts));
+    const paymentsSeededForSellId = useRef(null);
 
     useEffect(() => {
         if (flash?.success) toast.success(flash.success);
@@ -106,6 +107,8 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
         setManualDiscounts(initialManual);
         const defaultVat = derivedVatPercent(json.sell_discounts);
         setVatPercent(defaultVat > 0 ? String(defaultVat) : '');
+        paymentsSeededForSellId.current = null;
+        setPayments(buildInitialReturnPayments(json.payments ?? [], 0, paymentAccounts));
         form.setData({ ...form.data, sell_id: String(json.id), paid_amount: '0', payment_type: '5' });
     }
 
@@ -123,7 +126,23 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
     }
 
     const returnNetAmount = returnSummary?.netAmount ?? 0;
+    const paymentRequired = returnNetAmount > 0.009;
     const { totalPaid } = computeSplitSalePayment(payments, returnNetAmount);
+
+    useEffect(() => {
+        if (!source?.id || !returnSummary) {
+            return;
+        }
+
+        const seedKey = `${source.id}:${returnNetAmount.toFixed(2)}`;
+
+        if (paymentsSeededForSellId.current === seedKey) {
+            return;
+        }
+
+        paymentsSeededForSellId.current = seedKey;
+        setPayments(buildInitialReturnPayments(source.payments ?? [], returnNetAmount, paymentAccounts));
+    }, [source, returnNetAmount, paymentAccounts, returnSummary]);
 
     function handleSubmit(e) {
         e.preventDefault();
@@ -152,7 +171,7 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
             return;
         }
 
-        const paymentError = splitPaymentValidationError(payments);
+        const paymentError = saleReturnPaymentRequiredError(payments, returnNetAmount);
         if (paymentError) {
             toast.error(paymentError);
             return;
@@ -163,7 +182,7 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
         form.transform((data) => ({
             ...data,
             paid_amount: String(totalPaid),
-            payment_type: '5',
+            payment_type: serializedPayments.length > 0 ? '0' : '5',
             items: returnItems,
             payments: serializedPayments.length > 0 ? serializedPayments : undefined,
             manual_invoice_discount_type: manualDiscounts.invoiceType || 'flat',
@@ -306,6 +325,7 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                             errors={form.errors}
                             exceedsSale={returnSummary?.exceedsSale ?? false}
                             maxAmount={returnSummary?.maxNetAmount ?? null}
+                            paymentRequired={paymentRequired}
                         />
                     </div>
 

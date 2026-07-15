@@ -14,7 +14,7 @@ import {
 } from '@/components/inventory/inventory-form';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { calcSaleReturnSummary, saleReturnLineStats } from '@/lib/sale-return-summary';
-import { buildInitialSalePayments, computeSplitSalePayment, serializeSalePayments, splitPaymentValidationError } from '@/lib/sale-payment';
+import { buildInitialSalePayments, computeSplitSalePayment, saleReturnPaymentRequiredError, serializeSalePayments } from '@/lib/sale-payment';
 import { toDateInputValue } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
 import { Head, useForm, usePage } from '@inertiajs/react';
@@ -27,7 +27,9 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], payme
     const { flash } = usePage().props;
     const toast = useAppToast();
     const [items, setItems] = useState(saleReturn.items ?? []);
-    const [payments, setPayments] = useState(() => buildInitialSalePayments(saleReturn.refund_payments ?? [], []));
+    const [payments, setPayments] = useState(() =>
+        buildInitialSalePayments(saleReturn.refund_payments ?? [], paymentAccounts),
+    );
 
     const returnContext = {
         promotions: saleReturn.promotions ?? [],
@@ -87,14 +89,17 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], payme
         setManualDiscounts((prev) => ({ ...prev, [key]: value }));
     }
 
-    const returnNetAmount = returnSummary?.netAmount ?? 0;
+    const returnNetAmount = paymentOnlyEdit
+        ? parseFloat(saleReturn.refund_amount ?? 0)
+        : (returnSummary?.netAmount ?? 0);
+    const paymentRequired = returnNetAmount > 0.009;
     const { totalPaid } = computeSplitSalePayment(payments, returnNetAmount);
 
     function handleSubmit(e) {
         e.preventDefault();
 
         if (paymentOnlyEdit) {
-            const paymentError = splitPaymentValidationError(payments);
+            const paymentError = saleReturnPaymentRequiredError(payments, returnNetAmount);
             if (paymentError) {
                 toast.error(paymentError);
                 return;
@@ -105,7 +110,7 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], payme
             form.transform((data) => ({
                 ...data,
                 paid_amount: String(totalPaid),
-                payment_type: '0',
+                payment_type: serializedPayments.length > 0 ? '0' : '5',
                 payments: serializedPayments.length > 0 ? serializedPayments : undefined,
             }));
             form.put(route('inventory.sale-return.update', saleReturn.id), {
@@ -142,7 +147,7 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], payme
             return;
         }
 
-        const paymentError = splitPaymentValidationError(payments);
+        const paymentError = saleReturnPaymentRequiredError(payments, returnNetAmount);
         if (paymentError) {
             toast.error(paymentError);
             return;
@@ -153,7 +158,7 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], payme
         form.transform((data) => ({
             ...data,
             paid_amount: String(totalPaid),
-            payment_type: '5',
+            payment_type: serializedPayments.length > 0 ? '0' : '5',
             items: returnItems,
             payments: serializedPayments.length > 0 ? serializedPayments : undefined,
             manual_invoice_discount_type: manualDiscounts.invoiceType || 'flat',
@@ -307,6 +312,7 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], payme
                             errors={form.errors}
                             exceedsSale={paymentOnlyEdit ? false : (returnSummary?.exceedsSale ?? false)}
                             maxAmount={paymentOnlyEdit ? parseFloat(saleReturn.refund_amount ?? 0) : (returnSummary?.maxNetAmount ?? null)}
+                            paymentRequired={paymentRequired}
                         />
                     </div>
 

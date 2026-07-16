@@ -10,6 +10,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Batch;
 use App\Models\Customer;
 use App\Models\ProductExchange;
+use App\Models\ProductExchangeProduct;
 use App\Models\ProductVariation;
 use App\Models\Promotion;
 use App\Models\SaleReturn;
@@ -23,6 +24,7 @@ use App\Services\InventoryCostService;
 use App\Services\InventoryStockService;
 use App\Services\PromotionService;
 use App\Services\SaleReturnDiscountService;
+use App\Services\SellProductAvailabilityService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -45,6 +47,7 @@ class SaleReturnController extends Controller
         private SaleReturnDiscountService $returnDiscounts,
         private PromotionService $promotionService,
         private CoinService $coinService,
+        private SellProductAvailabilityService $availability,
     ) {}
 
     public function index(Request $request): Response
@@ -123,6 +126,7 @@ class SaleReturnController extends Controller
             'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
+            'items.*.product_exchange_product_id' => ['nullable', 'integer', 'exists:product_exchange_products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'manual_invoice_discount_type' => ['nullable', 'in:flat,percent'],
             'manual_invoice_discount_value' => ['nullable', 'numeric', 'min:0'],
@@ -137,83 +141,19 @@ class SaleReturnController extends Controller
                 $parent = Sell::query()
                     ->ownBranchUser()
                     ->sale()
-                    ->with(['products', 'customer'])
+                    ->with(['products', 'customer', 'productExchange.products'])
                     ->lockForUpdate()
                     ->findOrFail($data['sell_id']);
 
-                if (ProductExchange::query()->where('sell_id', $parent->id)->exists()) {
-                    throw new \RuntimeException('This sale has been exchanged and cannot be returned.');
-                }
-
                 $branchId = $this->resolveSaleReturnBranchId($branchId, $parent);
 
-                $returnedByLine = $this->returnedQuantities($parent->id);
-                $grossAmount = 0.0;
-                $returnLineDiscount = 0.0;
-                $returnPromotionDiscount = 0.0;
-                $lines = [];
+                $built = $this->buildSaleReturnLines($parent, null, $data, $branchId);
+                $lines = $built['lines'];
+                $grossAmount = $built['gross_amount'];
+                $returnLineDiscount = $built['return_line_discount'];
+                $returnPromotionDiscount = $built['return_promotion_discount'];
 
-                foreach ($data['items'] as $item) {
-                    $returnQty = (float) $item['quantity'];
-
-                    if ($returnQty <= 0) {
-                        continue;
-                    }
-
-                    $sellProduct = $parent->products
-                        ->firstWhere('id', (int) $item['sell_product_id']);
-
-                    if (! $sellProduct) {
-                        throw new \RuntimeException('Invalid sale line.');
-                    }
-
-                    $maxReturn = (float) $sellProduct->quantity - ($returnedByLine[$sellProduct->id] ?? 0);
-
-                    if ($returnQty > $maxReturn) {
-                        throw new \RuntimeException('Return quantity exceeds available quantity.');
-                    }
-
-                    $batchMap = $this->scaleBatchMapForReturn($sellProduct->batches ?? [], $returnQty);
-
-                    if ($batchMap !== []) {
-                        $this->stock->restoreFromBatchMap(
-                            $batchMap,
-                            fn (Batch $batch, float $qty) => $batch->saleReturnStock($qty)
-                        );
-                    } elseif ($sellProduct->variation_id) {
-                        $this->stock->restoreVariation((int) $sellProduct->variation_id, $returnQty);
-                    } else {
-                        throw new \RuntimeException('Unable to restore stock for a sale line.');
-                    }
-
-                    $catalogUnitPrice = (float) ($sellProduct->original_unit_price ?? $sellProduct->unit_price);
-                    $grossAmount += $returnQty * $catalogUnitPrice;
-
-                    $soldQty = (float) $sellProduct->quantity;
-                    if ($soldQty > 0) {
-                        $ratio = $returnQty / $soldQty;
-                        $returnLineDiscount += (float) $sellProduct->discount * $ratio;
-                        $returnPromotionDiscount += $this->returnDiscounts->promotionClawback(
-                            $sellProduct,
-                            $returnQty,
-                            $parent,
-                        );
-                    }
-
-                    $lines[] = [
-                        'branch_id' => $branchId,
-                        'sell_product_id' => $sellProduct->id,
-                        'product_id' => $sellProduct->product_id,
-                        'variation_id' => $sellProduct->variation_id,
-                        'quantity' => $returnQty,
-                        'unit_price' => $catalogUnitPrice,
-                        'batches' => $batchMap,
-                    ];
-                }
-
-                if ($lines === []) {
-                    throw new \RuntimeException('At least one line with return quantity greater than zero is required.');
-                }
+                $this->applySaleReturnStockDelta(collect(), $lines, $parent);
 
                 $totals = $this->returnDiscounts->calculate(
                     $parent,
@@ -335,7 +275,7 @@ class SaleReturnController extends Controller
         $parent = Sell::query()
             ->ownBranchUser()
             ->sale()
-            ->with('products')
+            ->with(['products', 'productExchange.products'])
             ->find($saleReturn->sell_id);
 
         $returnLineDiscount = 0.0;
@@ -343,19 +283,9 @@ class SaleReturnController extends Controller
 
         if ($parent) {
             foreach ($saleReturn->products as $line) {
-                $sellProduct = $parent->products->firstWhere('id', $line->sell_product_id);
-
-                if (! $sellProduct) {
-                    continue;
-                }
-
-                $soldQty = (float) $sellProduct->quantity;
-                $returnQty = (float) $line->quantity;
-
-                if ($soldQty > 0) {
-                    $returnLineDiscount += (float) $sellProduct->discount * ($returnQty / $soldQty);
-                    $returnPromotionDiscount += $this->returnDiscounts->promotionClawback($sellProduct, $returnQty, $parent);
-                }
+                $discounts = $this->resolveReturnLineDiscounts($line, $parent);
+                $returnLineDiscount += $discounts['line_discount'];
+                $returnPromotionDiscount += $discounts['promotion_discount'];
             }
         }
 
@@ -400,11 +330,18 @@ class SaleReturnController extends Controller
         $parent = Sell::query()
             ->ownBranchUser()
             ->sale()
-            ->with(['products.product:id,name,code,category_id,brand_id', 'products.variation:id,variation_data', 'payments'])
+            ->with([
+                'products.product:id,name,code,category_id,brand_id',
+                'products.variation:id,variation_data',
+                'payments',
+                'productExchange.products.newProduct:id,name,code,category_id,brand_id',
+                'productExchange.products.newVariation:id,variation_data',
+            ])
             ->findOrFail($saleReturn->sell_id);
 
-        $returnedByLine = $this->returnedQuantities($parent->id, $saleReturn->id);
-        $linesOnReturn = $saleReturn->products->keyBy('sell_product_id');
+        $returnedByLine = $this->availability->returnedQuantitiesByLine($parent->id, $saleReturn->id);
+        $exchangedByLine = $this->availability->exchangedQuantitiesByLine($parent->id);
+        $linesOnReturn = $saleReturn->products->whereNull('product_exchange_product_id')->keyBy('sell_product_id');
 
         $promotionIds = $parent->products->pluck('promotion_id')->filter()->unique()->values()->all();
         $promotionMap = $promotionIds !== []
@@ -412,9 +349,10 @@ class SaleReturnController extends Controller
             : collect();
 
         $items = $parent->products
-            ->map(function ($sp) use ($returnedByLine, $linesOnReturn, $promotionMap) {
+            ->map(function ($sp) use ($returnedByLine, $exchangedByLine, $linesOnReturn, $promotionMap) {
                 $returnedElsewhere = (float) ($returnedByLine[$sp->id] ?? 0);
-                $maxReturn = max(0, (float) $sp->quantity - $returnedElsewhere);
+                $exchangedElsewhere = (float) ($exchangedByLine[$sp->id] ?? 0);
+                $maxReturn = max(0, (float) $sp->quantity - $returnedElsewhere - $exchangedElsewhere);
                 $current = $linesOnReturn->get($sp->id);
 
                 if ($maxReturn <= 0 && ! $current) {
@@ -435,7 +373,9 @@ class SaleReturnController extends Controller
                 $returnedOnSale = $returnedElsewhere + $currentQty;
 
                 return [
+                    'line_type' => 'original',
                     'sell_product_id' => $sp->id,
+                    'product_exchange_product_id' => null,
                     'product_id' => $sp->product_id,
                     'variation_id' => $sp->variation_id,
                     'category_id' => $sp->product?->category_id,
@@ -450,14 +390,67 @@ class SaleReturnController extends Controller
                     'promotion_details' => $promotionDetails,
                     'sold_quantity' => (float) $sp->quantity,
                     'returned_elsewhere' => (int) $returnedElsewhere,
+                    'exchanged_quantity' => (int) $exchangedElsewhere,
                     'returned_quantity' => (int) $returnedOnSale,
-                    'available_quantity' => (int) max(0, (float) $sp->quantity - $returnedOnSale),
+                    'available_quantity' => (int) max(0, (float) $sp->quantity - $returnedOnSale - $exchangedElsewhere),
                     'max_return_quantity' => (int) $maxReturn,
                     'quantity' => $current ? (string) (int) $current->quantity : '0',
                 ];
             })
             ->filter()
             ->values();
+
+        $replacementItems = collect();
+        $exchange = $parent->productExchange;
+
+        if ($exchange !== null) {
+            $linesOnReturnByExchangeLine = $saleReturn->products
+                ->whereNotNull('product_exchange_product_id')
+                ->keyBy('product_exchange_product_id');
+
+            $replacementItems = $exchange->products
+                ->filter(fn (ProductExchangeProduct $line) => (float) $line->new_quantity > 0)
+                ->map(function (ProductExchangeProduct $line) use ($linesOnReturnByExchangeLine, $saleReturn, $exchange) {
+                    $current = $linesOnReturnByExchangeLine->get($line->id);
+                    $currentQty = $current ? (float) $current->quantity : 0.0;
+                    $available = $this->availability->availableReplacementQuantity($line, $saleReturn->id);
+                    $maxReturn = $available + $currentQty;
+
+                    if ($maxReturn <= 0 && ! $current) {
+                        return null;
+                    }
+
+                    return [
+                        'line_type' => 'replacement',
+                        'sell_product_id' => $line->sell_product_id,
+                        'product_exchange_product_id' => $line->id,
+                        'product_id' => $line->new_product_id,
+                        'variation_id' => $line->new_variation_id,
+                        'category_id' => $line->newProduct?->category_id,
+                        'brand_id' => $line->newProduct?->brand_id,
+                        'product_name' => $line->newProduct?->name,
+                        'product_code' => $line->newProduct?->code,
+                        'variation_label' => $line->newVariation?->variation_data['label'] ?? null,
+                        'unit_price' => (float) ($line->new_original_unit_price ?? $line->new_unit_price),
+                        'line_discount' => (float) $line->new_line_discount,
+                        'promotion_discount' => (float) $line->new_promotion_discount,
+                        'promotion_id' => $line->new_promotion_id,
+                        'promotion_details' => null,
+                        'sold_quantity' => (float) $line->new_quantity,
+                        'returned_elsewhere' => (int) ($line->new_quantity - $available - $currentQty),
+                        'exchanged_quantity' => 0,
+                        'returned_quantity' => (int) ($line->new_quantity - $available),
+                        'available_quantity' => (int) $available,
+                        'max_return_quantity' => (int) $maxReturn,
+                        'quantity' => $current ? (string) (int) $current->quantity : '0',
+                        'exchange_invoice_number' => $exchange->invoice_number,
+                    ];
+                })
+                ->filter()
+                ->values();
+        }
+
+        $items = $items->concat($replacementItems)->values();
 
         $breakdown = $this->resolveEditBreakdown($saleReturn, $parent);
 
@@ -535,6 +528,7 @@ class SaleReturnController extends Controller
             'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0'],
             'items' => ['required', 'array', 'min:1'],
             'items.*.sell_product_id' => ['required', 'exists:sell_products,id'],
+            'items.*.product_exchange_product_id' => ['nullable', 'integer', 'exists:product_exchange_products,id'],
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'manual_invoice_discount_type' => ['nullable', 'in:flat,percent'],
             'manual_invoice_discount_value' => ['nullable', 'numeric', 'min:0'],
@@ -553,12 +547,14 @@ class SaleReturnController extends Controller
         try {
             DB::transaction(function () use ($request, $saleReturn, $data, &$branchId) {
                 $saleReturn->load(['products', 'payments']);
-                $oldProducts = $saleReturn->products->keyBy('sell_product_id');
+                $oldProducts = $saleReturn->products->keyBy(
+                    fn (SaleReturnProduct $line) => $this->saleReturnLineKey((int) $line->sell_product_id, $line->product_exchange_product_id)
+                );
 
                 $parent = Sell::query()
                     ->ownBranchUser()
                     ->sale()
-                    ->with(['products', 'customer'])
+                    ->with(['products', 'customer', 'productExchange.products'])
                     ->lockForUpdate()
                     ->findOrFail($saleReturn->sell_id);
 
@@ -949,12 +945,14 @@ class SaleReturnController extends Controller
      */
     private function applySaleReturnStockDelta($oldProducts, array $newLines, Sell $parent): void
     {
-        $newBySellProduct = collect($newLines)->keyBy('sell_product_id');
-        $sellProductIds = $oldProducts->keys()->merge($newBySellProduct->keys())->unique();
+        $newByKey = collect($newLines)->keyBy(
+            fn (array $line) => $this->saleReturnLineKey((int) $line['sell_product_id'], $line['product_exchange_product_id'] ?? null)
+        );
+        $lineKeys = $oldProducts->keys()->merge($newByKey->keys())->unique();
 
-        foreach ($sellProductIds as $sellProductId) {
-            $oldLine = $oldProducts->get($sellProductId);
-            $newLine = $newBySellProduct->get($sellProductId);
+        foreach ($lineKeys as $lineKey) {
+            $oldLine = $oldProducts->get($lineKey);
+            $newLine = $newByKey->get($lineKey);
             $oldQty = $oldLine ? (float) $oldLine->quantity : 0.0;
             $newQty = $newLine ? (float) $newLine['quantity'] : 0.0;
             $delta = round($newQty - $oldQty, 2);
@@ -963,6 +961,15 @@ class SaleReturnController extends Controller
                 continue;
             }
 
+            $productExchangeProductId = $oldLine?->product_exchange_product_id ?? ($newLine['product_exchange_product_id'] ?? null);
+
+            if ($productExchangeProductId !== null) {
+                $this->applyReplacementReturnStockDelta((int) $productExchangeProductId, $oldLine, $delta);
+
+                continue;
+            }
+
+            $sellProductId = $oldLine?->sell_product_id ?? $newLine['sell_product_id'];
             $sellProduct = $parent->products->firstWhere('id', (int) $sellProductId);
 
             if ($sellProduct === null) {
@@ -1007,6 +1014,58 @@ class SaleReturnController extends Controller
         } else {
             throw new \RuntimeException('Unable to restore stock for a sale line.');
         }
+    }
+
+    /**
+     * Mirrors restoreStockForReturnLine/the deduct branch of applySaleReturnStockDelta, but
+     * sourced from the exchange replacement line's own batches/variation rather than the
+     * original sell line's — a replacement return restores/removes stock for the new SKU.
+     */
+    private function applyReplacementReturnStockDelta(int $productExchangeProductId, ?SaleReturnProduct $oldLine, float $delta): void
+    {
+        $exchangeLine = ProductExchangeProduct::query()->find($productExchangeProductId);
+
+        if ($exchangeLine === null) {
+            throw new \RuntimeException('Invalid exchange replacement line.');
+        }
+
+        if ($delta > 0) {
+            $batchMap = $this->scaleBatchMapForReturn($exchangeLine->new_batches ?? [], $delta);
+
+            if ($batchMap !== []) {
+                $this->stock->restoreFromBatchMap(
+                    $batchMap,
+                    fn (Batch $batch, float $qty) => $batch->saleReturnStock($qty)
+                );
+            } elseif ($exchangeLine->new_variation_id) {
+                $this->stock->restoreVariation((int) $exchangeLine->new_variation_id, $delta);
+            } else {
+                throw new \RuntimeException('Unable to restore stock for a replacement return line.');
+            }
+
+            return;
+        }
+
+        $deductQty = abs($delta);
+
+        if ($oldLine?->variation_id) {
+            $this->stock->deductVariation((int) $oldLine->variation_id, $deductQty);
+        } elseif (! empty($oldLine?->batches)) {
+            $batchMap = $this->scaleBatchMapForReturn($oldLine->batches, $deductQty);
+            $this->stock->deductFromBatchMap(
+                $batchMap,
+                fn (Batch $batch, float $batchQty) => $batch->outStock($batchQty)
+            );
+        } elseif ($exchangeLine->new_variation_id) {
+            $this->stock->deductVariation((int) $exchangeLine->new_variation_id, $deductQty);
+        } else {
+            throw new \RuntimeException('Unable to adjust stock for a replacement return line.');
+        }
+    }
+
+    private function saleReturnLineKey(int $sellProductId, ?int $productExchangeProductId): string
+    {
+        return $sellProductId.':'.($productExchangeProductId ?? '0');
     }
 
     private function syncSaleReturnCustomerCoins(
@@ -1117,19 +1176,9 @@ class SaleReturnController extends Controller
         $returnPromotionDiscount = 0.0;
 
         foreach ($saleReturn->products as $line) {
-            $sellProduct = $parent->products->firstWhere('id', $line->sell_product_id);
-
-            if (! $sellProduct) {
-                continue;
-            }
-
-            $soldQty = (float) $sellProduct->quantity;
-            $returnQty = (float) $line->quantity;
-
-            if ($soldQty > 0) {
-                $returnLineDiscount += (float) $sellProduct->discount * ($returnQty / $soldQty);
-                $returnPromotionDiscount += $this->returnDiscounts->promotionClawback($sellProduct, $returnQty, $parent);
-            }
+            $discounts = $this->resolveReturnLineDiscounts($line, $parent);
+            $returnLineDiscount += $discounts['line_discount'];
+            $returnPromotionDiscount += $discounts['promotion_discount'];
         }
 
         $invoiceLevel = max(0, (float) $saleReturn->discount_amount - $returnLineDiscount - $returnPromotionDiscount);
@@ -1142,6 +1191,43 @@ class SaleReturnController extends Controller
     }
 
     /**
+     * @return array{line_discount: float, promotion_discount: float}
+     */
+    private function resolveReturnLineDiscounts(SaleReturnProduct $line, Sell $parent): array
+    {
+        if ($line->product_exchange_product_id !== null) {
+            $exchangeLine = $parent->productExchange?->products->firstWhere('id', $line->product_exchange_product_id);
+
+            $issuedQty = (float) ($exchangeLine->new_quantity ?? 0);
+
+            if ($exchangeLine === null || $issuedQty <= 0) {
+                return ['line_discount' => 0.0, 'promotion_discount' => 0.0];
+            }
+
+            $ratio = (float) $line->quantity / $issuedQty;
+
+            return [
+                'line_discount' => (float) $exchangeLine->new_line_discount * $ratio,
+                'promotion_discount' => (float) $exchangeLine->new_promotion_discount * $ratio,
+            ];
+        }
+
+        $sellProduct = $parent->products->firstWhere('id', $line->sell_product_id);
+        $soldQty = (float) ($sellProduct->quantity ?? 0);
+
+        if ($sellProduct === null || $soldQty <= 0) {
+            return ['line_discount' => 0.0, 'promotion_discount' => 0.0];
+        }
+
+        $returnQty = (float) $line->quantity;
+
+        return [
+            'line_discount' => (float) $sellProduct->discount * ($returnQty / $soldQty),
+            'promotion_discount' => $this->returnDiscounts->promotionClawback($sellProduct, $returnQty, $parent),
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $data
      * @return array{
      *     lines: array<int, array<string, mixed>>,
@@ -1150,9 +1236,12 @@ class SaleReturnController extends Controller
      *     return_promotion_discount: float
      * }
      */
-    private function buildSaleReturnLines(Sell $parent, SaleReturn $saleReturn, array $data, ?int $branchId): array
+    private function buildSaleReturnLines(Sell $parent, ?SaleReturn $saleReturn, array $data, ?int $branchId): array
     {
-        $returnedByLine = $this->returnedQuantities($parent->id, $saleReturn->id);
+        $excludeId = $saleReturn?->id;
+        $returnedByLine = $this->availability->returnedQuantitiesByLine($parent->id, $excludeId);
+        $exchangedByLine = $this->availability->exchangedQuantitiesByLine($parent->id);
+        $exchange = $parent->productExchange;
         $grossAmount = 0.0;
         $returnLineDiscount = 0.0;
         $returnPromotionDiscount = 0.0;
@@ -1165,6 +1254,27 @@ class SaleReturnController extends Controller
                 continue;
             }
 
+            $exchangeProductId = ! empty($item['product_exchange_product_id'])
+                ? (int) $item['product_exchange_product_id']
+                : null;
+
+            if ($exchangeProductId !== null) {
+                $built = $this->buildReplacementReturnLine(
+                    $exchange,
+                    $exchangeProductId,
+                    (int) $item['sell_product_id'],
+                    $returnQty,
+                    $excludeId,
+                    $branchId,
+                );
+                $lines[] = $built['line'];
+                $grossAmount += $built['gross'];
+                $returnLineDiscount += $built['line_discount'];
+                $returnPromotionDiscount += $built['promotion_discount'];
+
+                continue;
+            }
+
             $sellProduct = $parent->products
                 ->firstWhere('id', (int) $item['sell_product_id']);
 
@@ -1172,7 +1282,9 @@ class SaleReturnController extends Controller
                 throw new \RuntimeException('Invalid sale line.');
             }
 
-            $maxReturn = (float) $sellProduct->quantity - ($returnedByLine[$sellProduct->id] ?? 0);
+            $maxReturn = (float) $sellProduct->quantity
+                - ($returnedByLine[$sellProduct->id] ?? 0)
+                - ($exchangedByLine[$sellProduct->id] ?? 0);
 
             if ($returnQty > $maxReturn) {
                 throw new \RuntimeException('Return quantity exceeds available quantity.');
@@ -1196,6 +1308,7 @@ class SaleReturnController extends Controller
             $lines[] = [
                 'branch_id' => $branchId,
                 'sell_product_id' => $sellProduct->id,
+                'product_exchange_product_id' => null,
                 'product_id' => $sellProduct->product_id,
                 'variation_id' => $sellProduct->variation_id,
                 'quantity' => $returnQty,
@@ -1216,6 +1329,67 @@ class SaleReturnController extends Controller
         ];
     }
 
+    /**
+     * Build a Sale Return line for an exchange replacement (new SKU) product, restoring stock
+     * for that new SKU rather than the original sold product it replaced.
+     *
+     * @return array{line: array<string, mixed>, gross: float, line_discount: float, promotion_discount: float}
+     */
+    private function buildReplacementReturnLine(
+        ?ProductExchange $exchange,
+        int $exchangeProductId,
+        int $sellProductId,
+        float $returnQty,
+        ?int $excludeSaleReturnId,
+        ?int $branchId,
+    ): array {
+        $exchangeLine = $exchange?->products->firstWhere('id', $exchangeProductId);
+
+        if ($exchangeLine === null || (int) $exchangeLine->sell_product_id !== $sellProductId) {
+            throw new \RuntimeException('Invalid exchange replacement line.');
+        }
+
+        $maxReturn = $this->availability->availableReplacementQuantity($exchangeLine, $excludeSaleReturnId);
+
+        if ($returnQty > $maxReturn) {
+            throw new \RuntimeException('Return quantity exceeds the available replacement quantity.');
+        }
+
+        $batchMap = $this->scaleBatchMapForReturn($exchangeLine->new_batches ?? [], $returnQty);
+        $catalogUnitPrice = (float) ($exchangeLine->new_original_unit_price ?? $exchangeLine->new_unit_price);
+        $gross = $returnQty * $catalogUnitPrice;
+
+        $issuedQty = (float) $exchangeLine->new_quantity;
+        $lineDiscount = 0.0;
+        $promotionDiscount = 0.0;
+
+        // The replacement's own promotion/line discount is clawed back proportionally to the
+        // returned share. This is a simpler rule than promotionClawback's full re-eligibility
+        // check for originally sold lines, but returning part of an exchange replacement is
+        // an edge case rare enough that a proportional carve-out is an acceptable trade-off.
+        if ($issuedQty > 0) {
+            $ratio = $returnQty / $issuedQty;
+            $lineDiscount = (float) $exchangeLine->new_line_discount * $ratio;
+            $promotionDiscount = (float) $exchangeLine->new_promotion_discount * $ratio;
+        }
+
+        return [
+            'line' => [
+                'branch_id' => $branchId,
+                'sell_product_id' => $sellProductId,
+                'product_exchange_product_id' => $exchangeLine->id,
+                'product_id' => $exchangeLine->new_product_id,
+                'variation_id' => $exchangeLine->new_variation_id,
+                'quantity' => $returnQty,
+                'unit_price' => $catalogUnitPrice,
+                'batches' => $batchMap,
+            ],
+            'gross' => $gross,
+            'line_discount' => round($lineDiscount, 2),
+            'promotion_discount' => round($promotionDiscount, 2),
+        ];
+    }
+
     /** @param  array<string, mixed>  $data */
     private function isPaymentOnlySaleReturnUpdate(SaleReturn $saleReturn, array $data): bool
     {
@@ -1224,19 +1398,23 @@ class SaleReturnController extends Controller
         }
 
         $submitted = collect($data['items'])->mapWithKeys(
-            fn (array $item) => [(int) $item['sell_product_id'] => (int) $item['quantity']]
+            fn (array $item) => [
+                $this->saleReturnLineKey((int) $item['sell_product_id'], ! empty($item['product_exchange_product_id']) ? (int) $item['product_exchange_product_id'] : null) => (int) $item['quantity'],
+            ]
         );
 
         $existing = $saleReturn->products->mapWithKeys(
-            fn (SaleReturnProduct $line) => [(int) $line->sell_product_id => (int) $line->quantity]
+            fn (SaleReturnProduct $line) => [
+                $this->saleReturnLineKey((int) $line->sell_product_id, $line->product_exchange_product_id) => (int) $line->quantity,
+            ]
         );
 
         if ($submitted->count() !== $existing->count()) {
             return false;
         }
 
-        foreach ($existing as $sellProductId => $quantity) {
-            if ((int) ($submitted[$sellProductId] ?? -1) !== $quantity) {
+        foreach ($existing as $lineKey => $quantity) {
+            if ((int) ($submitted[$lineKey] ?? -1) !== $quantity) {
                 return false;
             }
         }
@@ -1287,26 +1465,6 @@ class SaleReturnController extends Controller
                 Customer::whereKey($saleReturn->customer_id)->decrement('balance', $amount);
             }
         }
-    }
-
-    /** @return array<int, float> */
-    private function returnedQuantities(int $sellId, ?int $excludeSaleReturnId = null): array
-    {
-        $quantities = [];
-
-        $returns = SaleReturn::where('sell_id', $sellId)->with('products')->get();
-
-        foreach ($returns as $return) {
-            if ($excludeSaleReturnId !== null && $return->id === $excludeSaleReturnId) {
-                continue;
-            }
-
-            foreach ($return->products as $line) {
-                $quantities[$line->sell_product_id] = ($quantities[$line->sell_product_id] ?? 0) + (float) $line->quantity;
-            }
-        }
-
-        return $quantities;
     }
 
     /**

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProductExchangeProduct extends Model
 {
@@ -79,5 +80,10 @@ class ProductExchangeProduct extends Model
     public function newPromotion(): BelongsTo
     {
         return $this->belongsTo(Promotion::class, 'new_promotion_id');
+    }
+
+    public function saleReturnProducts(): HasMany
+    {
+        return $this->hasMany(SaleReturnProduct::class);
     }
 }

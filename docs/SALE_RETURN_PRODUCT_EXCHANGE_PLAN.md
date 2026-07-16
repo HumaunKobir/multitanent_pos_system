@@ -1,7 +1,7 @@
 # Sale Return + Product Exchange — Full Plan
 
 **Project:** Coolness Point  
-**Status:** Planned (not yet implemented beyond current qty coexistence)  
+**Status:** Implemented (2026-07-16) — see checklist in Section 9  
 **Date:** 2026-07-15
 
 ---
@@ -249,13 +249,20 @@ Stock + ledger (+ customer balance where relevant):
 
 ## 9. Todo checklist
 
-- [ ] Keep one ProductExchange document per sell; multi-line OK; edit for later changes; wire `excludeExchangeId`
-- [ ] Sale Return of replacements (partial/multiple INVSR); `product_exchange_product_id`; stock/refund/accounting for new SKU
-- [ ] Sale-return UI: Available/Exchanged + original + replacement lines
-- [ ] Exchange create/edit: `available_quantity` clamps; fix edit available payload
-- [ ] Fully-consumed lookup messages; overlay money/qty
-- [ ] Stock + ledger coexistence tests
-- [ ] Fix batch/coin/accounting issues proven by tests; Pint + run suite
+- [x] Keep one ProductExchange document per sell; multi-line OK; edit for later changes; wire `excludeExchangeId`
+- [x] Sale Return of replacements (partial/multiple INVSR); `product_exchange_product_id`; stock/refund/accounting for new SKU
+- [x] Sale-return UI: Available/Exchanged + original + replacement lines
+- [x] Exchange create/edit: `available_quantity` clamps; fix edit available payload
+- [x] Fully-consumed lookup messages; overlay money/qty
+- [x] Stock + ledger coexistence tests
+- [x] Fix batch/coin/accounting issues proven by tests; Pint + run suite
+
+**Residual / not fully covered by this pass:** replacement-line promotion clawback on return uses a
+simpler proportional carve-out rather than `promotionClawback`'s full re-eligibility check (see
+`SaleReturnController::buildReplacementReturnLine`); the invoice-discount/round-off proportion in
+`SaleReturnDiscountService::calculate` mixes original and replacement gross into one taxable base
+per return, which is correct for the common case but not separately verified for edge cases mixing
+both in one Sale Return. Fix only if a real scenario proves the money wrong.
 
 ---
 

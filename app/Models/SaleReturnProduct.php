@@ -11,6 +11,7 @@ class SaleReturnProduct extends Model
         'branch_id',
         'sale_return_id',
         'sell_product_id',
+        'product_exchange_product_id',
         'product_id',
         'variation_id',
         'quantity',
@@ -37,5 +38,15 @@ class SaleReturnProduct extends Model
     public function variation(): BelongsTo
     {
         return $this->belongsTo(ProductVariation::class, 'variation_id');
+    }
+
+    public function productExchangeProduct(): BelongsTo
+    {
+        return $this->belongsTo(ProductExchangeProduct::class);
+    }
+
+    public function isReplacementReturn(): bool
+    {
+        return $this->product_exchange_product_id !== null;
     }
 }

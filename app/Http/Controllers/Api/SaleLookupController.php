@@ -5,10 +5,10 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\ProductExchange;
 use App\Models\Promotion;
-use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Services\CoinService;
 use App\Services\PromotionService;
+use App\Services\SellProductAvailabilityService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -17,6 +17,7 @@ class SaleLookupController extends Controller
     public function __construct(
         private PromotionService $promotionService,
         private CoinService $coinService,
+        private SellProductAvailabilityService $availability,
     ) {}
 
     public function __invoke(Request $request): JsonResponse
@@ -55,37 +56,32 @@ class SaleLookupController extends Controller
 
         $purpose = $request->string('for')->toString();
 
-        if ($exchange = ProductExchange::query()->where('sell_id', $sell->id)->first()) {
-            if ($purpose === 'exchange') {
-                $message = 'This sale has already been exchanged.';
-            } else {
-                $message = "This sale has been exchanged ({$exchange->invoice_number}) and cannot be returned.";
-            }
-
-            return response()->json(['message' => $message], 422);
-        }
-
-        if ($purpose === 'exchange'
-            && SaleReturn::query()->where('sell_id', $sell->id)->exists()) {
-            return response()->json(['message' => 'This sale has a sale return and cannot be exchanged.'], 422);
-        }
-
-        $returnedQtyByLine = SaleReturn::query()
+        $exchange = ProductExchange::query()
             ->where('sell_id', $sell->id)
-            ->with('products')
-            ->get()
-            ->flatMap(fn ($return) => $return->products)
-            ->groupBy('sell_product_id')
-            ->map(fn ($lines) => $lines->sum('quantity'));
+            ->with(['products.newProduct:id,name,code,category_id,brand_id', 'products.newVariation:id,variation_data'])
+            ->first();
+
+        if ($purpose === 'exchange' && $exchange !== null) {
+            return response()->json(['message' => 'This sale has already been exchanged.'], 422);
+        }
+
+        // A pending exchange doesn't block a return: the original sale's remaining
+        // (non-exchanged) quantity can still be returned, and the exchange's own
+        // replacement lines become independently returnable below.
+        $returnedQtyByLine = $this->availability->returnedQuantitiesByLine($sell->id);
+        $exchangedQtyByLine = $exchange !== null
+            ? $this->availability->exchangedQuantitiesByLine($sell->id)
+            : [];
 
         $promotionIds = $sell->products->pluck('promotion_id')->filter()->unique()->values()->all();
         $promotionMap = $promotionIds !== []
             ? Promotion::whereIn('id', $promotionIds)->get()->keyBy('id')
             : collect();
 
-        $items = $sell->products->map(function ($line) use ($returnedQtyByLine, $promotionMap) {
+        $items = $sell->products->map(function ($line) use ($returnedQtyByLine, $exchangedQtyByLine, $promotionMap) {
             $sold = (float) $line->quantity;
             $alreadyReturned = (float) ($returnedQtyByLine[$line->id] ?? 0);
+            $alreadyExchanged = (float) ($exchangedQtyByLine[$line->id] ?? 0);
 
             $promotionDetails = null;
             if ($line->promotion_id && $promotionMap->has($line->promotion_id)) {
@@ -99,7 +95,9 @@ class SaleLookupController extends Controller
             }
 
             return [
+                'line_type' => 'original',
                 'sell_product_id' => $line->id,
+                'product_exchange_product_id' => null,
                 'product_id' => $line->product_id,
                 'product_name' => $line->product?->name,
                 'product_code' => $line->product?->code,
@@ -114,7 +112,8 @@ class SaleLookupController extends Controller
                 'promotion_details' => $promotionDetails,
                 'sold_quantity' => $sold,
                 'returned_quantity' => (int) $alreadyReturned,
-                'max_return_quantity' => (int) max(0, $sold - $alreadyReturned),
+                'exchanged_quantity' => (int) $alreadyExchanged,
+                'max_return_quantity' => (int) max(0, $sold - $alreadyReturned - $alreadyExchanged),
                 'batches' => $line->batches ?? [],
                 'sell_price' => $line->variation_id
                     ? (float) ($line->variation?->price ?? $line->unit_price)
@@ -122,8 +121,51 @@ class SaleLookupController extends Controller
             ];
         })->values();
 
-        if ($items->every(fn (array $item) => $item['max_return_quantity'] <= 0)) {
-            return response()->json(['message' => 'This sale has been fully returned.'], 422);
+        $replacementItems = collect();
+
+        if ($purpose !== 'exchange' && $exchange !== null) {
+            $replacementItems = $exchange->products
+                ->filter(fn ($line) => (float) $line->new_quantity > 0)
+                ->map(function ($line) use ($exchange) {
+                    $issued = (float) $line->new_quantity;
+                    $available = $this->availability->availableReplacementQuantity($line);
+
+                    return [
+                        'line_type' => 'replacement',
+                        'sell_product_id' => $line->sell_product_id,
+                        'product_exchange_product_id' => $line->id,
+                        'product_id' => $line->new_product_id,
+                        'product_name' => $line->newProduct?->name,
+                        'product_code' => $line->newProduct?->code,
+                        'variation_id' => $line->new_variation_id,
+                        'variation_label' => $line->newVariation?->variation_data['label'] ?? null,
+                        'category_id' => $line->newProduct?->category_id,
+                        'brand_id' => $line->newProduct?->brand_id,
+                        'unit_price' => (float) ($line->new_original_unit_price ?? $line->new_unit_price),
+                        'line_discount' => (float) $line->new_line_discount,
+                        'promotion_discount' => (float) $line->new_promotion_discount,
+                        'promotion_id' => $line->new_promotion_id,
+                        'promotion_details' => null,
+                        'sold_quantity' => $issued,
+                        'returned_quantity' => (int) max(0, $issued - $available),
+                        'exchanged_quantity' => 0,
+                        'max_return_quantity' => (int) $available,
+                        'batches' => $line->new_batches ?? [],
+                        'sell_price' => (float) $line->new_unit_price,
+                        'exchange_invoice_number' => $exchange->invoice_number,
+                    ];
+                })
+                ->values();
+        }
+
+        $allItems = $items->concat($replacementItems);
+
+        if ($allItems->every(fn (array $item) => $item['max_return_quantity'] <= 0)) {
+            $message = $exchange !== null
+                ? 'This sale has no returnable quantity remaining — the remainder was already returned or exchanged.'
+                : 'This sale has been fully returned.';
+
+            return response()->json(['message' => $message], 422);
         }
 
         return response()->json([
@@ -159,7 +201,7 @@ class SaleLookupController extends Controller
                     'amount' => (float) $payment->amount,
                 ])
                 ->values(),
-            'items' => $items,
+            'items' => $allItems->values(),
         ]);
     }
 

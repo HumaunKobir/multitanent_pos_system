@@ -11,7 +11,6 @@ use App\Models\Batch;
 use App\Models\Customer;
 use App\Models\ProductExchange;
 use App\Models\Promotion;
-use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\SpecialDiscount;
 use App\Services\CoinService;
@@ -19,6 +18,7 @@ use App\Services\InventoryAccountingService;
 use App\Services\InventoryStockService;
 use App\Services\ProductExchangeDiscountService;
 use App\Services\PromotionService;
+use App\Services\SellProductAvailabilityService;
 use App\Services\SpecialDiscountService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -41,6 +41,7 @@ class ProductExchangeController extends Controller
         private PromotionService $promotionService,
         private CoinService $coinService,
         private ProductExchangeDiscountService $exchangeDiscounts,
+        private SellProductAvailabilityService $availability,
     ) {}
 
     public function index(Request $request): Response
@@ -151,10 +152,6 @@ class ProductExchangeController extends Controller
 
                 if (ProductExchange::query()->where('sell_id', $parent->id)->exists()) {
                     throw new \RuntimeException('This sale has already been exchanged.');
-                }
-
-                if (SaleReturn::query()->where('sell_id', $parent->id)->exists()) {
-                    throw new \RuntimeException('This sale has a sale return and cannot be exchanged.');
                 }
 
                 $processed = $this->processExchangeLines($data, $parent, $branchId);
@@ -290,15 +287,17 @@ class ProductExchangeController extends Controller
         $paymentOnlyEdit = false;
 
         $linesOnExchange = $productExchange->products->keyBy('sell_product_id');
+        $returnedByLine = $this->availability->returnedQuantitiesByLine($parent->id);
 
         $promotionIds = $parent->products->pluck('promotion_id')->filter()->unique()->values()->all();
         $promotionMap = $promotionIds !== []
             ? Promotion::whereIn('id', $promotionIds)->get()->keyBy('id')
             : collect();
 
-        $items = $parent->products->map(function ($sp) use ($linesOnExchange, $promotionMap) {
+        $items = $parent->products->map(function ($sp) use ($linesOnExchange, $promotionMap, $returnedByLine) {
             $current = $linesOnExchange->get($sp->id);
             $hasSwap = $current && (float) $current->old_quantity > 0;
+            $returnedElsewhere = (float) ($returnedByLine[$sp->id] ?? 0);
 
             $promotionDetails = null;
             if ($sp->promotion_id && $promotionMap->has($sp->promotion_id)) {
@@ -327,6 +326,8 @@ class ProductExchangeController extends Controller
                 'old_unit_price' => $catalogPrice,
                 'original_old_unit_price' => $catalogPrice,
                 'sold_quantity' => (int) $sp->quantity,
+                'returned_elsewhere' => (int) $returnedElsewhere,
+                'available_quantity' => (int) max(0, (float) $sp->quantity - $returnedElsewhere),
                 'quantity' => $current ? (string) (int) $current->old_quantity : '0',
                 'return_quantity' => $current ? (string) (int) $current->return_quantity : '0',
                 'new_product_id' => $hasSwap ? $current->new_product_id : '',
@@ -457,7 +458,7 @@ class ProductExchangeController extends Controller
                     ->lockForUpdate()
                     ->findOrFail($productExchange->sell_id);
 
-                $processed = $this->processExchangeLines($data, $parent, $branchId);
+                $processed = $this->processExchangeLines($data, $parent, $branchId, $productExchange->id);
                 $totals = $processed['totals'];
                 $lines = $processed['lines'];
                 $oldTotal = $processed['old_total'];
@@ -850,7 +851,7 @@ class ProductExchangeController extends Controller
      *     old_total: float
      * }
      */
-    private function processExchangeLines(array $data, Sell $parent, ?int $branchId): array
+    private function processExchangeLines(array $data, Sell $parent, ?int $branchId, ?int $excludeExchangeId = null): array
     {
         $swapItems = array_values(array_filter(
             $data['items'],
@@ -865,6 +866,11 @@ class ProductExchangeController extends Controller
         );
         $promoLineMap = $promotionResult['items'];
         $promotionDiscountTotal = (float) $promotionResult['promotion_discount_total'];
+
+        // A pending Sale Return against the original line reduces what's still available to
+        // exchange (coexistence): the two consume the same original-quantity pool.
+        $returnedByLine = $this->availability->returnedQuantitiesByLine($parent->id);
+        $exchangedByLine = $this->availability->exchangedQuantitiesByLine($parent->id, $excludeExchangeId);
 
         $grossAmount = 0.0;
         $oldTotal = 0.0;
@@ -888,8 +894,12 @@ class ProductExchangeController extends Controller
                 throw new \RuntimeException('Invalid sale line.');
             }
 
-            if ($qty + $returnQty > (float) $sellProduct->quantity) {
-                throw new \RuntimeException('Exchange and return quantity exceeds sold quantity.');
+            $availableForExchange = (float) $sellProduct->quantity
+                - ($returnedByLine[$sellProduct->id] ?? 0)
+                - ($exchangedByLine[$sellProduct->id] ?? 0);
+
+            if ($qty + $returnQty > $availableForExchange) {
+                throw new \RuntimeException('Exchange and return quantity exceeds the available quantity.');
             }
 
             $lineOldCatalogPrice = (float) ($sellProduct->original_unit_price ?? $sellProduct->unit_price);

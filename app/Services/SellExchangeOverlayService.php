@@ -24,12 +24,9 @@ class SellExchangeOverlayService
     {
         $base = (float) $sell->net_amount;
         $exchange = $this->resolveExchange($sell);
+        $withExchange = $exchange ? $base + (float) $exchange->price_difference : $base;
 
-        if (! $exchange) {
-            return round($base, 2);
-        }
-
-        return round($base + (float) $exchange->price_difference, 2);
+        return round($withExchange - $this->saleReturnNetTotal($sell), 2);
     }
 
     public function effectivePaidAmount(Sell $sell): float
@@ -37,17 +34,18 @@ class SellExchangeOverlayService
         $base = (float) $sell->paid_amount;
         $exchange = $this->resolveExchange($sell);
 
-        if (! $exchange) {
-            return round($base, 2);
-        }
-
         // A positive settlement means the customer paid extra; a refund (negative
         // settlement) means cash flowed back to the customer, reducing what they paid.
-        $signedPaid = (float) $exchange->price_difference < 0
-            ? -(float) $exchange->paid_amount
-            : (float) $exchange->paid_amount;
+        $signedExchangePaid = 0.0;
 
-        return round($base + $signedPaid, 2);
+        if ($exchange) {
+            $signedExchangePaid = (float) $exchange->price_difference < 0
+                ? -(float) $exchange->paid_amount
+                : (float) $exchange->paid_amount;
+        }
+
+        // Cash refunded on a Sale Return also reduces what the customer effectively paid.
+        return round($base + $signedExchangePaid - $this->saleReturnPaidTotal($sell), 2);
     }
 
     public function effectiveDueAmount(Sell $sell): float
@@ -70,12 +68,16 @@ class SellExchangeOverlayService
         $sell->loadMissing(['products.product', 'products.variation', 'products.promotion']);
 
         $exchange = $this->resolveExchange($sell);
+        [$originalReturnedByLine, $replacementReturnedByExchangeLine] = $this->saleReturnQuantities($sell);
 
         if (! $exchange) {
-            return $sell->products
-                ->map(fn (SellProduct $line) => $this->formatProductLine($line))
-                ->values()
-                ->all();
+            $effective = [];
+
+            foreach ($sell->products as $line) {
+                $effective[] = $this->effectiveOriginalLine($line, (float) ($originalReturnedByLine[$line->id] ?? 0));
+            }
+
+            return array_values(array_filter($effective));
         }
 
         $exchange->loadMissing([
@@ -90,9 +92,14 @@ class SellExchangeOverlayService
         foreach ($sell->products as $line) {
             /** @var ProductExchangeProduct|null $exchangeLine */
             $exchangeLine = $exchangeLines->get($line->id);
+            $returnedIndependently = (float) ($originalReturnedByLine[$line->id] ?? 0);
 
             if (! $exchangeLine) {
-                $effective[] = $this->formatProductLine($line);
+                $originalLine = $this->effectiveOriginalLine($line, $returnedIndependently);
+
+                if ($originalLine !== null) {
+                    $effective[] = $originalLine;
+                }
 
                 continue;
             }
@@ -101,8 +108,9 @@ class SellExchangeOverlayService
             $exchangedQty = (float) $exchangeLine->old_quantity;
             $returnedQty = (float) $exchangeLine->return_quantity;
             // Returned quantity is refunded and removed from the sale entirely, so it
-            // no longer appears as an effective product line.
-            $remainingQty = round($soldQty - $exchangedQty - $returnedQty, 2);
+            // no longer appears as an effective product line. A separate Sale Return
+            // against the same original line further reduces what remains.
+            $remainingQty = round($soldQty - $exchangedQty - $returnedQty - $returnedIndependently, 2);
 
             if ($remainingQty > 0.001) {
                 $proportion = $soldQty > 0 ? $remainingQty / $soldQty : 0;
@@ -120,6 +128,18 @@ class SellExchangeOverlayService
                 continue;
             }
 
+            // A Sale Return of the replacement itself further reduces what remains issued.
+            $replacementReturned = (float) ($replacementReturnedByExchangeLine[$exchangeLine->id] ?? 0);
+            $replacementRemaining = round((float) $exchangeLine->new_quantity - $replacementReturned, 2);
+
+            if ($replacementRemaining <= 0.001) {
+                continue;
+            }
+
+            $replacementProportion = (float) $exchangeLine->new_quantity > 0
+                ? $replacementRemaining / (float) $exchangeLine->new_quantity
+                : 0;
+
             $effective[] = [
                 'id' => $line->id,
                 'product_id' => $exchangeLine->new_product_id,
@@ -127,13 +147,13 @@ class SellExchangeOverlayService
                 'product' => $exchangeLine->newProduct,
                 'variation' => $exchangeLine->newVariation,
                 'promotion' => $exchangeLine->newPromotion,
-                'quantity' => (float) $exchangeLine->new_quantity,
-                'free_quantity' => (float) $exchangeLine->new_free_quantity,
+                'quantity' => $replacementRemaining,
+                'free_quantity' => round((float) $exchangeLine->new_free_quantity * $replacementProportion, 2),
                 'unit_price' => (float) $exchangeLine->new_unit_price,
                 'original_unit_price' => (float) ($exchangeLine->new_original_unit_price ?? $exchangeLine->new_unit_price),
-                'discount' => (float) $exchangeLine->new_line_discount,
+                'discount' => round((float) $exchangeLine->new_line_discount * $replacementProportion, 2),
                 'promotion_id' => $exchangeLine->new_promotion_id,
-                'promotion_discount' => (float) $exchangeLine->new_promotion_discount,
+                'promotion_discount' => round((float) $exchangeLine->new_promotion_discount * $replacementProportion, 2),
                 'promotion_meta' => $exchangeLine->new_promotion_meta,
                 'is_exchange_replacement' => true,
                 'replaced_product_id' => $exchangeLine->old_product_id,
@@ -142,6 +162,83 @@ class SellExchangeOverlayService
         }
 
         return $effective;
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function effectiveOriginalLine(SellProduct $line, float $returnedIndependently): ?array
+    {
+        if ($returnedIndependently <= 0) {
+            return $this->formatProductLine($line);
+        }
+
+        $soldQty = (float) $line->quantity;
+        $remaining = round($soldQty - $returnedIndependently, 2);
+
+        if ($remaining <= 0.001) {
+            return null;
+        }
+
+        $proportion = $soldQty > 0 ? $remaining / $soldQty : 0;
+
+        return $this->formatProductLine($line, [
+            'quantity' => $remaining,
+            'free_quantity' => round((float) $line->free_quantity * $proportion, 2),
+            'discount' => round((float) $line->discount * $proportion, 2),
+            'promotion_discount' => round((float) $line->promotion_discount * $proportion, 2),
+        ]);
+    }
+
+    /**
+     * Quantity already returned via Sale Return, split into original-line returns
+     * (keyed by sell_product_id) and exchange-replacement returns (keyed by
+     * product_exchange_product_id).
+     *
+     * @return array{0: array<int, float>, 1: array<int, float>}
+     */
+    private function saleReturnQuantities(Sell $sell): array
+    {
+        $original = [];
+        $replacement = [];
+
+        foreach ($this->resolveSaleReturns($sell) as $return) {
+            foreach ($return->products as $line) {
+                if ($line->product_exchange_product_id !== null) {
+                    $replacement[$line->product_exchange_product_id] = ($replacement[$line->product_exchange_product_id] ?? 0) + (float) $line->quantity;
+
+                    continue;
+                }
+
+                $original[$line->sell_product_id] = ($original[$line->sell_product_id] ?? 0) + (float) $line->quantity;
+            }
+        }
+
+        return [$original, $replacement];
+    }
+
+    private function saleReturnNetTotal(Sell $sell): float
+    {
+        return round($this->resolveSaleReturns($sell)->sum(fn (SaleReturn $r) => (float) $r->net_amount), 2);
+    }
+
+    private function saleReturnPaidTotal(Sell $sell): float
+    {
+        return round($this->resolveSaleReturns($sell)->sum(fn (SaleReturn $r) => (float) $r->paid_amount), 2);
+    }
+
+    /**
+     * @return Collection<int, SaleReturn>
+     */
+    private function resolveSaleReturns(Sell $sell): Collection
+    {
+        if ($sell->relationLoaded('saleReturns')) {
+            $sell->saleReturns->each(fn (SaleReturn $r) => $r->loadMissing('products'));
+
+            return $sell->saleReturns;
+        }
+
+        return $sell->saleReturns()->with('products')->get();
     }
 
     /**

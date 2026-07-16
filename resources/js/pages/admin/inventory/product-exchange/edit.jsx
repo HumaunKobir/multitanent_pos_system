@@ -38,6 +38,15 @@ function mapExchangeLine(item) {
     };
 }
 
+// Already-returned quantity (independent Sale Return) narrows what's left available
+// to exchange for this line — coexistence between Sale Return and Product Exchange.
+function availableQty(item) {
+    return Math.max(
+        0,
+        parseInt(item.available_quantity ?? item.sold_quantity ?? 0, 10),
+    );
+}
+
 export default function ProductExchangeEdit({
     exchange,
     sellDiscounts: sellDiscountsProp = null,
@@ -320,10 +329,10 @@ export default function ProductExchangeEdit({
                     return it;
                 }
 
-                const soldQty = parseInt(it.sold_quantity || 0, 10);
+                const available = availableQty(it);
                 const returnQty = parseInt(it.return_quantity || 0, 10);
                 const currentQty = parseInt(it.quantity || 0, 10);
-                const defaultQty = Math.max(1, soldQty - returnQty);
+                const defaultQty = Math.max(1, available - returnQty);
 
                 return {
                     ...it,
@@ -353,8 +362,7 @@ export default function ProductExchangeEdit({
         const item = items[index];
         const maxSwap = Math.max(
             0,
-            parseInt(item.sold_quantity || 0, 10) -
-                parseInt(item.return_quantity || 0, 10),
+            availableQty(item) - parseInt(item.return_quantity || 0, 10),
         );
         const next = clampQuantityInput(rawValue, maxSwap, (max) => {
             toast.error(
@@ -368,8 +376,7 @@ export default function ProductExchangeEdit({
         const item = items[index];
         const maxReturn = Math.max(
             0,
-            parseInt(item.sold_quantity || 0, 10) -
-                parseInt(item.quantity || 0, 10),
+            availableQty(item) - parseInt(item.quantity || 0, 10),
         );
         const next = clampQuantityInput(rawValue, maxReturn, (max) => {
             toast.error(`Return quantity cannot exceed ${max} for this line.`);
@@ -407,12 +414,12 @@ export default function ProductExchangeEdit({
             (it) =>
                 parseInt(it.quantity || 0, 10) +
                     parseInt(it.return_quantity || 0, 10) >
-                parseInt(it.sold_quantity || 0, 10),
+                availableQty(it),
         );
 
         if (overLimit) {
             toast.error(
-                'Exchange and return quantity cannot exceed the sold quantity for any line.',
+                'Exchange and return quantity cannot exceed the available quantity for any line.',
             );
 
             return;
@@ -620,7 +627,7 @@ export default function ProductExchangeEdit({
                                         : 0;
                                     const maxReturnQty = Math.max(
                                         0,
-                                        parseInt(item.sold_quantity || 0, 10) -
+                                        availableQty(item) -
                                             parseInt(item.quantity || 0, 10),
                                     );
 
@@ -662,6 +669,11 @@ export default function ProductExchangeEdit({
                                             </td>
                                             <td className="px-3 py-2 text-right text-muted-foreground">
                                                 {item.sold_quantity}
+                                                {availableQty(item) < parseInt(item.sold_quantity || 0, 10) && (
+                                                    <span className="block text-[11px]">
+                                                        {availableQty(item)} available
+                                                    </span>
+                                                )}
                                             </td>
                                             <td className="px-2 py-1.5 text-right">
                                                 {paymentOnlyEdit ? (
@@ -672,11 +684,7 @@ export default function ProductExchangeEdit({
                                                         min="0"
                                                         max={Math.max(
                                                             0,
-                                                            parseInt(
-                                                                item.sold_quantity ||
-                                                                    0,
-                                                                10,
-                                                            ) -
+                                                            availableQty(item) -
                                                                 parseInt(
                                                                     item.return_quantity ||
                                                                         0,
@@ -697,7 +705,7 @@ export default function ProductExchangeEdit({
                                                                 e.target.value,
                                                             )
                                                         }
-                                                        className={`${inputCls} ml-auto w-20 text-right ${parseInt(item.quantity || 0, 10) + parseInt(item.return_quantity || 0, 10) > parseInt(item.sold_quantity || 0, 10) ? 'border-destructive' : ''}`}
+                                                        className={`${inputCls} ml-auto w-20 text-right ${parseInt(item.quantity || 0, 10) + parseInt(item.return_quantity || 0, 10) > availableQty(item) ? 'border-destructive' : ''}`}
                                                     />
                                                 )}
                                             </td>

@@ -274,7 +274,7 @@ test('sale lookup allows another return when quantities remain', function () {
         ->assertJsonPath('items.0.max_return_quantity', 1);
 });
 
-test('sale lookup for exchange is blocked when sale has a return', function () {
+test('sale lookup for exchange succeeds and clamps quantity when sale has a partial return', function () {
     $user = saleReturnUser([
         'inventory.sale-return.view',
         'inventory.sale-return.create',
@@ -320,10 +320,13 @@ test('sale lookup for exchange is blocked when sale has a return', function () {
         'batches' => [],
     ]);
 
+    // A return doesn't block an exchange (coexistence) — the remaining, non-returned
+    // quantity is still exchangeable.
     $this->actingAs($user)
         ->getJson('/api/sales/lookup?invoice='.$sell->invoice_number.'&for=exchange')
-        ->assertUnprocessable()
-        ->assertJsonPath('message', 'This sale has a sale return and cannot be exchanged.');
+        ->assertOk()
+        ->assertJsonPath('items.0.returned_quantity', 1)
+        ->assertJsonPath('items.0.max_return_quantity', 1);
 
     $this->actingAs($user)
         ->getJson('/api/sales/lookup?invoice='.$sell->invoice_number)
@@ -331,7 +334,7 @@ test('sale lookup for exchange is blocked when sale has a return', function () {
         ->assertJsonPath('items.0.max_return_quantity', 1);
 });
 
-test('product exchange create is blocked when sale has a return', function () {
+test('product exchange can be created for the remaining quantity after a partial return', function () {
     $user = saleReturnUser([
         'inventory.sale-return.view',
         'inventory.sale-return.create',
@@ -344,9 +347,9 @@ test('product exchange create is blocked when sale has a return', function () {
     $sell = Sell::factory()->create([
         'branch_id' => $user->branch_id,
         'user_id' => $user->id,
-        'gross_amount' => 500,
+        'gross_amount' => 1000,
         'vat' => 0,
-        'paid_amount' => 500,
+        'paid_amount' => 1000,
         'type' => SaleType::Sale,
     ]);
 
@@ -354,9 +357,9 @@ test('product exchange create is blocked when sale has a return', function () {
         'branch_id' => $user->branch_id,
         'sell_id' => $sell->id,
         'product_id' => $oldProduct->id,
-        'quantity' => 1,
+        'quantity' => 2,
         'unit_price' => 500,
-        'batches' => [(string) $oldBatch->id => 1],
+        'batches' => [(string) $oldBatch->id => 2],
     ]);
 
     SaleReturn::query()->create([
@@ -397,16 +400,33 @@ test('product exchange create is blocked when sale has a return', function () {
                 ],
             ],
         ])
-        ->assertRedirect()
-        ->assertSessionHasErrors([
-            'items' => 'This sale has a sale return and cannot be exchanged.',
-        ]);
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.product-exchange.index'));
 
-    expect(ProductExchange::query()->where('sell_id', $sell->id)->exists())->toBeFalse();
-    expect((float) $newBatch->fresh()->available)->toBe(10.0);
+    $exchange = ProductExchange::query()->where('sell_id', $sell->id)->first();
+    expect($exchange)->not->toBeNull();
+    expect((float) $exchange->products->first()->old_quantity)->toBe(1.0);
+    expect((float) $newBatch->fresh()->available)->toBe(9.0);
+
+    // Exchanging the already-returned unit on top would exceed what remains.
+    $this->actingAs($user)
+        ->post('/inventory/product-exchange', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => null,
+            'paid_amount' => '0',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'items' => [
+                ['sell_product_id' => $sellProduct->id, 'product_id' => $newProduct->id, 'unit_price' => '500', 'quantity' => '1'],
+            ],
+        ])
+        ->assertSessionHasErrors([
+            'items' => 'This sale has already been exchanged.',
+        ]);
 });
 
-test('sale return create and lookup are blocked when sale has been exchanged', function () {
+test('sale return can return the original remaining quantity after a partial exchange', function () {
     $user = saleReturnUser([
         'inventory.sale-return.view',
         'inventory.sale-return.create',
@@ -419,9 +439,9 @@ test('sale return create and lookup are blocked when sale has been exchanged', f
     $sell = Sell::factory()->create([
         'branch_id' => $user->branch_id,
         'user_id' => $user->id,
-        'gross_amount' => 500,
+        'gross_amount' => 1000,
         'vat' => 0,
-        'paid_amount' => 500,
+        'paid_amount' => 1000,
         'type' => SaleType::Sale,
     ]);
 
@@ -429,12 +449,12 @@ test('sale return create and lookup are blocked when sale has been exchanged', f
         'branch_id' => $user->branch_id,
         'sell_id' => $sell->id,
         'product_id' => $oldProduct->id,
-        'quantity' => 1,
+        'quantity' => 2,
         'unit_price' => 500,
-        'batches' => [(string) $oldBatch->id => 1],
+        'batches' => [(string) $oldBatch->id => 2],
     ]);
 
-    ProductExchange::query()->create([
+    $exchange = ProductExchange::query()->create([
         'branch_id' => $user->branch_id,
         'user_id' => $user->id,
         'sell_id' => $sell->id,
@@ -443,7 +463,8 @@ test('sale return create and lookup are blocked when sale has been exchanged', f
         'net_amount' => 500,
         'paid_amount' => 0,
         'price_difference' => 0,
-    ])->products()->create([
+    ]);
+    $exchange->products()->create([
         'branch_id' => $user->branch_id,
         'sell_product_id' => $sellProduct->id,
         'old_product_id' => $oldProduct->id,
@@ -455,18 +476,18 @@ test('sale return create and lookup are blocked when sale has been exchanged', f
         'new_line_discount' => 0,
     ]);
 
-    $this->actingAs($user)
-        ->getJson('/api/sales/lookup?invoice='.$sell->invoice_number)
-        ->assertUnprocessable()
-        ->assertJsonPath(
-            'message',
-            'This sale has been exchanged ('.ProductExchange::query()->where('sell_id', $sell->id)->first()->invoice_number.') and cannot be returned.',
-        );
-
+    // One-exchange-document rule still holds: a second exchange document is blocked.
     $this->actingAs($user)
         ->getJson('/api/sales/lookup?invoice='.$sell->invoice_number.'&for=exchange')
         ->assertUnprocessable()
         ->assertJsonPath('message', 'This sale has already been exchanged.');
+
+    // But the sale's non-exchanged remainder is still returnable (coexistence).
+    $this->actingAs($user)
+        ->getJson('/api/sales/lookup?invoice='.$sell->invoice_number)
+        ->assertOk()
+        ->assertJsonPath('items.0.exchanged_quantity', 1)
+        ->assertJsonPath('items.0.max_return_quantity', 1);
 
     $this->actingAs($user)
         ->post('/inventory/sale-return', [
@@ -477,12 +498,120 @@ test('sale return create and lookup are blocked when sale has been exchanged', f
                 ['sell_product_id' => $sellProduct->id, 'quantity' => '1'],
             ],
         ])
-        ->assertRedirect()
-        ->assertSessionHasErrors([
-            'items' => 'This sale has been exchanged and cannot be returned.',
-        ]);
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.sale-return.index'));
 
-    expect(SaleReturn::query()->where('sell_id', $sell->id)->exists())->toBeFalse();
+    $saleReturn = SaleReturn::query()->where('sell_id', $sell->id)->first();
+    expect($saleReturn)->not->toBeNull();
+    expect((float) $saleReturn->products->first()->quantity)->toBe(1.0);
+    // The exchange fixture above was inserted directly (bypassing the controller), so the
+    // batch never had stock deducted for it — only the Sale Return's own restore applies.
+    expect((float) $oldBatch->fresh()->available)->toBe(11.0);
+});
+
+test('sale return can return an exchange replacement product, partially and then fully', function () {
+    $user = saleReturnUser([
+        'inventory.sale-return.view',
+        'inventory.sale-return.create',
+        'inventory.product-exchange.create',
+    ]);
+    $cash = seedAccountingAccounts(user: $user);
+    ['product' => $oldProduct, 'batch' => $oldBatch] = saleReturnProduct(10, $user->branch_id);
+    ['product' => $newProduct, 'batch' => $newBatch] = saleReturnProduct(10, $user->branch_id);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'gross_amount' => 1000,
+        'vat' => 0,
+        'paid_amount' => 1000,
+        'type' => SaleType::Sale,
+    ]);
+
+    $sellProduct = SellProduct::query()->create([
+        'branch_id' => $user->branch_id,
+        'sell_id' => $sell->id,
+        'product_id' => $oldProduct->id,
+        'quantity' => 2,
+        'unit_price' => 500,
+        'batches' => [(string) $oldBatch->id => 2],
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/product-exchange', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            'comment' => null,
+            'paid_amount' => '0',
+            'payment_type' => ReceivedPaymentMethod::Cash->value,
+            'payment_account_id' => $cash->id,
+            'items' => [
+                [
+                    'sell_product_id' => $sellProduct->id,
+                    'product_id' => $newProduct->id,
+                    'variation_id' => null,
+                    'unit_price' => '500',
+                    'quantity' => '2',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.product-exchange.index'));
+
+    $exchange = ProductExchange::query()->where('sell_id', $sell->id)->firstOrFail();
+    $exchangeLine = $exchange->products->first();
+    expect((float) $newBatch->fresh()->available)->toBe(8.0);
+
+    $lookup = $this->actingAs($user)
+        ->getJson('/api/sales/lookup?invoice='.$sell->invoice_number)
+        ->assertOk();
+    $lookup->assertJsonPath('items.1.line_type', 'replacement');
+    $lookup->assertJsonPath('items.1.max_return_quantity', 2);
+    $lookup->assertJsonPath('items.1.product_exchange_product_id', $exchangeLine->id);
+
+    // Partial return of the replacement.
+    $this->actingAs($user)
+        ->post('/inventory/sale-return', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            ...saleReturnCashPayment($cash, '500'),
+            'items' => [
+                [
+                    'sell_product_id' => $sellProduct->id,
+                    'product_exchange_product_id' => $exchangeLine->id,
+                    'quantity' => '1',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.sale-return.index'));
+
+    expect((float) $newBatch->fresh()->available)->toBe(9.0);
+
+    $this->actingAs($user)
+        ->getJson('/api/sales/lookup?invoice='.$sell->invoice_number)
+        ->assertOk()
+        ->assertJsonPath('items.1.max_return_quantity', 1);
+
+    // Second, final return exhausts the replacement's returnable pool.
+    $this->actingAs($user)
+        ->post('/inventory/sale-return', [
+            'sell_id' => $sell->id,
+            'date' => now()->format('Y-m-d'),
+            ...saleReturnCashPayment($cash, '500'),
+            'items' => [
+                [
+                    'sell_product_id' => $sellProduct->id,
+                    'product_exchange_product_id' => $exchangeLine->id,
+                    'quantity' => '1',
+                ],
+            ],
+        ])
+        ->assertSessionDoesntHaveErrors()
+        ->assertRedirect(route('inventory.sale-return.index'));
+
+    expect((float) $newBatch->fresh()->available)->toBe(10.0);
+    expect(SaleReturn::query()->where('sell_id', $sell->id)->count())->toBe(2);
 });
 
 test('can create second return for remaining products on the same sale', function () {

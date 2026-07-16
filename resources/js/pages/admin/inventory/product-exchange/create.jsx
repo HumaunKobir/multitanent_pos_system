@@ -222,6 +222,9 @@ export default function ProductExchangeCreate({
                 quantity: '0',
                 return_quantity: '0',
                 sold_quantity: i.sold_quantity,
+                // Already-returned quantity narrows what's left available to exchange
+                // (Sale Return / Product Exchange coexistence).
+                available_quantity: i.max_return_quantity,
                 new_product_id: '',
                 new_product_name: '',
                 new_variation_id: null,
@@ -242,10 +245,10 @@ export default function ProductExchangeCreate({
                     return it;
                 }
 
-                const soldQty = parseInt(it.sold_quantity || 0, 10);
+                const available = availableQty(it);
                 const returnQty = parseInt(it.return_quantity || 0, 10);
                 const currentQty = parseInt(it.quantity || 0, 10);
-                const defaultQty = Math.max(1, soldQty - returnQty);
+                const defaultQty = Math.max(1, available - returnQty);
 
                 return {
                     ...it,
@@ -271,12 +274,18 @@ export default function ProductExchangeCreate({
         );
     }
 
+    function availableQty(item) {
+        return Math.max(
+            0,
+            parseInt(item.available_quantity ?? item.sold_quantity ?? 0, 10),
+        );
+    }
+
     function updateExchangeQty(index, rawValue) {
         const item = items[index];
         const maxSwap = Math.max(
             0,
-            parseInt(item.sold_quantity || 0, 10) -
-                parseInt(item.return_quantity || 0, 10),
+            availableQty(item) - parseInt(item.return_quantity || 0, 10),
         );
         const next = clampQuantityInput(rawValue, maxSwap, (max) => {
             toast.error(
@@ -290,8 +299,7 @@ export default function ProductExchangeCreate({
         const item = items[index];
         const maxReturn = Math.max(
             0,
-            parseInt(item.sold_quantity || 0, 10) -
-                parseInt(item.quantity || 0, 10),
+            availableQty(item) - parseInt(item.quantity || 0, 10),
         );
         const next = clampQuantityInput(rawValue, maxReturn, (max) => {
             toast.error(`Return quantity cannot exceed ${max} for this line.`);
@@ -306,12 +314,12 @@ export default function ProductExchangeCreate({
             (it) =>
                 parseInt(it.quantity || 0, 10) +
                     parseInt(it.return_quantity || 0, 10) >
-                parseInt(it.sold_quantity || 0, 10),
+                availableQty(it),
         );
 
         if (overLimit) {
             toast.error(
-                'Exchange and return quantity cannot exceed the sold quantity for any line.',
+                'Exchange and return quantity cannot exceed the available quantity for any line.',
             );
 
             return;
@@ -542,12 +550,17 @@ export default function ProductExchangeCreate({
                                             </td>
                                             <td className="px-3 py-2 text-right text-muted-foreground">
                                                 {item.sold_quantity}
+                                                {availableQty(item) < parseInt(item.sold_quantity || 0, 10) && (
+                                                    <span className="block text-[11px]">
+                                                        {availableQty(item)} available
+                                                    </span>
+                                                )}
                                             </td>
                                             <td className="px-2 py-1.5 text-right">
                                                 <Input
                                                     type="number"
                                                     min="0"
-                                                    max={item.sold_quantity}
+                                                    max={availableQty(item)}
                                                     step="1"
                                                     value={item.quantity}
                                                     onChange={(e) =>
@@ -562,14 +575,14 @@ export default function ProductExchangeCreate({
                                                             e.target.value,
                                                         )
                                                     }
-                                                    className={`${inputCls} ml-auto w-20 text-right ${parseInt(item.quantity || 0, 10) + parseInt(item.return_quantity || 0, 10) > parseInt(item.sold_quantity || 0, 10) ? 'border-destructive' : ''}`}
+                                                    className={`${inputCls} ml-auto w-20 text-right ${parseInt(item.quantity || 0, 10) + parseInt(item.return_quantity || 0, 10) > availableQty(item) ? 'border-destructive' : ''}`}
                                                 />
                                             </td>
                                             <td className="px-2 py-1.5 text-right">
                                                 <Input
                                                     type="number"
                                                     min="0"
-                                                    max={item.sold_quantity}
+                                                    max={availableQty(item)}
                                                     step="1"
                                                     value={item.return_quantity}
                                                     onChange={(e) =>

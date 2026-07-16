@@ -133,7 +133,11 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], payme
 
         const returnItems = items
             .filter((it) => parseFloat(it.quantity || 0) > 0)
-            .map(({ sell_product_id, quantity }) => ({ sell_product_id, quantity }));
+            .map(({ sell_product_id, product_exchange_product_id, quantity }) => ({
+                sell_product_id,
+                ...(product_exchange_product_id ? { product_exchange_product_id } : {}),
+                quantity,
+            }));
 
         if (returnItems.length === 0) {
             toast.error('Add return quantity for at least one line.');
@@ -228,6 +232,7 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], payme
                                     { id: 'product', header: 'Product' },
                                     { id: 'sold', header: 'Sold', align: 'right' },
                                     { id: 'returned', header: 'Returned', align: 'right' },
+                                    { id: 'exchanged', header: 'Exchanged', align: 'right' },
                                     { id: 'available', header: 'Available', align: 'right' },
                                     { id: 'price', header: 'Unit Price', align: 'right' },
                                     { id: 'qty', header: 'Return Qty', align: 'right' },
@@ -238,6 +243,7 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], payme
                                     const stats = saleReturnLineStats(item);
                                     const sub = stats.returning * parseFloat(item.unit_price || 0);
                                     const overMax = stats.returning > stats.maxReturn;
+                                    const isReplacement = item.line_type === 'replacement';
                                     return (
                                         <tr key={i} className="hover:bg-muted/20">
                                             <td className="px-3 py-2">
@@ -246,9 +252,17 @@ export default function SaleReturnEdit({ saleReturn, paymentAccounts = [], payme
                                                     code={item.product_code}
                                                     variation={item.variation_label}
                                                 />
+                                                {isReplacement && (
+                                                    <p className="mt-0.5 text-[11px] text-primary">
+                                                        Replacement from exchange {item.exchange_invoice_number}
+                                                    </p>
+                                                )}
                                             </td>
                                             <td className="px-3 py-2 text-right">{formatQty(stats.sold)}</td>
                                             <td className="px-3 py-2 text-right">{formatQty(stats.returnedOnSale)}</td>
+                                            <td className="px-3 py-2 text-right text-muted-foreground">
+                                                {stats.exchanged > 0 ? formatQty(stats.exchanged) : '—'}
+                                            </td>
                                             <td className="px-3 py-2 text-right font-medium">
                                                 {formatQty(stats.available)}
                                             </td>

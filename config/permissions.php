@@ -575,5 +575,21 @@ return [
             ],
         ],
 
+        'report.trial-balance' => [
+            'label' => 'Trial Balance',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.trial-balance.view' => 'View Trial Balance',
+            ],
+        ],
+
+        'report.profit-loss' => [
+            'label' => 'Profit & Loss',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.profit-loss.view' => 'View Profit & Loss',
+            ],
+        ],
+
     ],
 ];

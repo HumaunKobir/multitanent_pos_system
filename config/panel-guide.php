@@ -495,6 +495,26 @@ return [
             ],
         ],
 
+        'report.trial-balance.view' => [
+            'title' => 'Trial Balance',
+            'summary' => 'Check debit and credit balances account by account.',
+            'steps' => [
+                'Go to Reports → Trial Balance.',
+                'Pick the as-of date and branch if needed.',
+                'Review debit and credit totals to confirm the books balance.',
+            ],
+        ],
+
+        'report.profit-loss.view' => [
+            'title' => 'Profit & Loss',
+            'summary' => 'Review income, expenses, and net profit for a period.',
+            'steps' => [
+                'Go to Reports → Profit & Loss.',
+                'Pick the date range and branch if needed.',
+                'Compare total income with total expenses to see net profit or loss.',
+            ],
+        ],
+
         'report.customer-ledger.view' => [
             'title' => 'Customer Ledger',
             'summary' => 'See sales, payments, and due for one customer.',

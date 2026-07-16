@@ -148,6 +148,8 @@ return [
                 ['title' => 'Account Ledger', 'href' => '/report/account-ledger', 'permission' => 'report.account-ledger.view'],
                 ['title' => 'A/C Transactions', 'href' => '/report/account-transactions', 'permission' => 'report.account-transactions.view'],
                 ['title' => 'Balance Sheet', 'href' => '/report/balance-sheet', 'permission' => 'report.balance-sheet.view'],
+                ['title' => 'Trial Balance', 'href' => '/report/trial-balance', 'permission' => 'report.trial-balance.view'],
+                ['title' => 'Profit & Loss', 'href' => '/report/profit-loss', 'permission' => 'report.profit-loss.view'],
                 ['title' => 'Customer Ledger', 'href' => '/report/customer-ledger', 'permission' => 'report.customer-ledger.view'],
                 ['title' => 'Cash Flow', 'href' => '/report/cash-flow', 'permission' => 'report.cash-flow.view'],
                 ['title' => 'Cash Flow Summary', 'href' => '/report/cash-flow-summary', 'permission' => 'report.cash-flow-summary.view'],

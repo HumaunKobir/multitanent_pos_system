@@ -2011,6 +2011,117 @@ class ReportService
     }
 
     /**
+     * @return array<string, mixed>
+     */
+    public function trialBalance(string $asOfDate, ?int $filterBranchId = null): array
+    {
+        $effectiveBranchId = $this->resolveReportBranchFilter($filterBranchId);
+        $accounts = $this->reportAccountsQuery([
+            AccountType::Asset,
+            AccountType::Liability,
+            AccountType::Equity,
+            AccountType::Income,
+            AccountType::Expenses,
+        ], $effectiveBranchId)
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'type']);
+
+        $rows = [];
+        $totalDebit = 0.0;
+        $totalCredit = 0.0;
+
+        foreach ($accounts as $account) {
+            $balance = $this->accountBalanceAsOfForBranch($account->id, $asOfDate, $effectiveBranchId);
+            [$debit, $credit] = $this->splitBalanceBySide($account->type, $balance);
+
+            if (abs($debit) < 0.005 && abs($credit) < 0.005) {
+                continue;
+            }
+
+            $rows[] = [
+                'code' => $account->code,
+                'name' => $account->name,
+                'type' => $account->type->label(),
+                'debit' => round($debit, 2),
+                'credit' => round($credit, 2),
+            ];
+
+            $totalDebit += $debit;
+            $totalCredit += $credit;
+        }
+
+        return [
+            'as_of' => $asOfDate,
+            'rows' => $rows,
+            'totals' => [
+                'debit' => round($totalDebit, 2),
+                'credit' => round($totalCredit, 2),
+            ],
+            'is_balanced' => abs($totalDebit - $totalCredit) < 0.02,
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function profitAndLoss(?string $dateFrom, ?string $dateTo, ?int $filterBranchId = null): array
+    {
+        $effectiveBranchId = $this->resolveReportBranchFilter($filterBranchId);
+        $resolvedDateFrom = $dateFrom ?? now()->startOfMonth()->format('Y-m-d');
+        $resolvedDateTo = $dateTo ?? now()->format('Y-m-d');
+        $beforeStartDate = Carbon::parse($resolvedDateFrom)->subDay()->format('Y-m-d');
+
+        $accounts = $this->reportAccountsQuery([AccountType::Income, AccountType::Expenses], $effectiveBranchId)
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'type']);
+
+        $sections = [];
+
+        foreach ([AccountType::Income, AccountType::Expenses] as $type) {
+            $lines = [];
+            $total = 0.0;
+
+            foreach ($accounts->where('type', $type) as $account) {
+                $closing = $this->accountBalanceAsOfForBranch($account->id, $resolvedDateTo, $effectiveBranchId);
+                $opening = $this->accountBalanceAsOfForBranch($account->id, $beforeStartDate, $effectiveBranchId);
+                $amount = round($closing - $opening, 2);
+
+                if (abs($amount) < 0.005) {
+                    continue;
+                }
+
+                $lines[] = [
+                    'code' => $account->code,
+                    'name' => $account->name,
+                    'amount' => $amount,
+                ];
+                $total += $amount;
+            }
+
+            $sections[] = [
+                'type' => $type->label(),
+                'slug' => $type->slug(),
+                'lines' => $lines,
+                'total' => round($total, 2),
+            ];
+        }
+
+        $totalIncome = collect($sections)->firstWhere('slug', 'income')['total'] ?? 0.0;
+        $totalExpenses = collect($sections)->firstWhere('slug', 'expenses')['total'] ?? 0.0;
+        $net = round($totalIncome - $totalExpenses, 2);
+
+        return [
+            'date_from' => $resolvedDateFrom,
+            'date_to' => $resolvedDateTo,
+            'sections' => $sections,
+            'total_income' => round($totalIncome, 2),
+            'total_expenses' => round($totalExpenses, 2),
+            'net_result' => $net,
+            'result_label' => $net >= 0 ? 'Net Profit' : 'Net Loss',
+        ];
+    }
+
+    /**
      * @return list<array{id: int, label: string, type: string}>
      */
     public function accountOptions(): array
@@ -2054,6 +2165,52 @@ class ReportService
             ->first();
 
         return $ledger ? (float) $ledger->closing_balance : 0.0;
+    }
+
+    private function accountBalanceAsOfForBranch(int $accountId, string $asOfDate, ?int $branchId): float
+    {
+        $ledger = $this->transactionScope->scopeLedgerForBranch(Ledger::query(), $branchId)
+            ->where('account_id', $accountId)
+            ->whereDate('date', '<=', $asOfDate)
+            ->orderByDesc('date')
+            ->orderByDesc('id')
+            ->first();
+
+        return $ledger ? (float) $ledger->closing_balance : 0.0;
+    }
+
+    /**
+     * @param  array<int, AccountType>  $types
+     * @return Builder<ChartOfAccount>
+     */
+    private function reportAccountsQuery(array $types, ?int $effectiveBranchId): Builder
+    {
+        return ChartOfAccount::query()
+            ->whereNotNull('parent_id')
+            ->whereIn('type', array_map(fn (AccountType $type) => $type->value, $types))
+            ->when($effectiveBranchId !== null, function (Builder $query) use ($effectiveBranchId) {
+                $query->where('source_type', Branch::class)
+                    ->where('source_id', $effectiveBranchId);
+            });
+    }
+
+    /**
+     * @return array{0: float, 1: float}
+     */
+    private function splitBalanceBySide(AccountType $type, float $balance): array
+    {
+        if (abs($balance) < 0.005) {
+            return [0.0, 0.0];
+        }
+
+        return match ($type) {
+            AccountType::Asset, AccountType::Expenses => $balance >= 0
+                ? [abs($balance), 0.0]
+                : [0.0, abs($balance)],
+            AccountType::Liability, AccountType::Equity, AccountType::Income => $balance >= 0
+                ? [0.0, abs($balance)]
+                : [abs($balance), 0.0],
+        };
     }
 
     /**

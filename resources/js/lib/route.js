@@ -230,6 +230,8 @@ const routes = {
     'report.account-ledger': '/report/account-ledger',
     'report.account-transactions': '/report/account-transactions',
     'report.balance-sheet': '/report/balance-sheet',
+    'report.trial-balance': '/report/trial-balance',
+    'report.profit-loss': '/report/profit-loss',
     'api.suppliers': '/api/suppliers',
     'api.suppliers.store': '/api/suppliers',
     'api.products.catalog-options': '/api/products/catalog-options',

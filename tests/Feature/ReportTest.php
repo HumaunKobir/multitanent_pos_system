@@ -35,7 +35,9 @@ use App\Models\Transaction;
 use App\Models\Unit;
 use App\Models\User;
 use App\Models\Voucher;
+use App\Services\AccountPostingRules;
 use App\Services\ReportService;
+use App\Services\TransactionService;
 use App\Support\AdminNavigation;
 use Illuminate\Support\Str;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -116,7 +118,84 @@ function reportRoutes(): array
             'permission' => ReportController::PERMISSION_BALANCE_SHEET,
             'component' => 'admin/reports/balance-sheet',
         ],
+        'trial-balance' => [
+            'path' => '/report/trial-balance',
+            'permission' => ReportController::PERMISSION_TRIAL_BALANCE,
+            'component' => 'admin/reports/trial-balance',
+        ],
+        'profit-loss' => [
+            'path' => '/report/profit-loss',
+            'permission' => ReportController::PERMISSION_PROFIT_LOSS,
+            'component' => 'admin/reports/profit-loss',
+        ],
     ];
+}
+
+function createScopedReportAccount(Branch $branch, string $code, string $name, AccountType $type, ?int $parentId = null): ChartOfAccount
+{
+    ChartOfAccount::$skipCodeGeneration = true;
+
+    try {
+        return ChartOfAccount::query()->create([
+            'source_type' => Branch::class,
+            'source_id' => $branch->id,
+            'parent_id' => $parentId,
+            'code' => $code,
+            'name' => $name,
+            'type' => $type,
+            'current_balance' => 0,
+            'description' => null,
+            'status' => CommonStatus::Active,
+            'is_system' => false,
+        ]);
+    } finally {
+        ChartOfAccount::$skipCodeGeneration = false;
+    }
+}
+
+/**
+ * @return array{cash: ChartOfAccount, income: ChartOfAccount, expense: ChartOfAccount}
+ */
+function seedBranchReportAccounts(Branch $branch, string $suffix): array
+{
+    $assetParent = createScopedReportAccount($branch, 'A'.$suffix, 'Assets '.$suffix, AccountType::Asset);
+    $incomeParent = createScopedReportAccount($branch, 'I'.$suffix, 'Income '.$suffix, AccountType::Income);
+    $expenseParent = createScopedReportAccount($branch, 'X'.$suffix, 'Expenses '.$suffix, AccountType::Expenses);
+
+    return [
+        'cash' => createScopedReportAccount($branch, 'A'.$suffix.'-01', 'Cash '.$suffix, AccountType::Asset, $assetParent->id),
+        'income' => createScopedReportAccount($branch, 'I'.$suffix.'-01', 'Sales Income '.$suffix, AccountType::Income, $incomeParent->id),
+        'expense' => createScopedReportAccount($branch, 'X'.$suffix.'-01', 'Operating Expense '.$suffix, AccountType::Expenses, $expenseParent->id),
+    ];
+}
+
+function postJournalEntryForReport(ChartOfAccount $debitAccount, ChartOfAccount $creditAccount, float $amount, string $date): void
+{
+    TransactionService::recordJournalEntry(
+        [
+            'source_type' => ChartOfAccount::class,
+            'source_id' => $debitAccount->id,
+            'date' => $date,
+            'description' => 'Report test entry',
+        ],
+        [
+            [
+                'account_id' => $debitAccount->id,
+                'debit' => $amount,
+                'credit' => 0,
+                'decrease' => AccountPostingRules::decreaseForSide($debitAccount->type, true),
+                'description' => 'Debit entry',
+            ],
+            [
+                'account_id' => $creditAccount->id,
+                'debit' => 0,
+                'credit' => $amount,
+                'decrease' => AccountPostingRules::decreaseForSide($creditAccount->type, false),
+                'description' => 'Credit entry',
+            ],
+        ],
+        false,
+    );
 }
 
 test('permissions sync creates all report permissions from config', function () {
@@ -142,6 +221,7 @@ test('branch user without report permission is denied all report routes', functi
 
 test('branch user with permission can access their assigned report', function (string $key, array $report) {
     $this->artisan('permissions:sync');
+    $this->withoutVite();
 
     $this->actingAs(reportUser([$report['permission']]))
         ->get($report['path'])
@@ -300,7 +380,11 @@ test('customer ledger posts customer-account exchange settlement to running bala
 });
 
 test('superadmin can access all report routes', function () {
+    $this->artisan('permissions:sync');
+    $this->withoutVite();
+
     $admin = User::factory()->create(['branch_id' => null]);
+    $admin->givePermissionTo(collect(reportRoutes())->pluck('permission')->all());
 
     $this->actingAs($admin);
 
@@ -312,11 +396,14 @@ test('superadmin can access all report routes', function () {
 test('reports navigation only shows items the user may view', function () {
     $this->artisan('permissions:sync');
 
-    $user = User::factory()->create(['branch_id' => Branch::factory()->create()->id]);
+    $user = User::factory()->create([
+        'branch_id' => Branch::factory()->create()->id,
+        'email' => fake()->unique()->safeEmail(),
+    ]);
     $role = Role::create(['name' => 'report-viewer-'.uniqid(), 'guard_name' => 'web']);
     $role->givePermissionTo([
         ReportController::PERMISSION_DAILY_SUMMARY,
-        ReportController::PERMISSION_BALANCE_SHEET,
+        ReportController::PERMISSION_TRIAL_BALANCE,
     ]);
     $user->assignRole($role);
 
@@ -325,14 +412,17 @@ test('reports navigation only shows items the user may view', function () {
 
     expect($reports)->not->toBeNull()
         ->and(collect($reports['children'])->pluck('title')->all())->toEqual([
-            'Balance Sheet',
+            'Trial Balance',
             'Daily Summary',
         ])
         ->and(collect($reports['children'])->pluck('title')->all())->not->toContain('Cash Flow', 'Customer Ledger');
 });
 
 test('reports navigation includes all report links for superadmin', function () {
+    $this->artisan('permissions:sync');
+
     $admin = User::factory()->create(['branch_id' => null]);
+    $admin->givePermissionTo(collect(reportRoutes())->pluck('permission')->all());
 
     $navigation = app(AdminNavigation::class)->build($admin);
     $reports = collect($navigation)->firstWhere('title', 'Reports');
@@ -349,7 +439,63 @@ test('reports navigation includes all report links for superadmin', function () 
         'Account Ledger',
         'A/C Transactions',
         'Balance Sheet',
+        'Trial Balance',
+        'Profit & Loss',
     );
+});
+
+test('trial balance and profit loss are branch wise and keep debit credit totals balanced', function () {
+    $this->artisan('permissions:sync');
+    $this->withoutVite();
+
+    $date = '2026-07-16';
+    $branchA = Branch::factory()->create();
+    $branchB = Branch::factory()->create();
+    $admin = User::factory()->create(['branch_id' => null]);
+    $admin->givePermissionTo([
+        ReportController::PERMISSION_TRIAL_BALANCE,
+        ReportController::PERMISSION_PROFIT_LOSS,
+    ]);
+
+    $accountsA = seedBranchReportAccounts($branchA, '801');
+    $accountsB = seedBranchReportAccounts($branchB, '802');
+
+    postJournalEntryForReport($accountsA['cash'], $accountsA['income'], 500, $date);
+    postJournalEntryForReport($accountsA['expense'], $accountsA['cash'], 120, $date);
+    postJournalEntryForReport($accountsB['cash'], $accountsB['income'], 900, $date);
+
+    $this->actingAs($admin)
+        ->get("/report/trial-balance?as_of={$date}&branch_id={$branchA->id}")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/trial-balance')
+            ->where('report.is_balanced', true)
+            ->where('report.totals.debit', fn ($value) => (float) $value === 500.0)
+            ->where('report.totals.credit', fn ($value) => (float) $value === 500.0)
+            ->where('report.rows', function ($rows): bool {
+                $rows = collect($rows);
+
+                return $rows->contains(fn (array $row) => $row['name'] === 'Cash 801' && (float) $row['debit'] === 380.0)
+                    && $rows->contains(fn (array $row) => $row['name'] === 'Sales Income 801' && (float) $row['credit'] === 500.0)
+                    && $rows->contains(fn (array $row) => $row['name'] === 'Operating Expense 801' && (float) $row['debit'] === 120.0)
+                    && ! $rows->contains(fn (array $row) => str_contains($row['name'], '802'));
+            }));
+
+    $this->actingAs($admin)
+        ->get("/report/profit-loss?date_from={$date}&date_to={$date}&branch_id={$branchA->id}")
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/profit-loss')
+            ->where('report.total_income', 500.0)
+            ->where('report.total_expenses', 120.0)
+            ->where('report.net_result', 380.0)
+            ->where('report.result_label', 'Net Profit')
+            ->where('report.sections', function ($sections): bool {
+                $sections = collect($sections)->keyBy('slug');
+
+                return (float) ($sections['income']['total'] ?? 0) === 500.0
+                    && (float) ($sections['expenses']['total'] ?? 0) === 120.0;
+            }));
 });
 
 test('branch user daily summary only includes their branch sales', function () {

@@ -34,6 +34,10 @@ class ReportController extends Controller
 
     public const PERMISSION_SALES_SUMMARY = 'report.sales-summary.view';
 
+    public const PERMISSION_TRIAL_BALANCE = 'report.trial-balance.view';
+
+    public const PERMISSION_PROFIT_LOSS = 'report.profit-loss.view';
+
     public function __construct(private ReportService $reports) {}
 
     public function customerLedger(Request $request): Response
@@ -341,6 +345,64 @@ class ReportController extends Controller
         return Inertia::render('admin/reports/balance-sheet', [
             'filters' => ['as_of' => $asOf],
             'sheet' => $this->reports->balanceSheet($asOf),
+        ]);
+    }
+
+    public function trialBalance(Request $request): Response
+    {
+        $this->authorize(self::PERMISSION_TRIAL_BALANCE);
+
+        $filters = $request->validate([
+            'as_of' => ['nullable', 'date'],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+        ]);
+
+        $asOf = $filters['as_of'] ?? now()->format('Y-m-d');
+        $canFilterByBranch = $this->reports->canFilterByBranch();
+        $filterBranchId = $canFilterByBranch && isset($filters['branch_id']) ? (int) $filters['branch_id'] : null;
+
+        return Inertia::render('admin/reports/trial-balance', [
+            'filters' => [
+                'as_of' => $asOf,
+                'branch_id' => $filters['branch_id'] ?? null,
+            ],
+            'branches' => $canFilterByBranch ? $this->reports->branchOptions() : [],
+            'isBranchScoped' => ! $canFilterByBranch,
+            'report' => $this->reports->trialBalance($asOf, $filterBranchId),
+        ]);
+    }
+
+    public function profitLoss(Request $request): Response
+    {
+        $this->authorize(self::PERMISSION_PROFIT_LOSS);
+
+        $filters = $request->validate([
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date'],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+        ]);
+
+        if (! isset($filters['date_from']) && ! isset($filters['date_to'])) {
+            $filters['date_from'] = now()->startOfMonth()->format('Y-m-d');
+            $filters['date_to'] = now()->format('Y-m-d');
+        }
+
+        $canFilterByBranch = $this->reports->canFilterByBranch();
+        $filterBranchId = $canFilterByBranch && isset($filters['branch_id']) ? (int) $filters['branch_id'] : null;
+
+        return Inertia::render('admin/reports/profit-loss', [
+            'filters' => [
+                'date_from' => $filters['date_from'] ?? null,
+                'date_to' => $filters['date_to'] ?? null,
+                'branch_id' => $filters['branch_id'] ?? null,
+            ],
+            'branches' => $canFilterByBranch ? $this->reports->branchOptions() : [],
+            'isBranchScoped' => ! $canFilterByBranch,
+            'report' => $this->reports->profitAndLoss(
+                $filters['date_from'] ?? null,
+                $filters['date_to'] ?? null,
+                $filterBranchId,
+            ),
         ]);
     }
 }

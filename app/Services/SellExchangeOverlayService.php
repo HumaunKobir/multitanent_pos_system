@@ -22,11 +22,19 @@ class SellExchangeOverlayService
 
     public function effectiveNetAmount(Sell $sell): float
     {
+        return round($this->netAmountWithExchange($sell) - $this->saleReturnNetTotal($sell), 2);
+    }
+
+    /**
+     * Sale net amount adjusted for its Product Exchange price difference, without
+     * netting out linked Sale Returns (those are accounted for separately).
+     */
+    public function netAmountWithExchange(Sell $sell): float
+    {
         $base = (float) $sell->net_amount;
         $exchange = $this->resolveExchange($sell);
-        $withExchange = $exchange ? $base + (float) $exchange->price_difference : $base;
 
-        return round($withExchange - $this->saleReturnNetTotal($sell), 2);
+        return $exchange ? $base + (float) $exchange->price_difference : $base;
     }
 
     public function effectivePaidAmount(Sell $sell): float

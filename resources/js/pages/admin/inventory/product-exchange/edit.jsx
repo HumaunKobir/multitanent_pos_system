@@ -630,11 +630,12 @@ export default function ProductExchangeEdit({
                                         availableQty(item) -
                                             parseInt(item.quantity || 0, 10),
                                     );
+                                    const isFullyConsumed = availableQty(item) <= 0;
 
                                     return (
                                         <tr
                                             key={i}
-                                            className="hover:bg-muted/20"
+                                            className={isFullyConsumed ? 'bg-muted/30 text-muted-foreground' : 'hover:bg-muted/20'}
                                         >
                                             <td className="px-3 py-2">
                                                 <ProductNameWithCode
@@ -653,6 +654,10 @@ export default function ProductExchangeEdit({
                                                         }
                                                         className="text-primary [&_p]:text-primary"
                                                     />
+                                                ) : isFullyConsumed ? (
+                                                    <span className="text-xs text-muted-foreground">
+                                                        Fully returned — nothing to exchange
+                                                    </span>
                                                 ) : (
                                                     !paymentOnlyEdit && (
                                                         <button
@@ -669,9 +674,9 @@ export default function ProductExchangeEdit({
                                             </td>
                                             <td className="px-3 py-2 text-right text-muted-foreground">
                                                 {item.sold_quantity}
-                                                {availableQty(item) < parseInt(item.sold_quantity || 0, 10) && (
+                                                {parseInt(item.returned_elsewhere || 0, 10) > 0 && (
                                                     <span className="block text-[11px]">
-                                                        {availableQty(item)} available
+                                                        Returned {item.returned_elsewhere}
                                                     </span>
                                                 )}
                                             </td>
@@ -693,6 +698,7 @@ export default function ProductExchangeEdit({
                                                         )}
                                                         step="1"
                                                         value={item.quantity}
+                                                        disabled={isFullyConsumed}
                                                         onChange={(e) =>
                                                             updateExchangeQty(
                                                                 i,
@@ -721,6 +727,7 @@ export default function ProductExchangeEdit({
                                                         value={
                                                             item.return_quantity
                                                         }
+                                                        disabled={isFullyConsumed}
                                                         onChange={(e) =>
                                                             updateReturnQty(
                                                                 i,

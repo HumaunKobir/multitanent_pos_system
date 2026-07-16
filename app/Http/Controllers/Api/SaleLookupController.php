@@ -69,8 +69,15 @@ class SaleLookupController extends Controller
         // (non-exchanged) quantity can still be returned, and the exchange's own
         // replacement lines become independently returnable below.
         $returnedQtyByLine = $this->availability->returnedQuantitiesByLine($sell->id);
-        $exchangedQtyByLine = $exchange !== null
+        // Split the exchange's own consumption: old_quantity is a real swap (replacement
+        // issued), return_quantity is a refund without replacement recorded on the exchange
+        // itself. The latter reads as "Returned" to the user, not "Exchanged", even though
+        // both consume the same original-quantity pool for availability purposes.
+        $exchangedTotalByLine = $exchange !== null
             ? $this->availability->exchangedQuantitiesByLine($sell->id)
+            : [];
+        $exchangeSwapByLine = $exchange !== null
+            ? $this->availability->exchangeSwapQuantitiesByLine($sell->id)
             : [];
 
         $promotionIds = $sell->products->pluck('promotion_id')->filter()->unique()->values()->all();
@@ -78,10 +85,13 @@ class SaleLookupController extends Controller
             ? Promotion::whereIn('id', $promotionIds)->get()->keyBy('id')
             : collect();
 
-        $items = $sell->products->map(function ($line) use ($returnedQtyByLine, $exchangedQtyByLine, $promotionMap) {
+        $items = $sell->products->map(function ($line) use ($returnedQtyByLine, $exchangedTotalByLine, $exchangeSwapByLine, $promotionMap) {
             $sold = (float) $line->quantity;
-            $alreadyReturned = (float) ($returnedQtyByLine[$line->id] ?? 0);
-            $alreadyExchanged = (float) ($exchangedQtyByLine[$line->id] ?? 0);
+            $exchangeTotal = (float) ($exchangedTotalByLine[$line->id] ?? 0);
+            $exchangeSwap = (float) ($exchangeSwapByLine[$line->id] ?? 0);
+            $exchangeRefund = max(0.0, $exchangeTotal - $exchangeSwap);
+            $alreadyReturned = (float) ($returnedQtyByLine[$line->id] ?? 0) + $exchangeRefund;
+            $alreadyExchanged = $exchangeSwap;
 
             $promotionDetails = null;
             if ($line->promotion_id && $promotionMap->has($line->promotion_id)) {

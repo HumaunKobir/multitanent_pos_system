@@ -1161,7 +1161,7 @@ class ReportService
         $collections = $collectionsQuery->with('customer:id,name')->get();
         $vouchers = $vouchersQuery->get();
 
-        $salesNet = $this->exchangeOverlay->sumEffectiveNet($sales);
+        $salesNet = round($sales->sum(fn (Sell $sell) => $this->exchangeOverlay->netAmountWithExchange($sell)), 2);
         $salesPaid = $this->exchangeOverlay->sumEffectivePaid($sales);
         $saleReturnAmount = round($returns->sum(fn (SaleReturn $return) => $return->net_amount), 2);
         $purchaseNet = $purchases->sum(fn (Purchase $p) => $p->net_amount);
@@ -1175,7 +1175,7 @@ class ReportService
             'date' => $date,
             'sales' => [
                 'count' => $sales->count(),
-                'gross' => round($salesNet - $saleReturnAmount, 2),
+                'gross' => round($salesNet, 2),
                 'paid' => round($salesPaid, 2),
                 'due' => $this->exchangeOverlay->sumEffectiveDue($sales),
                 'refund_due' => $this->exchangeOverlay->sumEffectiveRefundDue($sales),
@@ -1553,7 +1553,7 @@ class ReportService
                 [$branchId, $staffUserId] = array_pad(explode('-', $key, 2), 2, null);
                 $staffUserId = $staffUserId !== null && $staffUserId !== '' ? (int) $staffUserId : null;
 
-                $salesGross = $this->exchangeOverlay->sumEffectiveNet($sales);
+                $salesGross = round($sales->sum(fn (Sell $sell) => $this->exchangeOverlay->netAmountWithExchange($sell)), 2);
                 $salesPaid = $this->exchangeOverlay->sumEffectivePaid($sales);
                 $saleReturnAmount = round($saleReturns->sum(fn (SaleReturn $return) => $return->net_amount), 2);
                 $purchaseGross = $purchases->sum(fn (Purchase $purchase) => $purchase->net_amount);
@@ -1572,7 +1572,7 @@ class ReportService
                     'user_name' => $user?->name ?? ($staffUserId !== null ? ($userNames[$staffUserId] ?? '—') : '—'),
                     'sales' => [
                         'count' => $sales->count(),
-                        'gross' => round($salesGross - $saleReturnAmount, 2),
+                        'gross' => round($salesGross, 2),
                         'paid' => round($salesPaid, 2),
                         'due' => $this->exchangeOverlay->sumEffectiveDue($sales),
                         'refund_due' => $this->exchangeOverlay->sumEffectiveRefundDue($sales),
@@ -1695,7 +1695,7 @@ class ReportService
      */
     private function mapSellBreakdownItem(Sell $sell): array
     {
-        $gross = $this->exchangeOverlay->effectiveNetAmount($sell);
+        $gross = $this->exchangeOverlay->netAmountWithExchange($sell);
         $paid = $this->exchangeOverlay->effectivePaidAmount($sell);
 
         return [

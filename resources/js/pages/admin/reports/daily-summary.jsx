@@ -40,7 +40,7 @@ const sections = [
         ringClass: 'ring-emerald-500/20',
         rows: (s) => [
             { label: 'Invoices', value: s.sales?.count ?? 0, plain: true },
-            { label: 'Gross (after returns)', value: <MoneyCell value={s.sales?.gross} /> },
+            { label: 'Gross', value: <MoneyCell value={s.sales?.gross} /> },
             { label: 'Collected', value: <MoneyCell value={s.sales?.paid} /> },
             { label: 'Due', value: <MoneyCell value={s.sales?.due} />, highlight: true },
             ...((s.sales?.refund_due ?? 0) > 0
@@ -701,7 +701,7 @@ export default function DailySummaryReport({
         [date, branchId, userId, isBranchScoped],
     );
 
-    const salesGross = parseFloat(s.sales?.gross ?? 0);
+    const salesGross = parseFloat(s.sales?.gross ?? 0) - parseFloat(s.sale_returns?.amount ?? 0);
     const purchaseGross = parseFloat(s.purchases?.gross ?? 0);
     const staffBreakdown = s.staff_breakdown ?? [];
     const records = s.records ?? {};

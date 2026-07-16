@@ -21,6 +21,7 @@ import { Head, useForm, usePage } from '@inertiajs/react';
 import { CalendarDays, Package, RotateCcw } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 
 export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
@@ -218,6 +219,172 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
         });
     }
 
+    // A replacement is grouped under the original line it came from. When it's literally the
+    // same product (e.g. a like-for-like swap), showing two rows with the same name is still
+    // confusing even when adjacent — merge those into one row with two small quantity inputs
+    // (original pool vs replacement pool), since they're still two independent, separately
+    // capped line items on the backend. A replacement for a *different* product is left as its
+    // own row underneath — there's no repeated name to disambiguate there.
+    const indexedItems = items.map((item, index) => ({ item, index }));
+    const originals = indexedItems.filter(({ item }) => item.line_type !== 'replacement');
+    const replacementsBySellProductId = indexedItems
+        .filter(({ item }) => item.line_type === 'replacement')
+        .reduce((map, entry) => {
+            const key = entry.item.sell_product_id;
+            (map[key] ??= []).push(entry);
+
+            return map;
+        }, {});
+
+    function isSameProduct(a, b) {
+        return (
+            Number(a.product_id) === Number(b.product_id) &&
+            Number(a.variation_id || 0) === Number(b.variation_id || 0)
+        );
+    }
+
+    const rowGroups = originals.map((originalEntry) => {
+        const replacements = replacementsBySellProductId[originalEntry.item.sell_product_id] ?? [];
+        const [onlyReplacement, ...rest] = replacements;
+
+        if (onlyReplacement && rest.length === 0 && isSameProduct(originalEntry.item, onlyReplacement.item)) {
+            return { type: 'merged', original: originalEntry, replacement: onlyReplacement };
+        }
+
+        return { type: 'separate', original: originalEntry, replacements };
+    });
+
+    function renderReturnRow({ item, index: i }) {
+        const stats = saleReturnLineStats(item);
+        const sub = stats.returning * parseFloat(item.unit_price || 0);
+        const overMax = stats.returning > stats.maxReturn;
+        const isFullyReturned = stats.available <= 0 && stats.returning <= 0;
+        const isReplacement = item.line_type === 'replacement';
+
+        return (
+            <tr key={i} className={isFullyReturned ? 'bg-muted/30 text-muted-foreground' : 'hover:bg-muted/20'}>
+                <td className="px-3 py-2">
+                    <div className="flex items-center gap-1.5">
+                        <ProductNameWithCode
+                            name={item.product_name}
+                            code={item.product_code}
+                            variation={item.variation_label}
+                        />
+                        {isReplacement && (
+                            <Badge variant="outline" className="shrink-0 text-[10px] text-primary">
+                                Replacement
+                            </Badge>
+                        )}
+                    </div>
+                    {isReplacement && (
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">From exchange {item.exchange_invoice_number}</p>
+                    )}
+                </td>
+                <td className="px-3 py-2 text-right">{formatQty(stats.sold)}</td>
+                <td className="px-3 py-2 text-right">{formatQty(stats.returnedOnSale)}</td>
+                <td className="px-3 py-2 text-right text-muted-foreground">
+                    {stats.exchanged > 0 ? formatQty(stats.exchanged) : '—'}
+                </td>
+                <td className="px-3 py-2 text-right font-medium">{formatQty(stats.available)}</td>
+                <td className="px-3 py-2 text-right">৳{parseFloat(item.unit_price).toFixed(2)}</td>
+                <td className="px-2 py-1.5 text-right">
+                    <Input
+                        type="number"
+                        min="0"
+                        max={item.max_return_quantity}
+                        step="1"
+                        value={item.quantity}
+                        disabled={isFullyReturned}
+                        onChange={(e) => updateReturnQty(i, e.target.value)}
+                        onBlur={(e) => updateReturnQty(i, e.target.value)}
+                        className={`${inputCls} ml-auto w-24 text-right ${overMax ? 'border-destructive' : ''}`}
+                    />
+                </td>
+                <td className="px-3 py-2 text-right font-semibold">৳{sub.toFixed(2)}</td>
+            </tr>
+        );
+    }
+
+    function renderMergedRow(originalEntry, replacementEntry) {
+        const { item: orig, index: origIndex } = originalEntry;
+        const { item: repl, index: replIndex } = replacementEntry;
+        const origStats = saleReturnLineStats(orig);
+        const replStats = saleReturnLineStats(repl);
+        const combinedAvailable = origStats.available + replStats.available;
+        const combinedSub =
+            origStats.returning * parseFloat(orig.unit_price || 0) +
+            replStats.returning * parseFloat(repl.unit_price || 0);
+        const origOverMax = origStats.returning > origStats.maxReturn;
+        const replOverMax = replStats.returning > replStats.maxReturn;
+        const origDisabled = origStats.available <= 0 && origStats.returning <= 0;
+        const replDisabled = replStats.available <= 0 && replStats.returning <= 0;
+        const isFullyReturned = origDisabled && replDisabled;
+
+        return (
+            <tr key={`merged-${origIndex}`} className={isFullyReturned ? 'bg-muted/30 text-muted-foreground' : 'hover:bg-muted/20'}>
+                <td className="px-3 py-2">
+                    <ProductNameWithCode name={orig.product_name} code={orig.product_code} variation={orig.variation_label} />
+                    <p className="mt-0.5 text-[11px] text-muted-foreground">
+                        Includes {formatQty(replStats.sold)} replacement unit(s) from exchange {repl.exchange_invoice_number}
+                    </p>
+                </td>
+                <td className="px-3 py-2 text-right">{formatQty(origStats.sold)}</td>
+                <td className="px-3 py-2 text-right">{formatQty(origStats.returnedOnSale)}</td>
+                <td className="px-3 py-2 text-right text-muted-foreground">
+                    {origStats.exchanged > 0 ? formatQty(origStats.exchanged) : '—'}
+                </td>
+                <td className="px-3 py-2 text-right font-medium">{formatQty(combinedAvailable)}</td>
+                <td className="px-3 py-2 text-right">৳{parseFloat(orig.unit_price).toFixed(2)}</td>
+                <td className="px-2 py-1.5">
+                    <div className="flex flex-col items-end gap-1">
+                        {origStats.maxReturn > 0 && (
+                            <div className="flex items-center justify-end gap-1.5">
+                                <span className="w-10 text-right text-[10px] text-muted-foreground">Orig.</span>
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    max={orig.max_return_quantity}
+                                    step="1"
+                                    value={orig.quantity}
+                                    onChange={(e) => updateReturnQty(origIndex, e.target.value)}
+                                    onBlur={(e) => updateReturnQty(origIndex, e.target.value)}
+                                    className={`${inputCls} w-20 text-right ${origOverMax ? 'border-destructive' : ''}`}
+                                />
+                            </div>
+                        )}
+                        {replStats.maxReturn > 0 && (
+                            <div className="flex items-center justify-end gap-1.5">
+                                <span className="w-10 text-right text-[10px] text-muted-foreground">Repl.</span>
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    max={repl.max_return_quantity}
+                                    step="1"
+                                    value={repl.quantity}
+                                    onChange={(e) => updateReturnQty(replIndex, e.target.value)}
+                                    onBlur={(e) => updateReturnQty(replIndex, e.target.value)}
+                                    className={`${inputCls} w-20 text-right ${replOverMax ? 'border-destructive' : ''}`}
+                                />
+                            </div>
+                        )}
+                        {origStats.maxReturn <= 0 && replStats.maxReturn <= 0 && (
+                            <span className="text-muted-foreground">—</span>
+                        )}
+                    </div>
+                </td>
+                <td className="px-3 py-2 text-right font-semibold">৳{combinedSub.toFixed(2)}</td>
+            </tr>
+        );
+    }
+
+    function renderRowGroup(group) {
+        if (group.type === 'merged') {
+            return [renderMergedRow(group.original, group.replacement)];
+        }
+
+        return [group.original, ...group.replacements].map(renderReturnRow);
+    }
+
     return (
         <>
             <Head title="Sale Return" />
@@ -256,7 +423,7 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                         )}
                     </InventoryCard>
 
-                    {items.length > 0 && (
+                    {rowGroups.length > 0 && (
                         <InventoryCard title="Return Items" icon={Package}>
                             <LineItemsTable
                                 columns={[
@@ -270,52 +437,7 @@ export default function SaleReturnCreate({ today, paymentAccounts = [] }) {
                                     { id: 'sub', header: 'Sub Total', align: 'right' },
                                 ]}
                             >
-                                {items.map((item, i) => {
-                                    const stats = saleReturnLineStats(item);
-                                    const sub = stats.returning * parseFloat(item.unit_price || 0);
-                                    const overMax = stats.returning > stats.maxReturn;
-                                    const isFullyReturned = stats.available <= 0 && stats.returning <= 0;
-                                    const isReplacement = item.line_type === 'replacement';
-                                    return (
-                                        <tr key={i} className={isFullyReturned ? 'bg-muted/30 text-muted-foreground' : 'hover:bg-muted/20'}>
-                                            <td className="px-3 py-2">
-                                                <ProductNameWithCode
-                                                    name={item.product_name}
-                                                    code={item.product_code}
-                                                    variation={item.variation_label}
-                                                />
-                                                {isReplacement && (
-                                                    <p className="mt-0.5 text-[11px] text-primary">
-                                                        Replacement from exchange {item.exchange_invoice_number}
-                                                    </p>
-                                                )}
-                                            </td>
-                                            <td className="px-3 py-2 text-right">{formatQty(stats.sold)}</td>
-                                            <td className="px-3 py-2 text-right">{formatQty(stats.returnedOnSale)}</td>
-                                            <td className="px-3 py-2 text-right text-muted-foreground">
-                                                {stats.exchanged > 0 ? formatQty(stats.exchanged) : '—'}
-                                            </td>
-                                            <td className="px-3 py-2 text-right font-medium">
-                                                {formatQty(stats.available)}
-                                            </td>
-                                            <td className="px-3 py-2 text-right">৳{parseFloat(item.unit_price).toFixed(2)}</td>
-                                            <td className="px-2 py-1.5 text-right">
-                                                <Input
-                                                    type="number"
-                                                    min="0"
-                                                    max={item.max_return_quantity}
-                                                    step="1"
-                                                    value={item.quantity}
-                                                    disabled={isFullyReturned}
-                                                    onChange={(e) => updateReturnQty(i, e.target.value)}
-                                                    onBlur={(e) => updateReturnQty(i, e.target.value)}
-                                                    className={`${inputCls} ml-auto w-24 text-right ${overMax ? 'border-destructive' : ''}`}
-                                                />
-                                            </td>
-                                            <td className="px-3 py-2 text-right font-semibold">৳{sub.toFixed(2)}</td>
-                                        </tr>
-                                    );
-                                })}
+                                {rowGroups.flatMap(renderRowGroup)}
                             </LineItemsTable>
                         </InventoryCard>
                     )}

@@ -340,7 +340,11 @@ class SaleReturnController extends Controller
             ->findOrFail($saleReturn->sell_id);
 
         $returnedByLine = $this->availability->returnedQuantitiesByLine($parent->id, $saleReturn->id);
-        $exchangedByLine = $this->availability->exchangedQuantitiesByLine($parent->id);
+        // Split the exchange's own consumption the same way the lookup endpoint does: a real
+        // swap (old_quantity) reads as "Exchanged", a refund-without-replacement recorded on
+        // the exchange itself (return_quantity) reads as "Returned" instead.
+        $exchangedTotalByLine = $this->availability->exchangedQuantitiesByLine($parent->id);
+        $exchangeSwapByLine = $this->availability->exchangeSwapQuantitiesByLine($parent->id);
         $linesOnReturn = $saleReturn->products->whereNull('product_exchange_product_id')->keyBy('sell_product_id');
 
         $promotionIds = $parent->products->pluck('promotion_id')->filter()->unique()->values()->all();
@@ -349,9 +353,12 @@ class SaleReturnController extends Controller
             : collect();
 
         $items = $parent->products
-            ->map(function ($sp) use ($returnedByLine, $exchangedByLine, $linesOnReturn, $promotionMap) {
-                $returnedElsewhere = (float) ($returnedByLine[$sp->id] ?? 0);
-                $exchangedElsewhere = (float) ($exchangedByLine[$sp->id] ?? 0);
+            ->map(function ($sp) use ($returnedByLine, $exchangedTotalByLine, $exchangeSwapByLine, $linesOnReturn, $promotionMap) {
+                $exchangeTotal = (float) ($exchangedTotalByLine[$sp->id] ?? 0);
+                $exchangeSwap = (float) ($exchangeSwapByLine[$sp->id] ?? 0);
+                $exchangeRefund = max(0.0, $exchangeTotal - $exchangeSwap);
+                $returnedElsewhere = (float) ($returnedByLine[$sp->id] ?? 0) + $exchangeRefund;
+                $exchangedElsewhere = $exchangeSwap;
                 $maxReturn = max(0, (float) $sp->quantity - $returnedElsewhere - $exchangedElsewhere);
                 $current = $linesOnReturn->get($sp->id);
 

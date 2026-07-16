@@ -225,6 +225,7 @@ export default function ProductExchangeCreate({
                 // Already-returned quantity narrows what's left available to exchange
                 // (Sale Return / Product Exchange coexistence).
                 available_quantity: i.max_return_quantity,
+                returned_quantity: i.returned_quantity ?? 0,
                 new_product_id: '',
                 new_product_name: '',
                 new_variation_id: null,
@@ -508,10 +509,12 @@ export default function ProductExchangeCreate({
                                           )
                                         : 0;
 
+                                    const isFullyConsumed = availableQty(item) <= 0;
+
                                     return (
                                         <tr
                                             key={i}
-                                            className="hover:bg-muted/20"
+                                            className={isFullyConsumed ? 'bg-muted/30 text-muted-foreground' : 'hover:bg-muted/20'}
                                         >
                                             <td className="px-3 py-2">
                                                 <ProductNameWithCode
@@ -536,6 +539,10 @@ export default function ProductExchangeCreate({
                                                         }
                                                         className="text-primary [&_p]:text-primary"
                                                     />
+                                                ) : isFullyConsumed ? (
+                                                    <span className="text-xs text-muted-foreground">
+                                                        Fully returned — nothing to exchange
+                                                    </span>
                                                 ) : (
                                                     <button
                                                         type="button"
@@ -550,9 +557,9 @@ export default function ProductExchangeCreate({
                                             </td>
                                             <td className="px-3 py-2 text-right text-muted-foreground">
                                                 {item.sold_quantity}
-                                                {availableQty(item) < parseInt(item.sold_quantity || 0, 10) && (
+                                                {parseInt(item.returned_quantity || 0, 10) > 0 && (
                                                     <span className="block text-[11px]">
-                                                        {availableQty(item)} available
+                                                        Returned {item.returned_quantity}
                                                     </span>
                                                 )}
                                             </td>
@@ -563,6 +570,7 @@ export default function ProductExchangeCreate({
                                                     max={availableQty(item)}
                                                     step="1"
                                                     value={item.quantity}
+                                                    disabled={isFullyConsumed}
                                                     onChange={(e) =>
                                                         updateExchangeQty(
                                                             i,
@@ -585,6 +593,7 @@ export default function ProductExchangeCreate({
                                                     max={availableQty(item)}
                                                     step="1"
                                                     value={item.return_quantity}
+                                                    disabled={isFullyConsumed}
                                                     onChange={(e) =>
                                                         updateReturnQty(
                                                             i,

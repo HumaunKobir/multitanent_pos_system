@@ -920,7 +920,7 @@ test('daily summary applies all sell discount types and sale return net amount',
         ->get('/report/daily-summary?date='.$date.'&branch_id='.$branch->id)
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->where('summary.sales.gross', 555)
+            ->where('summary.sales.gross', 810)
             ->where('summary.purchases.gross', $expectedPurchaseGross)
             ->where('summary.sale_returns.amount', 255)
             ->where('summary.sale_returns.paid', 200)
@@ -935,7 +935,7 @@ test('daily summary applies all sell discount types and sale return net amount',
             ->where('summary.product_exchanges.difference', 25)
             ->where('summary.damages.count', 1)
             ->where('summary.damages.amount', 100)
-            ->where('summary.staff_breakdown.0.sales.gross', 555)
+            ->where('summary.staff_breakdown.0.sales.gross', 810)
             ->where('summary.staff_breakdown.0.purchases.gross', $expectedPurchaseGross)
             ->where('summary.staff_breakdown.0.sale_returns.count', 1)
             ->where('summary.staff_breakdown.0.sale_returns.amount', 255)

@@ -509,6 +509,70 @@ test('sale return can return the original remaining quantity after a partial exc
     expect((float) $oldBatch->fresh()->available)->toBe(11.0);
 });
 
+test('sale lookup splits an exchange line into exchanged (swap) and returned (refund without replacement)', function () {
+    $user = saleReturnUser([
+        'inventory.sale-return.view',
+        'inventory.sale-return.create',
+        'inventory.product-exchange.create',
+    ]);
+    ['product' => $oldProduct, 'batch' => $oldBatch] = saleReturnProduct(10, $user->branch_id);
+    ['product' => $newProduct] = saleReturnProduct(10, $user->branch_id);
+
+    $sell = Sell::factory()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'gross_amount' => 1800,
+        'vat' => 0,
+        'paid_amount' => 1800,
+        'type' => SaleType::Sale,
+    ]);
+
+    $sellProduct = SellProduct::query()->create([
+        'branch_id' => $user->branch_id,
+        'sell_id' => $sell->id,
+        'product_id' => $oldProduct->id,
+        'quantity' => 2,
+        'unit_price' => 900,
+        'batches' => [(string) $oldBatch->id => 2],
+    ]);
+
+    // One document exchanged 1 unit for a replacement (a true swap) and separately
+    // refunded the other unit without a replacement (return_quantity on the same line).
+    $exchange = ProductExchange::query()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'sell_id' => $sell->id,
+        'date' => now()->format('Y-m-d'),
+        'gross_amount' => 900,
+        'net_amount' => 900,
+        'paid_amount' => 0,
+        'price_difference' => 0,
+    ]);
+    $exchange->products()->create([
+        'branch_id' => $user->branch_id,
+        'sell_product_id' => $sellProduct->id,
+        'old_product_id' => $oldProduct->id,
+        'old_quantity' => 1,
+        'old_unit_price' => 900,
+        'return_quantity' => 1,
+        'return_unit_price' => 900,
+        'new_product_id' => $newProduct->id,
+        'new_quantity' => 1,
+        'new_unit_price' => 900,
+        'new_line_discount' => 0,
+    ]);
+
+    // "Exchanged" must reflect only the true swap (1), and "Returned" must include the
+    // refund-without-replacement half (1) even though no separate Sale Return exists yet —
+    // both consumed the same original 2-unit pool, so Available is 0 either way.
+    $this->actingAs($user)
+        ->getJson('/api/sales/lookup?invoice='.$sell->invoice_number)
+        ->assertOk()
+        ->assertJsonPath('items.0.exchanged_quantity', 1)
+        ->assertJsonPath('items.0.returned_quantity', 1)
+        ->assertJsonPath('items.0.max_return_quantity', 0);
+});
+
 test('sale return can return an exchange replacement product, partially and then fully', function () {
     $user = saleReturnUser([
         'inventory.sale-return.view',

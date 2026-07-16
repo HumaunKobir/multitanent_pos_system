@@ -71,6 +71,38 @@ class SellProductAvailabilityService
         return $quantities;
     }
 
+    /**
+     * Quantity actually swapped for a replacement product (old_quantity only — excludes the
+     * exchange's own refund-without-replacement portion). Display-only breakdown: pair with
+     * exchangedQuantitiesByLine() to derive the refund-without-replacement share
+     * (combined − swap) so a "Returned" column can include it instead of "Exchanged".
+     *
+     * @return array<int, float>
+     */
+    public function exchangeSwapQuantitiesByLine(int $sellId, ?int $excludeExchangeId = null): array
+    {
+        $quantities = [];
+
+        ProductExchangeProduct::query()
+            ->whereHas('productExchange', function ($q) use ($sellId, $excludeExchangeId) {
+                $q->where('sell_id', $sellId);
+
+                if ($excludeExchangeId !== null) {
+                    $q->whereKeyNot($excludeExchangeId);
+                }
+            })
+            ->get()
+            ->each(function (ProductExchangeProduct $line) use (&$quantities) {
+                $swap = (float) $line->old_quantity;
+
+                if ($swap > 0) {
+                    $quantities[$line->sell_product_id] = ($quantities[$line->sell_product_id] ?? 0) + $swap;
+                }
+            });
+
+        return $quantities;
+    }
+
     public function availableQuantity(
         SellProduct $line,
         int $sellId,

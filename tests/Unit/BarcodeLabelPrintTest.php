@@ -303,6 +303,14 @@ if (! wideHtml.includes('justify-content: center')) {
     process.exit(57);
 }
 
+if (! wideHtml.includes('grid-template-rows: auto minmax(0, 1fr) auto')) {
+    process.exit(88);
+}
+
+if (! wideHtml.includes(`padding: 5px 0 5px`)) {
+    process.exit(89);
+}
+
 if (! wideHtml.includes('align-items: center')) {
     process.exit(86);
 }

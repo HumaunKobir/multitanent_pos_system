@@ -202,16 +202,17 @@ function LabelPreview({ row, settings }) {
                         minHeight: 0,
                         maxWidth: '100%',
                         maxHeight: '100%',
-                        display: 'flex',
-                        flexDirection: 'column',
+                        display: 'grid',
+                        gridTemplateRows: 'auto minmax(0, 1fr) auto',
                         alignItems: 'stretch',
-                        justifyContent: 'center',
+                        justifyItems: 'stretch',
                         flex: '1 1 auto',
                         overflow: 'hidden',
                     }}
                 >
                     <div
                         style={{
+                            gridRow: 1,
                             flex: '0 0 auto',
                             marginBottom: `${nameBarcodeGap}px`,
                             textAlign: 'center',
@@ -236,13 +237,12 @@ function LabelPreview({ row, settings }) {
                     </div>
                     <div
                         style={{
+                            gridRow: 2,
                             width: `${barcodeWidthPx}px`,
                             maxWidth: '100%',
                             minWidth: 0,
                             minHeight: 0,
-                            marginLeft: 'auto',
-                            marginRight: 'auto',
-                            flex: '1 1 auto',
+                            margin: '0 auto',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -257,6 +257,7 @@ function LabelPreview({ row, settings }) {
                     </div>
                     <div
                         style={{
+                            gridRow: 3,
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',

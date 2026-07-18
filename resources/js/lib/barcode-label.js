@@ -15,10 +15,15 @@ export const MIN_LABEL_WIDTH_IN = 0.5;
 export const MAX_LABEL_WIDTH_IN = 10;
 /** Horizontal label padding (5px left + 5px right). */
 export const LABEL_PADDING_X_PX = 10;
-/** Top label padding — extra room so bold header text is not clipped in print. */
-export const LABEL_PADDING_TOP_PX = 5;
-/** Bottom label padding. */
-export const LABEL_PADDING_BOTTOM_PX = 3;
+/**
+ * Fixed page margin above the header and below the footer on every label.
+ * Keep these equal so print spacing is consistent across pages.
+ */
+export const LABEL_PAGE_MARGIN_PX = 5;
+/** Top label padding — fixed margin above the header. */
+export const LABEL_PADDING_TOP_PX = LABEL_PAGE_MARGIN_PX;
+/** Bottom label padding — fixed margin below the footer. */
+export const LABEL_PADDING_BOTTOM_PX = LABEL_PAGE_MARGIN_PX;
 /** Vertical label padding total (top + bottom). */
 export const LABEL_PADDING_Y_PX = LABEL_PADDING_TOP_PX + LABEL_PADDING_BOTTOM_PX;
 /** Extra top pad inside the header so bold text is not clipped in print. */
@@ -988,8 +993,9 @@ export function buildPrintHtml(rows, settings) {
     }
     .page { display: block; width: ${width}in; }
     /*
-     * Fill the page, keep header/footer pinned, and center the barcode
-     * in the remaining middle space on every printed label.
+     * Fixed top/bottom page margins for header and footer on every label.
+     * Header stays under the top margin, footer above the bottom margin,
+     * barcode fills and centers in the remaining middle space.
      */
     .label {
       width: ${width}in;
@@ -1026,20 +1032,22 @@ export function buildPrintHtml(rows, settings) {
       min-height: 0;
       max-width: 100%;
       max-height: 100%;
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
       align-items: stretch;
-      justify-content: center;
+      justify-items: stretch;
       flex: 1 1 auto;
       overflow: hidden;
     }
     .label-header {
+      grid-row: 1;
       flex: 0 0 auto;
       text-align: center;
       width: 100%;
       min-width: 0;
       max-width: 100%;
       overflow: hidden;
+      margin: 0;
       padding: ${LABEL_HEADER_PAD_TOP_PX}px ${sideMarginIn}in 0;
     }
     .label-line {
@@ -1059,13 +1067,12 @@ export function buildPrintHtml(rows, settings) {
       font-weight: 700;
     }
     .bars-wrap {
+      grid-row: 2;
       width: ${printedBarcodeWidthIn}in;
       max-width: 100%;
       min-width: 0;
       min-height: 0;
-      margin-left: auto;
-      margin-right: auto;
-      flex: 1 1 auto;
+      margin: 0 auto;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1083,11 +1090,13 @@ export function buildPrintHtml(rows, settings) {
       margin: 0;
     }
     .footer {
+      grid-row: 3;
       display: flex;
       flex-direction: column;
       align-items: center;
       flex: 0 0 auto;
       margin-top: ${barcodePriceGap}px;
+      margin-bottom: 0;
       width: 100%;
       min-width: 0;
       max-width: 100%;

@@ -246,7 +246,7 @@ export default function InventoryStockReport({
                     </Button>
                 </div>
 
-                <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">
                     <StatTile
                         label="Total Products"
                         value={summary.product_count ?? 0}
@@ -258,6 +258,18 @@ export default function InventoryStockReport({
                         value={`${formatStock(summary.total_stock)} pcs`}
                         sub="Across all filtered products"
                         accentClass="border-l-blue-600"
+                    />
+                    <StatTile
+                        label="In Stock"
+                        value={summary.in_stock_count ?? 0}
+                        sub="Products with stock available"
+                        accentClass="border-l-teal-600"
+                    />
+                    <StatTile
+                        label="Out of Stock"
+                        value={summary.out_of_stock_count ?? 0}
+                        sub="Products with zero stock"
+                        accentClass="border-l-slate-600"
                     />
                     <StatTile
                         label="Total Cost Value"

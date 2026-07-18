@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Setting;
 
+use App\Concerns\ExportsCatalogSettingList;
 use App\Concerns\ManagesBranchCatalog;
 use App\Concerns\StoresPublicImages;
 use App\Http\Controllers\Controller;
@@ -14,15 +15,13 @@ use Inertia\Response;
 
 class BrandController extends Controller
 {
-    use ManagesBranchCatalog, StoresPublicImages;
+    use ExportsCatalogSettingList, ManagesBranchCatalog, StoresPublicImages;
 
     public function index(Request $request): Response
     {
         $this->authorize('setting.brand.view');
 
-        $brands = $this->branchCatalogQuery()
-            ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
-            ->latest()
+        $brands = $this->catalogListQuery($request)
             ->paginate(20)
             ->withQueryString()
             ->through(fn (Brand $brand): array => [
@@ -32,11 +31,12 @@ class BrandController extends Controller
                 'status' => $brand->status,
                 'image' => $this->isStoredPublicImage($brand->image) ? $brand->image : null,
                 'image_url' => $this->publicImageUrl($brand->image),
+                'created_at' => $brand->created_at?->toIso8601String(),
             ]);
 
         return Inertia::render('admin/setting/brand/index', [
             'brands' => $brands,
-            'filters' => $request->only('search'),
+            'filters' => $request->only('search', 'date_from', 'date_to'),
         ]);
     }
 
@@ -107,5 +107,15 @@ class BrandController extends Controller
     protected function catalogModelClass(): string
     {
         return Brand::class;
+    }
+
+    protected function catalogExportPermission(): string
+    {
+        return 'setting.brand.view';
+    }
+
+    protected function catalogExportTitle(): string
+    {
+        return 'Brands';
     }
 }

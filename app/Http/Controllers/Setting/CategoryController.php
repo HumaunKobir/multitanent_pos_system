@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Setting;
 
+use App\Concerns\ExportsCatalogSettingList;
 use App\Concerns\ManagesBranchCatalog;
 use App\Concerns\StoresPublicImages;
 use App\Http\Controllers\Controller;
@@ -14,15 +15,13 @@ use Inertia\Response;
 
 class CategoryController extends Controller
 {
-    use ManagesBranchCatalog, StoresPublicImages;
+    use ExportsCatalogSettingList, ManagesBranchCatalog, StoresPublicImages;
 
     public function index(Request $request): Response
     {
         $this->authorize('setting.category.view');
 
-        $categories = $this->branchCatalogQuery()
-            ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
-            ->latest()
+        $categories = $this->catalogListQuery($request)
             ->paginate(20)
             ->withQueryString()
             ->through(fn (Category $category): array => [
@@ -32,11 +31,12 @@ class CategoryController extends Controller
                 'status' => $category->status,
                 'image' => $this->isStoredPublicImage($category->image) ? $category->image : null,
                 'image_url' => $this->publicImageUrl($category->image),
+                'created_at' => $category->created_at?->toIso8601String(),
             ]);
 
         return Inertia::render('admin/setting/category/index', [
             'categories' => $categories,
-            'filters' => $request->only('search'),
+            'filters' => $request->only('search', 'date_from', 'date_to'),
         ]);
     }
 
@@ -107,5 +107,15 @@ class CategoryController extends Controller
     protected function catalogModelClass(): string
     {
         return Category::class;
+    }
+
+    protected function catalogExportPermission(): string
+    {
+        return 'setting.category.view';
+    }
+
+    protected function catalogExportTitle(): string
+    {
+        return 'Categories';
     }
 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Reports;
 
+use App\Concerns\ExportsFilteredList;
 use App\Http\Controllers\Concerns\ScopesProductStockListing;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
@@ -10,12 +11,16 @@ use App\Models\Category;
 use App\Models\Product;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class InventoryStockController extends Controller
 {
+    use ExportsFilteredList;
     use ScopesProductStockListing;
 
     public function __invoke(Request $request): Response
@@ -57,7 +62,7 @@ class InventoryStockController extends Controller
             'summary' => $summary,
             'mainBranchId' => $mainBranchId,
             'filters' => array_merge(
-                $request->only('search', 'category_id', 'brand_id'),
+                $request->only('search', 'category_id', 'brand_id', 'date_from', 'date_to'),
                 $canFilterByBranch ? [
                     'branch_id' => $request->input('branch_id', (string) $mainBranchId),
                 ] : [],
@@ -70,7 +75,7 @@ class InventoryStockController extends Controller
 
     protected function buildInventoryStockQuery(Request $request, ?int $listBranchId, bool $usesAdminPanel): Builder
     {
-        return Product::query()
+        $query = Product::query()
             ->active()
             ->when($listBranchId !== null, fn ($q) => $q->where('branch_id', $listBranchId))
             ->when($usesAdminPanel, fn ($q) => $q->visibleInMainCatalog())
@@ -82,5 +87,77 @@ class InventoryStockController extends Controller
             }))
             ->when($request->category_id, fn ($q, $c) => $q->where('category_id', $c))
             ->when($request->brand_id, fn ($q, $b) => $q->where('brand_id', $b));
+
+        $this->applyCreatedAtDateFilters($query, $request);
+
+        return $query;
+    }
+
+    /**
+     * @return Collection<int, list<string|int|float>>
+     */
+    private function exportRows(Request $request): Collection
+    {
+        $listBranchId = $this->resolveProductListBranchId($request);
+        $usesAdminPanel = Auth::user()?->usesAdminPanel() ?? false;
+
+        $products = $this->buildInventoryStockQuery($request, $listBranchId, $usesAdminPanel)
+            ->with([
+                'category:id,name',
+                'brand:id,name',
+                'variations' => fn ($q) => $this->scopeProductListVariations($q, $listBranchId),
+            ])
+            ->tap(fn ($q) => $this->applyProductListStockAggregates($q, $listBranchId))
+            ->orderBy('name')
+            ->limit(self::LIST_EXPORT_LIMIT)
+            ->get();
+
+        return $products->values()->map(function (Product $product, int $index): array {
+            $stock = $this->resolveProductStockQuantity($product);
+
+            return [
+                $index + 1,
+                $product->name,
+                $product->code ?? '—',
+                $product->category?->name ?? '—',
+                $product->brand?->name ?? '—',
+                $stock,
+                $stock > 0 ? 'In Stock' : 'Out of Stock',
+                optional($product->created_at)?->format('Y-m-d H:i') ?? '—',
+            ];
+        });
+    }
+
+    public function exportExcel(Request $request): BinaryFileResponse
+    {
+        $this->authorize('report.inventory-stock.view');
+
+        return $this->downloadListExcel(
+            'inventory-stock',
+            ['#', 'Name', 'Code', 'Category', 'Brand', 'Stock', 'Status', 'Created At'],
+            $this->exportRows($request),
+        );
+    }
+
+    public function exportPdf(Request $request): SymfonyResponse
+    {
+        $this->authorize('report.inventory-stock.view');
+
+        return $this->downloadListPdf(
+            'Inventory Stock',
+            ['#', 'Name', 'Code', 'Category', 'Brand', 'Stock', 'Status', 'Created At'],
+            $this->exportRows($request),
+        );
+    }
+
+    public function exportPrint(Request $request): SymfonyResponse
+    {
+        $this->authorize('report.inventory-stock.view');
+
+        return $this->printListHtml(
+            'Inventory Stock',
+            ['#', 'Name', 'Code', 'Category', 'Brand', 'Stock', 'Status', 'Created At'],
+            $this->exportRows($request),
+        );
     }
 }

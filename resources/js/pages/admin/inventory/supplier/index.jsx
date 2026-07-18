@@ -4,6 +4,7 @@ import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { ListDateExportBar } from '@/components/admin/list-date-export-bar';
 import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
@@ -101,6 +102,8 @@ export default function SupplierIndex({ suppliers, filters }) {
     const toast = useAppToast();
     const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
+    const [dateFrom, setDateFrom] = useState(filters.date_from ?? '');
+    const [dateTo, setDateTo] = useState(filters.date_to ?? '');
     const [creating, setCreating] = useState(false);
     const [editing, setEditing] = useState(null);
     const [deleting, setDeleting] = useState(null);
@@ -115,9 +118,17 @@ export default function SupplierIndex({ suppliers, filters }) {
 
     useDebouncedEffect(
         () => {
-            router.get(route('party.supplier.index'), { search: search || undefined }, { preserveState: true, replace: true });
+            router.get(
+                route('party.supplier.index'),
+                {
+                    search: search || undefined,
+                    date_from: dateFrom || undefined,
+                    date_to: dateTo || undefined,
+                },
+                { preserveState: true, replace: true },
+            );
         },
-        [search],
+        [search, dateFrom, dateTo],
         350,
         { skipFirstRun: true },
     );
@@ -200,12 +211,22 @@ export default function SupplierIndex({ suppliers, filters }) {
                     />
                 </div>
 
-                <div className="mb-4 flex gap-2">
+                <div className="mb-4 flex flex-wrap items-end gap-2">
                     <Input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder="Search by name or phone…"
                         className="max-w-xs"
+                    />
+                    <ListDateExportBar
+                        dateFrom={dateFrom}
+                        dateTo={dateTo}
+                        onDateFromChange={setDateFrom}
+                        onDateToChange={setDateTo}
+                        exportExcelRoute="party.supplier.export-excel"
+                        exportPdfRoute="party.supplier.export-pdf"
+                        exportPrintRoute="party.supplier.export-print"
+                        query={{ search }}
                     />
                 </div>
 

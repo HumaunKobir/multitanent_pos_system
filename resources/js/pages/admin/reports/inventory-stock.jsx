@@ -1,4 +1,5 @@
 import { AdminPagination } from '@/components/admin/pagination';
+import { ListDateExportBar } from '@/components/admin/list-date-export-bar';
 import { StatTile } from '@/components/dashboard/stat-tile';
 import { DataTable } from '@/components/ui/data-table';
 import { Input } from '@/components/ui/input';
@@ -34,6 +35,8 @@ export default function InventoryStockReport({
     const [categoryId, setCategoryId] = useState(filters.category_id ?? '__all');
     const [brandId, setBrandId] = useState(filters.brand_id ?? '__all');
     const [branchId, setBranchId] = useState(filters.branch_id ?? defaultBranchId);
+    const [dateFrom, setDateFrom] = useState(filters.date_from ?? '');
+    const [dateTo, setDateTo] = useState(filters.date_to ?? '');
 
     useDebouncedEffect(
         () => {
@@ -43,12 +46,14 @@ export default function InventoryStockReport({
                     search: search || undefined,
                     category_id: categoryId === '__all' ? undefined : categoryId,
                     brand_id: brandId === '__all' ? undefined : brandId,
+                    date_from: dateFrom || undefined,
+                    date_to: dateTo || undefined,
                     ...(canFilterByBranch ? { branch_id: branchId } : {}),
                 },
                 { preserveState: true, replace: true },
             );
         },
-        [search, categoryId, brandId, branchId, canFilterByBranch],
+        [search, categoryId, brandId, branchId, dateFrom, dateTo, canFilterByBranch],
         350,
         { skipFirstRun: true },
     );
@@ -57,6 +62,8 @@ export default function InventoryStockReport({
         setSearch('');
         setCategoryId('__all');
         setBrandId('__all');
+        setDateFrom('');
+        setDateTo('');
         if (canFilterByBranch) {
             setBranchId(defaultBranchId);
         }
@@ -163,7 +170,7 @@ export default function InventoryStockReport({
                     </div>
                 </div>
 
-                <div className="mb-4 flex flex-wrap gap-2">
+                <div className="mb-4 flex flex-wrap items-end gap-2">
                     <Input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
@@ -211,6 +218,21 @@ export default function InventoryStockReport({
                             ))}
                         </SelectContent>
                     </Select>
+                    <ListDateExportBar
+                        dateFrom={dateFrom}
+                        dateTo={dateTo}
+                        onDateFromChange={setDateFrom}
+                        onDateToChange={setDateTo}
+                        exportExcelRoute="report.inventory-stock.export-excel"
+                        exportPdfRoute="report.inventory-stock.export-pdf"
+                        exportPrintRoute="report.inventory-stock.export-print"
+                        query={{
+                            search,
+                            category_id: categoryId,
+                            brand_id: brandId,
+                            ...(canFilterByBranch ? { branch_id: branchId } : {}),
+                        }}
+                    />
                     <Button type="button" variant="outline" size="sm" onClick={handleReset}>
                         <RotateCcw className="size-3.5" />
                         Reset

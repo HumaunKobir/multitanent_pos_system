@@ -4,6 +4,7 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Plus, Ruler, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { ListDateExportBar } from '@/components/admin/list-date-export-bar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogFooter } from '@/components/ui/dialog';
@@ -23,6 +24,8 @@ export default function SizeIndex({ sizes, filters }) {
     const toast = useAppToast();
     const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
+    const [dateFrom, setDateFrom] = useState(filters.date_from ?? '');
+    const [dateTo, setDateTo] = useState(filters.date_to ?? '');
     const [deleting, setDeleting] = useState(null);
     const [editing, setEditing] = useState(null);
     const [formOpen, setFormOpen] = useState(false);
@@ -34,9 +37,16 @@ export default function SizeIndex({ sizes, filters }) {
 
     useDebouncedEffect(
         () => {
-            router.get(routes.index({ search: search || undefined }), { preserveState: true, replace: true });
+            router.get(
+                routes.index({
+                    search: search || undefined,
+                    date_from: dateFrom || undefined,
+                    date_to: dateTo || undefined,
+                }),
+                { preserveState: true, replace: true },
+            );
         },
-        [search],
+        [search, dateFrom, dateTo],
         350,
         { skipFirstRun: true },
     );
@@ -102,12 +112,22 @@ export default function SizeIndex({ sizes, filters }) {
                     <AdminCreateButton permission={`${PERM}.create`} onClick={openCreate} label="Add New" icon={Plus} className="border border-white/30 bg-white/10 text-white backdrop-blur-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-white/50 hover:bg-white/20 hover:shadow-md" />
                 </div>
 
-                <div className="mb-4 flex gap-2">
+                <div className="mb-4 flex flex-wrap items-end gap-2">
                     <Input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
                         placeholder="Search by name..."
                         className="max-w-xs"
+                    />
+                    <ListDateExportBar
+                        dateFrom={dateFrom}
+                        dateTo={dateTo}
+                        onDateFromChange={setDateFrom}
+                        onDateToChange={setDateTo}
+                        exportExcelRoute="setting.size.export-excel"
+                        exportPdfRoute="setting.size.export-pdf"
+                        exportPrintRoute="setting.size.export-print"
+                        query={{ search }}
                     />
                 </div>
 

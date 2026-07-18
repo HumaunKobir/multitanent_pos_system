@@ -4,6 +4,7 @@ import { Head, router, usePage } from '@inertiajs/react';
 import { Package, Pencil, Plus, RotateCcw, Search, Trash2, Inbox, ChevronDown } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { ListDateExportBar } from '@/components/admin/list-date-export-bar';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogFooter } from '@/components/ui/dialog';
@@ -36,6 +37,8 @@ export default function ProductIndex({ products, filters, categories, brands, ta
     const [tag, setTag] = useState(filters.tag ?? '__all');
     const [status, setStatus] = useState(filters.status ?? 'active');
     const [branchId, setBranchId] = useState(filters.branch_id ?? defaultBranchId);
+    const [dateFrom, setDateFrom] = useState(filters.date_from ?? '');
+    const [dateTo, setDateTo] = useState(filters.date_to ?? '');
     const [deleting, setDeleting] = useState(null);
 
     useEffect(() => {
@@ -53,12 +56,14 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                     brand_id: brandId === '__all' ? undefined : brandId,
                     tag: tag === '__all' ? undefined : tag,
                     status: status === 'active' ? undefined : status,
+                    date_from: dateFrom || undefined,
+                    date_to: dateTo || undefined,
                     ...(isSuperAdmin ? { branch_id: branchId } : {}),
                 },
                 { preserveState: true, replace: true },
             );
         },
-        [search, categoryId, brandId, tag, status, branchId, isSuperAdmin],
+        [search, categoryId, brandId, tag, status, branchId, dateFrom, dateTo, isSuperAdmin],
         350,
         { skipFirstRun: true },
     );
@@ -69,6 +74,8 @@ export default function ProductIndex({ products, filters, categories, brands, ta
         setBrandId('__all');
         setTag('__all');
         setStatus('active');
+        setDateFrom('');
+        setDateTo('');
         if (isSuperAdmin) {
             setBranchId(defaultBranchId);
         }
@@ -292,7 +299,7 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                     </div>
                 </div>
 
-                <div className="mb-4 flex flex-wrap gap-2">
+                <div className="mb-4 flex flex-wrap items-end gap-2">
                     <Input
                         value={search}
                         onChange={(e) => setSearch(e.target.value)}
@@ -363,6 +370,23 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                             <SelectItem value="all">All statuses</SelectItem>
                         </SelectContent>
                     </Select>
+                    <ListDateExportBar
+                        dateFrom={dateFrom}
+                        dateTo={dateTo}
+                        onDateFromChange={setDateFrom}
+                        onDateToChange={setDateTo}
+                        exportExcelRoute="product.export-excel"
+                        exportPdfRoute="product.export-pdf"
+                        exportPrintRoute="product.export-print"
+                        query={{
+                            search,
+                            category_id: categoryId,
+                            brand_id: brandId,
+                            tag,
+                            status,
+                            ...(isSuperAdmin ? { branch_id: branchId } : {}),
+                        }}
+                    />
                     <Button variant="outline" size="icon" onClick={handleReset} title="Reset filters">
                         <RotateCcw className="size-4" />
                     </Button>

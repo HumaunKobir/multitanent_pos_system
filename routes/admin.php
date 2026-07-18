@@ -113,6 +113,9 @@ Route::middleware(['auth', 'verified', 'ecommerce.panel'])->group(function () {
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('product/{product}/receive', [ProductController::class, 'receive'])->name('product.receive');
+    Route::get('product/export/excel', [ProductController::class, 'exportExcel'])->name('product.export-excel');
+    Route::get('product/export/pdf', [ProductController::class, 'exportPdf'])->name('product.export-pdf');
+    Route::get('product/export/print', [ProductController::class, 'exportPrint'])->name('product.export-print');
     Route::resource('product', ProductController::class)->except(['show']);
     Route::get('barcode', [BarcodeController::class, 'index'])->name('barcode.index');
     Route::get('barcode/serial-range', [BarcodeController::class, 'serialRange'])->name('barcode.serial-range');
@@ -141,6 +144,9 @@ Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')
 });
 
 Route::middleware(['auth', 'verified'])->prefix('party')->name('party.')->group(function () {
+    Route::get('supplier/export/excel', [SupplierController::class, 'exportExcel'])->name('supplier.export-excel');
+    Route::get('supplier/export/pdf', [SupplierController::class, 'exportPdf'])->name('supplier.export-pdf');
+    Route::get('supplier/export/print', [SupplierController::class, 'exportPrint'])->name('supplier.export-print');
     Route::resource('supplier', SupplierController::class)->except(['create', 'edit', 'show']);
     Route::resource('supplier-payment', SupplierPaymentController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::resource('customer-due-collection', CustomerDueCollectionController::class)
@@ -203,6 +209,9 @@ Route::middleware(['auth', 'verified'])->prefix('report')->name('report.')->grou
     Route::get('daily-transactions', [ReportController::class, 'dailyTransactions'])->name('daily-transactions');
     Route::get('date-wise-stock', [ReportController::class, 'dateWiseStock'])->name('date-wise-stock');
     Route::get('stock-ledger', [ReportController::class, 'stockLedger'])->name('stock-ledger');
+    Route::get('inventory-stock/export/excel', [InventoryStockController::class, 'exportExcel'])->name('inventory-stock.export-excel');
+    Route::get('inventory-stock/export/pdf', [InventoryStockController::class, 'exportPdf'])->name('inventory-stock.export-pdf');
+    Route::get('inventory-stock/export/print', [InventoryStockController::class, 'exportPrint'])->name('inventory-stock.export-print');
     Route::get('inventory-stock', InventoryStockController::class)->name('inventory-stock');
     Route::get('daily-summary', [ReportController::class, 'dailySummary'])->name('daily-summary');
     Route::get('sales-summary', [ReportController::class, 'salesSummary'])->name('sales-summary');
@@ -215,15 +224,27 @@ Route::middleware(['auth', 'verified'])->prefix('report')->name('report.')->grou
 });
 
 Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->group(function () {
+    Route::get('category/export/excel', [CategoryController::class, 'exportExcel'])->name('category.export-excel');
+    Route::get('category/export/pdf', [CategoryController::class, 'exportPdf'])->name('category.export-pdf');
+    Route::get('category/export/print', [CategoryController::class, 'exportPrint'])->name('category.export-print');
     Route::resource('category', CategoryController::class)
         ->except(['create', 'edit'])
         ->parameters(['category' => 'category:id']);
     Route::resource('tag', TagController::class)->except(['create', 'edit']);
+    Route::get('brand/export/excel', [BrandController::class, 'exportExcel'])->name('brand.export-excel');
+    Route::get('brand/export/pdf', [BrandController::class, 'exportPdf'])->name('brand.export-pdf');
+    Route::get('brand/export/print', [BrandController::class, 'exportPrint'])->name('brand.export-print');
     Route::resource('brand', BrandController::class)
         ->except(['create', 'edit'])
         ->parameters(['brand' => 'brand:id']);
     Route::resource('unit', UnitController::class)->except(['create', 'edit']);
+    Route::get('color/export/excel', [ColorController::class, 'exportExcel'])->name('color.export-excel');
+    Route::get('color/export/pdf', [ColorController::class, 'exportPdf'])->name('color.export-pdf');
+    Route::get('color/export/print', [ColorController::class, 'exportPrint'])->name('color.export-print');
     Route::resource('color', ColorController::class)->except(['create', 'edit']);
+    Route::get('size/export/excel', [SizeController::class, 'exportExcel'])->name('size.export-excel');
+    Route::get('size/export/pdf', [SizeController::class, 'exportPdf'])->name('size.export-pdf');
+    Route::get('size/export/print', [SizeController::class, 'exportPrint'])->name('size.export-print');
     Route::resource('size', SizeController::class)->except(['create', 'edit']);
     Route::resource('warranty', WarrantyController::class)->except(['create', 'edit']);
     Route::resource('slider', SliderController::class)->except(['create', 'edit', 'show']);

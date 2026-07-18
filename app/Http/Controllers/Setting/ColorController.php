@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Setting;
 
+use App\Concerns\ExportsCatalogSettingList;
 use App\Concerns\ManagesBranchCatalog;
 use App\Http\Controllers\Controller;
 use App\Models\Color;
@@ -13,21 +14,19 @@ use Inertia\Response;
 
 class ColorController extends Controller
 {
-    use ManagesBranchCatalog;
+    use ExportsCatalogSettingList, ManagesBranchCatalog;
 
     public function index(Request $request): Response
     {
         $this->authorize('setting.color.view');
 
-        $colors = $this->branchCatalogQuery()
-            ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
-            ->latest()
+        $colors = $this->catalogListQuery($request)
             ->paginate(20)
             ->withQueryString();
 
         return Inertia::render('admin/setting/color/index', [
             'colors' => $colors,
-            'filters' => $request->only('search'),
+            'filters' => $request->only('search', 'date_from', 'date_to'),
         ]);
     }
 
@@ -73,5 +72,15 @@ class ColorController extends Controller
     protected function catalogModelClass(): string
     {
         return Color::class;
+    }
+
+    protected function catalogExportPermission(): string
+    {
+        return 'setting.color.view';
+    }
+
+    protected function catalogExportTitle(): string
+    {
+        return 'Colors';
     }
 }

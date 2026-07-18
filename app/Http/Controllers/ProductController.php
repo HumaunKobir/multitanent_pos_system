@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Concerns\ExportsFilteredList;
 use App\Data\InitialStockSettlement;
 use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
 use App\Http\Controllers\Concerns\ScopesProductStockListing;
@@ -25,6 +26,7 @@ use App\Services\ProductDeletionService;
 use App\Services\ProductInitialStockService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -33,9 +35,12 @@ use Illuminate\Validation\Rules\Unique;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class ProductController extends Controller
 {
+    use ExportsFilteredList;
     use ProvidesPaymentAccounts;
     use ScopesProductStockListing;
 
@@ -115,6 +120,7 @@ class ProductController extends Controller
             ->when($request->category_id, fn ($q, $c) => $q->where('category_id', $c))
             ->when($request->brand_id, fn ($q, $b) => $q->where('brand_id', $b))
             ->when($request->tag, fn ($q, $t) => $q->whereJsonContains('tags', $t))
+            ->tap(fn ($q) => $this->applyCreatedAtDateFilters($q, $request))
             ->latest()
             ->paginate(10)
             ->withQueryString()
@@ -156,7 +162,7 @@ class ProductController extends Controller
             'mainBranchId' => $mainBranchId,
             'showSelectedBranchColumn' => $showSelectedBranchColumn,
             'filters' => array_merge(
-                $request->only('search', 'category_id', 'brand_id', 'tag'),
+                $request->only('search', 'category_id', 'brand_id', 'tag', 'date_from', 'date_to'),
                 ['status' => $statusFilter],
                 $canFilterProductsByBranch ? [
                     'branch_id' => $request->input('branch_id', (string) $mainBranchId),
@@ -178,6 +184,94 @@ class ProductController extends Controller
                 ])
                 ->all(),
         ]);
+    }
+
+    private function productListQuery(Request $request, ?int $listBranchId, bool $usesAdminPanel)
+    {
+        $statusFilter = $request->input('status', 'active');
+
+        return Product::query()
+            ->when($statusFilter === 'active', fn ($q) => $q->where('status', 1))
+            ->when($statusFilter === 'inactive', fn ($q) => $q->where('status', 0))
+            ->when($listBranchId !== null, fn ($q) => $q->where('branch_id', $listBranchId))
+            ->when($usesAdminPanel, fn ($q) => $q->visibleInMainCatalog())
+            ->with([
+                'category:id,name',
+                'brand:id,name',
+                'variations' => fn ($q) => $this->scopeProductListVariations($q, $listBranchId),
+            ])
+            ->tap(fn ($q) => $this->applyProductListStockAggregates($q, $listBranchId))
+            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
+                $q->where('name', 'like', "%{$s}%")
+                    ->orWhere('code', 'like', "%{$s}%")
+                    ->orWhereHas('brand', fn ($q) => $q->where('name', 'like', "%{$s}%"))
+                    ->orWhereHas('category', fn ($q) => $q->where('name', 'like', "%{$s}%"))
+                    ->orWhereJsonContains('tags', $s);
+            }))
+            ->when($request->category_id, fn ($q, $c) => $q->where('category_id', $c))
+            ->when($request->brand_id, fn ($q, $b) => $q->where('brand_id', $b))
+            ->when($request->tag, fn ($q, $t) => $q->whereJsonContains('tags', $t))
+            ->tap(fn ($q) => $this->applyCreatedAtDateFilters($q, $request))
+            ->latest();
+    }
+
+    /**
+     * @return Collection<int, list<string|int|float>>
+     */
+    private function productExportRows(Request $request): Collection
+    {
+        $listBranchId = $this->resolveProductListBranchId($request);
+        $usesAdminPanel = Auth::user()?->usesAdminPanel() ?? false;
+
+        return $this->productListQuery($request, $listBranchId, $usesAdminPanel)
+            ->limit(self::LIST_EXPORT_LIMIT)
+            ->get()
+            ->values()
+            ->map(function (Product $product, int $index): array {
+                return [
+                    $index + 1,
+                    $product->name,
+                    $product->code ?? '—',
+                    $product->category?->name ?? '—',
+                    $product->brand?->name ?? '—',
+                    $this->resolveProductStockQuantity($product),
+                    (int) $product->status === 1 ? 'Active' : 'InActive',
+                    optional($product->created_at)?->format('Y-m-d H:i') ?? '—',
+                ];
+            });
+    }
+
+    public function exportExcel(Request $request): BinaryFileResponse
+    {
+        $this->authorize('product.view');
+
+        return $this->downloadListExcel(
+            'products',
+            ['#', 'Name', 'Code', 'Category', 'Brand', 'Stock', 'Status', 'Created At'],
+            $this->productExportRows($request),
+        );
+    }
+
+    public function exportPdf(Request $request): SymfonyResponse
+    {
+        $this->authorize('product.view');
+
+        return $this->downloadListPdf(
+            'Products',
+            ['#', 'Name', 'Code', 'Category', 'Brand', 'Stock', 'Status', 'Created At'],
+            $this->productExportRows($request),
+        );
+    }
+
+    public function exportPrint(Request $request): SymfonyResponse
+    {
+        $this->authorize('product.view');
+
+        return $this->printListHtml(
+            'Products',
+            ['#', 'Name', 'Code', 'Category', 'Brand', 'Stock', 'Status', 'Created At'],
+            $this->productExportRows($request),
+        );
     }
 
     public function create(): Response

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Setting;
 
+use App\Concerns\ExportsCatalogSettingList;
 use App\Concerns\ManagesBranchCatalog;
 use App\Http\Controllers\Controller;
 use App\Models\Size;
@@ -13,21 +14,19 @@ use Inertia\Response;
 
 class SizeController extends Controller
 {
-    use ManagesBranchCatalog;
+    use ExportsCatalogSettingList, ManagesBranchCatalog;
 
     public function index(Request $request): Response
     {
         $this->authorize('setting.size.view');
 
-        $sizes = $this->branchCatalogQuery()
-            ->when($request->search, fn ($q, $s) => $q->where('name', 'like', "%{$s}%"))
-            ->latest()
+        $sizes = $this->catalogListQuery($request)
             ->paginate(20)
             ->withQueryString();
 
         return Inertia::render('admin/setting/size/index', [
             'sizes' => $sizes,
-            'filters' => $request->only('search'),
+            'filters' => $request->only('search', 'date_from', 'date_to'),
         ]);
     }
 
@@ -73,5 +72,15 @@ class SizeController extends Controller
     protected function catalogModelClass(): string
     {
         return Size::class;
+    }
+
+    protected function catalogExportPermission(): string
+    {
+        return 'setting.size.view';
+    }
+
+    protected function catalogExportTitle(): string
+    {
+        return 'Sizes';
     }
 }

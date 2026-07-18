@@ -1,6 +1,6 @@
 import { Head, Link } from '@inertiajs/react';
 import { ArrowLeft, Printer } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { BarcodeBars } from '@/components/barcode/barcode-bars';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,10 @@ import {
     LABEL_PADDING_TOP_PX,
     LIST_BARCODE_BAR_HEIGHT,
     MAX_LABEL_FONT_PX,
+    MAX_LABEL_HEIGHT_IN,
+    MAX_LABEL_WIDTH_IN,
+    MIN_LABEL_HEIGHT_IN,
+    MIN_LABEL_WIDTH_IN,
     PRINT_DPI,
     resolveLabelSettings,
     scaleLabelPreviewPx,
@@ -43,6 +47,63 @@ import { route } from '@/lib/route';
 
 const PREVIEW_MAX_W = 500;
 const PREVIEW_MAX_H = 320;
+const PRINT_DIMENSIONS_KEY = 'barcode-print-dimensions';
+const DEFAULT_WIDTH = 1.5;
+const DEFAULT_HEIGHT = 1;
+
+function clampDimension(value, min, max, fallback) {
+    const parsed = typeof value === 'number' ? value : parseFloat(value);
+
+    if (!Number.isFinite(parsed)) {
+        return fallback;
+    }
+
+    return Math.min(max, Math.max(min, parsed));
+}
+
+function getStoredDimensions() {
+    if (typeof window === 'undefined') {
+        return { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT };
+    }
+
+    try {
+        const raw = localStorage.getItem(PRINT_DIMENSIONS_KEY);
+
+        if (!raw) {
+            return { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT };
+        }
+
+        const parsed = JSON.parse(raw);
+
+        return {
+            width: clampDimension(
+                parsed.width,
+                MIN_LABEL_WIDTH_IN,
+                MAX_LABEL_WIDTH_IN,
+                DEFAULT_WIDTH,
+            ),
+            height: clampDimension(
+                parsed.height,
+                MIN_LABEL_HEIGHT_IN,
+                MAX_LABEL_HEIGHT_IN,
+                DEFAULT_HEIGHT,
+            ),
+        };
+    } catch {
+        return { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT };
+    }
+}
+
+function storeDimensions(width, height) {
+    if (typeof window === 'undefined') {
+        return;
+    }
+
+    localStorage.setItem(
+        PRINT_DIMENSIONS_KEY,
+        JSON.stringify({ width, height }),
+    );
+}
 
 function LabelPreview({ row, settings }) {
     const { scale, width: displayW, height: displayH } =
@@ -230,15 +291,23 @@ function LabelPreview({ row, settings }) {
 }
 
 export default function BarcodePrint({ barcodes }) {
-    const [settings, setSettings] = useState({
-        width: 1.5,
-        height: 1,
-        fontSize: 9,
-        fontWeight: 'bold',
-        copies: 1,
-        autoHeight: true,
+    const [settings, setSettings] = useState(() => {
+        const { width, height } = getStoredDimensions();
+
+        return {
+            width,
+            height,
+            fontSize: 9,
+            fontWeight: 'bold',
+            copies: 1,
+            autoHeight: true,
+        };
     });
     const [fontSizeInput, setFontSizeInput] = useState('9');
+
+    useEffect(() => {
+        storeDimensions(settings.width, settings.height);
+    }, [settings.width, settings.height]);
 
     const set = (key, value) =>
         setSettings((prev) => ({ ...prev, [key]: value }));

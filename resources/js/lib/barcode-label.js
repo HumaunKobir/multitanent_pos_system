@@ -48,8 +48,8 @@ export const MIN_BARCODE_FONT_PX = 18;
  * Actual barcode width = page width − this margin (~0.10" each side).
  */
 export const BARCODE_HORIZONTAL_MARGIN_IN = 0.2;
-/** Barcode bar height scales with page height (plan: pageHeight × 0.48). */
-export const BARCODE_HEIGHT_RATIO = 0.48;
+/** Barcode bar height scales with page height (plan: pageHeight × 0.38). */
+export const BARCODE_HEIGHT_RATIO = 0.38;
 /**
  * Library module/bar thickness only — not the printed barcode width in inches.
  * Printed size is controlled via CSS on the SVG wrapper.
@@ -781,7 +781,7 @@ export function calculateBarcodeBarHeight(settings, row = null, fontSize = null)
 
 /**
  * Bar height for labels and preview.
- * Uses pageHeight × 0.48, clamped so header/footer text still fits.
+ * Uses pageHeight × 0.38, clamped so header/footer text still fits.
  */
 export function getLabelBarcodeBarHeight(settings, row = null) {
     const layout = getContentLayoutSettings(settings);

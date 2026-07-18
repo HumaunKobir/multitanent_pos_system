@@ -998,7 +998,9 @@ export function buildPrintHtml(rows, settings) {
     }
     .page { display: block; width: ${width}in; }
     /*
-     * Center the whole content block. One CSS gap keeps header/footer spacing equal.
+     * True vertical center: equal leftover space above header and below footer
+     * (1fr / auto / 1fr). Equal CSS gaps keep header↔barcode and barcode↔footer
+     * identical even when header and footer have different line counts.
      */
     .label {
       width: ${width}in;
@@ -1007,38 +1009,40 @@ export function buildPrintHtml(rows, settings) {
       max-width: ${width}in;
       max-height: ${height}in;
       border: 1px solid #ccc;
-      display: grid;
-      place-items: center;
+      display: flex;
+      flex-direction: column;
       padding: ${LABEL_PAGE_MARGIN_PX}px;
       overflow: hidden;
       page-break-inside: avoid;
       break-inside: avoid;
     }
     .label-content {
+      flex: 1 1 auto;
       width: 100%;
+      height: 100%;
       max-width: 100%;
       max-height: 100%;
       min-width: 0;
       min-height: 0;
-      display: grid;
-      place-items: center;
       overflow: hidden;
     }
     .label-stack {
       width: 100%;
+      height: 100%;
       min-width: 0;
       min-height: 0;
       max-width: 100%;
       max-height: 100%;
-      display: flex;
-      flex-direction: column;
+      display: grid;
+      grid-template-rows: 1fr auto 1fr;
+      justify-items: stretch;
       align-items: stretch;
-      justify-content: center;
       gap: ${sectionGap}px;
       overflow: hidden;
     }
     .label-header {
-      flex: 0 0 auto;
+      align-self: end;
+      justify-self: stretch;
       text-align: center;
       width: 100%;
       min-width: 0;
@@ -1046,16 +1050,19 @@ export function buildPrintHtml(rows, settings) {
       overflow: hidden;
       margin: 0;
       padding: 0 ${textSidePadIn}in;
+      line-height: 1;
     }
     .label-line {
       font-weight: ${fw};
       font-family: sans-serif;
       text-align: center;
       white-space: nowrap;
-      flex: 0 0 auto;
+      display: block;
       max-width: 100%;
       overflow: hidden;
       text-overflow: ellipsis;
+      margin: 0;
+      padding: 0;
     }
     .label-code {
       margin-bottom: ${LABEL_CODE_PRICE_GAP_PX}px;
@@ -1068,12 +1075,14 @@ export function buildPrintHtml(rows, settings) {
       max-width: 100%;
       min-width: 0;
       min-height: 0;
-      margin: 0 auto;
-      flex: 0 0 auto;
+      justify-self: center;
+      align-self: center;
       display: block;
       overflow: hidden;
       box-sizing: border-box;
       line-height: 0;
+      margin: 0;
+      padding: 0;
     }
     .bars {
       display: block;
@@ -1083,18 +1092,22 @@ export function buildPrintHtml(rows, settings) {
       max-height: 100%;
       height: ${defaultBarcodeHeightIn}in;
       margin: 0;
+      padding: 0;
+      vertical-align: top;
     }
     .footer {
+      align-self: start;
+      justify-self: stretch;
       display: flex;
       flex-direction: column;
       align-items: center;
-      flex: 0 0 auto;
       margin: 0;
       width: 100%;
       min-width: 0;
       max-width: 100%;
       overflow: hidden;
       padding: 0 ${textSidePadIn}in;
+      line-height: 1;
     }
     @media print {
       @page { size: ${width}in ${height}in; margin: 0; }

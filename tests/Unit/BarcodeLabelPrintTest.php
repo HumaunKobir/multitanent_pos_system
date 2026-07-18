@@ -304,7 +304,7 @@ if (! wideHtml.includes('.label-stack')) {
     process.exit(56);
 }
 
-if (! wideHtml.includes('place-items: center')) {
+if (! wideHtml.includes('grid-template-rows: 1fr auto 1fr')) {
     process.exit(57);
 }
 
@@ -316,8 +316,12 @@ if (! wideHtml.includes('gap: 2px')) {
     process.exit(88);
 }
 
-if (! wideHtml.includes('align-items: stretch')) {
+if (! wideHtml.includes('align-self: end')) {
     process.exit(86);
+}
+
+if (! wideHtml.includes('align-self: start')) {
+    process.exit(87);
 }
 
 if (! wideHtml.includes('text-overflow: ellipsis')) {
@@ -326,10 +330,6 @@ if (! wideHtml.includes('text-overflow: ellipsis')) {
 
 if (! wideHtml.includes('marginTop: 0')) {
     process.exit(85);
-}
-
-if (! wideHtml.includes('flex: 0 0 auto')) {
-    process.exit(87);
 }
 
 if (! wideHtml.includes('min-width: 0')) {

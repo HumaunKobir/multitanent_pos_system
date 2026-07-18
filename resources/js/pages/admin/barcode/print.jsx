@@ -168,8 +168,8 @@ function LabelPreview({ row, settings }) {
                 height: `${displayH}px`,
                 border: '1px solid #d1d5db',
                 background: '#fff',
-                display: 'grid',
-                placeItems: 'center',
+                display: 'flex',
+                flexDirection: 'column',
                 padding: `${pageMargin}px`,
                 boxSizing: 'border-box',
                 overflow: 'hidden',
@@ -178,40 +178,44 @@ function LabelPreview({ row, settings }) {
         >
             <div
                 style={{
+                    flex: '1 1 auto',
                     width: '100%',
+                    height: '100%',
                     maxWidth: '100%',
                     maxHeight: '100%',
                     minWidth: 0,
                     minHeight: 0,
-                    display: 'grid',
-                    placeItems: 'center',
                     overflow: 'hidden',
                 }}
             >
                 <div
                     style={{
                         width: '100%',
+                        height: '100%',
                         minWidth: 0,
                         minHeight: 0,
                         maxWidth: '100%',
                         maxHeight: '100%',
-                        display: 'flex',
-                        flexDirection: 'column',
+                        display: 'grid',
+                        gridTemplateRows: '1fr auto 1fr',
+                        justifyItems: 'stretch',
                         alignItems: 'stretch',
-                        justifyContent: 'center',
                         gap: `${sectionGap}px`,
                         overflow: 'hidden',
                     }}
                 >
                     <div
                         style={{
-                            flex: '0 0 auto',
+                            alignSelf: 'end',
+                            justifySelf: 'stretch',
                             textAlign: 'center',
                             width: '100%',
                             minWidth: 0,
                             maxWidth: '100%',
                             overflow: 'hidden',
                             padding: `0 ${textSidePadPx}px`,
+                            lineHeight: 1,
+                            margin: 0,
                         }}
                     >
                         {headerLines.map((line) => (
@@ -220,6 +224,8 @@ function LabelPreview({ row, settings }) {
                                 style={{
                                     ...lineStyle,
                                     fontWeight: line.bold ? 700 : fw,
+                                    margin: 0,
+                                    padding: 0,
                                 }}
                             >
                                 {line.text}
@@ -232,11 +238,13 @@ function LabelPreview({ row, settings }) {
                             maxWidth: '100%',
                             minWidth: 0,
                             minHeight: 0,
-                            margin: '0 auto',
-                            flex: '0 0 auto',
+                            justifySelf: 'center',
+                            alignSelf: 'center',
                             display: 'block',
                             overflow: 'hidden',
                             lineHeight: 0,
+                            margin: 0,
+                            padding: 0,
                         }}
                     >
                         <BarcodeBars
@@ -247,21 +255,26 @@ function LabelPreview({ row, settings }) {
                     </div>
                     <div
                         style={{
+                            alignSelf: 'start',
+                            justifySelf: 'stretch',
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
-                            flex: '0 0 auto',
                             width: '100%',
                             minWidth: 0,
                             maxWidth: '100%',
                             overflow: 'hidden',
                             padding: `0 ${textSidePadPx}px`,
+                            lineHeight: 1,
+                            margin: 0,
                         }}
                     >
                         <div
                             style={{
                                 ...lineStyle,
+                                margin: 0,
                                 marginBottom: `${scaleLabelPreviewPx(LABEL_CODE_PRICE_GAP_PX, scale)}px`,
+                                padding: 0,
                             }}
                         >
                             {codeLine}
@@ -270,6 +283,8 @@ function LabelPreview({ row, settings }) {
                             style={{
                                 ...lineStyle,
                                 fontWeight: 700,
+                                margin: 0,
+                                padding: 0,
                             }}
                         >
                             {formatLabelPrice(price)}

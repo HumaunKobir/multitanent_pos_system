@@ -179,6 +179,7 @@ function LabelPreview({ row, settings }) {
                 boxSizing: 'border-box',
                 overflow: 'hidden',
                 flexShrink: 0,
+                marginTop: '10px',
             }}
         >
             <div

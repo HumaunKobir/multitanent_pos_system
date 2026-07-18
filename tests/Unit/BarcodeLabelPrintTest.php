@@ -299,8 +299,24 @@ if (! wideHtml.includes('.label-stack')) {
     process.exit(56);
 }
 
-if (! wideHtml.includes('margin-top: auto') || ! wideHtml.includes('margin-bottom: auto')) {
+if (! wideHtml.includes('justify-content: center')) {
     process.exit(57);
+}
+
+if (! wideHtml.includes('align-items: center')) {
+    process.exit(86);
+}
+
+if (! wideHtml.includes('text-overflow: ellipsis')) {
+    process.exit(84);
+}
+
+if (! wideHtml.includes('marginBottom:')) {
+    process.exit(85);
+}
+
+if (! wideHtml.includes('flex: 0 0 auto')) {
+    process.exit(87);
 }
 
 if (! wideHtml.includes('min-width: 0')) {

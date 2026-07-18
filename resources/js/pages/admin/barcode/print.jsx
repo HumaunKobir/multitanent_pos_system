@@ -157,7 +157,10 @@ function LabelPreview({ row, settings }) {
         textAlign: 'center',
         whiteSpace: 'nowrap',
         lineHeight: `${lineHeight}px`,
-        flexShrink: 0,
+        flex: '0 0 auto',
+        maxWidth: '100%',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
         color: '#111827',
     };
 
@@ -182,6 +185,8 @@ function LabelPreview({ row, settings }) {
                 style={{
                     width: '100%',
                     height: '100%',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
                     minWidth: 0,
                     minHeight: 0,
                     display: 'flex',
@@ -192,22 +197,22 @@ function LabelPreview({ row, settings }) {
                 <div
                     style={{
                         width: '100%',
+                        height: '100%',
                         minWidth: 0,
                         minHeight: 0,
                         maxWidth: '100%',
                         maxHeight: '100%',
-                        marginTop: 'auto',
-                        marginBottom: 'auto',
                         display: 'flex',
                         flexDirection: 'column',
                         alignItems: 'stretch',
-                        flexShrink: 1,
+                        justifyContent: 'center',
+                        flex: '1 1 auto',
                         overflow: 'hidden',
                     }}
                 >
                     <div
                         style={{
-                            flexShrink: 0,
+                            flex: '0 0 auto',
                             marginBottom: `${nameBarcodeGap}px`,
                             textAlign: 'center',
                             width: '100%',
@@ -223,8 +228,6 @@ function LabelPreview({ row, settings }) {
                                 style={{
                                     ...lineStyle,
                                     fontWeight: line.bold ? 700 : fw,
-                                    maxWidth: '100%',
-                                    overflow: 'hidden',
                                 }}
                             >
                                 {line.text}
@@ -239,7 +242,10 @@ function LabelPreview({ row, settings }) {
                             minHeight: 0,
                             marginLeft: 'auto',
                             marginRight: 'auto',
-                            flex: '0 1 auto',
+                            flex: '1 1 auto',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
                             overflow: 'hidden',
                         }}
                     >
@@ -254,7 +260,7 @@ function LabelPreview({ row, settings }) {
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
-                            flexShrink: 0,
+                            flex: '0 0 auto',
                             marginTop: `${barcodePriceGap}px`,
                             width: '100%',
                             minWidth: 0,
@@ -266,8 +272,6 @@ function LabelPreview({ row, settings }) {
                         <div
                             style={{
                                 ...lineStyle,
-                                maxWidth: '100%',
-                                overflow: 'hidden',
                                 marginBottom: `${scaleLabelPreviewPx(LABEL_CODE_PRICE_GAP_PX, scale)}px`,
                             }}
                         >
@@ -277,8 +281,6 @@ function LabelPreview({ row, settings }) {
                             style={{
                                 ...lineStyle,
                                 fontWeight: 700,
-                                maxWidth: '100%',
-                                overflow: 'hidden',
                             }}
                         >
                             {formatLabelPrice(price)}

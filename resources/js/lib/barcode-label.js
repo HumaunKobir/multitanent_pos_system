@@ -987,9 +987,14 @@ export function buildPrintHtml(rows, settings) {
       background: white;
     }
     .page { display: block; width: ${width}in; }
+    /*
+     * Fill the page, keep header/footer pinned, and center the barcode
+     * in the remaining middle space on every printed label.
+     */
     .label {
       width: ${width}in;
       height: ${height}in;
+      min-height: ${height}in;
       max-width: ${width}in;
       max-height: ${height}in;
       border: 1px solid #ccc;
@@ -1005,6 +1010,8 @@ export function buildPrintHtml(rows, settings) {
     .label-content {
       width: 100%;
       height: 100%;
+      max-width: 100%;
+      max-height: 100%;
       min-width: 0;
       min-height: 0;
       display: flex;
@@ -1012,23 +1019,22 @@ export function buildPrintHtml(rows, settings) {
       align-items: stretch;
       overflow: hidden;
     }
-    /* Center vertically when space remains; barcode shrinks before price is clipped. */
     .label-stack {
       width: 100%;
+      height: 100%;
       min-width: 0;
       min-height: 0;
       max-width: 100%;
       max-height: 100%;
-      margin-top: auto;
-      margin-bottom: auto;
       display: flex;
       flex-direction: column;
       align-items: stretch;
-      flex-shrink: 1;
+      justify-content: center;
+      flex: 1 1 auto;
       overflow: hidden;
     }
     .label-header {
-      flex-shrink: 0;
+      flex: 0 0 auto;
       text-align: center;
       width: 100%;
       min-width: 0;
@@ -1041,9 +1047,10 @@ export function buildPrintHtml(rows, settings) {
       font-family: sans-serif;
       text-align: center;
       white-space: nowrap;
-      flex-shrink: 0;
+      flex: 0 0 auto;
       max-width: 100%;
       overflow: hidden;
+      text-overflow: ellipsis;
     }
     .label-code {
       margin-bottom: ${LABEL_CODE_PRICE_GAP_PX}px;
@@ -1058,8 +1065,10 @@ export function buildPrintHtml(rows, settings) {
       min-height: 0;
       margin-left: auto;
       margin-right: auto;
-      flex: 0 1 auto;
-      display: block;
+      flex: 1 1 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       overflow: hidden;
       box-sizing: border-box;
       line-height: 0;
@@ -1077,7 +1086,7 @@ export function buildPrintHtml(rows, settings) {
       display: flex;
       flex-direction: column;
       align-items: center;
-      flex-shrink: 0;
+      flex: 0 0 auto;
       margin-top: ${barcodePriceGap}px;
       width: 100%;
       min-width: 0;
@@ -1148,6 +1157,7 @@ export function buildPrintHtml(rows, settings) {
         height: barHeight,
         displayValue: false,
         margin: ${renderOptions.margin},
+        marginBottom: ${renderOptions.marginBottom ?? 0},
         background: '#ffffff',
         lineColor: '#000000',
       });

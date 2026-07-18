@@ -48,8 +48,8 @@ import { route } from '@/lib/route';
 const PREVIEW_MAX_W = 500;
 const PREVIEW_MAX_H = 320;
 const PRINT_DIMENSIONS_KEY = 'barcode-print-dimensions';
-const DEFAULT_WIDTH = 1.5;
-const DEFAULT_HEIGHT = 1;
+const DEFAULT_WIDTH = 1.8;
+const DEFAULT_HEIGHT = 1.4;
 
 function clampDimension(value, min, max, fallback) {
     const parsed = typeof value === 'number' ? value : parseFloat(value);

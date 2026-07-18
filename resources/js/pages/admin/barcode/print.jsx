@@ -168,10 +168,8 @@ function LabelPreview({ row, settings }) {
                 height: `${displayH}px`,
                 border: '1px solid #d1d5db',
                 background: '#fff',
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'center',
-                alignItems: 'center',
+                display: 'grid',
+                placeItems: 'center',
                 padding: `${pageMargin}px`,
                 boxSizing: 'border-box',
                 overflow: 'hidden',
@@ -185,10 +183,8 @@ function LabelPreview({ row, settings }) {
                     maxHeight: '100%',
                     minWidth: 0,
                     minHeight: 0,
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
+                    display: 'grid',
+                    placeItems: 'center',
                     overflow: 'hidden',
                 }}
             >
@@ -203,14 +199,13 @@ function LabelPreview({ row, settings }) {
                         flexDirection: 'column',
                         alignItems: 'stretch',
                         justifyContent: 'center',
-                        flex: '0 1 auto',
+                        gap: `${sectionGap}px`,
                         overflow: 'hidden',
                     }}
                 >
                     <div
                         style={{
                             flex: '0 0 auto',
-                            marginBottom: `${sectionGap}px`,
                             textAlign: 'center',
                             width: '100%',
                             minWidth: 0,
@@ -238,11 +233,10 @@ function LabelPreview({ row, settings }) {
                             minWidth: 0,
                             minHeight: 0,
                             margin: '0 auto',
-                            flex: '0 1 auto',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
+                            flex: '0 0 auto',
+                            display: 'block',
                             overflow: 'hidden',
+                            lineHeight: 0,
                         }}
                     >
                         <BarcodeBars
@@ -257,7 +251,6 @@ function LabelPreview({ row, settings }) {
                             flexDirection: 'column',
                             alignItems: 'center',
                             flex: '0 0 auto',
-                            marginTop: `${sectionGap}px`,
                             width: '100%',
                             minWidth: 0,
                             maxWidth: '100%',

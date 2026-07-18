@@ -48,7 +48,7 @@ if (BARCODE_PRICE_GAP_PX !== NAME_BARCODE_GAP_PX) {
     process.exit(79);
 }
 
-if (BARCODE_PRICE_GAP_PX !== 1) {
+if (BARCODE_PRICE_GAP_PX !== 2) {
     process.exit(90);
 }
 
@@ -304,15 +304,19 @@ if (! wideHtml.includes('.label-stack')) {
     process.exit(56);
 }
 
-if (! wideHtml.includes('justify-content: center')) {
+if (! wideHtml.includes('place-items: center')) {
     process.exit(57);
 }
 
-if (! wideHtml.includes('padding: 5px;')) {
+if (! wideHtml.includes('padding: 4px;')) {
     process.exit(89);
 }
 
-if (! wideHtml.includes('align-items: center')) {
+if (! wideHtml.includes('gap: 2px')) {
+    process.exit(88);
+}
+
+if (! wideHtml.includes('align-items: stretch')) {
     process.exit(86);
 }
 
@@ -320,7 +324,7 @@ if (! wideHtml.includes('text-overflow: ellipsis')) {
     process.exit(84);
 }
 
-if (! wideHtml.includes('marginBottom:')) {
+if (! wideHtml.includes('marginTop: 0')) {
     process.exit(85);
 }
 
@@ -474,11 +478,11 @@ if (! autoHtml.includes('font-size:17px')) {
     process.exit(82);
 }
 
-if (! autoHtml.includes('margin-top:1px')) {
+if (! autoHtml.includes('gap: 2px')) {
     process.exit(83);
 }
 
-if (! autoHtml.includes('margin-bottom:1px')) {
+if (! autoHtml.includes('marginTop: 0')) {
     process.exit(91);
 }
 

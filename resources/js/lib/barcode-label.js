@@ -1,6 +1,6 @@
 export const PRINT_DPI = 96;
 /** Equal vertical gap between header, barcode, and footer. */
-export const NAME_BARCODE_GAP_PX = 2;
+export const NAME_BARCODE_GAP_PX = 4;
 /** Keep footer gap identical to the header↔barcode gap. */
 export const BARCODE_PRICE_GAP_PX = NAME_BARCODE_GAP_PX;
 export const MIN_LABEL_FONT_PX = 5;
@@ -48,8 +48,8 @@ export const MIN_BARCODE_FONT_PX = 18;
  * Actual barcode width = page width − this margin (~0.10" each side).
  */
 export const BARCODE_HORIZONTAL_MARGIN_IN = 0.2;
-/** Barcode bar height scales with page height (plan: pageHeight × 0.38). */
-export const BARCODE_HEIGHT_RATIO = 0.38;
+/** Barcode bar height scales with page height (plan: pageHeight × 0.34). */
+export const BARCODE_HEIGHT_RATIO = 0.34;
 /**
  * Library module/bar thickness only — not the printed barcode width in inches.
  * Printed size is controlled via CSS on the SVG wrapper.
@@ -781,7 +781,7 @@ export function calculateBarcodeBarHeight(settings, row = null, fontSize = null)
 
 /**
  * Bar height for labels and preview.
- * Uses pageHeight × 0.38, clamped so header/footer text still fits.
+ * Uses pageHeight × 0.34, clamped so header/footer text still fits.
  */
 export function getLabelBarcodeBarHeight(settings, row = null) {
     const layout = getContentLayoutSettings(settings);

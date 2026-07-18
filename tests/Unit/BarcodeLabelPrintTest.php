@@ -48,11 +48,11 @@ if (BARCODE_PRICE_GAP_PX !== NAME_BARCODE_GAP_PX) {
     process.exit(79);
 }
 
-if (BARCODE_PRICE_GAP_PX !== 2) {
+if (BARCODE_PRICE_GAP_PX !== 4) {
     process.exit(90);
 }
 
-if (BARCODE_HEIGHT_RATIO !== 0.38) {
+if (BARCODE_HEIGHT_RATIO !== 0.34) {
     process.exit(39);
 }
 
@@ -80,15 +80,15 @@ if (getBarcodeSideMarginIn(2, 1.3) !== 0.35) {
     process.exit(76);
 }
 
-if (getBarcodeBarHeightIn(1) !== 0.38) {
+if (getBarcodeBarHeightIn(1) !== 0.34) {
     process.exit(43);
 }
 
-if (getBarcodeBarHeightIn(1.2) !== 0.46) {
+if (getBarcodeBarHeightIn(1.2) !== 0.41) {
     process.exit(44);
 }
 
-if (getBarcodeBarHeightPx(1) !== 36) {
+if (getBarcodeBarHeightPx(1) !== 33) {
     process.exit(45);
 }
 
@@ -173,7 +173,7 @@ if (getEffectiveLabelFontSize(smallLabelSettings, duplicateCodeRow) !== 8) {
     process.exit(24);
 }
 
-if (getLabelBarcodeBarHeight(smallLabelSettings, duplicateCodeRow) !== 36) {
+if (getLabelBarcodeBarHeight(smallLabelSettings, duplicateCodeRow) !== 33) {
     process.exit(25);
 }
 
@@ -181,7 +181,7 @@ if (getLabelBarcodeWidthIn(smallLabelSettings) !== 1.3) {
     process.exit(46);
 }
 
-if (getLabelBarcodeHeightIn(smallLabelSettings, duplicateCodeRow) !== 0.38) {
+if (getLabelBarcodeHeightIn(smallLabelSettings, duplicateCodeRow) !== 0.34) {
     process.exit(47);
 }
 
@@ -312,7 +312,7 @@ if (! wideHtml.includes('padding: 4px;')) {
     process.exit(89);
 }
 
-if (! wideHtml.includes('gap: 2px')) {
+if (! wideHtml.includes('gap: 4px')) {
     process.exit(88);
 }
 
@@ -362,7 +362,7 @@ if (getLabelBarcodeWidthIn(tallPageSettings) !== 1.3) {
     process.exit(51);
 }
 
-if (getBarcodeBarHeightIn(1.2) !== 0.46) {
+if (getBarcodeBarHeightIn(1.2) !== 0.41) {
     process.exit(52);
 }
 
@@ -411,7 +411,7 @@ if (! html.includes('width: 1.3in')) {
     process.exit(53);
 }
 
-if (! html.includes('height: 0.38in')) {
+if (! html.includes('height: 0.34in')) {
     process.exit(54);
 }
 
@@ -478,7 +478,7 @@ if (! autoHtml.includes('font-size:17px')) {
     process.exit(82);
 }
 
-if (! autoHtml.includes('gap: 2px')) {
+if (! autoHtml.includes('gap: 4px')) {
     process.exit(83);
 }
 

@@ -18,6 +18,13 @@ function formatStock(value) {
     return Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
 }
 
+function formatMoney(value) {
+    return `৳${Number(value ?? 0).toLocaleString('en-BD', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+    })}`;
+}
+
 export default function InventoryStockReport({
     products,
     summary = {},
@@ -239,13 +246,7 @@ export default function InventoryStockReport({
                     </Button>
                 </div>
 
-                <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                    <StatTile
-                        label="Total Stock"
-                        value={formatStock(summary.total_stock)}
-                        sub="Across all filtered products"
-                        accentClass="border-l-blue-600"
-                    />
+                <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                     <StatTile
                         label="Total Products"
                         value={summary.product_count ?? 0}
@@ -253,15 +254,27 @@ export default function InventoryStockReport({
                         accentClass="border-l-indigo-600"
                     />
                     <StatTile
-                        label="In Stock"
-                        value={summary.in_stock_count ?? 0}
-                        sub="Products with stock available"
+                        label="Total Stock Qty"
+                        value={`${formatStock(summary.total_stock)} pcs`}
+                        sub="Across all filtered products"
+                        accentClass="border-l-blue-600"
+                    />
+                    <StatTile
+                        label="Total Cost Value"
+                        value={formatMoney(summary.total_cost_value)}
+                        sub="Based on purchase / batch cost"
+                        accentClass="border-l-amber-600"
+                    />
+                    <StatTile
+                        label="Total Selling Value"
+                        value={formatMoney(summary.total_selling_value)}
+                        sub="At current selling prices"
                         accentClass="border-l-emerald-600"
                     />
                     <StatTile
-                        label="Out of Stock"
-                        value={summary.out_of_stock_count ?? 0}
-                        sub="Products with zero stock"
+                        label="Expected Gross Profit"
+                        value={formatMoney(summary.expected_gross_profit)}
+                        sub="Selling value minus cost"
                         accentClass="border-l-rose-600"
                     />
                 </div>

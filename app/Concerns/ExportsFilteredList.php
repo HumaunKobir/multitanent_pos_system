@@ -17,14 +17,25 @@ trait ExportsFilteredList
 
     protected function applyCreatedAtDateFilters(Builder $query, Request $request): Builder
     {
+        return $this->applyDateColumnFilters($query, $request, 'created_at');
+    }
+
+    /**
+     * Filter by a date/datetime column using date_from / date_to request params.
+     */
+    protected function applyDateColumnFilters(
+        Builder $query,
+        Request $request,
+        string $column = 'date',
+    ): Builder {
         return $query
             ->when(
                 $request->filled('date_from'),
-                fn ($q) => $q->whereDate('created_at', '>=', $request->date('date_from')),
+                fn ($q) => $q->whereDate($column, '>=', $request->date('date_from')),
             )
             ->when(
                 $request->filled('date_to'),
-                fn ($q) => $q->whereDate('created_at', '<=', $request->date('date_to')),
+                fn ($q) => $q->whereDate($column, '<=', $request->date('date_to')),
             );
     }
 

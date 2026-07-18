@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\Concerns\ExportsFilteredList;
 use App\Enums\PurchaseReceivedPayment;
 use App\Http\Controllers\Concerns\AuthorizesBranchUserRecords;
 use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
@@ -15,16 +16,21 @@ use App\Models\StockDistribution;
 use App\Models\Supplier;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryStockService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class PurchaseReturnController extends Controller
 {
     use AuthorizesBranchUserRecords;
+    use ExportsFilteredList;
     use ProvidesPaymentAccounts;
 
     public function __construct(
@@ -32,27 +38,97 @@ class PurchaseReturnController extends Controller
         private InventoryAccountingService $accounting,
     ) {}
 
+    private function listQuery(Request $request): Builder
+    {
+        return $this->applyDateColumnFilters(
+            PurchaseReturn::query()->ownBranchUser()
+                ->with(['supplier:id,name,company_name', 'purchase:id'])
+                ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
+                    $q->where('invoice_sequence', 'like', "%{$s}%")
+                        ->orWhere('serial', 'like', "%{$s}%")
+                        ->orWhere('id', 'like', "%{$s}%")
+                        ->orWhereHas('supplier', fn ($q) => $q->where('name', 'like', "%{$s}%")
+                            ->orWhere('company_name', 'like', "%{$s}%"));
+                })),
+            $request,
+            'date',
+        )->latest();
+    }
+
+    /**
+     * @return Collection<int, list<string|int|float>>
+     */
+    private function exportRows(Request $request): Collection
+    {
+        return $this->listQuery($request)
+            ->limit(self::LIST_EXPORT_LIMIT)
+            ->get()
+            ->values()
+            ->map(function (PurchaseReturn $return, int $index): array {
+                $supplier = $return->supplier;
+                $company = trim((string) ($supplier?->company_name ?? ''));
+                $person = trim((string) ($supplier?->name ?? ''));
+                $supplierLabel = $company && $person
+                    ? "{$company} ({$person})"
+                    : ($company ?: $person ?: '—');
+
+                return [
+                    $index + 1,
+                    $return->invoice_number,
+                    optional($return->date)?->format('Y-m-d') ?? '—',
+                    $supplierLabel,
+                    round((float) ($return->net_amount ?? $return->gross_amount ?? 0), 2),
+                    round((float) $return->paid_amount, 2),
+                    round((float) $return->due_amount, 2),
+                ];
+            });
+    }
+
     public function index(Request $request): Response
     {
         $this->authorize('inventory.purchase-return.view');
 
-        $returns = PurchaseReturn::query()->ownBranchUser()
-            ->with(['supplier:id,name,company_name', 'purchase:id'])
-            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
-                $q->where('invoice_sequence', 'like', "%{$s}%")
-                    ->orWhere('serial', 'like', "%{$s}%")
-                    ->orWhere('id', 'like', "%{$s}%")
-                    ->orWhereHas('supplier', fn ($q) => $q->where('name', 'like', "%{$s}%")
-                        ->orWhere('company_name', 'like', "%{$s}%"));
-            }))
-            ->latest()
+        $returns = $this->listQuery($request)
             ->paginate(20)
             ->withQueryString();
 
         return Inertia::render('admin/inventory/purchase-return/index', [
             'returns' => $returns,
-            'filters' => $request->only('search'),
+            'filters' => $request->only('search', 'date_from', 'date_to'),
         ]);
+    }
+
+    public function exportExcel(Request $request): BinaryFileResponse
+    {
+        $this->authorize('inventory.purchase-return.view');
+
+        return $this->downloadListExcel(
+            'purchase-returns',
+            ['#', 'Invoice', 'Date', 'Supplier', 'Total', 'Paid', 'Due'],
+            $this->exportRows($request),
+        );
+    }
+
+    public function exportPdf(Request $request): SymfonyResponse
+    {
+        $this->authorize('inventory.purchase-return.view');
+
+        return $this->downloadListPdf(
+            'Purchase Returns',
+            ['#', 'Invoice', 'Date', 'Supplier', 'Total', 'Paid', 'Due'],
+            $this->exportRows($request),
+        );
+    }
+
+    public function exportPrint(Request $request): SymfonyResponse
+    {
+        $this->authorize('inventory.purchase-return.view');
+
+        return $this->printListHtml(
+            'Purchase Returns',
+            ['#', 'Invoice', 'Date', 'Supplier', 'Total', 'Paid', 'Due'],
+            $this->exportRows($request),
+        );
     }
 
     public function create(): Response

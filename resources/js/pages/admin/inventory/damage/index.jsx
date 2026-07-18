@@ -5,6 +5,7 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 import { AlertTriangle, Edit, Eye, Plus, Search, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { ListDateExportBar } from '@/components/admin/list-date-export-bar';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -18,6 +19,8 @@ export default function DamageIndex({ damages = { data: [] }, filters = {} }) {
     const toast = useAppToast();
     const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
+    const [dateFrom, setDateFrom] = useState(filters.date_from ?? '');
+    const [dateTo, setDateTo] = useState(filters.date_to ?? '');
     const [deleting, setDeleting] = useState(null);
 
     useEffect(() => {
@@ -26,8 +29,17 @@ export default function DamageIndex({ damages = { data: [] }, filters = {} }) {
     }, [flash.success, flash.error]);
 
     useDebouncedEffect(
-        () => router.get(route('inventory.damage.index'), { search: search || undefined }, { preserveState: true, replace: true }),
-        [search],
+        () =>
+            router.get(
+                route('inventory.damage.index'),
+                {
+                    search: search || undefined,
+                    date_from: dateFrom || undefined,
+                    date_to: dateTo || undefined,
+                },
+                { preserveState: true, replace: true },
+            ),
+        [search, dateFrom, dateTo],
         350,
         { skipFirstRun: true },
     );
@@ -94,7 +106,19 @@ export default function DamageIndex({ damages = { data: [] }, filters = {} }) {
                         className="border border-white/30 bg-white/10 text-white hover:bg-white/20"
                     />
                 </div>
-                <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" className="mb-4 max-w-xs" />
+                <div className="mb-4 flex flex-wrap items-end gap-2">
+                    <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search…" className="max-w-xs" />
+                    <ListDateExportBar
+                        dateFrom={dateFrom}
+                        dateTo={dateTo}
+                        onDateFromChange={setDateFrom}
+                        onDateToChange={setDateTo}
+                        exportExcelRoute="inventory.damage.export-excel"
+                        exportPdfRoute="inventory.damage.export-pdf"
+                        exportPrintRoute="inventory.damage.export-print"
+                        query={{ search }}
+                    />
+                </div>
                 <DataTable columns={columns} rows={damages.data} rowKey="id" emptyMessage="No damage records." />
                 {can('inventory.damage.delete') && (
                 <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>

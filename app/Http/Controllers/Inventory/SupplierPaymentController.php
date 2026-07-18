@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\Concerns\ExportsFilteredList;
 use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
 use App\Http\Controllers\Concerns\UsesInventoryAccounting;
 use App\Http\Controllers\Controller;
@@ -9,16 +10,21 @@ use App\Models\Supplier;
 use App\Models\SupplierPayment;
 use App\Services\InventoryAccountingService;
 use App\Services\PartyPaymentAllocationService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class SupplierPaymentController extends Controller
 {
+    use ExportsFilteredList;
     use ProvidesPaymentAccounts;
     use UsesInventoryAccounting;
 
@@ -27,32 +33,69 @@ class SupplierPaymentController extends Controller
         private PartyPaymentAllocationService $allocations,
     ) {}
 
+    private function listQuery(Request $request): Builder
+    {
+        return $this->applyDateColumnFilters(
+            SupplierPayment::query()
+                ->ownBranch()
+                ->with([
+                    'supplier:id,name,company_name,phone',
+                    'createdBy:id,name',
+                    'allocations.purchase:id,gross_amount,discount,vat,paid_amount,due_amount',
+                ])
+                ->when($request->search, function ($query, string $search) {
+                    $query->where(function ($q) use ($search) {
+                        $q->where('serial', 'like', "%{$search}%")
+                            ->orWhere('comment', 'like', "%{$search}%")
+                            ->orWhereHas('supplier', fn ($sq) => $sq
+                                ->where('name', 'like', "%{$search}%")
+                                ->orWhere('company_name', 'like', "%{$search}%")
+                                ->orWhere('phone', 'like', "%{$search}%"))
+                            ->orWhereHas('allocations.purchase', fn ($pq) => $pq
+                                ->where('serial', 'like', "%{$search}%"));
+                    });
+                }),
+            $request,
+            'date',
+        )->latest();
+    }
+
+    /**
+     * @return Collection<int, list<string|int|float>>
+     */
+    private function exportRows(Request $request): Collection
+    {
+        return $this->listQuery($request)
+            ->limit(self::LIST_EXPORT_LIMIT)
+            ->get()
+            ->values()
+            ->map(function (SupplierPayment $payment, int $index): array {
+                $supplier = $payment->supplier;
+                $company = trim((string) ($supplier?->company_name ?? ''));
+                $person = trim((string) ($supplier?->name ?? ''));
+                $supplierLabel = $company && $person
+                    ? "{$company} ({$person})"
+                    : ($company ?: $person ?: '—');
+
+                return [
+                    $index + 1,
+                    $payment->invoice_number,
+                    optional($payment->date)?->format('Y-m-d') ?? '—',
+                    $supplierLabel,
+                    round((float) $payment->amount, 2),
+                    $payment->comment ?: '—',
+                    $payment->createdBy?->name ?? '—',
+                ];
+            });
+    }
+
     public function index(Request $request): Response
     {
         $this->authorize('party.supplier-payment.view');
 
         $branchId = Auth::user()?->branch_id;
 
-        $payments = SupplierPayment::query()
-            ->ownBranch()
-            ->with([
-                'supplier:id,name,company_name,phone',
-                'createdBy:id,name',
-                'allocations.purchase:id,gross_amount,discount,vat,paid_amount,due_amount',
-            ])
-            ->when($request->search, function ($query, string $search) {
-                $query->where(function ($q) use ($search) {
-                    $q->where('serial', 'like', "%{$search}%")
-                        ->orWhere('comment', 'like', "%{$search}%")
-                        ->orWhereHas('supplier', fn ($sq) => $sq
-                            ->where('name', 'like', "%{$search}%")
-                            ->orWhere('company_name', 'like', "%{$search}%")
-                            ->orWhere('phone', 'like', "%{$search}%"))
-                        ->orWhereHas('allocations.purchase', fn ($pq) => $pq
-                            ->where('serial', 'like', "%{$search}%"));
-                });
-            })
-            ->latest()
+        $payments = $this->listQuery($request)
             ->paginate(20)
             ->withQueryString();
 
@@ -91,10 +134,43 @@ class SupplierPaymentController extends Controller
         return Inertia::render('admin/inventory/supplier-payment/index', [
             'payments' => $payments,
             'suppliers' => $suppliers,
-            'filters' => $request->only('search'),
+            'filters' => $request->only('search', 'date_from', 'date_to'),
             'today' => now()->format('Y-m-d'),
             'paymentAccounts' => $paymentAccounts,
         ]);
+    }
+
+    public function exportExcel(Request $request): BinaryFileResponse
+    {
+        $this->authorize('party.supplier-payment.view');
+
+        return $this->downloadListExcel(
+            'supplier-payments',
+            ['#', 'Voucher', 'Date', 'Supplier', 'Amount', 'Note', 'Recorded By'],
+            $this->exportRows($request),
+        );
+    }
+
+    public function exportPdf(Request $request): SymfonyResponse
+    {
+        $this->authorize('party.supplier-payment.view');
+
+        return $this->downloadListPdf(
+            'Supplier Payments',
+            ['#', 'Voucher', 'Date', 'Supplier', 'Amount', 'Note', 'Recorded By'],
+            $this->exportRows($request),
+        );
+    }
+
+    public function exportPrint(Request $request): SymfonyResponse
+    {
+        $this->authorize('party.supplier-payment.view');
+
+        return $this->printListHtml(
+            'Supplier Payments',
+            ['#', 'Voucher', 'Date', 'Supplier', 'Amount', 'Note', 'Recorded By'],
+            $this->exportRows($request),
+        );
     }
 
     public function store(Request $request): RedirectResponse

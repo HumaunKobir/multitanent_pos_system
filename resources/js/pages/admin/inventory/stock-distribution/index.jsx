@@ -5,6 +5,7 @@ import { Head, Link, router, usePage } from '@inertiajs/react';
 import { ArrowRightLeft, Check, Eye, Plus, Search } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
+import { ListDateExportBar } from '@/components/admin/list-date-export-bar';
 import { AdminCreateLink, AdminRowActions } from '@/components/admin/row-actions';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -45,6 +46,8 @@ export default function StockDistributionIndex({
     const toast = useAppToast();
     const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
+    const [dateFrom, setDateFrom] = useState(filters.date_from ?? '');
+    const [dateTo, setDateTo] = useState(filters.date_to ?? '');
     const [deleting, setDeleting] = useState(null);
 
     useEffect(() => {
@@ -58,10 +61,14 @@ export default function StockDistributionIndex({
                 isReceiverView
                     ? route('inventory.stock-distribution.received')
                     : route('inventory.stock-distribution.index'),
-                { search: search || undefined },
+                {
+                    search: search || undefined,
+                    date_from: dateFrom || undefined,
+                    date_to: dateTo || undefined,
+                },
                 { preserveState: true, replace: true },
             ),
-        [search],
+        [search, dateFrom, dateTo, isReceiverView],
         350,
         { skipFirstRun: true },
     );
@@ -210,13 +217,28 @@ export default function StockDistributionIndex({
                         />
                     )}
                 </div>
-                <div className="relative mb-4 max-w-xs">
-                    <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                    <Input
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                        placeholder="Search by branch or note…"
-                        className="pl-8"
+                <div className="mb-4 flex flex-wrap items-end gap-2">
+                    <div className="relative max-w-xs">
+                        <Search className="absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                            value={search}
+                            onChange={(e) => setSearch(e.target.value)}
+                            placeholder="Search by branch or note…"
+                            className="pl-8"
+                        />
+                    </div>
+                    <ListDateExportBar
+                        dateFrom={dateFrom}
+                        dateTo={dateTo}
+                        onDateFromChange={setDateFrom}
+                        onDateToChange={setDateTo}
+                        exportExcelRoute="inventory.stock-distribution.export-excel"
+                        exportPdfRoute="inventory.stock-distribution.export-pdf"
+                        exportPrintRoute="inventory.stock-distribution.export-print"
+                        query={{
+                            search,
+                            ...(isReceiverView ? { received: 1 } : {}),
+                        }}
                     />
                 </div>
                 <DataTable

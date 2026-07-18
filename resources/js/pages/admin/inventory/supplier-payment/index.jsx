@@ -5,6 +5,7 @@ import { Head, router, useForm, usePage } from '@inertiajs/react';
 import { Banknote, Edit, Eye, Plus, Search, Trash2, Wallet } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 
+import { ListDateExportBar } from '@/components/admin/list-date-export-bar';
 import { AdminCreateButton } from '@/components/admin/row-actions';
 import { Can } from '@/components/can';
 import { FormField } from '@/components/form-field';
@@ -346,6 +347,8 @@ export default function SupplierPaymentIndex({ payments, suppliers, filters, tod
     const { flash } = usePage().props;
     const { can } = useCan();
     const [search, setSearch] = useState(filters.search ?? '');
+    const [dateFrom, setDateFrom] = useState(filters.date_from ?? '');
+    const [dateTo, setDateTo] = useState(filters.date_to ?? '');
     const [creating, setCreating] = useState(false);
     const [viewing, setViewing] = useState(null);
     const [editing, setEditing] = useState(null);
@@ -394,11 +397,15 @@ export default function SupplierPaymentIndex({ payments, suppliers, filters, tod
         () => {
             router.get(
                 route('party.supplier-payment.index'),
-                { search: search || undefined },
+                {
+                    search: search || undefined,
+                    date_from: dateFrom || undefined,
+                    date_to: dateTo || undefined,
+                },
                 { preserveState: true, replace: true },
             );
         },
-        [search],
+        [search, dateFrom, dateTo],
         350,
         { skipFirstRun: true },
     );
@@ -497,7 +504,7 @@ export default function SupplierPaymentIndex({ payments, suppliers, filters, tod
                     />
                 </div>
 
-                <div className="mb-4 flex gap-2">
+                <div className="mb-4 flex flex-wrap items-end gap-2">
                     <div className="relative max-w-xs flex-1">
                         <Search className="absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
                         <Input
@@ -507,6 +514,16 @@ export default function SupplierPaymentIndex({ payments, suppliers, filters, tod
                             className="pl-9"
                         />
                     </div>
+                    <ListDateExportBar
+                        dateFrom={dateFrom}
+                        dateTo={dateTo}
+                        onDateFromChange={setDateFrom}
+                        onDateToChange={setDateTo}
+                        exportExcelRoute="party.supplier-payment.export-excel"
+                        exportPdfRoute="party.supplier-payment.export-pdf"
+                        exportPrintRoute="party.supplier-payment.export-print"
+                        query={{ search }}
+                    />
                 </div>
 
                 <DataTable columns={columns} rows={payments.data} rowKey="id" emptyMessage="No supplier payments found." />

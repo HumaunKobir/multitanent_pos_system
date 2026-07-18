@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\Concerns\ExportsFilteredList;
 use App\Http\Controllers\Concerns\AuthorizesBranchUserRecords;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
@@ -9,16 +10,21 @@ use App\Models\Damage;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
 use App\Services\InventoryStockService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class DamageController extends Controller
 {
     use AuthorizesBranchUserRecords;
+    use ExportsFilteredList;
 
     public function __construct(
         private InventoryStockService $stock,
@@ -26,25 +32,83 @@ class DamageController extends Controller
         private InventoryCostService $costService,
     ) {}
 
+    private function listQuery(Request $request): Builder
+    {
+        return $this->applyDateColumnFilters(
+            Damage::query()->ownBranchUser()
+                ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
+                    $q->where('invoice_sequence', 'like', "%{$s}%")
+                        ->orWhere('serial', 'like', "%{$s}%")
+                        ->orWhere('id', 'like', "%{$s}%")
+                        ->orWhere('comment', 'like', "%{$s}%");
+                })),
+            $request,
+            'date',
+        )->latest();
+    }
+
+    /**
+     * @return Collection<int, list<string|int|float>>
+     */
+    private function exportRows(Request $request): Collection
+    {
+        return $this->listQuery($request)
+            ->limit(self::LIST_EXPORT_LIMIT)
+            ->get()
+            ->values()
+            ->map(fn (Damage $damage, int $index): array => [
+                $index + 1,
+                $damage->invoice_number,
+                optional($damage->date)?->format('Y-m-d') ?? '—',
+                $damage->comment ?: '—',
+            ]);
+    }
+
     public function index(Request $request): Response
     {
         $this->authorize('inventory.damage.view');
 
-        $damages = Damage::query()->ownBranchUser()
-            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
-                $q->where('invoice_sequence', 'like', "%{$s}%")
-                    ->orWhere('serial', 'like', "%{$s}%")
-                    ->orWhere('id', 'like', "%{$s}%")
-                    ->orWhere('comment', 'like', "%{$s}%");
-            }))
-            ->latest()
+        $damages = $this->listQuery($request)
             ->paginate(20)
             ->withQueryString();
 
         return Inertia::render('admin/inventory/damage/index', [
             'damages' => $damages,
-            'filters' => $request->only('search'),
+            'filters' => $request->only('search', 'date_from', 'date_to'),
         ]);
+    }
+
+    public function exportExcel(Request $request): BinaryFileResponse
+    {
+        $this->authorize('inventory.damage.view');
+
+        return $this->downloadListExcel(
+            'damages',
+            ['#', 'Invoice', 'Date', 'Note'],
+            $this->exportRows($request),
+        );
+    }
+
+    public function exportPdf(Request $request): SymfonyResponse
+    {
+        $this->authorize('inventory.damage.view');
+
+        return $this->downloadListPdf(
+            'Damage',
+            ['#', 'Invoice', 'Date', 'Note'],
+            $this->exportRows($request),
+        );
+    }
+
+    public function exportPrint(Request $request): SymfonyResponse
+    {
+        $this->authorize('inventory.damage.view');
+
+        return $this->printListHtml(
+            'Damage',
+            ['#', 'Invoice', 'Date', 'Note'],
+            $this->exportRows($request),
+        );
     }
 
     public function create(): Response

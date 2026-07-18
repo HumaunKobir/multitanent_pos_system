@@ -156,7 +156,46 @@ test('inventory stock report shows batch stock for admin branch filter', functio
             ->where('summary.total_stock', 17)
             ->where('summary.product_count', 1)
             ->where('summary.in_stock_count', 1)
-            ->where('summary.out_of_stock_count', 0));
+            ->where('summary.out_of_stock_count', 0)
+            ->has('summary.total_cost_value')
+            ->has('summary.total_selling_value')
+            ->has('summary.expected_gross_profit'));
+});
+
+test('inventory stock summary includes cost selling and profit values', function () {
+    inventoryStockMainBranch();
+    $admin = inventoryStockAdmin();
+    $mainBranchId = Branch::resolveMainBranchId();
+    $category = Category::factory()->create(['status' => 1]);
+    $brand = Brand::factory()->create(['status' => 1]);
+
+    $product = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'category_id' => $category->id,
+        'brand_id' => $brand->id,
+        'name' => 'Value Stock '.fake()->unique()->numerify('######'),
+        'status' => 1,
+        'purchase_price' => 100,
+        'sale_price' => 150,
+        'discount_price' => 0,
+    ]);
+
+    Batch::factory()->for($product)->create([
+        'branch_id' => $mainBranchId,
+        'available' => 10,
+        'purchase_price' => 100,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('report.inventory-stock', ['search' => $product->name]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/reports/inventory-stock')
+            ->where('summary.product_count', 1)
+            ->where('summary.total_stock', 10)
+            ->where('summary.total_cost_value', 1000)
+            ->where('summary.total_selling_value', 1500)
+            ->where('summary.expected_gross_profit', 500));
 });
 
 test('branch user sees stock for their branch only without branch filter', function () {

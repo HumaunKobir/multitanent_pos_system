@@ -126,9 +126,18 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')->group(function () {
     Route::redirect('stock', '/report/inventory-stock');
+    Route::get('purchase/export/excel', [PurchaseController::class, 'exportExcel'])->name('purchase.export-excel');
+    Route::get('purchase/export/pdf', [PurchaseController::class, 'exportPdf'])->name('purchase.export-pdf');
+    Route::get('purchase/export/print', [PurchaseController::class, 'exportPrint'])->name('purchase.export-print');
     Route::resource('purchase', PurchaseController::class);
+    Route::get('purchase-return/export/excel', [PurchaseReturnController::class, 'exportExcel'])->name('purchase-return.export-excel');
+    Route::get('purchase-return/export/pdf', [PurchaseReturnController::class, 'exportPdf'])->name('purchase-return.export-pdf');
+    Route::get('purchase-return/export/print', [PurchaseReturnController::class, 'exportPrint'])->name('purchase-return.export-print');
     Route::resource('purchase-return', PurchaseReturnController::class);
     Route::post('purchase-return/{purchase_return}/receive-payment', [PurchaseReturnController::class, 'receivePayment'])->name('purchase-return.receive-payment');
+    Route::get('damage/export/excel', [DamageController::class, 'exportExcel'])->name('damage.export-excel');
+    Route::get('damage/export/pdf', [DamageController::class, 'exportPdf'])->name('damage.export-pdf');
+    Route::get('damage/export/print', [DamageController::class, 'exportPrint'])->name('damage.export-print');
     Route::resource('damage', DamageController::class);
     Route::post('sell/pause', [SellController::class, 'pause'])->name('sell.pause');
     Route::resource('sell', SellController::class);
@@ -137,6 +146,9 @@ Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')
     Route::put('product-exchange/{product_exchange}/payment', [ProductExchangeController::class, 'settlePayment'])->name('product-exchange.payment');
     Route::resource('product-exchange', ProductExchangeController::class);
     Route::get('stock-distribution/received', [StockDistributionController::class, 'receivedIndex'])->name('stock-distribution.received');
+    Route::get('stock-distribution/export/excel', [StockDistributionController::class, 'exportExcel'])->name('stock-distribution.export-excel');
+    Route::get('stock-distribution/export/pdf', [StockDistributionController::class, 'exportPdf'])->name('stock-distribution.export-pdf');
+    Route::get('stock-distribution/export/print', [StockDistributionController::class, 'exportPrint'])->name('stock-distribution.export-print');
     Route::post('stock-distribution/{stock_distribution}/receive', [StockDistributionController::class, 'receive'])->name('stock-distribution.receive');
     Route::post('stock-distribution/{stock_distribution}/send-return', [StockDistributionController::class, 'sendReturn'])->name('stock-distribution.send-return');
     Route::post('stock-distribution/{stock_distribution}/receive-return', [StockDistributionController::class, 'receiveReturn'])->name('stock-distribution.receive-return');
@@ -148,6 +160,9 @@ Route::middleware(['auth', 'verified'])->prefix('party')->name('party.')->group(
     Route::get('supplier/export/pdf', [SupplierController::class, 'exportPdf'])->name('supplier.export-pdf');
     Route::get('supplier/export/print', [SupplierController::class, 'exportPrint'])->name('supplier.export-print');
     Route::resource('supplier', SupplierController::class)->except(['create', 'edit', 'show']);
+    Route::get('supplier-payment/export/excel', [SupplierPaymentController::class, 'exportExcel'])->name('supplier-payment.export-excel');
+    Route::get('supplier-payment/export/pdf', [SupplierPaymentController::class, 'exportPdf'])->name('supplier-payment.export-pdf');
+    Route::get('supplier-payment/export/print', [SupplierPaymentController::class, 'exportPrint'])->name('supplier-payment.export-print');
     Route::resource('supplier-payment', SupplierPaymentController::class)->only(['index', 'store', 'update', 'destroy']);
     Route::resource('customer-due-collection', CustomerDueCollectionController::class)
         ->only(['index', 'store', 'update', 'destroy'])

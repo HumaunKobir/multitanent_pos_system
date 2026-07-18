@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\Concerns\ExportsFilteredList;
 use App\Enums\StockDistributionStatus;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
@@ -9,21 +10,97 @@ use App\Models\StockDistribution;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
 use App\Services\StockDistributionService;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class StockDistributionController extends Controller
 {
+    use ExportsFilteredList;
+
     public function __construct(
         private StockDistributionService $distribution,
         private InventoryAccountingService $accounting,
         private InventoryCostService $costService,
     ) {}
+
+    private function adminListQuery(Request $request, $user): Builder
+    {
+        return $this->applyDateColumnFilters(
+            $this->distributionQueryForUser($user)
+                ->with([
+                    'toBranch:id,name',
+                    'receivedBy:id,name',
+                    'returnSentBy:id,name',
+                    'returnReceivedBy:id,name',
+                ])
+                ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
+                    $q->where('serial', 'like', "%{$s}%")
+                        ->orWhere('comment', 'like', "%{$s}%")
+                        ->orWhereHas('toBranch', fn ($q) => $q->where('name', 'like', "%{$s}%"));
+                })),
+            $request,
+            'date',
+        )->latest();
+    }
+
+    private function receivedListQuery(Request $request, $user): Builder
+    {
+        return $this->applyDateColumnFilters(
+            StockDistribution::query()
+                ->where('to_branch_id', $user?->branch_id)
+                ->with([
+                    'fromBranch:id,name',
+                    'receivedBy:id,name',
+                    'returnSentBy:id,name',
+                    'returnReceivedBy:id,name',
+                ])
+                ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
+                    $q->where('serial', 'like', "%{$s}%")
+                        ->orWhere('comment', 'like', "%{$s}%");
+                })),
+            $request,
+            'date',
+        )->latest();
+    }
+
+    /**
+     * @return Collection<int, list<string|int|float>>
+     */
+    private function exportRows(Request $request, bool $isReceiverView = false): Collection
+    {
+        $user = Auth::user();
+        $query = $isReceiverView
+            ? $this->receivedListQuery($request, $user)
+            : $this->adminListQuery($request, $user);
+
+        return $query
+            ->limit(self::LIST_EXPORT_LIMIT)
+            ->get()
+            ->values()
+            ->map(function (StockDistribution $distribution, int $index) use ($isReceiverView): array {
+                $branch = $isReceiverView
+                    ? ($distribution->fromBranch?->name ?? 'Main Branch')
+                    : ($distribution->toBranch?->name ?? '—');
+
+                return [
+                    $index + 1,
+                    $distribution->invoice_number,
+                    optional($distribution->date)?->format('Y-m-d') ?? '—',
+                    $branch,
+                    $distribution->comment ?: '—',
+                    $distribution->status_label ?? '—',
+                ];
+            });
+    }
 
     public function index(Request $request): Response
     {
@@ -32,25 +109,13 @@ class StockDistributionController extends Controller
 
         $user = Auth::user();
 
-        $distributions = $this->distributionQueryForUser($user)
-            ->with([
-                'toBranch:id,name',
-                'receivedBy:id,name',
-                'returnSentBy:id,name',
-                'returnReceivedBy:id,name',
-            ])
-            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
-                $q->where('serial', 'like', "%{$s}%")
-                    ->orWhere('comment', 'like', "%{$s}%")
-                    ->orWhereHas('toBranch', fn ($q) => $q->where('name', 'like', "%{$s}%"));
-            }))
-            ->latest()
+        $distributions = $this->adminListQuery($request, $user)
             ->paginate(20)
             ->withQueryString();
 
         return Inertia::render('admin/inventory/stock-distribution/index', [
             'distributions' => $distributions,
-            'filters' => $request->only('search'),
+            'filters' => $request->only('search', 'date_from', 'date_to'),
             'canManage' => $this->canManageDistributions($user),
             'isReceiverView' => false,
         ]);
@@ -63,28 +128,70 @@ class StockDistributionController extends Controller
 
         $user = Auth::user();
 
-        $distributions = StockDistribution::query()
-            ->where('to_branch_id', $user?->branch_id)
-            ->with([
-                'fromBranch:id,name',
-                'receivedBy:id,name',
-                'returnSentBy:id,name',
-                'returnReceivedBy:id,name',
-            ])
-            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
-                $q->where('serial', 'like', "%{$s}%")
-                    ->orWhere('comment', 'like', "%{$s}%");
-            }))
-            ->latest()
+        $distributions = $this->receivedListQuery($request, $user)
             ->paginate(20)
             ->withQueryString();
 
         return Inertia::render('admin/inventory/stock-distribution/index', [
             'distributions' => $distributions,
-            'filters' => $request->only('search'),
+            'filters' => $request->only('search', 'date_from', 'date_to'),
             'canManage' => false,
             'isReceiverView' => true,
         ]);
+    }
+
+    public function exportExcel(Request $request): BinaryFileResponse
+    {
+        $isReceiverView = $request->boolean('received');
+        $this->authorize($isReceiverView ? 'inventory.stock-distribution.receive' : 'inventory.stock-distribution.view');
+
+        if ($isReceiverView) {
+            $this->authorizeBranchReceiverOnly();
+        } else {
+            $this->authorizeAdminPanelOnly();
+        }
+
+        return $this->downloadListExcel(
+            $isReceiverView ? 'stock-received' : 'stock-distributions',
+            ['#', 'Invoice', 'Date', $isReceiverView ? 'From' : 'To Branch', 'Note', 'Status'],
+            $this->exportRows($request, $isReceiverView),
+        );
+    }
+
+    public function exportPdf(Request $request): SymfonyResponse
+    {
+        $isReceiverView = $request->boolean('received');
+        $this->authorize($isReceiverView ? 'inventory.stock-distribution.receive' : 'inventory.stock-distribution.view');
+
+        if ($isReceiverView) {
+            $this->authorizeBranchReceiverOnly();
+        } else {
+            $this->authorizeAdminPanelOnly();
+        }
+
+        return $this->downloadListPdf(
+            $isReceiverView ? 'Stock Received' : 'Stock Distributions',
+            ['#', 'Invoice', 'Date', $isReceiverView ? 'From' : 'To Branch', 'Note', 'Status'],
+            $this->exportRows($request, $isReceiverView),
+        );
+    }
+
+    public function exportPrint(Request $request): SymfonyResponse
+    {
+        $isReceiverView = $request->boolean('received');
+        $this->authorize($isReceiverView ? 'inventory.stock-distribution.receive' : 'inventory.stock-distribution.view');
+
+        if ($isReceiverView) {
+            $this->authorizeBranchReceiverOnly();
+        } else {
+            $this->authorizeAdminPanelOnly();
+        }
+
+        return $this->printListHtml(
+            $isReceiverView ? 'Stock Received' : 'Stock Distributions',
+            ['#', 'Invoice', 'Date', $isReceiverView ? 'From' : 'To Branch', 'Note', 'Status'],
+            $this->exportRows($request, $isReceiverView),
+        );
     }
 
     public function create(): Response

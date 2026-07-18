@@ -1,0 +1,1 @@
+import{_ as e}from"./app-B_4Ha-2C.js";function t(t){let{permission:n,children:r,fallback:i}=t,a=i===void 0?null:i,{can:o}=e();return o(n)?r:a}export{t};

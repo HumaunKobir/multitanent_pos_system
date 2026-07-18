@@ -7,6 +7,7 @@ use App\Enums\ProductLogType;
 use App\Enums\PurchaseType;
 use App\Enums\ReceivedPaymentMethod;
 use App\Enums\SaleType;
+use App\Enums\SystemAccountKey;
 use App\Enums\VoucherType;
 use App\Models\Batch;
 use App\Models\Branch;
@@ -2073,52 +2074,132 @@ class ReportService
 
         $accounts = $this->reportAccountsQuery([AccountType::Income, AccountType::Expenses], $effectiveBranchId)
             ->orderBy('code')
-            ->get(['id', 'code', 'name', 'type']);
+            ->get(['id', 'code', 'name', 'type', 'account_number']);
 
-        $sections = [];
+        $buckets = [
+            'sales_revenue' => [],
+            'sales_returns' => [],
+            'cogs' => [],
+            'operating_expenses' => [],
+        ];
 
-        foreach ([AccountType::Income, AccountType::Expenses] as $type) {
-            $lines = [];
-            $total = 0.0;
+        foreach ($accounts as $account) {
+            $closing = $this->accountBalanceAsOfForBranch($account->id, $resolvedDateTo, $effectiveBranchId);
+            $opening = $this->accountBalanceAsOfForBranch($account->id, $beforeStartDate, $effectiveBranchId);
+            $amount = round($closing - $opening, 2);
 
-            foreach ($accounts->where('type', $type) as $account) {
-                $closing = $this->accountBalanceAsOfForBranch($account->id, $resolvedDateTo, $effectiveBranchId);
-                $opening = $this->accountBalanceAsOfForBranch($account->id, $beforeStartDate, $effectiveBranchId);
-                $amount = round($closing - $opening, 2);
-
-                if (abs($amount) < 0.005) {
-                    continue;
-                }
-
-                $lines[] = [
-                    'code' => $account->code,
-                    'name' => $account->name,
-                    'amount' => $amount,
-                ];
-                $total += $amount;
+            if (abs($amount) < 0.005) {
+                continue;
             }
 
-            $sections[] = [
-                'type' => $type->label(),
-                'slug' => $type->slug(),
-                'lines' => $lines,
-                'total' => round($total, 2),
+            $bucket = $this->profitAndLossBucket($account);
+            $displayAmount = in_array($bucket, ['sales_returns', 'cogs', 'operating_expenses'], true)
+                ? round(abs($amount), 2)
+                : $amount;
+
+            // Contra / expense buckets are shown as positive deductions.
+            if ($bucket === 'sales_revenue' && $amount < 0) {
+                // Unexpected debit on a revenue account — treat as return-like deduction.
+                $buckets['sales_returns'][] = [
+                    'code' => $account->code,
+                    'name' => $account->name,
+                    'amount' => round(abs($amount), 2),
+                ];
+
+                continue;
+            }
+
+            $buckets[$bucket][] = [
+                'code' => $account->code,
+                'name' => $account->name,
+                'amount' => $displayAmount,
             ];
         }
 
-        $totalIncome = collect($sections)->firstWhere('slug', 'income')['total'] ?? 0.0;
-        $totalExpenses = collect($sections)->firstWhere('slug', 'expenses')['total'] ?? 0.0;
-        $net = round($totalIncome - $totalExpenses, 2);
+        $salesRevenue = round(collect($buckets['sales_revenue'])->sum('amount'), 2);
+        $salesReturns = round(collect($buckets['sales_returns'])->sum('amount'), 2);
+        $netSales = round($salesRevenue - $salesReturns, 2);
+        $cogs = round(collect($buckets['cogs'])->sum('amount'), 2);
+        $grossProfit = round($netSales - $cogs, 2);
+        $operatingExpenses = round(collect($buckets['operating_expenses'])->sum('amount'), 2);
+        $net = round($grossProfit - $operatingExpenses, 2);
+
+        $sections = [
+            [
+                'type' => 'Sales Revenue',
+                'slug' => 'sales_revenue',
+                'lines' => $buckets['sales_revenue'],
+                'total' => $salesRevenue,
+            ],
+            [
+                'type' => 'Sales Returns',
+                'slug' => 'sales_returns',
+                'lines' => $buckets['sales_returns'],
+                'total' => $salesReturns,
+            ],
+            [
+                'type' => 'Cost of Goods Sold (COGS)',
+                'slug' => 'cogs',
+                'lines' => $buckets['cogs'],
+                'total' => $cogs,
+            ],
+            [
+                'type' => 'Operating Expenses',
+                'slug' => 'operating_expenses',
+                'lines' => $buckets['operating_expenses'],
+                'total' => $operatingExpenses,
+            ],
+        ];
 
         return [
             'date_from' => $resolvedDateFrom,
             'date_to' => $resolvedDateTo,
             'sections' => $sections,
-            'total_income' => round($totalIncome, 2),
-            'total_expenses' => round($totalExpenses, 2),
+            'sales_revenue' => $salesRevenue,
+            'sales_returns' => $salesReturns,
+            'net_sales' => $netSales,
+            'cogs' => $cogs,
+            'gross_profit' => $grossProfit,
+            'operating_expenses' => $operatingExpenses,
+            'total_income' => $salesRevenue,
+            'total_expenses' => round($cogs + $operatingExpenses, 2),
             'net_result' => $net,
             'result_label' => $net >= 0 ? 'Net Profit' : 'Net Loss',
         ];
+    }
+
+    /**
+     * Classify a P&L account into statement buckets.
+     */
+    private function profitAndLossBucket(ChartOfAccount $account): string
+    {
+        $accountNumber = (string) ($account->account_number ?? '');
+        $name = strtolower((string) $account->name);
+
+        if (
+            $accountNumber === SystemAccountKey::SalesReturns->accountNumber()
+            || str_contains($name, 'sales return')
+        ) {
+            return 'sales_returns';
+        }
+
+        if ($account->type === AccountType::Income) {
+            return 'sales_revenue';
+        }
+
+        if (
+            $accountNumber === SystemAccountKey::CostOfGoodsSold->accountNumber()
+            || $accountNumber === SystemAccountKey::InventoryDamage->accountNumber()
+            || $accountNumber === SystemAccountKey::PurchaseReturns->accountNumber()
+            || str_contains($name, 'cost of goods')
+            || str_contains($name, 'cogs')
+            || str_contains($name, 'inventory damage')
+            || str_contains($name, 'purchase return')
+        ) {
+            return 'cogs';
+        }
+
+        return 'operating_expenses';
     }
 
     /**

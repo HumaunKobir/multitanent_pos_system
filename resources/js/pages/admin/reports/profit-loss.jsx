@@ -14,50 +14,52 @@ import {
     useLiveReportFilters,
 } from '@/pages/admin/reports/_shared/report-shell';
 
-const sectionStyles = {
-    income: {
-        header: 'bg-emerald-600',
-        body: 'from-emerald-50/80 to-white dark:from-emerald-950/25 dark:to-card',
-        ring: 'ring-emerald-500/25',
-        total: 'text-emerald-800 dark:text-emerald-300',
-    },
-    expenses: {
-        header: 'bg-rose-600',
-        body: 'from-rose-50/80 to-white dark:from-rose-950/25 dark:to-card',
-        ring: 'ring-rose-500/25',
-        total: 'text-rose-800 dark:text-rose-300',
-    },
-};
+function sectionBySlug(sections, slug) {
+    return (sections ?? []).find((section) => section.slug === slug) ?? { lines: [], total: 0 };
+}
 
-function SectionTable({ section }) {
-    const style = sectionStyles[section.slug] ?? sectionStyles.income;
-
-    if (!section?.lines?.length) {
-        return <p className="px-4 py-6 text-sm text-muted-foreground">No balances recorded.</p>;
+function StatementLines({ lines, emptyLabel = 'No balances recorded.' }) {
+    if (!lines?.length) {
+        return (
+            <tr>
+                <td colSpan={3} className="px-4 py-2 text-sm text-muted-foreground">
+                    {emptyLabel}
+                </td>
+            </tr>
+        );
     }
 
+    return lines.map((line) => (
+        <tr key={`${line.code}-${line.name}`} className="border-b border-dashed border-black/5 dark:border-white/10">
+            <td className="px-4 py-2 font-mono text-xs text-muted-foreground">{line.code}</td>
+            <td className="py-2 pr-2">{line.name}</td>
+            <td className="px-4 py-2 text-right font-medium">
+                <MoneyCell value={line.amount} />
+            </td>
+        </tr>
+    ));
+}
+
+function TotalRow({ label, value, prefix = '', emphasize = false, tone = 'default' }) {
+    const toneClass =
+        tone === 'profit'
+            ? 'text-emerald-800 dark:text-emerald-300'
+            : tone === 'loss'
+              ? 'text-rose-800 dark:text-rose-300'
+              : tone === 'muted'
+                ? 'text-muted-foreground'
+                : '';
+
     return (
-        <table className="w-full text-sm">
-            <tbody>
-                {section.lines.map((line) => (
-                    <tr key={line.code} className="border-b border-dashed border-black/5 dark:border-white/10">
-                        <td className="px-4 py-2 font-mono text-xs text-muted-foreground">{line.code}</td>
-                        <td className="py-2 pr-2">{line.name}</td>
-                        <td className="px-4 py-2 text-right font-medium">
-                            <MoneyCell value={line.amount} />
-                        </td>
-                    </tr>
-                ))}
-                <tr className="bg-black/4 font-semibold dark:bg-white/6">
-                    <td colSpan={2} className="px-4 py-2.5">
-                        Total {section.type}
-                    </td>
-                    <td className={['px-4 py-2.5 text-right', style.total].join(' ')}>
-                        <MoneyCell value={section.total} />
-                    </td>
-                </tr>
-            </tbody>
-        </table>
+        <tr className={emphasize ? 'bg-black/5 font-semibold dark:bg-white/8' : 'font-semibold'}>
+            <td colSpan={2} className="px-4 py-2.5">
+                {prefix ? <span className="mr-1 text-muted-foreground">{prefix}</span> : null}
+                {label}
+            </td>
+            <td className={['px-4 py-2.5 text-right', toneClass].join(' ')}>
+                <MoneyCell value={value} />
+            </td>
+        </tr>
     );
 }
 
@@ -94,6 +96,10 @@ export default function ProfitLossReport({ filters = {}, branches = [], isBranch
 
     const hasActiveFilters = Boolean(dateFrom || dateTo || branchId);
     const isProfit = (report.net_result ?? 0) >= 0;
+    const salesRevenue = sectionBySlug(report.sections, 'sales_revenue');
+    const salesReturns = sectionBySlug(report.sections, 'sales_returns');
+    const cogs = sectionBySlug(report.sections, 'cogs');
+    const operatingExpenses = sectionBySlug(report.sections, 'operating_expenses');
 
     function resetFilters() {
         setDateFrom('');
@@ -107,7 +113,7 @@ export default function ProfitLossReport({ filters = {}, branches = [], isBranch
             <Head title="Profit & Loss" />
             <ReportPage
                 title="Profit & Loss"
-                description="Branch-wise income, expenses, and net result for a period."
+                description="Sales, COGS, gross profit, operating expenses, and net result for a period."
                 filterActions={<ReportFilterReset onClick={resetFilters} disabled={!hasActiveFilters} />}
                 filterBar={
                     <>
@@ -140,21 +146,29 @@ export default function ProfitLossReport({ filters = {}, branches = [], isBranch
                     </div>
                 </div>
 
-                <div className="mb-4 grid gap-3 sm:grid-cols-3">
+                <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <div className="rounded-lg border border-emerald-200/80 bg-emerald-50 px-4 py-3 shadow-sm dark:border-emerald-800 dark:bg-emerald-950/30">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-800/70 dark:text-emerald-300/70">
-                            Total Income
+                            Net Sales
                         </p>
                         <p className="mt-1 text-xl font-bold text-emerald-800 dark:text-emerald-200">
-                            <MoneyCell value={report.total_income} />
+                            <MoneyCell value={report.net_sales} />
+                        </p>
+                    </div>
+                    <div className="rounded-lg border border-amber-200/80 bg-amber-50 px-4 py-3 shadow-sm dark:border-amber-800 dark:bg-amber-950/30">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-800/70 dark:text-amber-300/70">
+                            Gross Profit
+                        </p>
+                        <p className="mt-1 text-xl font-bold text-amber-900 dark:text-amber-200">
+                            <MoneyCell value={report.gross_profit} />
                         </p>
                     </div>
                     <div className="rounded-lg border border-rose-200/80 bg-rose-50 px-4 py-3 shadow-sm dark:border-rose-800 dark:bg-rose-950/30">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-rose-800/70 dark:text-rose-300/70">
-                            Total Expenses
+                            Operating Expenses
                         </p>
                         <p className="mt-1 text-xl font-bold text-rose-900 dark:text-rose-200">
-                            <MoneyCell value={report.total_expenses} />
+                            <MoneyCell value={report.operating_expenses} />
                         </p>
                     </div>
                     <div
@@ -186,29 +200,84 @@ export default function ProfitLossReport({ filters = {}, branches = [], isBranch
                     </div>
                 </div>
 
-                <div className="grid gap-4 lg:grid-cols-2">
-                    {(report.sections ?? []).map((section) => {
-                        const style = sectionStyles[section.slug] ?? sectionStyles.income;
+                <div className="overflow-hidden rounded-lg border bg-card shadow-sm ring-1 ring-blue-950/10">
+                    <div className="bg-blue-950 px-4 py-2.5 text-sm font-semibold uppercase tracking-wide text-white">
+                        Profit &amp; Loss Statement
+                    </div>
+                    <div className="bg-linear-to-b from-slate-50/80 to-white dark:from-slate-950/20 dark:to-card">
+                        <table className="w-full text-sm">
+                            <tbody>
+                                <tr className="bg-emerald-600/90 text-white">
+                                    <td colSpan={3} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide">
+                                        Sales Revenue
+                                    </td>
+                                </tr>
+                                <StatementLines lines={salesRevenue.lines} emptyLabel="No sales revenue recorded." />
+                                <TotalRow label="Sales Revenue" value={report.sales_revenue ?? salesRevenue.total} />
 
-                        return (
-                            <div
-                                key={section.slug}
-                                className={['overflow-hidden rounded-lg border bg-card shadow-sm ring-1', style.ring].join(' ')}
-                            >
-                                <div
-                                    className={[
-                                        'px-4 py-2.5 text-sm font-semibold uppercase tracking-wide text-white',
-                                        style.header,
-                                    ].join(' ')}
-                                >
-                                    {section.type}
-                                </div>
-                                <div className={['bg-linear-to-b', style.body].join(' ')}>
-                                    <SectionTable section={section} />
-                                </div>
-                            </div>
-                        );
-                    })}
+                                <tr className="bg-rose-600/90 text-white">
+                                    <td colSpan={3} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide">
+                                        (−) Sales Return
+                                    </td>
+                                </tr>
+                                <StatementLines lines={salesReturns.lines} emptyLabel="No sales returns recorded." />
+                                <TotalRow
+                                    label="Sales Returns"
+                                    value={report.sales_returns ?? salesReturns.total}
+                                    prefix="(−)"
+                                    tone="loss"
+                                />
+
+                                <TotalRow
+                                    label="Net Sales"
+                                    value={report.net_sales}
+                                    prefix="="
+                                    emphasize
+                                    tone="profit"
+                                />
+
+                                <tr className="bg-amber-600/90 text-white">
+                                    <td colSpan={3} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide">
+                                        (−) Cost of Goods Sold (COGS)
+                                    </td>
+                                </tr>
+                                <StatementLines lines={cogs.lines} emptyLabel="No COGS recorded." />
+                                <TotalRow label="Cost of Goods Sold (COGS)" value={report.cogs ?? cogs.total} prefix="(−)" tone="loss" />
+
+                                <TotalRow
+                                    label="Gross Profit"
+                                    value={report.gross_profit}
+                                    prefix="="
+                                    emphasize
+                                    tone="profit"
+                                />
+
+                                <tr className="bg-slate-700 text-white">
+                                    <td colSpan={3} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide">
+                                        (−) Operating Expenses
+                                    </td>
+                                </tr>
+                                <StatementLines
+                                    lines={operatingExpenses.lines}
+                                    emptyLabel="No operating expenses recorded."
+                                />
+                                <TotalRow
+                                    label="Operating Expenses"
+                                    value={report.operating_expenses ?? operatingExpenses.total}
+                                    prefix="(−)"
+                                    tone="loss"
+                                />
+
+                                <TotalRow
+                                    label={report.result_label ?? 'Net Profit'}
+                                    value={Math.abs(report.net_result ?? 0)}
+                                    prefix="="
+                                    emphasize
+                                    tone={isProfit ? 'profit' : 'loss'}
+                                />
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </ReportPage>
         </>

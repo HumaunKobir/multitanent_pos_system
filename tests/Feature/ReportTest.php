@@ -486,6 +486,12 @@ test('trial balance and profit loss are branch wise and keep debit credit totals
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/reports/profit-loss')
+            ->where('report.sales_revenue', 500.0)
+            ->where('report.sales_returns', 0.0)
+            ->where('report.net_sales', 500.0)
+            ->where('report.cogs', 0.0)
+            ->where('report.gross_profit', 500.0)
+            ->where('report.operating_expenses', 120.0)
             ->where('report.total_income', 500.0)
             ->where('report.total_expenses', 120.0)
             ->where('report.net_result', 380.0)
@@ -493,8 +499,9 @@ test('trial balance and profit loss are branch wise and keep debit credit totals
             ->where('report.sections', function ($sections): bool {
                 $sections = collect($sections)->keyBy('slug');
 
-                return (float) ($sections['income']['total'] ?? 0) === 500.0
-                    && (float) ($sections['expenses']['total'] ?? 0) === 120.0;
+                return (float) ($sections['sales_revenue']['total'] ?? 0) === 500.0
+                    && (float) ($sections['operating_expenses']['total'] ?? 0) === 120.0
+                    && (float) ($sections['cogs']['total'] ?? 0) === 0.0;
             }));
 });
 

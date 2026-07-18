@@ -13,6 +13,7 @@ import {
     BARCODE_HORIZONTAL_MARGIN_IN,
     BARCODE_HEIGHT_RATIO,
     BARCODE_PRICE_GAP_PX,
+    NAME_BARCODE_GAP_PX,
     JSBARCODE_CDN,
     getLabelTitle,
     getLabelProductName,
@@ -43,8 +44,12 @@ if (BARCODE_HORIZONTAL_MARGIN_IN !== 0.2) {
     process.exit(1);
 }
 
-if (BARCODE_PRICE_GAP_PX !== 0) {
+if (BARCODE_PRICE_GAP_PX !== NAME_BARCODE_GAP_PX) {
     process.exit(79);
+}
+
+if (BARCODE_PRICE_GAP_PX !== 1) {
+    process.exit(90);
 }
 
 if (BARCODE_HEIGHT_RATIO !== 0.48) {
@@ -303,11 +308,7 @@ if (! wideHtml.includes('justify-content: center')) {
     process.exit(57);
 }
 
-if (! wideHtml.includes('grid-template-rows: auto minmax(0, 1fr) auto')) {
-    process.exit(88);
-}
-
-if (! wideHtml.includes(`padding: 5px 0 5px`)) {
+if (! wideHtml.includes('padding: 5px;')) {
     process.exit(89);
 }
 
@@ -473,8 +474,12 @@ if (! autoHtml.includes('font-size:17px')) {
     process.exit(82);
 }
 
-if (! autoHtml.includes('margin-top: 0px')) {
+if (! autoHtml.includes('margin-top:1px')) {
     process.exit(83);
+}
+
+if (! autoHtml.includes('margin-bottom:1px')) {
+    process.exit(91);
 }
 
 const svg = {

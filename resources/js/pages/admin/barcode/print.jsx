@@ -27,12 +27,9 @@ import {
     getLabelLineHeight,
     getLabelPreviewDisplaySize,
     getMaxFittingLabelFontSize,
-    getBarcodePriceGap,
     getNameBarcodeGap,
     LABEL_CODE_PRICE_GAP_PX,
-    LABEL_HEADER_PAD_TOP_PX,
-    LABEL_PADDING_BOTTOM_PX,
-    LABEL_PADDING_TOP_PX,
+    LABEL_PAGE_MARGIN_PX,
     LIST_BARCODE_BAR_HEIGHT,
     MAX_LABEL_FONT_PX,
     MAX_LABEL_HEIGHT_IN,
@@ -139,14 +136,14 @@ function LabelPreview({ row, settings }) {
         getNameBarcodeGap(textFontSize),
         scale,
     );
-    const barcodePriceGap = scaleLabelPreviewPx(getBarcodePriceGap(), scale);
-    const paddingTop = scaleLabelPreviewPx(LABEL_PADDING_TOP_PX, scale);
-    const paddingBottom = scaleLabelPreviewPx(LABEL_PADDING_BOTTOM_PX, scale);
+    const sectionGap = nameBarcodeGap;
+    const pageMargin = scaleLabelPreviewPx(LABEL_PAGE_MARGIN_PX, scale);
     const sideMarginPx = scaleLabelPreviewPx(
         ((settings.width - Math.min(barcodeWidthIn, settings.width)) / 2) *
             PRINT_DPI,
         scale,
     );
+    const textSidePadPx = Math.max(0, sideMarginPx - pageMargin);
     const price = getEffectivePrice(row);
     const codeLine = getLabelCodeLine(row);
 
@@ -173,55 +170,53 @@ function LabelPreview({ row, settings }) {
                 background: '#fff',
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'flex-start',
-                alignItems: 'stretch',
-                padding: `${paddingTop}px 0 ${paddingBottom}px`,
+                justifyContent: 'center',
+                alignItems: 'center',
+                padding: `${pageMargin}px`,
                 boxSizing: 'border-box',
                 overflow: 'hidden',
                 flexShrink: 0,
-                marginTop: '10px',
             }}
         >
             <div
                 style={{
                     width: '100%',
-                    height: '100%',
                     maxWidth: '100%',
                     maxHeight: '100%',
                     minWidth: 0,
                     minHeight: 0,
                     display: 'flex',
                     flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
                     overflow: 'hidden',
                 }}
             >
                 <div
                     style={{
                         width: '100%',
-                        height: '100%',
                         minWidth: 0,
                         minHeight: 0,
                         maxWidth: '100%',
                         maxHeight: '100%',
-                        display: 'grid',
-                        gridTemplateRows: 'auto minmax(0, 1fr) auto',
+                        display: 'flex',
+                        flexDirection: 'column',
                         alignItems: 'stretch',
-                        justifyItems: 'stretch',
-                        flex: '1 1 auto',
+                        justifyContent: 'center',
+                        flex: '0 1 auto',
                         overflow: 'hidden',
                     }}
                 >
                     <div
                         style={{
-                            gridRow: 1,
                             flex: '0 0 auto',
-                            marginBottom: `${nameBarcodeGap}px`,
+                            marginBottom: `${sectionGap}px`,
                             textAlign: 'center',
                             width: '100%',
                             minWidth: 0,
                             maxWidth: '100%',
                             overflow: 'hidden',
-                            padding: `${Math.max(1, scaleLabelPreviewPx(LABEL_HEADER_PAD_TOP_PX, scale))}px ${sideMarginPx}px 0`,
+                            padding: `0 ${textSidePadPx}px`,
                         }}
                     >
                         {headerLines.map((line) => (
@@ -238,12 +233,12 @@ function LabelPreview({ row, settings }) {
                     </div>
                     <div
                         style={{
-                            gridRow: 2,
                             width: `${barcodeWidthPx}px`,
                             maxWidth: '100%',
                             minWidth: 0,
                             minHeight: 0,
                             margin: '0 auto',
+                            flex: '0 1 auto',
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
@@ -258,17 +253,16 @@ function LabelPreview({ row, settings }) {
                     </div>
                     <div
                         style={{
-                            gridRow: 3,
                             display: 'flex',
                             flexDirection: 'column',
                             alignItems: 'center',
                             flex: '0 0 auto',
-                            marginTop: `${barcodePriceGap}px`,
+                            marginTop: `${sectionGap}px`,
                             width: '100%',
                             minWidth: 0,
                             maxWidth: '100%',
                             overflow: 'hidden',
-                            padding: `0 ${sideMarginPx}px`,
+                            padding: `0 ${textSidePadPx}px`,
                         }}
                     >
                         <div

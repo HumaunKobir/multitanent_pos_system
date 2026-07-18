@@ -1,7 +1,8 @@
 export const PRINT_DPI = 96;
+/** Equal gap between header↔barcode and barcode↔footer. */
 export const NAME_BARCODE_GAP_PX = 1;
-/** Space between the barcode bars and the code/price footer — keep tight. */
-export const BARCODE_PRICE_GAP_PX = 0;
+/** Space between the barcode bars and the code/price footer — match header gap. */
+export const BARCODE_PRICE_GAP_PX = NAME_BARCODE_GAP_PX;
 export const MIN_LABEL_FONT_PX = 5;
 export const MAX_LABEL_FONT_PX = 24;
 /**
@@ -13,21 +14,21 @@ export const MIN_LABEL_HEIGHT_IN = 0.3;
 export const MAX_LABEL_HEIGHT_IN = 10;
 export const MIN_LABEL_WIDTH_IN = 0.5;
 export const MAX_LABEL_WIDTH_IN = 10;
-/** Horizontal label padding (5px left + 5px right). */
-export const LABEL_PADDING_X_PX = 10;
 /**
- * Fixed page margin above the header and below the footer on every label.
- * Keep these equal so print spacing is consistent across pages.
+ * Fixed equal page margin on every side (top, right, bottom, left)
+ * so content sits centered in the label.
  */
 export const LABEL_PAGE_MARGIN_PX = 5;
+/** Horizontal label padding total (left + right page margins). */
+export const LABEL_PADDING_X_PX = LABEL_PAGE_MARGIN_PX * 2;
 /** Top label padding — fixed margin above the header. */
 export const LABEL_PADDING_TOP_PX = LABEL_PAGE_MARGIN_PX;
 /** Bottom label padding — fixed margin below the footer. */
 export const LABEL_PADDING_BOTTOM_PX = LABEL_PAGE_MARGIN_PX;
 /** Vertical label padding total (top + bottom). */
 export const LABEL_PADDING_Y_PX = LABEL_PADDING_TOP_PX + LABEL_PADDING_BOTTOM_PX;
-/** Extra top pad inside the header so bold text is not clipped in print. */
-export const LABEL_HEADER_PAD_TOP_PX = 1;
+/** No extra header-only pad — top gap matches the footer bottom gap. */
+export const LABEL_HEADER_PAD_TOP_PX = 0;
 /** Gap between the code line and the price line. */
 export const LABEL_CODE_PRICE_GAP_PX = 1;
 /** Horizontal padding inside the barcode row (2px each side). */
@@ -224,15 +225,11 @@ export function getLabelTextChromePx(fontSize, headerLineCount = 1) {
     const fs = getLabelFooterFontSize(fontSize, lines);
     const lineHeightPx = getLabelLineHeight(fs);
     const headerBlockPx = lines * lineHeightPx + LABEL_HEADER_PAD_TOP_PX;
+    const sectionGap = getNameBarcodeGap(fs);
     const footerBlockPx =
         lineHeightPx * 2 + getBarcodePriceGap() + LABEL_CODE_PRICE_GAP_PX;
 
-    return (
-        LABEL_PADDING_Y_PX +
-        headerBlockPx +
-        getNameBarcodeGap(fs) +
-        footerBlockPx
-    );
+    return LABEL_PADDING_Y_PX + headerBlockPx + sectionGap + footerBlockPx;
 }
 
 function getLabelTextLines(row) {
@@ -923,7 +920,6 @@ export function buildPrintHtml(rows, settings) {
     const resolved = resolveLabelSettings(settings, rows);
     const { width, height, fontWeight, copies } = resolved;
     const fw = fontWeight === 'bold' ? 700 : 400;
-    const barcodePriceGap = getBarcodePriceGap();
     const barcodeWidthIn = getLabelBarcodeWidthIn(resolved);
     const defaultBarHeightPx = getLabelBarcodeBarHeight(resolved);
     const defaultBarcodeHeightIn = getLabelBarcodeHeightIn(resolved);
@@ -947,17 +943,17 @@ export function buildPrintHtml(rows, settings) {
             );
             const codeLine = getLabelCodeLine(row);
             const lineHeight = getLabelLineHeight(textFontSize);
-            const rowNameBarcodeGap = getNameBarcodeGap(textFontSize);
+            const sectionGap = getNameBarcodeGap(textFontSize);
 
             return `
       <div class="label">
         <div class="label-content">
           <div class="label-stack">
-            <div class="label-header" style="margin-bottom:${rowNameBarcodeGap}px;">${headerHtml}</div>
+            <div class="label-header" style="margin-bottom:${sectionGap}px;">${headerHtml}</div>
             <div class="bars-wrap">
               <svg class="bars" data-code="${escapeHtmlAttr(row.code)}" data-bar-height="${barHeightPx}"></svg>
             </div>
-            <div class="footer">
+            <div class="footer" style="margin-top:${sectionGap}px;">
               <div class="label-line label-code" style="font-size:${textFontSize}px;line-height:${lineHeight}px;">${escapeHtml(codeLine)}</div>
               <div class="label-line label-price" style="font-size:${textFontSize}px;font-weight:700;line-height:${lineHeight}px;">${escapeHtml(formatLabelPrice(price))}</div>
             </div>
@@ -973,6 +969,12 @@ export function buildPrintHtml(rows, settings) {
         Math.min(barcodeWidthIn, width).toFixed(2),
     );
     const sideMarginIn = getBarcodeSideMarginIn(width, printedBarcodeWidthIn);
+    // Content area is already inset by LABEL_PAGE_MARGIN_PX; keep text aligned
+    // with the barcode strip without stacking an extra page margin.
+    const textSidePadIn = Math.max(
+        0,
+        Number((sideMarginIn - LABEL_PAGE_MARGIN_PX / PRINT_DPI).toFixed(4)),
+    );
 
     return `<!DOCTYPE html>
 <html>
@@ -993,9 +995,8 @@ export function buildPrintHtml(rows, settings) {
     }
     .page { display: block; width: ${width}in; }
     /*
-     * Fixed top/bottom page margins for header and footer on every label.
-     * Header stays under the top margin, footer above the bottom margin,
-     * barcode fills and centers in the remaining middle space.
+     * Equal page margin on all sides. Header/footer use the same section gap.
+     * The whole content block is centered top/bottom/left/right.
      */
     .label {
       width: ${width}in;
@@ -1006,41 +1007,39 @@ export function buildPrintHtml(rows, settings) {
       border: 1px solid #ccc;
       display: flex;
       flex-direction: column;
-      align-items: stretch;
-      justify-content: flex-start;
-      padding: ${LABEL_PADDING_TOP_PX}px 0 ${LABEL_PADDING_BOTTOM_PX}px;
+      align-items: center;
+      justify-content: center;
+      padding: ${LABEL_PAGE_MARGIN_PX}px;
       overflow: hidden;
       page-break-inside: avoid;
       break-inside: avoid;
     }
     .label-content {
       width: 100%;
-      height: 100%;
       max-width: 100%;
       max-height: 100%;
       min-width: 0;
       min-height: 0;
       display: flex;
       flex-direction: column;
-      align-items: stretch;
+      align-items: center;
+      justify-content: center;
       overflow: hidden;
     }
     .label-stack {
       width: 100%;
-      height: 100%;
       min-width: 0;
       min-height: 0;
       max-width: 100%;
       max-height: 100%;
-      display: grid;
-      grid-template-rows: auto minmax(0, 1fr) auto;
+      display: flex;
+      flex-direction: column;
       align-items: stretch;
-      justify-items: stretch;
-      flex: 1 1 auto;
+      justify-content: center;
+      flex: 0 1 auto;
       overflow: hidden;
     }
     .label-header {
-      grid-row: 1;
       flex: 0 0 auto;
       text-align: center;
       width: 100%;
@@ -1048,7 +1047,7 @@ export function buildPrintHtml(rows, settings) {
       max-width: 100%;
       overflow: hidden;
       margin: 0;
-      padding: ${LABEL_HEADER_PAD_TOP_PX}px ${sideMarginIn}in 0;
+      padding: 0 ${textSidePadIn}in;
     }
     .label-line {
       font-weight: ${fw};
@@ -1067,12 +1066,12 @@ export function buildPrintHtml(rows, settings) {
       font-weight: 700;
     }
     .bars-wrap {
-      grid-row: 2;
       width: ${printedBarcodeWidthIn}in;
       max-width: 100%;
       min-width: 0;
       min-height: 0;
       margin: 0 auto;
+      flex: 0 1 auto;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -1090,18 +1089,16 @@ export function buildPrintHtml(rows, settings) {
       margin: 0;
     }
     .footer {
-      grid-row: 3;
       display: flex;
       flex-direction: column;
       align-items: center;
       flex: 0 0 auto;
-      margin-top: ${barcodePriceGap}px;
-      margin-bottom: 0;
+      margin: 0;
       width: 100%;
       min-width: 0;
       max-width: 100%;
       overflow: hidden;
-      padding: 0 ${sideMarginIn}in;
+      padding: 0 ${textSidePadIn}in;
     }
     @media print {
       @page { size: ${width}in ${height}in; margin: 0; }

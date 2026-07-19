@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AccountType;
 use App\Enums\ReceivedPaymentMethod;
 use App\Enums\SystemAccountKey;
+use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Models\Customer;
 use App\Models\CustomerPayment;
@@ -860,27 +861,28 @@ class InventoryAccountingService
 
         $amount = round($amount, 2);
         $equity = SystemAccountKey::OpeningBalanceClearing;
+        $branchId = $account->source_type === Branch::class ? (int) $account->source_id : null;
 
         $lines = match ($account->type) {
             AccountType::Asset => [
                 $this->debitAccount($account, $amount, "Opening balance — {$account->name}"),
-                $this->creditLine($equity, $amount, "Opening balance offset — {$account->name}"),
+                $this->creditLine($equity, $amount, "Opening balance offset — {$account->name}", $branchId),
             ],
             AccountType::Liability, AccountType::Income => [
-                $this->debitLine($equity, $amount, "Opening balance offset — {$account->name}"),
+                $this->debitLine($equity, $amount, "Opening balance offset — {$account->name}", $branchId),
                 $this->creditAccount($account, $amount, "Opening balance — {$account->name}"),
             ],
             AccountType::Equity => [
-                $this->debitLine($equity, $amount, "Opening balance offset — {$account->name}"),
+                $this->debitLine($equity, $amount, "Opening balance offset — {$account->name}", $branchId),
                 $this->creditAccount($account, $amount, "Opening balance — {$account->name}"),
             ],
             AccountType::Expenses => [
                 $this->debitAccount($account, $amount, "Opening balance — {$account->name}"),
-                $this->creditLine($equity, $amount, "Opening balance offset — {$account->name}"),
+                $this->creditLine($equity, $amount, "Opening balance offset — {$account->name}", $branchId),
             ],
         };
 
-        return $this->postJournal(
+        $transaction = $this->postJournal(
             ChartOfAccount::class,
             $account->id,
             $date,
@@ -888,6 +890,15 @@ class InventoryAccountingService
             $lines,
             validateBalance: false,
         );
+
+        $this->closeOpeningBalanceClearingToCapital(
+            $date,
+            ChartOfAccount::class,
+            $account->id,
+            $branchId,
+        );
+
+        return $transaction;
     }
 
     public function postSupplierOpeningBalance(Supplier $supplier, float $amount, string $date): ?Transaction
@@ -905,7 +916,7 @@ class InventoryAccountingService
             $this->creditLine(SystemAccountKey::SupplierPayables, $amount, "Supplier opening payable — {$supplier->name}", $branchId),
         ];
 
-        return $this->postJournal(
+        $transaction = $this->postJournal(
             Supplier::class,
             $supplier->id,
             $date,
@@ -913,6 +924,15 @@ class InventoryAccountingService
             $lines,
             validateBalance: false,
         );
+
+        $this->closeOpeningBalanceClearingToCapital(
+            $date,
+            Supplier::class,
+            $supplier->id,
+            $branchId,
+        );
+
+        return $transaction;
     }
 
     public function postCustomerOpeningBalance(Customer $customer, float $amount, string $date): ?Transaction
@@ -930,7 +950,7 @@ class InventoryAccountingService
             $this->creditLine(SystemAccountKey::OpeningBalanceClearing, $amount, "Opening balance offset — Customer {$customer->name}", $branchId),
         ];
 
-        return $this->postJournal(
+        $transaction = $this->postJournal(
             Customer::class,
             $customer->id,
             $date,
@@ -938,6 +958,15 @@ class InventoryAccountingService
             $lines,
             validateBalance: false,
         );
+
+        $this->closeOpeningBalanceClearingToCapital(
+            $date,
+            Customer::class,
+            $customer->id,
+            $branchId,
+        );
+
+        return $transaction;
     }
 
     public function postProductInitialStockMovement(
@@ -953,6 +982,7 @@ class InventoryAccountingService
         $amount = round($amount, 2);
         $branchId = $record->branch_id;
         $direction = $increase ? 'increased' : 'reduced';
+        $date = now()->format('Y-m-d');
 
         $lines = $increase
             ? [
@@ -964,14 +994,23 @@ class InventoryAccountingService
                 $this->creditLine(SystemAccountKey::ProductInventory, $amount, "Initial stock {$direction} — {$productLabel}", $branchId),
             ];
 
-        return $this->postJournal(
+        $transaction = $this->postJournal(
             ProductInitialStock::class,
             $record->id ?? 0,
-            now()->format('Y-m-d'),
+            $date,
             "Product initial stock — {$productLabel}",
             $lines,
             validateBalance: $increase,
         );
+
+        $this->closeOpeningBalanceClearingToCapital(
+            $date,
+            ProductInitialStock::class,
+            $record->id ?? 0,
+            $branchId,
+        );
+
+        return $transaction;
     }
 
     public function postProductInitialStockSupplierSettlement(
@@ -1012,18 +1051,67 @@ class InventoryAccountingService
 
         $amount = round($amount, 2);
         $branchId = $product->branch_id;
+        $date = now()->format('Y-m-d');
 
         $lines = [
             $this->debitLine(SystemAccountKey::ProductInventory, $amount, "Initial stock — {$product->name}", $branchId),
             $this->creditLine(SystemAccountKey::OpeningBalanceClearing, $amount, "Opening balance offset — Initial stock {$product->name}", $branchId),
         ];
 
-        return $this->postJournal(
+        $transaction = $this->postJournal(
             Product::class,
             $product->id,
-            now()->format('Y-m-d'),
+            $date,
             "Product initial stock — {$product->name}",
             $lines,
+        );
+
+        $this->closeOpeningBalanceClearingToCapital(
+            $date,
+            Product::class,
+            $product->id,
+            $branchId,
+        );
+
+        return $transaction;
+    }
+
+    /**
+     * Transfer residual Opening Balance Clearing into Owner's Capital so the
+     * temporary clearing account returns to zero after opening entries.
+     */
+    public function closeOpeningBalanceClearingToCapital(
+        string $date,
+        string $sourceType,
+        int|string $sourceId,
+        ?int $branchId = null,
+    ): ?Transaction {
+        $clearing = SystemAccountService::resolve(SystemAccountKey::OpeningBalanceClearing, $branchId);
+        $balance = round((float) $clearing->fresh()->current_balance, 2);
+
+        if (abs($balance) < 0.005) {
+            return null;
+        }
+
+        $amount = abs($balance);
+
+        $lines = $balance > 0
+            ? [
+                $this->debitLine(SystemAccountKey::OpeningBalanceClearing, $amount, 'Close opening balance clearing to capital', $branchId),
+                $this->creditLine(SystemAccountKey::OwnersCapital, $amount, "Opening equity transferred to Owner's Capital", $branchId),
+            ]
+            : [
+                $this->debitLine(SystemAccountKey::OwnersCapital, $amount, "Opening equity transferred from Owner's Capital", $branchId),
+                $this->creditLine(SystemAccountKey::OpeningBalanceClearing, $amount, 'Close opening balance clearing to capital', $branchId),
+            ];
+
+        return $this->postJournal(
+            $sourceType,
+            $sourceId,
+            $date,
+            "Close Opening Balance Clearing to Owner's Capital",
+            $lines,
+            validateBalance: false,
         );
     }
 

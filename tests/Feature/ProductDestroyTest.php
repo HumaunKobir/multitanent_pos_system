@@ -126,9 +126,11 @@ test('deleting product with opening balance initial stock reverses inventory acc
     seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
     $inventory = SystemAccountService::resolve(SystemAccountKey::ProductInventory, Branch::MAIN_BRANCH_ID);
     $openingBalance = SystemAccountService::resolve(SystemAccountKey::OpeningBalanceClearing, Branch::MAIN_BRANCH_ID);
+    $capital = SystemAccountService::resolve(SystemAccountKey::OwnersCapital, Branch::MAIN_BRANCH_ID);
 
     $initialInventoryBalance = (float) $inventory->fresh()->current_balance;
     $initialOpeningBalance = (float) $openingBalance->fresh()->current_balance;
+    $initialCapitalBalance = (float) $capital->fresh()->current_balance;
 
     $payload = productDeletePayload([
         'initial_stock' => '10',
@@ -143,7 +145,8 @@ test('deleting product with opening balance initial stock reverses inventory acc
 
     expect($record)->not->toBeNull()
         ->and((float) $inventory->fresh()->current_balance)->toBe(round($initialInventoryBalance + 500, 2))
-        ->and((float) $openingBalance->fresh()->current_balance)->toBe(round($initialOpeningBalance + 500, 2));
+        ->and((float) $openingBalance->fresh()->current_balance)->toBe(round($initialOpeningBalance, 2))
+        ->and((float) $capital->fresh()->current_balance)->toBe(round($initialCapitalBalance + 500, 2));
 
     $this->actingAs($admin)
         ->delete(route('product.destroy', $product))
@@ -153,6 +156,7 @@ test('deleting product with opening balance initial stock reverses inventory acc
     expect(Product::query()->whereKey($product->id)->exists())->toBeFalse()
         ->and((float) $inventory->fresh()->current_balance)->toBe($initialInventoryBalance)
         ->and((float) $openingBalance->fresh()->current_balance)->toBe($initialOpeningBalance)
+        ->and((float) $capital->fresh()->current_balance)->toBe($initialCapitalBalance)
         ->and(Transaction::query()
             ->where('source_type', ProductInitialStock::class)
             ->where('source_id', $record->id)

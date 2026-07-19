@@ -1961,10 +1961,10 @@ class ReportService
     {
         $accounts = ChartOfAccount::query()
             ->forPanel()
-            ->whereNotNull('parent_id')
+            ->whereDoesntHave('children')
             ->whereIn('type', [AccountType::Asset, AccountType::Liability, AccountType::Equity])
             ->orderBy('code')
-            ->get(['id', 'code', 'name', 'type']);
+            ->get(['id', 'code', 'name', 'type', 'account_number']);
 
         $sections = [];
 
@@ -1985,6 +1985,19 @@ class ReportService
                     'balance' => round($balance, 2),
                 ];
                 $total += $balance;
+            }
+
+            if ($type === AccountType::Equity) {
+                $currentEarnings = $this->currentEarningsAsOf($asOfDate);
+
+                if (abs($currentEarnings) >= 0.005) {
+                    $lines[] = [
+                        'code' => 'CYE',
+                        'name' => 'Current Year Earnings',
+                        'balance' => $currentEarnings,
+                    ];
+                    $total += $currentEarnings;
+                }
             }
 
             $sections[] = [
@@ -2236,6 +2249,34 @@ class ReportService
             ->all();
     }
 
+    /**
+     * Net income (income − expenses) as of a date — plugged into equity on the Balance Sheet
+     * until a formal year-end close posts it to Retained Earnings.
+     */
+    private function currentEarningsAsOf(string $asOfDate): float
+    {
+        $accounts = ChartOfAccount::query()
+            ->forPanel()
+            ->whereDoesntHave('children')
+            ->whereIn('type', [AccountType::Income, AccountType::Expenses])
+            ->get(['id', 'type']);
+
+        $income = 0.0;
+        $expenses = 0.0;
+
+        foreach ($accounts as $account) {
+            $balance = $this->accountBalanceAsOf($account->id, $asOfDate);
+
+            if ($account->type === AccountType::Income) {
+                $income += $balance;
+            } else {
+                $expenses += $balance;
+            }
+        }
+
+        return round($income - $expenses, 2);
+    }
+
     private function accountBalanceAsOf(int $accountId, string $asOfDate): float
     {
         $ledger = $this->scopeLedgerForBranch(Ledger::query())
@@ -2267,7 +2308,7 @@ class ReportService
     private function reportAccountsQuery(array $types, ?int $effectiveBranchId): Builder
     {
         return ChartOfAccount::query()
-            ->whereNotNull('parent_id')
+            ->whereDoesntHave('children')
             ->whereIn('type', array_map(fn (AccountType $type) => $type->value, $types))
             ->when($effectiveBranchId !== null, function (Builder $query) use ($effectiveBranchId) {
                 $query->where('source_type', Branch::class)

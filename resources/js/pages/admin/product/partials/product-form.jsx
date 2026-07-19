@@ -171,8 +171,8 @@ function CKEditorField({ id, value, onChange }) {
 
 function Card({ title, icon: Icon, children }) {
     return (
-        <div className="overflow-hidden rounded-lg border bg-card shadow-sm">
-            <div className="flex items-center gap-2.5 bg-blue-950 px-4 py-2.5">
+        <div className="rounded-lg border bg-card shadow-sm">
+            <div className="flex items-center gap-2.5 rounded-t-lg bg-blue-950 px-4 py-2.5">
                 {Icon && (
                     <div className="flex size-6 items-center justify-center rounded bg-white/15">
                         <Icon className="size-3.5 text-white" />
@@ -180,14 +180,14 @@ function Card({ title, icon: Icon, children }) {
                 )}
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-white">{title}</h2>
             </div>
-            <div className="p-2">{children}</div>
+            <div className="overflow-visible p-2 sm:p-3">{children}</div>
         </div>
     );
 }
 
-function Field({ label, required, error, children }) {
+function Field({ label, required, error, children, className = '' }) {
     return (
-        <div>
+        <div className={`min-w-0 ${className}`.trim()}>
             <Label className="mb-1 block text-xs font-medium">
                 {label}
                 {required && <RequiredMark />}
@@ -396,16 +396,15 @@ function TagInput({ tags, onChange, placeholder = 'Type value, press Space or En
 
     return (
         <div
-            className={`flex min-h-9.5 max-w-full min-w-0 flex-wrap items-center gap-1 overflow-hidden border border-input bg-background px-3 py-2 shadow-xs ${disabled ? 'cursor-not-allowed opacity-70' : 'cursor-text focus-within:ring-[3px] focus-within:ring-ring/50'}`}
+            className={`flex min-h-9.5 w-full min-w-0 flex-wrap items-center gap-1.5 border border-input bg-background px-2.5 py-2 shadow-xs sm:px-3 ${disabled ? 'cursor-not-allowed opacity-70' : 'cursor-text focus-within:ring-[3px] focus-within:ring-ring/50'}`}
             onClick={(e) => !disabled && e.currentTarget.querySelector('input')?.focus()}
         >
             {tags.map((tag) => (
                 <span
                     key={tag}
-                    title={tag}
-                    className="flex max-w-full min-w-0 items-center gap-1 bg-blue-600 px-2 py-0.5 text-[11px] leading-4 text-white shadow shadow-blue-500/50"
+                    className="inline-flex max-w-full items-center gap-1 break-words bg-blue-600 px-2 py-0.5 text-[11px] leading-4 text-white shadow shadow-blue-500/50"
                 >
-                    <span className="min-w-0 max-w-[6.5rem] truncate sm:max-w-[9rem]">{tag}</span>
+                    <span className="min-w-0 whitespace-normal break-words">{tag}</span>
                     {!disabled && (
                         <button type="button" onClick={() => onChange(tags.filter((t) => t !== tag))} className="shrink-0 opacity-80 hover:opacity-100">
                             <X className="size-2.5" />
@@ -415,7 +414,7 @@ function TagInput({ tags, onChange, placeholder = 'Type value, press Space or En
             ))}
             {!disabled && (
                 <input
-                    className="min-w-12 max-w-full flex-1 bg-transparent text-xs outline-none"
+                    className="min-w-16 flex-1 basis-20 bg-transparent text-xs outline-none sm:min-w-20"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -642,20 +641,22 @@ const VariationBuilder = forwardRef(function VariationBuilder({
             {enabled && (
                 <div className="mt-4 space-y-4">
                     {/* Column headers — desktop only */}
-                    <div className="hidden items-center gap-2 px-3 sm:flex">
-                        <Label className="w-1/3 text-xs">Variation Name</Label>
+                    <div className="hidden items-center gap-2 px-1 sm:flex sm:px-3">
+                        <Label className="w-36 shrink-0 text-xs lg:w-44">Variation Name</Label>
                         <Label className="min-w-0 flex-1 text-xs">Value (Tags)</Label>
                         <div className="w-16 shrink-0" />
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-3">
                         {rows.map((row, idx) => (
                             <div
                                 key={row.id}
-                                className="flex flex-col gap-2 border bg-muted/30 p-3 sm:flex-row sm:items-center sm:gap-2"
+                                className="flex flex-col gap-2 border bg-muted/30 p-3 sm:flex-row sm:items-start sm:gap-2"
                             >
-                                <div className="w-full min-w-0 sm:w-1/3">
-                                    <Label className="mb-1 block text-xs sm:hidden">Variation Name</Label>
+                                <div className="w-full min-w-0 sm:w-36 sm:shrink-0 lg:w-44">
+                                    <Label className="mb-1 block text-[10px] font-medium text-muted-foreground sm:hidden">
+                                        Variation Name
+                                    </Label>
                                     <SmartSelect
                                         options={varOptions}
                                         value={row.name}
@@ -665,20 +666,22 @@ const VariationBuilder = forwardRef(function VariationBuilder({
                                         creatable={!locked}
                                         createMode="inline"
                                         createRowLabel={(q) => `Add "${q}"`}
-                                        triggerClassName="h-8 w-full max-w-full text-xs"
+                                        triggerClassName="h-8 text-xs"
                                         disabled={locked}
                                     />
                                 </div>
 
-                                <div className="w-full min-w-0 sm:flex-1">
-                                    <Label className="mb-1 block text-xs sm:hidden">Value (Tags)</Label>
+                                <div className="min-w-0 w-full flex-1">
+                                    <Label className="mb-1 block text-[10px] font-medium text-muted-foreground sm:hidden">
+                                        Value (Tags)
+                                    </Label>
                                     {usesPresetValues(row.name) ? (
                                         <SmartMultiSelect
                                             options={getValueOptions(row.name)}
                                             value={row.values}
                                             onValueChange={(v) => setRowValues(row.id, v)}
                                             placeholder={`Select ${row.name.toLowerCase()} values…`}
-                                            triggerClassName="min-h-8 w-full max-w-full overflow-hidden text-xs"
+                                            triggerClassName="min-h-8 text-xs"
                                             disabled={locked}
                                         />
                                     ) : (
@@ -690,7 +693,7 @@ const VariationBuilder = forwardRef(function VariationBuilder({
                                     )}
                                 </div>
 
-                                <div className="flex shrink-0 items-center justify-end gap-1 sm:justify-start">
+                                <div className="flex shrink-0 items-center justify-end gap-1 sm:pt-0.5">
                                     {!locked && idx === rows.length - 1 && (
                                         <button
                                             type="button"
@@ -1115,7 +1118,7 @@ const ProductForm = forwardRef(function ProductForm({
 
                 {/* Basic Info */}
                 <Card title="Basic Information" icon={Info}>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         {showBranchField && (
                             <Field label="Branch" error={form.errors.branch_id}>
                                 <SmartSelect
@@ -1213,10 +1216,10 @@ const ProductForm = forwardRef(function ProductForm({
 
                 {/* Extra Options */}
                 <Card title="Options" icon={Settings}>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                         {!hasVariations && (
                             <>
-                                <Field label="Color" error={form.errors.color_ids}>
+                                <Field label="Color" error={form.errors.color_ids} className="sm:col-span-2 lg:col-span-1">
                                     <SmartMultiSelect
                                         options={colorSelectOptions}
                                         value={form.data.color_ids || []}
@@ -1226,7 +1229,7 @@ const ProductForm = forwardRef(function ProductForm({
                                     />
                                 </Field>
 
-                                <Field label="Size" error={form.errors.size_ids}>
+                                <Field label="Size" error={form.errors.size_ids} className="sm:col-span-2 lg:col-span-1">
                                     <SmartMultiSelect
                                         options={sizeSelectOptions}
                                         value={form.data.size_ids || []}
@@ -1256,12 +1259,12 @@ const ProductForm = forwardRef(function ProductForm({
                         {showInitialStockSettlement && (
                             <>
                                 {variantsLocked && (
-                                    <p className="col-span-3 text-xs text-amber-600">
+                                    <p className="col-span-full text-xs text-amber-600">
                                         Stock and variants are locked, but you can still update supplier payment details.
                                     </p>
                                 )}
 
-                                <Field label="Supplier (optional)" error={form.errors.initial_stock_supplier_id}>
+                                <Field label="Supplier (optional)" error={form.errors.initial_stock_supplier_id} className="sm:col-span-2 lg:col-span-1">
                                     <SmartSelect
                                         options={supplierSelectOptions}
                                         value={form.data.initial_stock_supplier_id ? String(form.data.initial_stock_supplier_id) : null}
@@ -1351,7 +1354,7 @@ const ProductForm = forwardRef(function ProductForm({
                             <Input className="h-8 text-xs" value={form.data.youtube_link} onChange={(e) => form.setData('youtube_link', e.target.value)} placeholder="https://youtube.com/..." />
                         </Field>
 
-                        <Field label="Tags" error={form.errors.tags}>
+                        <Field label="Tags" error={form.errors.tags} className="sm:col-span-2 lg:col-span-1">
                             <SmartMultiSelect
                                 options={localTagOptions}
                                 value={form.data.tags || []}
@@ -1404,7 +1407,7 @@ const ProductForm = forwardRef(function ProductForm({
 
                 {/* Price & Stock */}
                 <Card title="Price & Stock" icon={DollarSign}>
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                         <Field label="Purchase Price" required={priceFieldsRequired || (!hasVariations && !priceFieldsDisabled)} error={form.errors.purchase_price}>
                             <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.purchase_price} onChange={(e) => handleMainPurchasePriceChange(e.target.value)} placeholder="0.00" disabled={priceFieldsDisabled} />
                         </Field>

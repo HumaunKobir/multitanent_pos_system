@@ -160,6 +160,10 @@ export function SmartSelect({
 
         const rect = input.getBoundingClientRect();
         const portalTarget = resolvePortalContainer();
+        const dropdownWidth = Math.min(
+            Math.max(rect.width, 240),
+            Math.max(160, window.innerWidth - Math.max(rect.left, 8) - 12),
+        );
 
         if (portalTarget !== document.body) {
             const containerRect = portalTarget.getBoundingClientRect();
@@ -167,7 +171,7 @@ export function SmartSelect({
             setDropdownStyle({
                 top: rect.bottom - containerRect.top + 4,
                 left: rect.left - containerRect.left,
-                width: rect.width,
+                width: dropdownWidth,
                 position: 'absolute',
             });
 
@@ -177,7 +181,7 @@ export function SmartSelect({
         setDropdownStyle({
             top: rect.bottom + 4,
             left: rect.left,
-            width: rect.width,
+            width: dropdownWidth,
             position: 'fixed',
         });
     }, [resolvePortalContainer]);
@@ -448,7 +452,7 @@ export function SmartSelect({
                                             {opt.isCreate ? (
                                                 <Plus className="size-4 shrink-0 text-primary" aria-hidden />
                                             ) : null}
-                                            <span className="min-w-0 flex-1 truncate">
+                                            <span className="min-w-0 flex-1 whitespace-normal break-words">
                                                 {opt.isCreate && instantLoading ? 'Creating…' : opt.label}
                                             </span>
                                         </div>

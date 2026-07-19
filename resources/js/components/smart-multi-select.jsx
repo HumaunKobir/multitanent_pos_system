@@ -124,13 +124,14 @@ export function SmartMultiSelect({
                             )}
                             onClick={() => inputRef.current?.focus()}
                         >
-                            <div className="flex min-h-8 flex-wrap items-center gap-1 px-2 py-1.5">
+                            <div className="flex min-h-8 max-w-full flex-wrap items-center gap-1 overflow-hidden px-2 py-1.5">
                                 {selectedOptions.map((option) => (
                                     <span
                                         key={option.value}
-                                        className="inline-flex items-center gap-1 bg-indigo-600 px-2 py-0.5 text-[11px] leading-4 font-medium text-white shadow-sm shadow-indigo-500/40"
+                                        title={option.label}
+                                        className="inline-flex max-w-full min-w-0 items-center gap-1 bg-indigo-600 px-2 py-0.5 text-[11px] leading-4 font-medium text-white shadow-sm shadow-indigo-500/40"
                                     >
-                                        {option.label}
+                                        <span className="min-w-0 max-w-[6.5rem] truncate sm:max-w-[9rem]">{option.label}</span>
                                         <button
                                             type="button"
                                             onMouseDown={(event) => {
@@ -146,7 +147,7 @@ export function SmartMultiSelect({
                                                     removeValue(option.value);
                                                 }
                                             }}
-                                            className="opacity-80 hover:opacity-100"
+                                            className="shrink-0 opacity-80 hover:opacity-100"
                                             aria-label={`Remove ${option.label}`}
                                         >
                                             <X className="size-2.5" />
@@ -157,7 +158,7 @@ export function SmartMultiSelect({
                                     ref={inputRef}
                                     id={inputId}
                                     data-slot="combobox-input"
-                                    className="min-w-16 flex-1 border-0 bg-transparent py-0.5 text-xs outline-none"
+                                    className="min-w-12 max-w-full flex-1 border-0 bg-transparent py-0.5 text-xs outline-none"
                                     value={query}
                                     onChange={(event) => setQuery(event.target.value)}
                                     onMouseDown={(event) => {
@@ -179,7 +180,7 @@ export function SmartMultiSelect({
                             anchor="bottom start"
                             transition
                             className={cn(
-                                'z-50 w-(--input-width) [--anchor-gap:4px] max-h-60 overflow-auto border border-border bg-popover py-1 text-popover-foreground shadow-md',
+                                'z-50 w-(--input-width) max-w-[min(100vw-1.5rem,var(--input-width))] [--anchor-gap:4px] max-h-60 overflow-auto border border-border bg-popover py-1 text-popover-foreground shadow-md',
                                 'transition duration-100 ease-out data-closed:opacity-0 data-leave:data-closed:opacity-0',
                             )}
                         >

@@ -396,14 +396,18 @@ function TagInput({ tags, onChange, placeholder = 'Type value, press Space or En
 
     return (
         <div
-            className={`flex min-h-9.5 flex-wrap items-center gap-1 border border-input bg-background px-3 py-2 shadow-xs ${disabled ? 'cursor-not-allowed opacity-70' : 'cursor-text focus-within:ring-[3px] focus-within:ring-ring/50'}`}
+            className={`flex min-h-9.5 max-w-full min-w-0 flex-wrap items-center gap-1 overflow-hidden border border-input bg-background px-3 py-2 shadow-xs ${disabled ? 'cursor-not-allowed opacity-70' : 'cursor-text focus-within:ring-[3px] focus-within:ring-ring/50'}`}
             onClick={(e) => !disabled && e.currentTarget.querySelector('input')?.focus()}
         >
             {tags.map((tag) => (
-                <span key={tag} className="flex items-center gap-1 bg-blue-600 px-2 py-0.5 text-[11px] leading-4 text-white shadow shadow-blue-500/50">
-                    {tag}
+                <span
+                    key={tag}
+                    title={tag}
+                    className="flex max-w-full min-w-0 items-center gap-1 bg-blue-600 px-2 py-0.5 text-[11px] leading-4 text-white shadow shadow-blue-500/50"
+                >
+                    <span className="min-w-0 max-w-[6.5rem] truncate sm:max-w-[9rem]">{tag}</span>
                     {!disabled && (
-                        <button type="button" onClick={() => onChange(tags.filter((t) => t !== tag))} className="opacity-80 hover:opacity-100">
+                        <button type="button" onClick={() => onChange(tags.filter((t) => t !== tag))} className="shrink-0 opacity-80 hover:opacity-100">
                             <X className="size-2.5" />
                         </button>
                     )}
@@ -411,7 +415,7 @@ function TagInput({ tags, onChange, placeholder = 'Type value, press Space or En
             ))}
             {!disabled && (
                 <input
-                    className="min-w-20 flex-1 bg-transparent text-xs outline-none"
+                    className="min-w-12 max-w-full flex-1 bg-transparent text-xs outline-none"
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
                     onKeyDown={handleKeyDown}
@@ -637,17 +641,21 @@ const VariationBuilder = forwardRef(function VariationBuilder({
 
             {enabled && (
                 <div className="mt-4 space-y-4">
-                    {/* Column headers */}
-                    <div className="flex items-center gap-2 px-3">
+                    {/* Column headers — desktop only */}
+                    <div className="hidden items-center gap-2 px-3 sm:flex">
                         <Label className="w-1/3 text-xs">Variation Name</Label>
-                        <Label className="flex-1 text-xs">Value (Tags)</Label>
-                        <div className="w-16" />
+                        <Label className="min-w-0 flex-1 text-xs">Value (Tags)</Label>
+                        <div className="w-16 shrink-0" />
                     </div>
 
                     <div className="space-y-2">
                         {rows.map((row, idx) => (
-                            <div key={row.id} className="flex items-center gap-2 border bg-muted/30 p-3">
-                                <div className="w-1/3 min-w-0">
+                            <div
+                                key={row.id}
+                                className="flex flex-col gap-2 border bg-muted/30 p-3 sm:flex-row sm:items-center sm:gap-2"
+                            >
+                                <div className="w-full min-w-0 sm:w-1/3">
+                                    <Label className="mb-1 block text-xs sm:hidden">Variation Name</Label>
                                     <SmartSelect
                                         options={varOptions}
                                         value={row.name}
@@ -657,19 +665,20 @@ const VariationBuilder = forwardRef(function VariationBuilder({
                                         creatable={!locked}
                                         createMode="inline"
                                         createRowLabel={(q) => `Add "${q}"`}
-                                        triggerClassName="h-8 text-xs"
+                                        triggerClassName="h-8 w-full max-w-full text-xs"
                                         disabled={locked}
                                     />
                                 </div>
 
-                                <div className="flex-1 min-w-0">
+                                <div className="w-full min-w-0 sm:flex-1">
+                                    <Label className="mb-1 block text-xs sm:hidden">Value (Tags)</Label>
                                     {usesPresetValues(row.name) ? (
                                         <SmartMultiSelect
                                             options={getValueOptions(row.name)}
                                             value={row.values}
                                             onValueChange={(v) => setRowValues(row.id, v)}
                                             placeholder={`Select ${row.name.toLowerCase()} values…`}
-                                            triggerClassName="min-h-8 text-xs"
+                                            triggerClassName="min-h-8 w-full max-w-full overflow-hidden text-xs"
                                             disabled={locked}
                                         />
                                     ) : (
@@ -681,7 +690,7 @@ const VariationBuilder = forwardRef(function VariationBuilder({
                                     )}
                                 </div>
 
-                                <div className="flex shrink-0 items-center gap-1">
+                                <div className="flex shrink-0 items-center justify-end gap-1 sm:justify-start">
                                     {!locked && idx === rows.length - 1 && (
                                         <button
                                             type="button"

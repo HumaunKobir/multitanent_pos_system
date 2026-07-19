@@ -1189,13 +1189,13 @@ const ProductForm = forwardRef(function ProductForm({
                                 <Input
                                     className="h-8 text-xs"
                                     value={form.data.code}
-                                    onChange={(e) => form.setData('code', e.target.value.slice(0, 8))}
+                                    onChange={(e) => form.setData('code', e.target.value.slice(0, 12))}
                                     onKeyDown={(e) => { if (e.key === 'Enter') e.preventDefault(); }}
                                     placeholder="Leave empty for auto code"
-                                    maxLength={8}
+                                    maxLength={12}
                                 />
                                 <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
-                                    Max 8 characters — keeps the barcode short and scannable. Leave empty to auto-generate a numeric barcode.
+                                    Max 12 characters — keeps the barcode short and scannable. Leave empty to auto-generate a numeric barcode.
                                 </p>
                             </Field>
                         )}

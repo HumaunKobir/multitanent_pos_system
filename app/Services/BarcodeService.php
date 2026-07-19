@@ -8,7 +8,7 @@ use App\Models\ProductVariation;
 
 class BarcodeService
 {
-    public const MAX_LENGTH = 8;
+    public const MAX_LENGTH = 12;
 
     public function generateUniqueSharedCode(
         ?string $productGroupId = null,
@@ -16,7 +16,7 @@ class BarcodeService
         ?int $excludeVariationId = null,
     ): string {
         do {
-            $code = (string) random_int(1_000_000, 99_999_999);
+            $code = (string) random_int(1_000_000_000, 9_99_999_999_999);
         } while (! $this->codeIsAvailableGlobally($code, $productGroupId, $excludeProductId, $excludeVariationId));
 
         return $code;

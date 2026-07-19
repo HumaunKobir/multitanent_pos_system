@@ -187,7 +187,12 @@ class TransactionService
         }
 
         $amount = self::extractEntryAmount($line);
-        self::ensureSufficientBalance((int) $line['account_id'], $amount, 'Insufficient balance in account ID '.$line['account_id'].'.');
+        $accountName = $account?->name ?? 'selected account';
+        self::ensureSufficientBalance(
+            (int) $line['account_id'],
+            $amount,
+            "Insufficient balance in {$accountName}.",
+        );
     }
 
     /**
@@ -206,11 +211,23 @@ class TransactionService
         $amount = (float) $data['amount'];
 
         if (! empty($data['debit_account_id']) && ($data['debit_decrease'] ?? false)) {
-            self::ensureSufficientBalance((int) $data['debit_account_id'], $amount, 'Insufficient balance in debit account.');
+            $account = ChartOfAccount::query()->find((int) $data['debit_account_id']);
+            $accountName = $account?->name ?? 'debit account';
+            self::ensureSufficientBalance(
+                (int) $data['debit_account_id'],
+                $amount,
+                "Insufficient balance in {$accountName}.",
+            );
         }
 
         if (! empty($data['credit_account_id']) && ($data['credit_decrease'] ?? false)) {
-            self::ensureSufficientBalance((int) $data['credit_account_id'], $amount, 'Insufficient balance in credit account.');
+            $account = ChartOfAccount::query()->find((int) $data['credit_account_id']);
+            $accountName = $account?->name ?? 'credit account';
+            self::ensureSufficientBalance(
+                (int) $data['credit_account_id'],
+                $amount,
+                "Insufficient balance in {$accountName}.",
+            );
         }
     }
 

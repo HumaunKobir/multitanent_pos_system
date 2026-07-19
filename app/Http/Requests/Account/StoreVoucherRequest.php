@@ -86,6 +86,32 @@ class StoreVoucherRequest extends FormRequest
         };
     }
 
+    /**
+     * @return array<string, string>
+     */
+    public function attributes(): array
+    {
+        return [
+            'type' => 'voucher type',
+            'voucher_no' => 'voucher number',
+            'date' => 'date',
+            'transaction_reference' => 'transaction reference',
+            'narration' => 'narration',
+            'debit_description' => 'debit description',
+            'credit_description' => 'credit description',
+            'total_amount' => 'amount',
+            'from_account_id' => 'from account',
+            'to_account_id' => 'to account',
+            'payment_account_id' => 'payment account',
+            'party_key' => 'contact',
+            'lines' => 'lines',
+            'lines.*.side' => 'side',
+            'lines.*.account_id' => 'account',
+            'lines.*.amount' => 'amount',
+            'lines.*.narration' => 'narration',
+        ];
+    }
+
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $validator) {

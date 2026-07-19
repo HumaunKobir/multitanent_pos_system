@@ -118,6 +118,7 @@ export default function IncomeVoucherModal({ open, onOpenChange, item, accountsP
         >
             <form id="voucher-form" onSubmit={submit} className="space-y-4 px-5 py-4">
                 {form.errors.general && <p className="text-sm text-destructive">{form.errors.general}</p>}
+                {form.errors.lines && <p className="text-sm text-destructive">{form.errors.lines}</p>}
                 <div className="grid gap-4 sm:grid-cols-3">
                     <div>
                         <Label>
@@ -125,6 +126,7 @@ export default function IncomeVoucherModal({ open, onOpenChange, item, accountsP
                             <RequiredMark />
                         </Label>
                         <Input className="mt-1" value={form.data.voucher_no} onChange={(e) => form.setData('voucher_no', e.target.value)} />
+                        {form.errors.voucher_no && <p className="mt-1 text-xs text-destructive">{form.errors.voucher_no}</p>}
                     </div>
                     <div>
                         <Label>
@@ -132,6 +134,7 @@ export default function IncomeVoucherModal({ open, onOpenChange, item, accountsP
                             <RequiredMark />
                         </Label>
                         <Input type="date" className="mt-1" value={form.data.date} onChange={(e) => form.setData('date', e.target.value)} />
+                        {form.errors.date && <p className="mt-1 text-xs text-destructive">{form.errors.date}</p>}
                     </div>
                     <div>
                         <Label>Received By</Label>
@@ -152,13 +155,20 @@ export default function IncomeVoucherModal({ open, onOpenChange, item, accountsP
                     </div>
                     <div className="divide-y p-3">
                         {form.data.lines.map((line, i) => (
-                            <div key={i} className="grid gap-2 py-2 sm:grid-cols-[1fr_1fr_120px_32px]">
-                                <GroupedAccountSelect picker={accountsPicker} value={line.account_id} onChange={(v) => updateLine(i, 'account_id', v)} placeholder="Select head..." />
-                                <Input placeholder="Entry narration..." value={line.narration} onChange={(e) => updateLine(i, 'narration', e.target.value)} />
-                                <Input type="number" min="0" step="0.01" placeholder="0.00" value={line.amount} onChange={(e) => updateLine(i, 'amount', e.target.value)} />
-                                <button type="button" onClick={() => form.setData('lines', form.data.lines.filter((_, j) => j !== i))} className="text-destructive">
-                                    <Trash2 className="size-4" />
-                                </button>
+                            <div key={i} className="space-y-1 py-2">
+                                <div className="grid gap-2 sm:grid-cols-[1fr_1fr_120px_32px]">
+                                    <GroupedAccountSelect picker={accountsPicker} value={line.account_id} onChange={(v) => updateLine(i, 'account_id', v)} placeholder="Select head..." />
+                                    <Input placeholder="Entry narration..." value={line.narration} onChange={(e) => updateLine(i, 'narration', e.target.value)} />
+                                    <Input type="number" min="0" step="0.01" placeholder="0.00" value={line.amount} onChange={(e) => updateLine(i, 'amount', e.target.value)} />
+                                    <button type="button" onClick={() => form.setData('lines', form.data.lines.filter((_, j) => j !== i))} className="text-destructive">
+                                        <Trash2 className="size-4" />
+                                    </button>
+                                </div>
+                                {(form.errors[`lines.${i}.account_id`] || form.errors[`lines.${i}.amount`]) && (
+                                    <p className="text-xs text-destructive">
+                                        {form.errors[`lines.${i}.account_id`] || form.errors[`lines.${i}.amount`]}
+                                    </p>
+                                )}
                             </div>
                         ))}
                     </div>
@@ -178,6 +188,7 @@ export default function IncomeVoucherModal({ open, onOpenChange, item, accountsP
                             <div className="mt-1">
                                 <FlatAccountSelect accounts={assetAccounts} value={form.data.payment_account_id} onChange={(v) => form.setData('payment_account_id', v)} placeholder="Select account..." />
                             </div>
+                            {form.errors.payment_account_id && <p className="mt-1 text-xs text-destructive">{form.errors.payment_account_id}</p>}
                         </div>
                         <div>
                             <Label>Transaction Reference</Label>

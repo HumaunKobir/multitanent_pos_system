@@ -142,26 +142,33 @@ export default function JournalVoucherModal({ open, onOpenChange, item, accounts
                 </div>
                 <div className="space-y-2">
                     {lines.map((line) => (
-                        <div key={line.index} className="flex min-w-0 items-center gap-2">
-                            <div className="min-w-0 flex-1">
-                                <GroupedAccountSelect
-                                    picker={accountsPicker}
-                                    value={line.account_id}
-                                    onChange={(v) => updateLine(line.index, 'account_id', v)}
+                        <div key={line.index} className="space-y-1">
+                            <div className="flex min-w-0 items-center gap-2">
+                                <div className="min-w-0 flex-1">
+                                    <GroupedAccountSelect
+                                        picker={accountsPicker}
+                                        value={line.account_id}
+                                        onChange={(v) => updateLine(line.index, 'account_id', v)}
+                                    />
+                                </div>
+                                <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    placeholder="0.00"
+                                    className="w-28 shrink-0"
+                                    value={line.amount}
+                                    onChange={(e) => updateLine(line.index, 'amount', e.target.value)}
                                 />
+                                <button type="button" onClick={() => removeLine(line.index)} className="shrink-0 text-destructive">
+                                    <Trash2 className="size-4" />
+                                </button>
                             </div>
-                            <Input
-                                type="number"
-                                min="0"
-                                step="0.01"
-                                placeholder="0.00"
-                                className="w-28 shrink-0"
-                                value={line.amount}
-                                onChange={(e) => updateLine(line.index, 'amount', e.target.value)}
-                            />
-                            <button type="button" onClick={() => removeLine(line.index)} className="shrink-0 text-destructive">
-                                <Trash2 className="size-4" />
-                            </button>
+                            {(form.errors[`lines.${line.index}.account_id`] || form.errors[`lines.${line.index}.amount`]) && (
+                                <p className="text-xs text-destructive">
+                                    {form.errors[`lines.${line.index}.account_id`] || form.errors[`lines.${line.index}.amount`]}
+                                </p>
+                            )}
                         </div>
                     ))}
                 </div>

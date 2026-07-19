@@ -165,3 +165,74 @@ test('voucher rejects contact from another branch', function () {
         ])
         ->assertSessionHasErrors('party_key');
 });
+
+test('journal voucher validation refers to account instead of account id', function () {
+    $this->artisan('permissions:sync');
+
+    $user = voucherUser(['accounts.create']);
+    seedAccountingAccounts(user: $user);
+
+    $this->actingAs($user)
+        ->post('/accounts/vouchers', [
+            'type' => VoucherType::Journal->value,
+            'voucher_no' => 'JRN-VAL-'.fake()->unique()->numerify('####'),
+            'date' => now()->format('Y-m-d'),
+            'lines' => [
+                [
+                    'side' => 'debit',
+                    'account_id' => null,
+                    'amount' => 100,
+                ],
+                [
+                    'side' => 'credit',
+                    'account_id' => null,
+                    'amount' => 100,
+                ],
+            ],
+        ])
+        ->assertSessionHasErrors(['lines.0.account_id', 'lines.1.account_id']);
+
+    $message = session('errors')->first('lines.0.account_id');
+
+    expect($message)->not->toContain('account id')
+        ->and(strtolower($message))->toContain('account');
+});
+
+test('journal insufficient balance error uses account name not account id', function () {
+    $this->artisan('permissions:sync');
+
+    $user = voucherUser(['accounts.create']);
+    $cash = seedAccountingAccounts(minimumBalance: 50, user: $user);
+    $expense = voucherLeafAccount(SystemAccountKey::Expenses, AccountType::Expenses, 'jrn-bal-exp');
+
+    // Force a low cash balance for the insufficient-funds path.
+    $cash->update(['current_balance' => 10]);
+
+    $this->actingAs($user)
+        ->from('/accounts/vouchers?type=journal')
+        ->post('/accounts/vouchers', [
+            'type' => VoucherType::Journal->value,
+            'voucher_no' => 'JRN-BAL-'.fake()->unique()->numerify('####'),
+            'date' => now()->format('Y-m-d'),
+            'lines' => [
+                [
+                    'side' => 'debit',
+                    'account_id' => $expense->id,
+                    'amount' => 100,
+                ],
+                [
+                    'side' => 'credit',
+                    'account_id' => $cash->id,
+                    'amount' => 100,
+                ],
+            ],
+        ])
+        ->assertRedirect('/accounts/vouchers?type=journal')
+        ->assertSessionHasErrors('general');
+
+    $message = session('errors')->first('general');
+
+    expect($message)->toContain($cash->name)
+        ->and($message)->not->toContain('account ID')
+        ->and($message)->not->toContain((string) $cash->id);
+});

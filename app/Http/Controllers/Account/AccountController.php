@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Services\InventoryAccountingService;
+use App\Services\ReportService;
 use App\Services\SystemAccountService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -19,7 +20,10 @@ use Inertia\Response;
 
 class AccountController extends Controller
 {
-    public function __construct(private InventoryAccountingService $accounting) {}
+    public function __construct(
+        private InventoryAccountingService $accounting,
+        private ReportService $reports,
+    ) {}
 
     public function index(Request $request): Response
     {
@@ -38,6 +42,18 @@ class AccountController extends Controller
             ->when($request->type, fn ($q, $t) => $q->where('type', $t))
             ->orderBy('code')
             ->get(['id', 'parent_id', 'code', 'account_number', 'name', 'type', 'current_balance', 'description', 'status', 'is_system']);
+
+        $currentYearEarnings = $this->reports->currentYearEarningsAsOf();
+        $currentYearEarningsNumber = SystemAccountKey::CurrentYearEarnings->accountNumber();
+
+        $accounts->transform(function (ChartOfAccount $account) use ($currentYearEarnings, $currentYearEarningsNumber) {
+            if ($account->account_number === $currentYearEarningsNumber) {
+                $account->current_balance = $currentYearEarnings;
+                $account->description = $account->description ?: 'Computed from income and expenses until year-end close.';
+            }
+
+            return $account;
+        });
 
         $parentAccounts = ChartOfAccount::query()
             ->forPanel()

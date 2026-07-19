@@ -24,6 +24,7 @@ test('chart of accounts seeder creates parent accounts for each type', function 
         AccountType::Equity->value => [
             SystemAccountKey::OwnersCapital,
             SystemAccountKey::RetainedEarnings,
+            SystemAccountKey::CurrentYearEarnings,
             SystemAccountKey::OwnersDrawings,
             SystemAccountKey::OpeningBalanceEquity,
         ],

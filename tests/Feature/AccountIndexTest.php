@@ -57,6 +57,11 @@ test('accounts index lists parent child system accounts across account types', f
             ->where('accounts', fn ($accounts) => collect($accounts)->contains(
                 fn ($account) => $account['code'] === 'I001-01' && $account['name'] === 'Product Sales',
             ))
+            ->where('accounts', fn ($accounts) => collect($accounts)->contains(
+                fn ($account) => $account['code'] === 'E002-01'
+                    && $account['name'] === 'Current Year Earnings'
+                    && $account['is_system'] === true,
+            ))
             ->where('accounts', fn ($accounts) => ! collect($accounts)->contains(
                 fn ($account) => $account['name'] === 'Input VAT',
             ))

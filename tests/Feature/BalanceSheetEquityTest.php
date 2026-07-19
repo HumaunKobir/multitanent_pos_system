@@ -61,13 +61,21 @@ test('balance sheet includes current year earnings and stays balanced after prof
     $user = balanceSheetEquityUser([ReportController::PERMISSION_BALANCE_SHEET]);
     seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
 
+    $cye = SystemAccountService::resolve(SystemAccountKey::CurrentYearEarnings, Branch::MAIN_BRANCH_ID);
+    expect($cye->code)->toBe('E002-01')
+        ->and($cye->name)->toBe('Current Year Earnings');
+
+    $this->actingAs($user);
+
     $date = now()->format('Y-m-d');
+    $earningsBefore = app(ReportService::class)->currentYearEarningsAsOf($date);
+
     $cash = SystemAccountService::resolve(SystemAccountKey::CashInHand, Branch::MAIN_BRANCH_ID);
     $sales = SystemAccountService::resolve(SystemAccountKey::ProductSales, Branch::MAIN_BRANCH_ID);
     $cogs = SystemAccountService::resolve(SystemAccountKey::CostOfGoodsSold, Branch::MAIN_BRANCH_ID);
     $inventory = SystemAccountService::resolve(SystemAccountKey::ProductInventory, Branch::MAIN_BRANCH_ID);
 
-    // Revenue 500, COGS 200 → net profit 300
+    // Revenue 500, COGS 200 → net profit +300
     TransactionService::recordJournalEntry(
         [
             'source_type' => ChartOfAccount::class,
@@ -120,19 +128,21 @@ test('balance sheet includes current year earnings and stays balanced after prof
         false,
     );
 
-    $this->actingAs($user)
-        ->get('/report/balance-sheet?as_of='.$date)
+    $expectedEarnings = round($earningsBefore + 300, 2);
+
+    $this->get('/report/balance-sheet?as_of='.$date)
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/reports/balance-sheet')
             ->where('sheet.is_balanced', true)
-            ->where('sheet.sections', function ($sections): bool {
+            ->where('sheet.sections', function ($sections) use ($expectedEarnings): bool {
                 $equity = collect($sections)->firstWhere('slug', 'equity');
                 $lines = collect($equity['lines'] ?? []);
 
                 return $lines->contains(
                     fn (array $line) => $line['name'] === 'Current Year Earnings'
-                        && (float) $line['balance'] === 300.0
+                        && $line['code'] === 'E002-01'
+                        && (float) $line['balance'] === $expectedEarnings
                 );
             }));
 

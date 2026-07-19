@@ -1973,7 +1973,9 @@ class ReportService
             $total = 0.0;
 
             foreach ($accounts->where('type', $type) as $account) {
-                $balance = $this->accountBalanceAsOf($account->id, $asOfDate);
+                $balance = $account->account_number === SystemAccountKey::CurrentYearEarnings->accountNumber()
+                    ? $this->currentYearEarningsAsOf($asOfDate)
+                    : $this->accountBalanceAsOf($account->id, $asOfDate);
 
                 if (abs($balance) < 0.005) {
                     continue;
@@ -1985,19 +1987,6 @@ class ReportService
                     'balance' => round($balance, 2),
                 ];
                 $total += $balance;
-            }
-
-            if ($type === AccountType::Equity) {
-                $currentEarnings = $this->currentEarningsAsOf($asOfDate);
-
-                if (abs($currentEarnings) >= 0.005) {
-                    $lines[] = [
-                        'code' => 'CYE',
-                        'name' => 'Current Year Earnings',
-                        'balance' => $currentEarnings,
-                    ];
-                    $total += $currentEarnings;
-                }
             }
 
             $sections[] = [
@@ -2250,11 +2239,13 @@ class ReportService
     }
 
     /**
-     * Net income (income − expenses) as of a date — plugged into equity on the Balance Sheet
+     * Net income (income − expenses) as of a date — shown as Current Year Earnings equity
      * until a formal year-end close posts it to Retained Earnings.
      */
-    private function currentEarningsAsOf(string $asOfDate): float
+    public function currentYearEarningsAsOf(?string $asOfDate = null): float
     {
+        $asOfDate ??= now()->format('Y-m-d');
+
         $accounts = ChartOfAccount::query()
             ->forPanel()
             ->whereDoesntHave('children')

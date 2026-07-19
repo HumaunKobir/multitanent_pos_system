@@ -25,6 +25,7 @@ enum SystemAccountKey: string
     case OutputVat = 'output_vat';
     case OwnersCapital = 'owners_capital';
     case RetainedEarnings = 'retained_earnings';
+    case CurrentYearEarnings = 'current_year_earnings';
     case OwnersDrawings = 'owners_drawings';
     case OpeningBalanceEquity = 'opening_balance_equity';
     case OpeningBalanceClearing = 'opening_balance_clearing';
@@ -69,6 +70,7 @@ enum SystemAccountKey: string
             self::OutputVat => 'Output VAT',
             self::OwnersCapital => "Owner's Capital",
             self::RetainedEarnings => 'Retained Earnings',
+            self::CurrentYearEarnings => 'Current Year Earnings',
             self::OwnersDrawings => "Owner's Drawings",
             self::OpeningBalanceEquity => 'Opening Balance Equity',
             self::OpeningBalanceClearing => 'Opening Balance Clearing',
@@ -94,7 +96,7 @@ enum SystemAccountKey: string
             self::AccountsReceivable, self::CustomerReceivables, self::IntercompanyReceivable => AccountType::Asset,
             self::AccountsPayable, self::SupplierPayables, self::IntercompanyPayable, self::LoansPayable,
             self::AdvanceFromCustomer, self::TaxesPayable, self::OutputVat => AccountType::Liability,
-            self::OwnersCapital, self::RetainedEarnings, self::OwnersDrawings,
+            self::OwnersCapital, self::RetainedEarnings, self::CurrentYearEarnings, self::OwnersDrawings,
             self::OpeningBalanceEquity, self::OpeningBalanceClearing => AccountType::Equity,
             self::SalesRevenue, self::ProductSales, self::SalesReturns, self::OtherIncome => AccountType::Income,
             self::Expenses, self::CostOfGoodsSold, self::InventoryDamage, self::PurchaseReturns,

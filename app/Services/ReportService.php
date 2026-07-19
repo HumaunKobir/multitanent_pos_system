@@ -2585,7 +2585,7 @@ class ReportService
 
     private function stockLedgerLogQuery(?int $branchId, ?int $productId, ?string $dateFrom, ?string $dateTo): Builder
     {
-        $allowedTypes = $this->stockLedgerAllowedTypes($branchId);
+        $allowedTypes = $this->allStockMovementTypes();
 
         return ProductInOutLog::query()
             ->when($branchId !== null, fn (Builder $q) => $this->scopeProductInOutLogForBranch($q, $branchId))
@@ -2593,30 +2593,6 @@ class ReportService
             ->when($dateFrom, fn (Builder $q, string $date) => $q->whereDate('created_at', '>=', $date))
             ->when($dateTo, fn (Builder $q, string $date) => $q->whereDate('created_at', '<=', $date))
             ->whereIn('type', array_map(fn ($t) => $t->value, $allowedTypes));
-    }
-
-    /** @return list<ProductLogType> */
-    private function stockLedgerAllowedTypes(?int $scopeBranchId = null): array
-    {
-        $scopeBranchId ??= $this->branchId();
-
-        if ($scopeBranchId === null) {
-            return [
-                ProductLogType::Purchase,
-                ProductLogType::InitialStock,
-                ProductLogType::Purchase_Return,
-                ProductLogType::Distribution_Out,
-            ];
-        }
-
-        return [
-            ProductLogType::InitialStock,
-            ProductLogType::Distribution_In,
-            ProductLogType::Sale,
-            ProductLogType::Sale_Return,
-            ProductLogType::Damage,
-            ProductLogType::Exchange,
-        ];
     }
 
     /** @return list<ProductLogType> */
@@ -2699,7 +2675,7 @@ class ReportService
     private function productStockBalanceBefore(int $productId, int $branchId, string $dateFrom): float
     {
         $balance = 0.0;
-        $allowedTypes = array_map(fn ($t) => $t->value, $this->stockLedgerAllowedTypes($branchId));
+        $allowedTypes = array_map(fn ($t) => $t->value, $this->allStockMovementTypes());
 
         $this->scopeProductInOutLogForBranch(ProductInOutLog::query(), $branchId)
             ->where('product_id', $productId)

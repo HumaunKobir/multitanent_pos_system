@@ -1280,6 +1280,59 @@ test('stock ledger calculates opening balance before date range', function () {
             ->where('totals.balance', 7));
 });
 
+test('stock ledger period in and out include purchase and sale movements for a branch', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = reportUser([ReportController::PERMISSION_STOCK_LEDGER]);
+    $user->update(['branch_id' => $branch->id]);
+
+    $product = Product::factory()->create(['branch_id' => $branch->id]);
+    $batch = Batch::factory()->for($product)->withStock(0)->create(['branch_id' => $branch->id]);
+    $date = '2026-07-10';
+
+    $this->travelTo($date.' 09:00:00');
+    $batch->inStock(20);
+    $this->travelTo($date.' 15:00:00');
+    $batch->outStock(7);
+    $this->travelBack();
+
+    $this->actingAs($user)
+        ->get('/report/stock-ledger?product_id='.$product->id.'&date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/stock-ledger')
+            ->where('mode', 'ledger')
+            ->has('entries', 2)
+            ->where('totals.in', 20)
+            ->where('totals.out', 7)
+            ->where('totals.balance', 13));
+});
+
+test('admin stock ledger without branch filter includes sales in period totals', function () {
+    $this->artisan('permissions:sync');
+
+    $admin = User::factory()->create(['branch_id' => null]);
+    $admin->givePermissionTo(ReportController::PERMISSION_STOCK_LEDGER);
+    $branch = Branch::factory()->create();
+    $product = Product::factory()->create(['branch_id' => $branch->id]);
+    $batch = Batch::factory()->for($product)->withStock(0)->create(['branch_id' => $branch->id]);
+    $date = '2026-07-11';
+
+    $this->travelTo($date.' 10:00:00');
+    $batch->inStock(15);
+    $batch->outStock(4);
+    $this->travelBack();
+
+    $this->actingAs($admin)
+        ->get('/report/stock-ledger?product_id='.$product->id.'&date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('totals.in', 15)
+            ->where('totals.out', 4)
+            ->where('totals.balance', 11));
+});
+
 test('sales summary shows sale lines with customer name and phone sorted by quantity', function () {
     $this->artisan('permissions:sync');
 

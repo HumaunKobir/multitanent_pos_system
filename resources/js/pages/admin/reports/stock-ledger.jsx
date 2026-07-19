@@ -187,18 +187,24 @@ export default function StockLedgerReport({
                 />
 
                 {entries.length > 0 && (
-                    <div className="mt-4 flex flex-wrap justify-end gap-4 rounded-lg border border-blue-950/10 bg-gradient-to-r from-slate-50 to-blue-50/30 px-4 py-3 text-sm dark:from-slate-900/50 dark:to-blue-950/20 sm:gap-6">
-                        <span>
-                            Period In: <QtyCell value={totals.in} className="font-semibold text-emerald-700 dark:text-emerald-400" />
-                        </span>
-                        <span>
-                            Period Out: <QtyCell value={totals.out} className="font-semibold text-red-700 dark:text-red-400" />
-                        </span>
-                        {!isOverview && (
-                            <span>
-                                Closing: <QtyCell value={totals.balance} className="font-semibold text-blue-950 dark:text-blue-200" />
+                    <div className="mt-4 space-y-2">
+                        <div className="flex flex-wrap justify-end gap-4 rounded-lg border border-blue-950/10 bg-gradient-to-r from-slate-50 to-blue-50/30 px-4 py-3 text-sm dark:from-slate-900/50 dark:to-blue-950/20 sm:gap-6">
+                            <span title="Total quantity received in the selected date range (purchase, initial stock, sale return, distribution in)">
+                                Period In: <QtyCell value={totals.in} className="font-semibold text-emerald-700 dark:text-emerald-400" />
                             </span>
-                        )}
+                            <span title="Total quantity issued in the selected date range (sale, damage, purchase return, exchange, distribution out)">
+                                Period Out: <QtyCell value={totals.out} className="font-semibold text-red-700 dark:text-red-400" />
+                            </span>
+                            {!isOverview && (
+                                <span title="Opening stock + Period In − Period Out">
+                                    Closing: <QtyCell value={totals.balance} className="font-semibold text-blue-950 dark:text-blue-200" />
+                                </span>
+                            )}
+                        </div>
+                        <p className="text-right text-xs text-muted-foreground">
+                            Period In / Out are totals for the selected date range only
+                            {!isOverview ? ' (Opening stock is shown separately and is not included)' : ''}.
+                        </p>
                     </div>
                 )}
             </ReportPage>

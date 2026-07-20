@@ -18,6 +18,7 @@ export default function ProductCreate({
     suppliers = [],
     paymentAccounts = [],
     ecommerceBranchId = null,
+    actingBranchId = null,
     defaultCatalogBranchId = null,
     showBranchField = false,
 }) {
@@ -110,6 +111,7 @@ export default function ProductCreate({
                         suppliers={suppliers}
                         paymentAccounts={paymentAccounts}
                         ecommerceBranchId={ecommerceBranchId}
+                        actingBranchId={actingBranchId}
                         defaultCatalogBranchId={defaultCatalogBranchId}
                         showBranchField={showBranchField}
                         processing={form.processing}

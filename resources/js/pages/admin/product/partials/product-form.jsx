@@ -865,6 +865,7 @@ const ProductForm = forwardRef(function ProductForm({
     suppliers = [],
     paymentAccounts = [],
     ecommerceBranchId = null,
+    actingBranchId = null,
     defaultCatalogBranchId = null,
     showBranchField = false,
     sourceBranchId = null,
@@ -1088,7 +1089,11 @@ const ProductForm = forwardRef(function ProductForm({
 
     const showVisibleOnStore = can('product.visible-on-store')
         && ecommerceBranchId != null
-        && effectiveBranchId === String(ecommerceBranchId);
+        && (
+            effectiveBranchId === String(ecommerceBranchId)
+            || (showBranchField && effectiveBranchId === null)
+            || (!showBranchField && actingBranchId != null && String(actingBranchId) === String(ecommerceBranchId))
+        );
 
     useEffect(() => {
         if (!showVisibleOnStore && form.data.visible !== 'no') {

@@ -18,12 +18,17 @@ function visibleOnStoreEcommerceBranch(): Branch
         Branch::factory()->make(['name' => EcommerceBranchService::BRANCH_NAME])->toArray(),
     );
 
+    $adminAttributes = User::factory()->make([
+        'email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL,
+        'branch_id' => $branch->id,
+    ])->getAttributes();
+
     User::query()->updateOrCreate(
         ['email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL],
-        User::factory()->make([
-            'email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL,
-            'branch_id' => $branch->id,
-        ])->toArray(),
+        [
+            ...$adminAttributes,
+            'password' => $adminAttributes['password'] ?? bcrypt('password'),
+        ],
     );
 
     return $branch;
@@ -156,4 +161,42 @@ test('visible products appear on storefront and hidden products do not', functio
             ->component('frontend/all-products')
             ->where('products.data', fn ($products) => collect($products)->contains('slug', $visibleProduct->slug))
             ->where('products.data', fn ($products) => ! collect($products)->contains('slug', $hiddenProduct->slug)));
+});
+
+test('all-branches create with visible yes publishes ecommerce copy on storefront', function () {
+    $this->artisan('permissions:sync');
+
+    $ecommerceBranch = visibleOnStoreEcommerceBranch();
+    $mainBranch = Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    $admin = User::factory()->create(['branch_id' => null]);
+    $role = Role::create(['name' => 'Catalog Admin '.uniqid(), 'guard_name' => 'web']);
+    $role->givePermissionTo(['product.create', 'product.visible-on-store']);
+    $admin->assignRole($role);
+
+    $payload = visibleOnStorePayload($mainBranch, [
+        'branch_id' => '',
+        'visible' => 'yes',
+        'name' => 'All Branch Visible '.fake()->unique()->numerify('######'),
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('product.store'), $payload)
+        ->assertRedirect(route('product.index'));
+
+    $ecommerceProduct = Product::query()
+        ->where('name', $payload['name'])
+        ->where('branch_id', $ecommerceBranch->id)
+        ->first();
+
+    expect($ecommerceProduct)->not->toBeNull()
+        ->and($ecommerceProduct->visible)->toBe('yes');
+
+    $this->get(route('products.index'))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('products.data', fn ($products) => collect($products)->contains('slug', $ecommerceProduct->slug)));
 });

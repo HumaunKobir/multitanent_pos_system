@@ -1259,14 +1259,25 @@ class ProductController extends Controller
     private function resolveProductVisibility(array $data, ?Product $product = null): string
     {
         $ecommerceBranchId = EcommerceBranchService::resolveIdStatic();
-        $branchId = $data['branch_id'] ?? $product?->branch_id ?? Auth::user()?->branch_id;
 
-        if (
-            $ecommerceBranchId === null
-            || $branchId === null
-            || (int) $branchId !== $ecommerceBranchId
-            || ! Auth::user()?->can('product.visible-on-store')
-        ) {
+        if ($ecommerceBranchId === null || ! Auth::user()?->can('product.visible-on-store')) {
+            return $product?->visible ?? 'no';
+        }
+
+        $requestedBranchId = $data['branch_id'] ?? null;
+        $isAllBranchesRequest = array_key_exists('branch_id', $data)
+            && blank($requestedBranchId)
+            && (Auth::user()?->usesAdminPanel() ?? false);
+
+        if ($isAllBranchesRequest) {
+            return $data['visible'] ?? ($product?->visible ?? 'no');
+        }
+
+        $resolvedBranchId = filled($requestedBranchId)
+            ? (int) $requestedBranchId
+            : ($product?->branch_id ?? Auth::user()?->branch_id);
+
+        if ($resolvedBranchId === null || (int) $resolvedBranchId !== (int) $ecommerceBranchId) {
             return $product?->visible ?? 'no';
         }
 
@@ -1285,6 +1296,7 @@ class ProductController extends Controller
         return [
             'defaultCatalogBranchId' => $defaultCatalogBranchId,
             'ecommerceBranchId' => EcommerceBranchService::resolveIdStatic(),
+            'actingBranchId' => Auth::user()?->branch_id,
             'showBranchField' => $showBranchField,
             'categories' => Category::forCatalogPanel()->active()->orderBy('name')->pluck('name', 'id'),
             'brands' => Brand::forCatalogPanel()->active()->orderBy('name')->pluck('name', 'id'),

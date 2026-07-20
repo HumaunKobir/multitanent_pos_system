@@ -32,6 +32,7 @@ export default function ProductEdit({
     suppliers = [],
     paymentAccounts = [],
     ecommerceBranchId = null,
+    actingBranchId = null,
     defaultCatalogBranchId = null,
     showBranchField = false,
     selectedColors = [],
@@ -163,6 +164,7 @@ export default function ProductEdit({
                         suppliers={suppliers}
                         paymentAccounts={paymentAccounts}
                         ecommerceBranchId={ecommerceBranchId}
+                        actingBranchId={actingBranchId}
                         defaultCatalogBranchId={defaultCatalogBranchId}
                         showBranchField={showBranchField}
                         sourceBranchId={product.branch_id}

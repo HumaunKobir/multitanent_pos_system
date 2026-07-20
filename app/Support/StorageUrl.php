@@ -2,8 +2,6 @@
 
 namespace App\Support;
 
-use Illuminate\Support\Facades\Storage;
-
 final class StorageUrl
 {
     public static function public(?string $path): ?string
@@ -16,6 +14,7 @@ final class StorageUrl
             return $path;
         }
 
-        return Storage::disk('public')->url($path);
+        // Root-relative URLs so images work regardless of APP_URL / domain.
+        return '/storage/'.ltrim(str_replace('\\', '/', $path), '/');
     }
 }

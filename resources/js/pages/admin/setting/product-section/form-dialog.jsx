@@ -75,6 +75,8 @@ export default function ProductSectionFormDialog({
 
         if (!isEditing) {
             payload.layout_type = form.data.layout_type;
+        } else {
+            payload._method = 'patch';
         }
 
         if (isItemBlock) {
@@ -121,11 +123,8 @@ export default function ProductSectionFormDialog({
 
         form.transform(() => buildPayload());
 
-        if (isEditing) {
-            form.submit('patch', routes.update(item.id), options);
-        } else {
-            form.post(routes.store, options);
-        }
+        // PHP does not populate multipart bodies on PATCH; spoof via POST + _method.
+        form.post(isEditing ? routes.update(item.id) : routes.store, options);
     }
 
     function updateImageRow(index, field, value) {

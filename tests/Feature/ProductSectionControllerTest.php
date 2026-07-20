@@ -10,7 +10,17 @@ use Illuminate\Support\Facades\Storage;
 
 function productSectionAdmin(): User
 {
-    return User::factory()->create(['branch_id' => null]);
+    test()->artisan('permissions:sync');
+
+    $admin = User::factory()->create(['branch_id' => null]);
+    $admin->givePermissionTo([
+        'setting.productsection.view',
+        'setting.productsection.create',
+        'setting.productsection.update',
+        'setting.productsection.delete',
+    ]);
+
+    return $admin;
 }
 
 test('superadmin can view product sections index', function () {
@@ -181,4 +191,62 @@ test('creating item block without products returns validation error', function (
             'items' => [],
         ])
         ->assertSessionHasErrors('items');
+});
+
+test('missing block type returns validation error instead of crashing', function () {
+    $this->actingAs(productSectionAdmin())
+        ->post(route('setting.productsection.store'), [
+            'name' => 'Missing Block '.fake()->unique()->numerify('####'),
+            'layout_type' => (string) LayoutType::Image_Block->value,
+            'block_type' => '',
+            'block_per_line' => '4',
+            'status' => '1',
+        ])
+        ->assertSessionHasErrors('block_type');
+});
+
+test('product section image update via method spoofing keeps block type', function () {
+    Storage::fake('public');
+
+    $section = ProductSection::query()->create([
+        'name' => 'Spoof Banner '.fake()->unique()->numerify('####'),
+        'block_per_line' => 2,
+        'layout_type' => LayoutType::Image_Block,
+        'block_type' => BlockType::Image,
+        'images' => [
+            [
+                'image_name' => 'Old',
+                'image' => 'product-sections/spoof-old.jpg',
+                'button_text' => 'Old',
+                'link' => '/old',
+                'description' => 'Old',
+            ],
+        ],
+        'status' => 1,
+        'serial' => 9988,
+    ]);
+
+    Storage::disk('public')->put('product-sections/spoof-old.jpg', 'old-image');
+
+    $this->actingAs(productSectionAdmin())
+        ->post(route('setting.productsection.update', $section), [
+            '_method' => 'patch',
+            'name' => 'Spoof Updated',
+            'block_type' => (string) BlockType::Image->value,
+            'block_per_line' => '3',
+            'status' => '1',
+            'image_name' => ['New'],
+            'button_text' => ['Buy'],
+            'link' => ['/new'],
+            'description' => ['Fresh'],
+            'images' => [UploadedFile::fake()->image('spoof-new.webp', 600, 300)],
+        ])
+        ->assertRedirect(route('setting.productsection.index'))
+        ->assertSessionHasNoErrors();
+
+    $section->refresh();
+
+    expect($section->name)->toBe('Spoof Updated')
+        ->and($section->block_type)->toBe(BlockType::Image)
+        ->and($section->images[0]['image'])->toStartWith('product-sections/');
 });

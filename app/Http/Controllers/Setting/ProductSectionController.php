@@ -134,7 +134,13 @@ class ProductSectionController extends Controller
      */
     protected function validatedData(Request $request, ?ProductSection $section = null): array
     {
-        $blockType = BlockType::from((int) $request->input('block_type'));
+        $blockType = BlockType::tryFrom((int) $request->input('block_type'));
+
+        if ($blockType === null) {
+            throw ValidationException::withMessages([
+                'block_type' => 'The selected block type is invalid.',
+            ]);
+        }
 
         $layoutType = $section?->layout_type
             ?? LayoutType::tryFrom((int) $request->input('layout_type'))
@@ -177,8 +183,13 @@ class ProductSectionController extends Controller
         $validated = $request->validate($rules);
 
         $layoutType = $section?->layout_type
-            ?? LayoutType::from((int) $request->input('layout_type'));
+            ?? LayoutType::tryFrom((int) $validated['layout_type']);
 
+        if ($section === null && $layoutType === null) {
+            throw ValidationException::withMessages([
+                'layout_type' => 'The selected layout type is invalid.',
+            ]);
+        }
         if ($blockType === BlockType::Image && $section === null) {
             $uploadedImages = collect($request->file('images', []))->filter();
 

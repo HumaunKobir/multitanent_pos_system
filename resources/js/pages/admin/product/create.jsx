@@ -63,6 +63,7 @@ export default function ProductCreate({
         }
 
         form.post(route('product.store'), {
+            forceFormData: true,
             onError: (errors) => {
                 if (errors.initial_stock_payment_account_id) {
                     toast.warning(errors.initial_stock_payment_account_id);

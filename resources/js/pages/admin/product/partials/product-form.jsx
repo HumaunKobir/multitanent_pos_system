@@ -305,19 +305,29 @@ function SingleImageUpload({ existingPath, onChange }) {
     );
 }
 
-function MultiImageUpload({ onChange }) {
+function MultiImageUpload({ existingPhotos = [], onChange, onDeleteExisting }) {
     const inputRef = useRef(null);
     const [items, setItems] = useState([]);
+    const [storedPhotos, setStoredPhotos] = useState(existingPhotos);
+
+    useEffect(() => {
+        setStoredPhotos(existingPhotos);
+    }, [existingPhotos]);
 
     function handleFiles(newFiles) {
-        if (!newFiles.length) return;
+        if (!newFiles.length) {
+            return;
+        }
+
         const added = Array.from(newFiles).map((f) => ({ file: f, url: URL.createObjectURL(f) }));
         setItems((prev) => {
             const next = [...prev, ...added];
             onChange(next.map((i) => i.file));
             return next;
         });
-        if (inputRef.current) inputRef.current.value = '';
+        if (inputRef.current) {
+            inputRef.current.value = '';
+        }
     }
 
     function removeItem(index) {
@@ -329,10 +339,42 @@ function MultiImageUpload({ onChange }) {
         });
     }
 
+    async function removeExisting(photo) {
+        if (!onDeleteExisting) {
+            return;
+        }
+
+        const ok = await onDeleteExisting(photo);
+
+        if (ok) {
+            setStoredPhotos((prev) => prev.filter((p) => p.id !== photo.id));
+        }
+    }
+
+    const hasAny = storedPhotos.length > 0 || items.length > 0;
+
     return (
         <div>
-            {items.length > 0 && (
+            {hasAny && (
                 <div className="mb-2 flex flex-wrap gap-1.5">
+                    {storedPhotos.map((photo) => (
+                        <div key={`existing-${photo.id}`} className="relative">
+                            <img
+                                src={`/storage/${photo.image}`}
+                                alt=""
+                                className="h-14 w-14 border object-cover"
+                            />
+                            {onDeleteExisting && (
+                                <button
+                                    type="button"
+                                    onClick={() => removeExisting(photo)}
+                                    className="absolute -top-1 -right-1 flex size-4 items-center justify-center bg-red-500 text-white hover:bg-red-600"
+                                >
+                                    <X className="size-2.5" />
+                                </button>
+                            )}
+                        </div>
+                    ))}
                     {items.map((item, i) => (
                         <div key={item.url} className="relative">
                             <img src={item.url} alt="" className="h-14 w-14 border object-cover" />
@@ -355,7 +397,7 @@ function MultiImageUpload({ onChange }) {
                 className="flex w-full flex-col items-center justify-center gap-1.5 border border-dashed border-border bg-muted/20 py-4 text-xs text-muted-foreground transition-colors hover:bg-muted/40"
             >
                 <ImagePlus className="size-5 opacity-40" />
-                <span>{items.length > 0 ? 'Add more photos' : 'Click or drop photos'}</span>
+                <span>{hasAny ? 'Add more photos' : 'Click or drop photos'}</span>
                 <span className="text-[10px] opacity-60">JPG, PNG, WebP — max 3MB</span>
             </button>
             <input
@@ -834,6 +876,8 @@ const ProductForm = forwardRef(function ProductForm({
     initialStockValue = 0,
     hasExistingSettlement = false,
     isEditing = false,
+    existingPhotos = [],
+    onDeleteExistingPhoto = null,
     processing = false,
     cancelHref = '',
 }, ref) {
@@ -1461,8 +1505,16 @@ const ProductForm = forwardRef(function ProductForm({
                 </Card>
 
                 <Card title="Gallery Photos" icon={Images}>
-                    <MultiImageUpload onChange={(files) => form.setData('photos', files)} />
-                    {form.errors.photos && <p className="mt-1 text-xs text-destructive">{form.errors.photos}</p>}
+                    <MultiImageUpload
+                        existingPhotos={existingPhotos}
+                        onChange={(files) => form.setData('photos', files)}
+                        onDeleteExisting={onDeleteExistingPhoto}
+                    />
+                    {(form.errors.photos || form.errors['photos.0']) && (
+                        <p className="mt-1 text-xs text-destructive">
+                            {form.errors.photos || form.errors['photos.0']}
+                        </p>
+                    )}
                 </Card>
 
                 <Card title="Status" icon={Settings}>

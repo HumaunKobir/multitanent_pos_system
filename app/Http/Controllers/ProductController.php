@@ -24,8 +24,10 @@ use App\Services\EcommerceBranchService;
 use App\Services\ProductBranchReplicationService;
 use App\Services\ProductDeletionService;
 use App\Services\ProductInitialStockService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -411,13 +413,8 @@ class ProductController extends Controller
                     $data['code'] = null;
                 }
 
-                $photoPaths = [];
-
-                if ($request->hasFile('photos')) {
-                    foreach ($request->file('photos') as $photo) {
-                        $photoPaths[] = $photo->store('products/photos', 'public');
-                    }
-                }
+                $photoPaths = $this->storeUploadedGalleryPhotos($request);
+                unset($data['photos']);
 
                 $this->initialStock->usingSupplierAccounting($settlement->usesSupplier(), function () use (
                     $data,
@@ -702,6 +699,8 @@ class ProductController extends Controller
 
                     unset($data['branch_id']);
 
+                    unset($data['photos']);
+
                     if (! Branch::isMainBranch((int) $product->branch_id)) {
                         unset($data['selected_branch_id']);
                     }
@@ -736,12 +735,7 @@ class ProductController extends Controller
                         ]);
                     }
 
-                    if ($request->hasFile('photos')) {
-                        foreach ($request->file('photos') as $photo) {
-                            $path = $photo->store('products/photos', 'public');
-                            ProductPhoto::create(['product_id' => $product->id, 'image' => $path]);
-                        }
-                    }
+                    $this->attachGalleryPhotos($product, $this->storeUploadedGalleryPhotos($request));
 
                     if ($requestedAllBranches) {
                         $anchorProduct = $this->productReplication->mainSiblingInGroup($product);
@@ -902,6 +896,74 @@ class ProductController extends Controller
 
         return redirect()->route('product.index')
             ->with('success', $result['message']);
+    }
+
+    public function destroyPhoto(Request $request, ProductPhoto $productPhoto): JsonResponse|RedirectResponse
+    {
+        $this->authorize('product.update');
+
+        $product = $productPhoto->product()->firstOrFail();
+        $path = $productPhoto->image;
+
+        $productIds = $this->productReplication->siblings($product)->pluck('id');
+
+        ProductPhoto::query()
+            ->whereIn('product_id', $productIds)
+            ->where('image', $path)
+            ->delete();
+
+        if (! ProductPhoto::query()->where('image', $path)->exists()) {
+            Storage::disk('public')->delete($path);
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json(['success' => true]);
+        }
+
+        return back()->with('success', 'Gallery photo deleted.');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function storeUploadedGalleryPhotos(Request $request): array
+    {
+        if (! $request->hasFile('photos')) {
+            return [];
+        }
+
+        $files = $request->file('photos');
+        $files = is_array($files) ? $files : [$files];
+        $paths = [];
+
+        foreach ($files as $photo) {
+            if ($photo instanceof UploadedFile && $photo->isValid()) {
+                $paths[] = $photo->store('products/photos', 'public');
+            }
+        }
+
+        return $paths;
+    }
+
+    /**
+     * @param  list<string>  $photoPaths
+     */
+    private function attachGalleryPhotos(Product $product, array $photoPaths): void
+    {
+        if ($photoPaths === []) {
+            return;
+        }
+
+        $targets = $this->productReplication->siblings($product);
+
+        foreach ($targets as $target) {
+            foreach ($photoPaths as $path) {
+                ProductPhoto::create([
+                    'product_id' => $target->id,
+                    'image' => $path,
+                ]);
+            }
+        }
     }
 
     private function variantsAreLocked(Product $product): bool

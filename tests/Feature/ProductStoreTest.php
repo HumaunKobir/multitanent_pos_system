@@ -14,6 +14,8 @@ use App\Models\Size;
 use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Models\Permission;
 
 function productStoreAdmin(): User
@@ -629,4 +631,31 @@ test('product store rejects initial stock paid amount above stock value', functi
     $this->actingAs($admin)
         ->post(route('product.store'), $payload)
         ->assertSessionHasErrors('initial_stock_paid_amount');
+});
+
+test('product store saves gallery photos', function () {
+    Storage::fake('public');
+
+    $admin = productStoreAdmin();
+    $payload = validProductPayload([
+        'photos' => [
+            UploadedFile::fake()->image('gallery-1.jpg', 400, 400),
+            UploadedFile::fake()->image('gallery-2.png', 400, 400),
+        ],
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('product.store'), $payload)
+        ->assertRedirect(route('product.index'))
+        ->assertSessionHasNoErrors();
+
+    $product = Product::query()->where('name', $payload['name'])->first();
+
+    expect($product)->not->toBeNull()
+        ->and($product->photos)->toHaveCount(2);
+
+    foreach ($product->photos as $photo) {
+        expect($photo->image)->toStartWith('products/photos/');
+        Storage::disk('public')->assertExists($photo->image);
+    }
 });

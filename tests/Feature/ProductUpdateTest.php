@@ -9,6 +9,7 @@ use App\Models\Color;
 use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\ProductInitialStock;
+use App\Models\ProductPhoto;
 use App\Models\ProductVariation;
 use App\Models\Sell;
 use App\Models\SellProduct;
@@ -17,6 +18,8 @@ use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\Unit;
 use App\Models\User;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Permission;
 
@@ -1181,4 +1184,95 @@ test('updating specific branch product to all branches creates missing branch co
         ->and($products->pluck('product_group_id')->unique())->toHaveCount(1)
         ->and($products->pluck('branch_id')->sort()->values()->all())
         ->toBe(Branch::query()->active()->orderBy('id')->pluck('id')->sort()->values()->all());
+});
+
+test('product update with image via method spoofing accepts required fields', function () {
+    Storage::fake('public');
+
+    $admin = productUpdateAdmin();
+    $product = Product::factory()->create([
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+        'image' => null,
+    ]);
+
+    $payload = productUpdatePayload($product, [
+        '_method' => 'patch',
+        'image' => UploadedFile::fake()->image('product.jpg', 400, 400),
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('product.update', $product), $payload)
+        ->assertRedirect(route('product.index'))
+        ->assertSessionDoesntHaveErrors(['category_id', 'brand_id', 'unit_id', 'name']);
+
+    $product->refresh();
+
+    expect($product->image)->not->toBeNull()
+        ->and($product->image)->toStartWith('products/');
+
+    Storage::disk('public')->assertExists($product->image);
+});
+
+test('product update appends gallery photos via method spoofing', function () {
+    Storage::fake('public');
+
+    $admin = productUpdateAdmin();
+    $product = Product::factory()->create([
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+    ]);
+
+    ProductPhoto::query()->create([
+        'product_id' => $product->id,
+        'image' => 'products/photos/existing.jpg',
+    ]);
+
+    $payload = productUpdatePayload($product, [
+        '_method' => 'patch',
+        'photos' => [
+            UploadedFile::fake()->image('new-gallery.jpg', 400, 400),
+        ],
+    ]);
+
+    $this->actingAs($admin)
+        ->post(route('product.update', $product), $payload)
+        ->assertRedirect(route('product.index'))
+        ->assertSessionHasNoErrors();
+
+    $product->load('photos');
+
+    expect($product->photos)->toHaveCount(2)
+        ->and($product->photos->pluck('image')->contains(fn ($path) => str_starts_with($path, 'products/photos/')))->toBeTrue();
+});
+
+test('product gallery photo can be deleted', function () {
+    Storage::fake('public');
+
+    $admin = productUpdateAdmin();
+    $product = Product::factory()->create([
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+    ]);
+
+    Storage::disk('public')->put('products/photos/to-delete.jpg', 'fake-image');
+
+    $photo = ProductPhoto::query()->create([
+        'product_id' => $product->id,
+        'image' => 'products/photos/to-delete.jpg',
+    ]);
+
+    $this->actingAs($admin)
+        ->deleteJson(route('product.photo.destroy', $photo))
+        ->assertOk()
+        ->assertJson(['success' => true]);
+
+    expect(ProductPhoto::query()->whereKey($photo->id)->exists())->toBeFalse();
+    Storage::disk('public')->assertMissing('products/photos/to-delete.jpg');
 });

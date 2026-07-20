@@ -116,6 +116,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('product/export/excel', [ProductController::class, 'exportExcel'])->name('product.export-excel');
     Route::get('product/export/pdf', [ProductController::class, 'exportPdf'])->name('product.export-pdf');
     Route::get('product/export/print', [ProductController::class, 'exportPrint'])->name('product.export-print');
+    Route::delete('product-photo/{productPhoto}', [ProductController::class, 'destroyPhoto'])->name('product.photo.destroy');
     Route::resource('product', ProductController::class)->except(['show']);
     Route::get('barcode', [BarcodeController::class, 'index'])->name('barcode.index');
     Route::get('barcode/serial-range', [BarcodeController::class, 'serialRange'])->name('barcode.serial-range');

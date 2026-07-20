@@ -1,53 +1,11 @@
 import { Head, Link, useForm } from '@inertiajs/react';
-import { ArrowLeft, PackagePlus, Trash2 } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { ArrowLeft, PackagePlus } from 'lucide-react';
+import { useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { route } from '@/lib/route';
 import { getSharedCombinationPrices } from '@/lib/variation-utils';
 import ProductForm from './partials/product-form';
-
-function PhotosSection({ product }) {
-    const [photos, setPhotos] = useState(product.photos ?? []);
-
-    async function handleDeletePhoto(photo) {
-        const res = await fetch(`/product-photo/${photo.id}`, {
-            method: 'DELETE',
-            headers: {
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
-                Accept: 'application/json',
-            },
-        });
-
-        if (res.ok) {
-            setPhotos((prev) => prev.filter((p) => p.id !== photo.id));
-        }
-    }
-
-    if (photos.length === 0) {
-        return null;
-    }
-
-    return (
-        <div className="rounded-lg border bg-card p-6">
-            <h2 className="mb-4 text-base font-semibold">Existing Photos</h2>
-            <div className="flex flex-wrap gap-3">
-                {photos.map((photo) => (
-                    <div key={photo.id} className="group relative">
-                        <img src={`/storage/${photo.image}`} alt="Product photo" className="h-20 w-20 rounded object-cover" />
-                        <button
-                            type="button"
-                            onClick={() => handleDeletePhoto(photo)}
-                            className="absolute top-1 right-1 hidden rounded-full bg-destructive p-0.5 text-destructive-foreground group-hover:flex"
-                        >
-                            <Trash2 className="size-3" />
-                        </button>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-}
 
 function mapVariationsToCombinations(variations = []) {
     return variations.map((variation) => ({
@@ -87,6 +45,7 @@ export default function ProductEdit({
     const sharedCombinationPrices = getSharedCombinationPrices(initialCombinations);
 
     const form = useForm({
+        _method: 'patch',
         branch_id: formBranchId,
         category_id: String(product.category_id ?? ''),
         brand_id: String(product.brand_id ?? ''),
@@ -121,6 +80,25 @@ export default function ProductEdit({
     const productFormRef = useRef(null);
     const toast = useAppToast();
 
+    async function handleDeleteExistingPhoto(photo) {
+        const res = await fetch(route('product.photo.destroy', photo.id), {
+            method: 'DELETE',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content ?? '',
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+            credentials: 'same-origin',
+        });
+
+        if (!res.ok) {
+            toast.error('Could not delete gallery photo.');
+            return false;
+        }
+
+        return true;
+    }
+
     function handleSubmit(e) {
         e.preventDefault();
 
@@ -130,7 +108,15 @@ export default function ProductEdit({
             return;
         }
 
-        form.patch(route('product.update', { product: product.slug }), {
+        // PHP does not populate multipart bodies on PATCH; spoof via POST + _method (same as website/branch-profile).
+        form.transform((data) => {
+            const { _existing_image, ...payload } = data;
+
+            return payload;
+        });
+
+        form.post(route('product.update', { product: product.slug }), {
+            forceFormData: true,
             onError: (errors) => {
                 if (errors.initial_stock_payment_account_id) {
                     toast.warning(errors.initial_stock_payment_account_id);
@@ -162,53 +148,51 @@ export default function ProductEdit({
                     </Button>
                 </div>
 
-                <div className="space-y-6">
-                    <form onSubmit={handleSubmit} encType="multipart/form-data">
-                        <ProductForm
-                            ref={productFormRef}
-                            form={form}
-                            categories={categories}
-                            brands={brands}
-                            units={units}
-                            warranties={warranties}
-                            branches={branches}
-                            colorOptions={colorOptions}
-                            sizeOptions={sizeOptions}
-                            tagOptions={tagOptions}
-                            suppliers={suppliers}
-                            paymentAccounts={paymentAccounts}
-                            ecommerceBranchId={ecommerceBranchId}
-                            defaultCatalogBranchId={defaultCatalogBranchId}
-                            showBranchField={showBranchField}
-                            sourceBranchId={product.branch_id}
-                            selectedCatalog={{
-                                category: product.category
-                                    ? { id: product.category_id, label: product.category.name }
-                                    : null,
-                                brand: product.brand
-                                    ? { id: product.brand_id, label: product.brand.name }
-                                    : null,
-                                unit: product.unit
-                                    ? { id: product.unit_id, label: product.unit.name }
-                                    : null,
-                                warranty: product.warranty
-                                    ? { id: product.warranty_id, label: product.warranty.name }
-                                    : null,
-                            }}
-                            selectedColors={selectedColors}
-                            selectedSizes={selectedSizes}
-                            initialVariations={product.variations ?? []}
-                            variantsLocked={variantsLocked}
-                            initialStockValue={initialStockValue}
-                            hasExistingSettlement={hasExistingSettlement}
-                            isEditing
-                            processing={form.processing}
-                            cancelHref={route('product.index')}
-                        />
-                    </form>
-
-                    <PhotosSection product={product} />
-                </div>
+                <form onSubmit={handleSubmit} encType="multipart/form-data">
+                    <ProductForm
+                        ref={productFormRef}
+                        form={form}
+                        categories={categories}
+                        brands={brands}
+                        units={units}
+                        warranties={warranties}
+                        branches={branches}
+                        colorOptions={colorOptions}
+                        sizeOptions={sizeOptions}
+                        tagOptions={tagOptions}
+                        suppliers={suppliers}
+                        paymentAccounts={paymentAccounts}
+                        ecommerceBranchId={ecommerceBranchId}
+                        defaultCatalogBranchId={defaultCatalogBranchId}
+                        showBranchField={showBranchField}
+                        sourceBranchId={product.branch_id}
+                        selectedCatalog={{
+                            category: product.category
+                                ? { id: product.category_id, label: product.category.name }
+                                : null,
+                            brand: product.brand
+                                ? { id: product.brand_id, label: product.brand.name }
+                                : null,
+                            unit: product.unit
+                                ? { id: product.unit_id, label: product.unit.name }
+                                : null,
+                            warranty: product.warranty
+                                ? { id: product.warranty_id, label: product.warranty.name }
+                                : null,
+                        }}
+                        selectedColors={selectedColors}
+                        selectedSizes={selectedSizes}
+                        initialVariations={product.variations ?? []}
+                        variantsLocked={variantsLocked}
+                        initialStockValue={initialStockValue}
+                        hasExistingSettlement={hasExistingSettlement}
+                        isEditing
+                        existingPhotos={product.photos ?? []}
+                        onDeleteExistingPhoto={handleDeleteExistingPhoto}
+                        processing={form.processing}
+                        cancelHref={route('product.index')}
+                    />
+                </form>
             </div>
         </>
     );

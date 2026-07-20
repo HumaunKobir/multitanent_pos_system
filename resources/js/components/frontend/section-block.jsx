@@ -14,29 +14,30 @@ function resolveBlockPerLine(value) {
         return 4;
     }
 
-    return Math.min(perLine, 6);
+    return Math.min(Math.max(perLine, 1), 6);
 }
 
+/** Exact columns so "blocks per line" fills the row at full width. */
 function gridColsClass(blockPerLine) {
     return {
         1: 'grid-cols-1',
         2: 'grid-cols-2',
-        3: 'grid-cols-2 sm:grid-cols-3',
-        4: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4',
-        5: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5',
-        6: 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6',
-    }[blockPerLine] ?? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4';
+        3: 'grid-cols-3',
+        4: 'grid-cols-4',
+        5: 'grid-cols-5',
+        6: 'grid-cols-6',
+    }[blockPerLine] ?? 'grid-cols-4';
 }
 
 function slideWidthClass(blockPerLine) {
     return {
         1: 'min-w-full',
-        2: 'min-w-[calc(50%-0.375rem)]',
-        3: 'min-w-[calc(50%-0.375rem)] sm:min-w-[calc(33.333%-0.55rem)]',
-        4: 'min-w-[calc(50%-0.375rem)] sm:min-w-[calc(33.333%-0.55rem)] lg:min-w-[calc(25%-0.75rem)]',
-        5: 'min-w-[calc(50%-0.375rem)] sm:min-w-[calc(33.333%-0.55rem)] lg:min-w-[calc(20%-0.8rem)]',
-        6: 'min-w-[calc(50%-0.375rem)] sm:min-w-[calc(33.333%-0.55rem)] lg:min-w-[calc(16.666%-0.85rem)]',
-    }[blockPerLine] ?? 'min-w-[calc(50%-0.375rem)] sm:min-w-[calc(33.333%-0.55rem)] lg:min-w-[calc(25%-0.75rem)]';
+        2: 'min-w-[calc((100%-0.625rem)/2)] sm:min-w-[calc((100%-0.75rem)/2)]',
+        3: 'min-w-[calc((100%-1.25rem)/3)] sm:min-w-[calc((100%-1.5rem)/3)]',
+        4: 'min-w-[calc((100%-1.875rem)/4)] sm:min-w-[calc((100%-2.25rem)/4)]',
+        5: 'min-w-[calc((100%-2.5rem)/5)] sm:min-w-[calc((100%-3rem)/5)]',
+        6: 'min-w-[calc((100%-3.125rem)/6)] sm:min-w-[calc((100%-3.75rem)/6)]',
+    }[blockPerLine] ?? 'min-w-[calc((100%-1.875rem)/4)] sm:min-w-[calc((100%-2.25rem)/4)]';
 }
 
 export function SectionBlock({ section }) {
@@ -90,7 +91,7 @@ function ProductGridSection({ section }) {
     return (
         <section className="store-container py-6">
             <SectionHeading section={section} />
-            <div className={`grid gap-3 sm:gap-4 ${cols}`}>
+            <div className={`grid w-full gap-2.5 sm:gap-3 ${cols}`}>
                 {section.products.map((product) => (
                     <ProductCard key={product.id} product={product} />
                 ))}
@@ -175,7 +176,7 @@ function ProductSliderSection({ section }) {
 
                 <div
                     ref={trackRef}
-                    className="flex snap-x snap-mandatory gap-3 overflow-x-auto pb-1 scrollbar-none sm:gap-4"
+                    className="flex snap-x snap-mandatory gap-2.5 overflow-x-auto pb-1 scrollbar-none sm:gap-3"
                 >
                     {section.products.map((product) => (
                         <div key={product.id} className={`${slideWidth} shrink-0 snap-start`}>
@@ -193,14 +194,12 @@ function ImageBlockSection({ section }) {
         return null;
     }
 
-    const cols = section.images.length === 1
-        ? 'grid-cols-1'
-        : gridColsClass(resolveBlockPerLine(section.block_per_line));
+    const cols = gridColsClass(resolveBlockPerLine(section.block_per_line));
 
     return (
         <section className="store-container py-6">
             <SectionHeading section={section} showViewAll={false} />
-            <div className={`grid gap-3 sm:gap-4 ${cols}`}>
+            <div className={`grid w-full gap-3 sm:gap-4 ${cols}`}>
                 {section.images.map((block, index) => (
                     <ImageBanner key={`${block.image}-${index}`} block={block} />
                 ))}

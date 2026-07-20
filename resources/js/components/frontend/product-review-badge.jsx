@@ -13,7 +13,7 @@ export function ProductReviewBadge({ summary, className }) {
     return (
         <div
             className={cn(
-                'inline-flex items-center gap-1.5 bg-linear-to-r from-amber-50 to-orange-50/80 px-2 py-0.5 ring-1 ring-amber-100/90',
+                'inline-flex items-center gap-1 rounded bg-amber-50/90 px-1.5 py-0.5 ring-1 ring-amber-100/80',
                 className,
             )}
             aria-label={`${formatted} out of 5 stars`}

@@ -1,5 +1,5 @@
 import { Link } from '@inertiajs/react';
-import { Eye, Layers, Play, ShoppingBag, Tag } from 'lucide-react';
+import { Layers, Play, ShoppingBag, Tag } from 'lucide-react';
 import { useState } from 'react';
 import { VariantModal } from '@/components/frontend/variant-modal';
 import { ProductReviewBadge } from '@/components/frontend/product-review-badge';
@@ -83,110 +83,73 @@ export function ProductCard({ product }) {
 
     return (
         <>
-            <article className="group flex flex-col">
-                <div className="relative overflow-hidden rounded-2xl bg-white ring-1 ring-gray-100 transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-xl group-hover:ring-store-accent/30">
+            <article className="group flex w-full max-w-full flex-col gap-1">
+                <div className="relative overflow-hidden rounded-md bg-white ring-1 ring-gray-200/80 transition duration-300 group-hover:ring-store-accent/25 group-hover:shadow-sm">
                     <Link href={productUrl} className="block">
-                        <div className="relative aspect-5/6 overflow-hidden bg-gray-50">
+                        <div className="relative aspect-square overflow-hidden bg-store-surface">
                             {product.image ? (
                                 <img
                                     src={product.image}
                                     alt={product.name}
-                                    className="size-full object-cover transition-transform duration-700 ease-out group-hover:scale-105"
+                                    className="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03]"
+                                    loading="lazy"
                                 />
                             ) : (
-                                <div className="flex size-full items-center justify-center bg-gray-50">
-                                    <ShoppingBag className="size-7 text-gray-200" strokeWidth={1.25} aria-hidden />
+                                <div className="flex size-full items-center justify-center">
+                                    <ShoppingBag className="size-4 text-gray-300" strokeWidth={1.25} aria-hidden />
                                 </div>
                             )}
 
-                            <div
-                                className="absolute inset-0 bg-linear-to-t from-store-primary/70 via-store-primary/10 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-                                aria-hidden
-                            />
-
                             {discount && (
-                                <span className="absolute left-2 top-2 z-10 inline-flex items-center gap-0.5 rounded-full bg-store-accent px-2 py-0.5 text-[10px] font-bold text-white shadow-sm">
-                                    <Tag className="size-2.5" aria-hidden />
+                                <span className="absolute left-1 top-1 z-10 inline-flex items-center gap-0.5 rounded bg-store-accent px-1 py-px text-[8px] font-bold tracking-wide text-white">
+                                    <Tag className="size-2" aria-hidden />
                                     -{discount.percent}%
                                 </span>
                             )}
 
                             {product.youtube_link && (
-                                <div className="absolute right-2 top-2 z-10 flex size-6 items-center justify-center rounded-full bg-white/95 shadow-sm">
-                                    <Play className="size-3 fill-store-primary text-store-primary" aria-hidden />
+                                <div className="absolute right-1 top-1 z-10 flex size-4 items-center justify-center rounded-full bg-white/95 shadow-sm">
+                                    <Play className="size-2 fill-store-primary text-store-primary" aria-hidden />
                                 </div>
                             )}
                         </div>
                     </Link>
 
-                    <div className="pointer-events-none absolute inset-0 z-20 flex flex-col items-center justify-center gap-2 opacity-0 transition-all duration-300 group-hover:opacity-100">
-                        <div className="pointer-events-auto flex translate-y-3 flex-col gap-1.5 transition-transform duration-300 group-hover:translate-y-0">
-                            <Link
-                                href={productUrl}
-                                className="inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3.5 py-1.5 text-[11px] font-semibold text-store-primary shadow-lg backdrop-blur-sm transition-transform hover:scale-105"
-                            >
-                                <Eye className="size-3.5" aria-hidden />
-                                Quick View
-                            </Link>
-                            <button
-                                type="button"
-                                onClick={handleBagAction}
-                                disabled={adding}
-                                className="inline-flex items-center gap-1.5 rounded-full bg-store-accent px-3.5 py-1.5 text-[11px] font-semibold text-white shadow-lg transition-transform hover:scale-105 disabled:opacity-60"
-                            >
-                                {product.has_variations ? (
-                                    <Layers className="size-3.5" aria-hidden />
-                                ) : (
-                                    <ShoppingBag className="size-3.5" aria-hidden />
-                                )}
-                                {adding ? 'Adding…' : product.has_variations ? 'Choose Options' : 'Add to Bag'}
-                            </button>
-                        </div>
-                    </div>
-
-                    {(discount || product.has_variations) && (
-                        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 translate-y-full px-2 pb-2 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
-                            <div className="rounded-xl bg-white/95 px-2.5 py-2 text-center shadow-lg backdrop-blur-sm">
-                                {product.has_variations ? (
-                                    <>
-                                        <p className="text-sm font-bold text-store-accent">{priceDisplay.primary}</p>
-                                        {priceDisplay.secondary && (
-                                            <p className="mt-0.5 text-[10px] text-store-muted">{priceDisplay.secondary}</p>
-                                        )}
-                                    </>
-                                ) : (
-                                    <>
-                                        <div className="flex items-center justify-center gap-1.5">
-                                            <span className="text-sm font-bold text-store-accent">
-                                                ৳{formatPrice(discount.current)}
-                                            </span>
-                                            <span className="text-[11px] text-gray-400 line-through">
-                                                ৳{formatPrice(discount.original)}
-                                            </span>
-                                        </div>
-                                        <p className="mt-0.5 text-[10px] font-semibold text-emerald-600">
-                                            You save ৳{formatPrice(discount.saved)}
-                                        </p>
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    )}
+                    <button
+                        type="button"
+                        onClick={handleBagAction}
+                        disabled={adding}
+                        aria-label={product.has_variations ? 'Choose options' : 'Add to bag'}
+                        className="absolute bottom-1 right-1 z-20 flex size-6 items-center justify-center rounded bg-store-primary text-white opacity-100 shadow-sm transition duration-300 hover:bg-store-accent disabled:opacity-60 sm:translate-y-0.5 sm:opacity-0 sm:group-hover:translate-y-0 sm:group-hover:opacity-100"
+                    >
+                        {product.has_variations ? (
+                            <Layers className="size-3" aria-hidden />
+                        ) : (
+                            <ShoppingBag className="size-3" aria-hidden />
+                        )}
+                    </button>
                 </div>
 
-                <Link href={productUrl} className="mt-1.5 block px-0.5">
-                    <p className="truncate text-xs font-medium text-store-primary transition-colors group-hover:text-store-accent">
+                <Link href={productUrl} className="block min-w-0 space-y-0.5 px-0.5">
+                    <p className="truncate text-[10px] font-medium leading-tight text-store-primary transition-colors group-hover:text-store-accent sm:text-[11px]">
                         {product.name}
                     </p>
-                    <ProductReviewBadge summary={product.review_summary} className="mt-1" />
-                    <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                    <ProductReviewBadge summary={product.review_summary} />
+                    <div className="flex flex-wrap items-baseline gap-x-1">
                         <span
-                            className={`text-xs font-bold ${priceDisplay.isVariant || discount ? 'text-store-accent' : 'text-store-primary'}`}
+                            className={`text-[11px] font-bold tabular-nums sm:text-xs ${
+                                priceDisplay.isVariant || discount ? 'text-store-accent' : 'text-store-primary'
+                            }`}
                         >
                             {priceDisplay.primary}
                         </span>
                         {priceDisplay.strikethrough && priceDisplay.secondary && (
-                            <span className="text-[11px] text-gray-400 line-through">{priceDisplay.secondary}</span>
+                            <span className="text-[9px] tabular-nums text-store-muted line-through">
+                                {priceDisplay.secondary}
+                            </span>
+                        )}
+                        {!priceDisplay.strikethrough && priceDisplay.secondary && (
+                            <span className="text-[9px] text-store-muted">{priceDisplay.secondary}</span>
                         )}
                     </div>
                 </Link>

@@ -97,7 +97,7 @@ export function ProductListingLayout({
 
                         {products.data?.length > 0 ? (
                             <>
-                                <div className="grid grid-cols-2 gap-2 sm:gap-3 md:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4">
+                                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 sm:gap-2.5 lg:grid-cols-5 xl:grid-cols-6">
                                     {products.data.map((product) => (
                                         <ProductCard key={product.id} product={product} />
                                     ))}

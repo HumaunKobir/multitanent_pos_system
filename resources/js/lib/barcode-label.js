@@ -253,7 +253,7 @@ function getLongestLabelLineLength(row) {
 function clampLabelFontSize(fontSize) {
     return Math.max(
         MIN_LABEL_FONT_PX,
-        Math.min(fontSize ?? 9, MAX_LABEL_FONT_PX),
+        Math.min(fontSize ?? 10, MAX_LABEL_FONT_PX),
     );
 }
 

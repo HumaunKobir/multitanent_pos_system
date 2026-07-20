@@ -44,9 +44,21 @@ import { route } from '@/lib/route';
 
 const PREVIEW_MAX_W = 500;
 const PREVIEW_MAX_H = 320;
-const PRINT_DIMENSIONS_KEY = 'barcode-print-dimensions';
+const PRINT_SETTINGS_KEY = 'barcode-print-settings';
+const LEGACY_DIMENSIONS_KEY = 'barcode-print-dimensions';
 const DEFAULT_WIDTH = 1.8;
 const DEFAULT_HEIGHT = 1.4;
+const DEFAULT_FONT_SIZE = 10;
+const DEFAULT_FONT_WEIGHT = 'bold';
+
+const DEFAULT_SETTINGS = {
+    width: DEFAULT_WIDTH,
+    height: DEFAULT_HEIGHT,
+    fontSize: DEFAULT_FONT_SIZE,
+    fontWeight: DEFAULT_FONT_WEIGHT,
+    copies: 1,
+    autoHeight: true,
+};
 
 function clampDimension(value, min, max, fallback) {
     const parsed = typeof value === 'number' ? value : parseFloat(value);
@@ -58,47 +70,93 @@ function clampDimension(value, min, max, fallback) {
     return Math.min(max, Math.max(min, parsed));
 }
 
-function getStoredDimensions() {
+function clampFontSize(value, fallback = DEFAULT_FONT_SIZE) {
+    const parsed = parseInt(String(value), 10);
+
+    if (!Number.isFinite(parsed)) {
+        return fallback;
+    }
+
+    return Math.min(MAX_LABEL_FONT_PX, Math.max(6, parsed));
+}
+
+function clampCopies(value, fallback = 1) {
+    const parsed = parseInt(String(value), 10);
+
+    if (!Number.isFinite(parsed)) {
+        return fallback;
+    }
+
+    return Math.min(100, Math.max(1, parsed));
+}
+
+function normalizeStoredSettings(raw) {
+    if (!raw || typeof raw !== 'object') {
+        return { ...DEFAULT_SETTINGS };
+    }
+
+    return {
+        width: clampDimension(
+            raw.width,
+            MIN_LABEL_WIDTH_IN,
+            MAX_LABEL_WIDTH_IN,
+            DEFAULT_WIDTH,
+        ),
+        height: clampDimension(
+            raw.height,
+            MIN_LABEL_HEIGHT_IN,
+            MAX_LABEL_HEIGHT_IN,
+            DEFAULT_HEIGHT,
+        ),
+        fontSize: clampFontSize(raw.fontSize),
+        fontWeight: raw.fontWeight === 'normal' ? 'normal' : DEFAULT_FONT_WEIGHT,
+        copies: clampCopies(raw.copies),
+        autoHeight: raw.autoHeight !== false,
+    };
+}
+
+function getStoredSettings() {
     if (typeof window === 'undefined') {
-        return { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT };
+        return { ...DEFAULT_SETTINGS };
     }
 
     try {
-        const raw = localStorage.getItem(PRINT_DIMENSIONS_KEY);
+        const raw = localStorage.getItem(PRINT_SETTINGS_KEY);
 
-        if (!raw) {
-            return { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT };
+        if (raw) {
+            return normalizeStoredSettings(JSON.parse(raw));
         }
 
-        const parsed = JSON.parse(raw);
+        const legacy = localStorage.getItem(LEGACY_DIMENSIONS_KEY);
 
-        return {
-            width: clampDimension(
-                parsed.width,
-                MIN_LABEL_WIDTH_IN,
-                MAX_LABEL_WIDTH_IN,
-                DEFAULT_WIDTH,
-            ),
-            height: clampDimension(
-                parsed.height,
-                MIN_LABEL_HEIGHT_IN,
-                MAX_LABEL_HEIGHT_IN,
-                DEFAULT_HEIGHT,
-            ),
-        };
+        if (legacy) {
+            return normalizeStoredSettings({
+                ...DEFAULT_SETTINGS,
+                ...JSON.parse(legacy),
+            });
+        }
     } catch {
-        return { width: DEFAULT_WIDTH, height: DEFAULT_HEIGHT };
+        // fall through to defaults
     }
+
+    return { ...DEFAULT_SETTINGS };
 }
 
-function storeDimensions(width, height) {
+function storeSettings(settings) {
     if (typeof window === 'undefined') {
         return;
     }
 
     localStorage.setItem(
-        PRINT_DIMENSIONS_KEY,
-        JSON.stringify({ width, height }),
+        PRINT_SETTINGS_KEY,
+        JSON.stringify({
+            width: settings.width,
+            height: settings.height,
+            fontSize: settings.fontSize,
+            fontWeight: settings.fontWeight,
+            copies: settings.copies,
+            autoHeight: settings.autoHeight,
+        }),
     );
 }
 
@@ -282,33 +340,27 @@ function LabelPreview({ row, settings }) {
 }
 
 export default function BarcodePrint({ barcodes }) {
-    const [settings, setSettings] = useState(() => {
-        const { width, height } = getStoredDimensions();
-
-        return {
-            width,
-            height,
-            fontSize: 9,
-            fontWeight: 'bold',
-            copies: 1,
-            autoHeight: true,
-        };
-    });
-    const [fontSizeInput, setFontSizeInput] = useState('9');
+    const [settings, setSettings] = useState(() => getStoredSettings());
+    const [fontSizeInput, setFontSizeInput] = useState(() =>
+        String(getStoredSettings().fontSize),
+    );
 
     useEffect(() => {
-        storeDimensions(settings.width, settings.height);
-    }, [settings.width, settings.height]);
+        storeSettings(settings);
+    }, [
+        settings.width,
+        settings.height,
+        settings.fontSize,
+        settings.fontWeight,
+        settings.copies,
+        settings.autoHeight,
+    ]);
 
     const set = (key, value) =>
         setSettings((prev) => ({ ...prev, [key]: value }));
 
     const commitFontSize = (rawValue) => {
-        const parsed = parseInt(rawValue, 10);
-        const clamped = Number.isNaN(parsed)
-            ? 9
-            : Math.min(MAX_LABEL_FONT_PX, Math.max(6, parsed));
-
+        const clamped = clampFontSize(rawValue);
         setFontSizeInput(String(clamped));
         applyFontSize(clamped);
     };

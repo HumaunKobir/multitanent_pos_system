@@ -777,13 +777,13 @@ const VariationBuilder = forwardRef(function VariationBuilder({
                                                 <Input
                                                     className="h-7 w-32 text-xs"
                                                     value={combo.sku}
-                                                    onChange={(e) => updateCombo(idx, 'sku', e.target.value.slice(0, 8))}
+                                                    onChange={(e) => updateCombo(idx, 'sku', e.target.value.slice(0, 12))}
                                                     disabled={locked}
-                                                    maxLength={8}
+                                                    maxLength={12}
                                                     placeholder="Auto"
                                                 />
                                                 <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
-                                                    Max 8 chars — used as barcode. Leave empty to auto-generate.
+                                                    Max 12 chars — used as barcode. Leave empty to auto-generate.
                                                 </p>
                                                 {errors[`combinations.${idx}.sku`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.sku`]}</p>}
                                             </td>

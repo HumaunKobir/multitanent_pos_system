@@ -10,12 +10,12 @@ use Tests\TestCase;
 
 uses(TestCase::class);
 
-test('generated barcode is numeric and at most eight characters', function () {
+test('generated barcode is numeric and at most twelve characters', function () {
     $branchId = Branch::resolveMainBranchId();
 
     $code = app(BarcodeService::class)->generateUniqueForBranch($branchId);
 
-    expect($code)->toMatch('/^\d{7,8}$/')
+    expect($code)->toMatch('/^\d{10,12}$/')
         ->and(strlen($code))->toBeLessThanOrEqual(BarcodeService::MAX_LENGTH);
 });
 
@@ -105,7 +105,8 @@ test('resolve variation barcode generates when submitted sku is too long', funct
     $branchId = Branch::resolveMainBranchId();
     $service = app(BarcodeService::class);
 
-    $sku = $service->resolveVariationBarcode($branchId, 'TOOLONGSKU');
+    $sku = $service->resolveVariationBarcode($branchId, 'TOOLONGSKUXTRA1');
 
-    expect(strlen($sku))->toBeLessThanOrEqual(BarcodeService::MAX_LENGTH);
+    expect(strlen($sku))->toBeLessThanOrEqual(BarcodeService::MAX_LENGTH)
+        ->and($sku)->not->toBe('TOOLONGSKUXTRA1');
 });

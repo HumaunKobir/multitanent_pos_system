@@ -472,7 +472,7 @@ test('variant product uses submitted sku as barcode', function () {
         )->toBeTrue();
 });
 
-test('variant product auto-generates branch-unique barcode up to 8 characters', function () {
+test('variant product auto-generates branch-unique barcode up to 12 characters', function () {
     $admin = productStoreAdmin();
     seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
 
@@ -500,8 +500,8 @@ test('variant product auto-generates branch-unique barcode up to 8 characters', 
 
     expect($variation)->not->toBeNull()
         ->and($product->code)->toBeNull()
-        ->and($variation->sku)->toMatch('/^\d{7,8}$/')
-        ->and(strlen($variation->sku))->toBeLessThanOrEqual(8);
+        ->and($variation->sku)->toMatch('/^\d{10,12}$/')
+        ->and(strlen($variation->sku))->toBeLessThanOrEqual(12);
 
     expect(
         Barcode::query()

@@ -2,7 +2,10 @@
 
 namespace App\Services;
 
+use App\Enums\ProductLogType;
 use App\Models\Batch;
+use App\Models\Product;
+use App\Models\ProductInOutLog;
 use App\Models\ProductVariation;
 use Closure;
 use Illuminate\Support\Collection;
@@ -79,7 +82,7 @@ class InventoryStockService
         }
     }
 
-    public function deductVariation(int $variationId, float $qty): void
+    public function deductVariation(int $variationId, float $qty, ProductLogType $type): void
     {
         $variation = ProductVariation::whereKey($variationId)->lockForUpdate()->firstOrFail();
 
@@ -88,11 +91,71 @@ class InventoryStockService
         }
 
         $variation->decrement('stock', $qty);
+        $variation->refresh();
+        $this->logVariationMovement($variation, $qty, $type);
     }
 
-    public function restoreVariation(int $variationId, float $qty): void
+    public function restoreVariation(int $variationId, float $qty, ProductLogType $type): void
     {
-        ProductVariation::whereKey($variationId)->increment('stock', $qty);
+        $variation = ProductVariation::whereKey($variationId)->lockForUpdate()->firstOrFail();
+        $variation->increment('stock', $qty);
+        $variation->refresh();
+        $this->logVariationMovement($variation, $qty, $type);
+    }
+
+    /**
+     * Record a stock ledger row for variant products (batch available is not changed).
+     */
+    public function logVariationMovement(ProductVariation $variation, float $qty, ProductLogType $type): void
+    {
+        if ($qty == 0.0) {
+            return;
+        }
+
+        $variation->loadMissing('product:id,name,branch_id');
+        $product = $variation->product;
+
+        if ($product === null) {
+            $product = Product::query()->findOrFail($variation->product_id);
+        }
+
+        $branchId = $product->resolveStockBranchId($variation->branch_id ?? $product->branch_id);
+        $batch = Batch::query()->firstOrCreate(
+            [
+                'product_id' => $product->id,
+                'branch_id' => $branchId,
+            ],
+            [
+                'purchase_price' => $variation->purchase_price,
+                'available' => 0,
+            ],
+        );
+
+        $label = $this->variationLabel($variation);
+
+        ProductInOutLog::create([
+            'batch_id' => $batch->id,
+            'branch_id' => $variation->branch_id ?? $product->branch_id,
+            'product_id' => $product->id,
+            'quantity' => $qty,
+            'type' => $type->value,
+            'stock' => (int) ProductVariation::query()
+                ->where('product_id', $product->id)
+                ->where('branch_id', $variation->branch_id)
+                ->sum('stock'),
+            'remark' => $type->name.($label !== '' ? ' — '.$label : ''),
+        ]);
+    }
+
+    private function variationLabel(ProductVariation $variation): string
+    {
+        $data = $variation->variation_data;
+
+        if (is_array($data) && filled($data['label'] ?? null)) {
+            return (string) $data['label'];
+        }
+
+        return (string) ($variation->sku ?? '');
     }
 
     /**

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Inventory;
 
 use App\Concerns\ExportsFilteredList;
+use App\Enums\ProductLogType;
 use App\Http\Controllers\Concerns\AuthorizesBranchUserRecords;
 use App\Http\Controllers\Controller;
 use App\Models\Batch;
@@ -151,7 +152,7 @@ class DamageController extends Controller
                     $batchMap = [];
 
                     if ($variationId) {
-                        $this->stock->deductVariation($variationId, $qty);
+                        $this->stock->deductVariation($variationId, $qty, ProductLogType::Damage);
                     } else {
                         $batchMap = $this->stock->deductFifo(
                             $branchId,
@@ -278,7 +279,7 @@ class DamageController extends Controller
                     $batchMap = [];
 
                     if ($variationId) {
-                        $this->stock->deductVariation($variationId, $qty);
+                        $this->stock->deductVariation($variationId, $qty, ProductLogType::Damage);
                     } else {
                         $batchMap = $this->stock->deductFifo(
                             $branchId,
@@ -360,7 +361,7 @@ class DamageController extends Controller
             );
 
             if ($line->variation_id) {
-                $this->stock->restoreVariation((int) $line->variation_id, $qty);
+                $this->stock->restoreVariation((int) $line->variation_id, $qty, ProductLogType::Purchase);
             }
         }
     }

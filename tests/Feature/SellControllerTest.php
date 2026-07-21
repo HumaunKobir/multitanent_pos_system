@@ -1,6 +1,7 @@
 <?php
 
 use App\Enums\CustomerDueAlertStatus;
+use App\Enums\ProductLogType;
 use App\Enums\SaleType;
 use App\Enums\SystemAccountKey;
 use App\Models\Batch;
@@ -12,6 +13,8 @@ use App\Models\CustomerCoinTransaction;
 use App\Models\CustomerDueAlert;
 use App\Models\Ledger;
 use App\Models\Product;
+use App\Models\ProductInOutLog;
+use App\Models\ProductVariation;
 use App\Models\Sell;
 use App\Models\SellPayment;
 use App\Models\SellProduct;
@@ -360,6 +363,54 @@ test('authenticated user can create a sale and stock is deducted', function () {
 
     $batch->refresh();
     expect((float) $batch->available)->toBe(15.0);
+});
+
+test('variant product sale creates stock out log', function () {
+    $user = sellUser();
+    $cash = seedAccountingAccounts();
+    $product = Product::factory()->create(['branch_id' => $user->branch_id]);
+    $variation = ProductVariation::query()->create([
+        'branch_id' => $user->branch_id,
+        'product_id' => $product->id,
+        'sku' => fake()->unique()->numerify('########'),
+        'variation_data' => ['label' => 'Black / L'],
+        'price' => 500,
+        'purchase_price' => 250,
+        'stock' => 8,
+        'status' => 1,
+    ]);
+
+    $this->actingAs($user)
+        ->post('/inventory/sell', [
+            'customer_id' => sellCustomer($user->branch_id)->id,
+            'date' => now()->format('Y-m-d'),
+            'discount_type' => 'flat',
+            'discount_value' => '0',
+            'special_discount_id' => null,
+            'vat' => '0',
+            'paid_amount' => '1000',
+            'payment_account_id' => $cash->id,
+            'comment' => null,
+            'items' => [
+                [
+                    'product_id' => $product->id,
+                    'variation_id' => $variation->id,
+                    'unit_price' => '500',
+                    'quantity' => '2',
+                ],
+            ],
+        ])
+        ->assertRedirect();
+
+    $variation->refresh();
+    expect((float) $variation->stock)->toBe(6.0);
+
+    expect(
+        (int) ProductInOutLog::query()
+            ->where('product_id', $product->id)
+            ->where('type', ProductLogType::Sale->value)
+            ->sum('quantity'),
+    )->toBe(2);
 });
 
 test('authenticated user can create a sale with per-line product discount', function () {

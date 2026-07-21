@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Inventory;
 
 use App\Enums\DiscountType;
+use App\Enums\ProductLogType;
 use App\Enums\SaleType;
 use App\Enums\SystemAccountKey;
 use App\Http\Controllers\Concerns\AuthorizesBranchUserRecords;
@@ -23,6 +24,7 @@ use App\Services\CoinService;
 use App\Services\CustomerDueAlertService;
 use App\Services\InventoryAccountingService;
 use App\Services\InventoryCostService;
+use App\Services\InventoryStockService;
 use App\Services\PartyPaymentAllocationService;
 use App\Services\PromotionService;
 use App\Services\SellExchangeOverlayService;
@@ -48,6 +50,7 @@ class SellController extends Controller
     public function __construct(
         private InventoryAccountingService $accounting,
         private InventoryCostService $costService,
+        private InventoryStockService $stock,
         private SpecialDiscountService $specialDiscountService,
         private PromotionService $promotionService,
         private CustomerDueAlertService $dueAlertService,
@@ -655,7 +658,7 @@ class SellController extends Controller
 
                 // Rollback previous stock deductions
                 foreach ($sell->products as $sp) {
-                    $totalLineQty = (float) $sp->quantity;
+                    $totalLineQty = (float) $sp->quantity + (float) ($sp->free_quantity ?? 0);
 
                     foreach ($sp->batches ?? [] as $batchId => $quantity) {
                         $batch = Batch::whereKey($batchId)->lockForUpdate()->first();
@@ -667,8 +670,11 @@ class SellController extends Controller
                     }
 
                     if ($sp->variation_id) {
-                        ProductVariation::whereKey($sp->variation_id)
-                            ->increment('stock', $totalLineQty);
+                        $this->stock->restoreVariation(
+                            (int) $sp->variation_id,
+                            $totalLineQty,
+                            ProductLogType::Sale_Return,
+                        );
                     }
                 }
 
@@ -794,7 +800,7 @@ class SellController extends Controller
                     }
 
                     foreach ($sell->products as $sp) {
-                        $totalLineQty = (float) $sp->quantity;
+                        $totalLineQty = (float) $sp->quantity + (float) ($sp->free_quantity ?? 0);
 
                         foreach ($sp->batches ?? [] as $batchId => $quantity) {
                             $batch = Batch::whereKey($batchId)->lockForUpdate()->first();
@@ -806,8 +812,11 @@ class SellController extends Controller
                         }
 
                         if ($sp->variation_id) {
-                            ProductVariation::whereKey($sp->variation_id)
-                                ->increment('stock', $totalLineQty);
+                            $this->stock->restoreVariation(
+                                (int) $sp->variation_id,
+                                $totalLineQty,
+                                ProductLogType::Sale_Return,
+                            );
                         }
                     }
                 }
@@ -1263,11 +1272,7 @@ class SellController extends Controller
 
             if ($deductStock) {
                 if ($variationId) {
-                    $variation = ProductVariation::whereKey($variationId)->lockForUpdate()->firstOrFail();
-                    if ((float) $variation->stock < $totalPhysical) {
-                        throw new \RuntimeException('Insufficient stock for variation.');
-                    }
-                    $variation->decrement('stock', $totalPhysical);
+                    $this->stock->deductVariation($variationId, $totalPhysical, ProductLogType::Sale);
                 } else {
                     $batchMap = $this->deductBatchStock($branchId, $productId, $totalPhysical);
                 }

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\Enums\ProductLogType;
 use App\Enums\ReceivedPaymentMethod;
 use App\Http\Controllers\Concerns\AuthorizesBranchUserRecords;
 use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
@@ -714,6 +715,7 @@ class ProductExchangeController extends Controller
                     $this->stock->restoreVariation(
                         (int) $line->new_variation_id,
                         $newQty + (float) $line->new_free_quantity,
+                        ProductLogType::Sale_Return,
                     );
                 } else {
                     $this->stock->restoreFromBatchMap(
@@ -731,7 +733,11 @@ class ProductExchangeController extends Controller
                         fn (Batch $batch, float $batchQty) => $batch->outStock($batchQty)
                     );
                 } elseif ($line->old_variation_id) {
-                    $this->stock->deductVariation((int) $line->old_variation_id, (float) $line->old_quantity);
+                    $this->stock->deductVariation(
+                        (int) $line->old_variation_id,
+                        (float) $line->old_quantity,
+                        ProductLogType::Sale,
+                    );
                 }
             }
 
@@ -743,7 +749,11 @@ class ProductExchangeController extends Controller
                         fn (Batch $batch, float $batchQty) => $batch->outStock($batchQty)
                     );
                 } elseif ($line->old_variation_id) {
-                    $this->stock->deductVariation((int) $line->old_variation_id, (float) $line->return_quantity);
+                    $this->stock->deductVariation(
+                        (int) $line->old_variation_id,
+                        (float) $line->return_quantity,
+                        ProductLogType::Sale,
+                    );
                 }
             }
         }
@@ -918,7 +928,11 @@ class ProductExchangeController extends Controller
                         fn (Batch $batch, float $batchQty) => $batch->saleReturnStock($batchQty)
                     );
                 } elseif ($sellProduct->variation_id) {
-                    $this->stock->restoreVariation((int) $sellProduct->variation_id, $qty);
+                    $this->stock->restoreVariation(
+                        (int) $sellProduct->variation_id,
+                        $qty,
+                        ProductLogType::Sale_Return,
+                    );
                 }
             }
 
@@ -930,7 +944,11 @@ class ProductExchangeController extends Controller
                         fn (Batch $batch, float $batchQty) => $batch->saleReturnStock($batchQty)
                     );
                 } elseif ($sellProduct->variation_id) {
-                    $this->stock->restoreVariation((int) $sellProduct->variation_id, $returnQty);
+                    $this->stock->restoreVariation(
+                        (int) $sellProduct->variation_id,
+                        $returnQty,
+                        ProductLogType::Sale_Return,
+                    );
                 }
             }
 
@@ -965,7 +983,7 @@ class ProductExchangeController extends Controller
                 $lineGross = $qty * $newUnitPrice;
 
                 if ($newVariationId) {
-                    $this->stock->deductVariation($newVariationId, $totalPhysical);
+                    $this->stock->deductVariation($newVariationId, $totalPhysical, ProductLogType::Exchange);
                 } else {
                     $newBatchMap = $this->stock->deductFifo(
                         $branchId,

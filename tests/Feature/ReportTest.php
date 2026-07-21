@@ -36,6 +36,7 @@ use App\Models\Unit;
 use App\Models\User;
 use App\Models\Voucher;
 use App\Services\AccountPostingRules;
+use App\Services\InventoryStockService;
 use App\Services\ReportService;
 use App\Services\TransactionService;
 use App\Support\AdminNavigation;
@@ -1331,6 +1332,60 @@ test('admin stock ledger without branch filter includes sales in period totals',
             ->where('totals.in', 15)
             ->where('totals.out', 4)
             ->where('totals.balance', 11));
+});
+
+test('stock ledger records sale out for variant products', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = reportUser([ReportController::PERMISSION_STOCK_LEDGER]);
+    $user->update(['branch_id' => $branch->id]);
+
+    $product = Product::factory()->create(['branch_id' => $branch->id]);
+    $variation = ProductVariation::query()->create([
+        'branch_id' => $branch->id,
+        'product_id' => $product->id,
+        'sku' => fake()->unique()->numerify('########'),
+        'variation_data' => ['label' => 'Red / M', 'Color' => 'Red', 'Size' => 'M'],
+        'price' => 200,
+        'purchase_price' => 100,
+        'stock' => 10,
+        'status' => 1,
+    ]);
+
+    $date = '2026-07-12';
+
+    $this->travelTo($date.' 09:00:00');
+    app(InventoryStockService::class)->logVariationMovement(
+        $variation,
+        10,
+        ProductLogType::Purchase,
+    );
+    $this->travelTo($date.' 14:00:00');
+    app(InventoryStockService::class)->deductVariation(
+        $variation->id,
+        3,
+        ProductLogType::Sale,
+    );
+    $this->travelBack();
+
+    expect(
+        ProductInOutLog::query()
+            ->where('product_id', $product->id)
+            ->where('type', ProductLogType::Sale->value)
+            ->value('quantity'),
+    )->toBe(3);
+
+    $this->actingAs($user)
+        ->get('/report/stock-ledger?product_id='.$product->id.'&date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/stock-ledger')
+            ->where('mode', 'ledger')
+            ->where('totals.in', 10)
+            ->where('totals.out', 3)
+            ->where('totals.balance', 7)
+            ->where('current_stock', 7));
 });
 
 test('sales summary shows sale lines with customer name and phone sorted by quantity', function () {

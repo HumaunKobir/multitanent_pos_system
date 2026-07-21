@@ -2,13 +2,15 @@
 
 namespace App\Services;
 
+use App\Enums\ProductLogType;
 use App\Models\Batch;
 use App\Models\OnlineOrder;
-use App\Models\ProductVariation;
 use RuntimeException;
 
 class OnlineOrderStockService
 {
+    public function __construct(private InventoryStockService $stock) {}
+
     public function deductForOrder(OnlineOrder $order, ?int $branchId = null): float
     {
         $order->loadMissing('products');
@@ -23,13 +25,7 @@ class OnlineOrderStockService
             }
 
             if ($line->variation_id) {
-                $variation = ProductVariation::query()->lockForUpdate()->findOrFail($line->variation_id);
-
-                if ((float) $variation->stock < $quantity) {
-                    throw new RuntimeException("Insufficient stock for {$line->name}.");
-                }
-
-                $variation->decrement('stock', (int) $quantity);
+                $this->stock->deductVariation((int) $line->variation_id, $quantity, ProductLogType::Sale);
                 $lineCost = app(InventoryCostService::class)->costFromVariation((int) $line->variation_id, $quantity);
                 $line->update(['batches' => []]);
             } else {

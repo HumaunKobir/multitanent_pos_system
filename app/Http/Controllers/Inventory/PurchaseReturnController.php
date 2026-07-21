@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Inventory;
 
 use App\Concerns\ExportsFilteredList;
+use App\Enums\ProductLogType;
 use App\Enums\PurchaseReceivedPayment;
 use App\Http\Controllers\Concerns\AuthorizesBranchUserRecords;
 use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
@@ -201,7 +202,11 @@ class PurchaseReturnController extends Controller
                     $batchMap = $this->buildReturnBatchMap($purchaseProduct, $returnQty, $branchId);
 
                     if ($purchaseProduct->variation_id) {
-                        $this->stock->deductVariation((int) $purchaseProduct->variation_id, $returnQty);
+                        $this->stock->deductVariation(
+                            (int) $purchaseProduct->variation_id,
+                            $returnQty,
+                            ProductLogType::Purchase_Return,
+                        );
                     }
 
                     $grossAmount += $returnQty * (float) $purchaseProduct->unit_price;
@@ -425,7 +430,11 @@ class PurchaseReturnController extends Controller
                     $batchMap = $this->buildReturnBatchMap($purchaseProduct, $returnQty, $branchId);
 
                     if ($purchaseProduct->variation_id) {
-                        $this->stock->deductVariation((int) $purchaseProduct->variation_id, $returnQty);
+                        $this->stock->deductVariation(
+                            (int) $purchaseProduct->variation_id,
+                            $returnQty,
+                            ProductLogType::Purchase_Return,
+                        );
                     }
 
                     $grossAmount += $returnQty * (float) $purchaseProduct->unit_price;
@@ -609,7 +618,11 @@ class PurchaseReturnController extends Controller
             }
 
             if ($line->variation_id) {
-                $this->stock->restoreVariation((int) $line->variation_id, $qty);
+                $this->stock->restoreVariation(
+                    (int) $line->variation_id,
+                    $qty,
+                    ProductLogType::Purchase,
+                );
             }
         }
 

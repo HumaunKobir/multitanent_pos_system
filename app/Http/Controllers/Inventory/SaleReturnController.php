@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Inventory;
 
+use App\Enums\ProductLogType;
 use App\Enums\ReceivedPaymentMethod;
 use App\Http\Controllers\Concerns\AuthorizesBranchUserRecords;
 use App\Http\Controllers\Concerns\ProvidesPaymentAccounts;
@@ -866,7 +867,7 @@ class SaleReturnController extends Controller
                 ?? $sellProducts->get($line->sell_product_id)?->variation_id;
 
             if ($variationId) {
-                $this->stock->deductVariation((int) $variationId, $qty);
+                $this->stock->deductVariation((int) $variationId, $qty, ProductLogType::Sale);
 
                 continue;
             }
@@ -992,7 +993,7 @@ class SaleReturnController extends Controller
             $deductQty = abs($delta);
 
             if ($oldLine?->variation_id) {
-                $this->stock->deductVariation((int) $oldLine->variation_id, $deductQty);
+                $this->stock->deductVariation((int) $oldLine->variation_id, $deductQty, ProductLogType::Sale);
             } elseif (! empty($oldLine?->batches)) {
                 $batchMap = $this->scaleBatchMapForReturn($oldLine->batches, $deductQty);
                 $this->stock->deductFromBatchMap(
@@ -1000,7 +1001,7 @@ class SaleReturnController extends Controller
                     fn (Batch $batch, float $batchQty) => $batch->outStock($batchQty)
                 );
             } elseif ($sellProduct->variation_id) {
-                $this->stock->deductVariation((int) $sellProduct->variation_id, $deductQty);
+                $this->stock->deductVariation((int) $sellProduct->variation_id, $deductQty, ProductLogType::Sale);
             } else {
                 throw new \RuntimeException('Unable to adjust stock for a sale line.');
             }
@@ -1017,7 +1018,11 @@ class SaleReturnController extends Controller
                 fn (Batch $batch, float $qty) => $batch->saleReturnStock($qty)
             );
         } elseif ($sellProduct->variation_id) {
-            $this->stock->restoreVariation((int) $sellProduct->variation_id, $returnQty);
+            $this->stock->restoreVariation(
+                (int) $sellProduct->variation_id,
+                $returnQty,
+                ProductLogType::Sale_Return,
+            );
         } else {
             throw new \RuntimeException('Unable to restore stock for a sale line.');
         }
@@ -1045,7 +1050,11 @@ class SaleReturnController extends Controller
                     fn (Batch $batch, float $qty) => $batch->saleReturnStock($qty)
                 );
             } elseif ($exchangeLine->new_variation_id) {
-                $this->stock->restoreVariation((int) $exchangeLine->new_variation_id, $delta);
+                $this->stock->restoreVariation(
+                    (int) $exchangeLine->new_variation_id,
+                    $delta,
+                    ProductLogType::Sale_Return,
+                );
             } else {
                 throw new \RuntimeException('Unable to restore stock for a replacement return line.');
             }
@@ -1056,7 +1065,7 @@ class SaleReturnController extends Controller
         $deductQty = abs($delta);
 
         if ($oldLine?->variation_id) {
-            $this->stock->deductVariation((int) $oldLine->variation_id, $deductQty);
+            $this->stock->deductVariation((int) $oldLine->variation_id, $deductQty, ProductLogType::Sale);
         } elseif (! empty($oldLine?->batches)) {
             $batchMap = $this->scaleBatchMapForReturn($oldLine->batches, $deductQty);
             $this->stock->deductFromBatchMap(
@@ -1064,7 +1073,7 @@ class SaleReturnController extends Controller
                 fn (Batch $batch, float $batchQty) => $batch->outStock($batchQty)
             );
         } elseif ($exchangeLine->new_variation_id) {
-            $this->stock->deductVariation((int) $exchangeLine->new_variation_id, $deductQty);
+            $this->stock->deductVariation((int) $exchangeLine->new_variation_id, $deductQty, ProductLogType::Sale);
         } else {
             throw new \RuntimeException('Unable to adjust stock for a replacement return line.');
         }

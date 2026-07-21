@@ -78,4 +78,30 @@ trait ExportsFilteredList
             'rows' => Collection::wrap($rows)->values()->all(),
         ]);
     }
+
+    /**
+     * @param  list<string>  $headings
+     * @param  Collection<int, list<string|int|float|null>>|list<list<string|int|float|null>>  $rows
+     */
+    protected function downloadListCsv(string $filename, array $headings, Collection|array $rows): SymfonyResponse
+    {
+        $downloadName = $filename.'-'.now()->format('Y-m-d-His').'.csv';
+        $exportRows = Collection::wrap($rows)->values();
+
+        return response()->streamDownload(function () use ($headings, $exportRows): void {
+            $handle = fopen('php://output', 'w');
+
+            // UTF-8 BOM so Excel opens CSV correctly.
+            fwrite($handle, "\xEF\xBB\xBF");
+            fputcsv($handle, $headings);
+
+            foreach ($exportRows as $row) {
+                fputcsv($handle, is_array($row) ? $row : Collection::wrap($row)->all());
+            }
+
+            fclose($handle);
+        }, $downloadName, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
 }

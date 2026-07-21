@@ -5,11 +5,14 @@ import {
     Building2,
     CalendarRange,
     Clock3,
+    FileSpreadsheet,
+    FileText,
     Gauge,
     Layers3,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 
+import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
 import {
     MoneyCell,
@@ -111,6 +114,20 @@ function TotalsBar({ columns, totals }) {
     );
 }
 
+function buildExportUrl(routeName, query) {
+    const params = new URLSearchParams();
+
+    Object.entries(query).forEach(([key, value]) => {
+        if (value != null && value !== '' && value !== '__all' && value !== 'all') {
+            params.set(key, String(value));
+        }
+    });
+
+    const qs = params.toString();
+
+    return route(routeName) + (qs ? `?${qs}` : '');
+}
+
 export default function SalesReport({ types, branches, isBranchScoped, filters, report }) {
     const [type, setType] = useState(filters.type ?? 'daily');
     const [dateFrom, setDateFrom] = useState(filters.date_from ?? '');
@@ -125,18 +142,30 @@ export default function SalesReport({ types, branches, isBranchScoped, filters, 
     const needsThreshold = type === 'low_stock';
     const needsInactiveDays = type === 'dead_stock';
 
-    useLiveReportFilters(
-        'report.sales-report',
-        {
+    const exportQuery = useMemo(
+        () => ({
             type,
             date_from: needsDates ? dateFrom : '',
             date_to: needsDates ? dateTo : '',
             branch_id: !isBranchScoped ? branchId : '',
             threshold: needsThreshold ? threshold : '',
             inactive_days: needsInactiveDays ? inactiveDays : '',
-        },
+        }),
         [type, dateFrom, dateTo, branchId, threshold, inactiveDays, needsDates, needsThreshold, needsInactiveDays, isBranchScoped],
     );
+
+    useLiveReportFilters('report.sales-report', exportQuery, [
+        type,
+        dateFrom,
+        dateTo,
+        branchId,
+        threshold,
+        inactiveDays,
+        needsDates,
+        needsThreshold,
+        needsInactiveDays,
+        isBranchScoped,
+    ]);
 
     const typeOptions = useMemo(
         () => (types ?? []).map((item) => ({ value: item.key, label: item.label })),
@@ -175,13 +204,51 @@ export default function SalesReport({ types, branches, isBranchScoped, filters, 
         router.get(route('report.sales-report'), {}, { preserveState: true, replace: true });
     };
 
+    const downloadExport = (routeName) => {
+        window.location.href = buildExportUrl(routeName, exportQuery);
+    };
+
     return (
         <>
             <Head title="Sales Report" />
             <ReportPage
                 title="Sales Report"
                 description={report.label}
-                filterActions={<ReportFilterReset onClick={resetFilters} />}
+                filterActions={
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => downloadExport('report.sales-report.export-pdf')}
+                            className="h-7 border-white/25 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                        >
+                            <FileText className="size-3.5" />
+                            PDF
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => downloadExport('report.sales-report.export-excel')}
+                            className="h-7 border-white/25 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                        >
+                            <FileSpreadsheet className="size-3.5" />
+                            Excel
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => downloadExport('report.sales-report.export-csv')}
+                            className="h-7 border-white/25 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+                        >
+                            <FileSpreadsheet className="size-3.5" />
+                            CSV
+                        </Button>
+                        <ReportFilterReset onClick={resetFilters} />
+                    </div>
+                }
                 filterBar={
                     <>
                         <ReportFilterField label="Report Type" icon={Layers3}>

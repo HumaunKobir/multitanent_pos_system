@@ -302,3 +302,43 @@ test('sales report low stock uses threshold filter', function () {
                 fn ($row) => ($row['name'] ?? null) === 'High Stock Item',
             )));
 });
+
+test('sales report exports pdf excel and csv', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    $user->givePermissionTo(ReportController::PERMISSION_SALES_REPORT);
+
+    $date = now()->format('Y-m-d');
+    Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+        'date' => $date,
+        'gross_amount' => 250,
+        'paid_amount' => 250,
+    ]);
+
+    $query = [
+        'type' => 'daily',
+        'date_from' => $date,
+        'date_to' => $date,
+    ];
+
+    $this->actingAs($user)
+        ->get(route('report.sales-report.export-excel', $query))
+        ->assertOk()
+        ->assertHeader('content-disposition');
+
+    $this->actingAs($user)
+        ->get(route('report.sales-report.export-pdf', $query))
+        ->assertOk()
+        ->assertHeader('content-type', 'application/pdf');
+
+    $this->actingAs($user)
+        ->get(route('report.sales-report.export-csv', $query))
+        ->assertOk()
+        ->assertHeader('content-type', 'text/csv; charset=UTF-8')
+        ->assertHeader('content-disposition');
+});

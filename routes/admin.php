@@ -237,6 +237,9 @@ Route::middleware(['auth', 'verified'])->prefix('report')->name('report.')->grou
     Route::get('balance-sheet', [ReportController::class, 'balanceSheet'])->name('balance-sheet');
     Route::get('trial-balance', [ReportController::class, 'trialBalance'])->name('trial-balance');
     Route::get('profit-loss', [ReportController::class, 'profitLoss'])->name('profit-loss');
+    Route::get('sales-report/export/excel', [ReportController::class, 'salesReportExportExcel'])->name('sales-report.export-excel');
+    Route::get('sales-report/export/pdf', [ReportController::class, 'salesReportExportPdf'])->name('sales-report.export-pdf');
+    Route::get('sales-report/export/csv', [ReportController::class, 'salesReportExportCsv'])->name('sales-report.export-csv');
     Route::get('sales-report', [ReportController::class, 'salesReport'])->name('sales-report');
 });
 

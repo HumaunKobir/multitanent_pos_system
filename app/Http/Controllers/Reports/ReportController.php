@@ -2,18 +2,24 @@
 
 namespace App\Http\Controllers\Reports;
 
+use App\Concerns\ExportsFilteredList;
 use App\Http\Controllers\Controller;
 use App\Services\ReportService;
 use App\Services\SalesReportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\Response as SymfonyResponse;
 
 class ReportController extends Controller
 {
+    use ExportsFilteredList;
+
     public const PERMISSION_CUSTOMER_LEDGER = 'report.customer-ledger.view';
 
     public const PERMISSION_CASH_FLOW = 'report.cash-flow.view';
@@ -417,6 +423,71 @@ class ReportController extends Controller
     {
         $this->authorize(self::PERMISSION_SALES_REPORT);
 
+        $resolved = $this->resolvedSalesReportFilters($request);
+        $canFilterByBranch = $this->salesReports->canFilterByBranch();
+
+        return Inertia::render('admin/reports/sales-report', [
+            'types' => $this->salesReports->typeOptions(),
+            'branches' => $canFilterByBranch ? $this->salesReports->branchOptions() : [],
+            'isBranchScoped' => ! $canFilterByBranch,
+            'filters' => [
+                'type' => $resolved['type'],
+                'date_from' => $resolved['date_from'],
+                'date_to' => $resolved['date_to'],
+                'branch_id' => $canFilterByBranch ? $resolved['branch_id'] : null,
+                'threshold' => $resolved['threshold'],
+                'inactive_days' => $resolved['inactive_days'],
+            ],
+            'report' => $this->salesReports->build(
+                $resolved['type'],
+                $resolved['date_from'],
+                $resolved['date_to'],
+                $resolved['branch_id'],
+                $resolved['threshold'],
+                $resolved['inactive_days'],
+            ),
+        ]);
+    }
+
+    public function salesReportExportExcel(Request $request): BinaryFileResponse
+    {
+        $this->authorize(self::PERMISSION_SALES_REPORT);
+
+        [$title, $headings, $rows] = $this->salesReportExportTable($request);
+
+        return $this->downloadListExcel(str($title)->slug()->toString(), $headings, $rows);
+    }
+
+    public function salesReportExportPdf(Request $request): SymfonyResponse
+    {
+        $this->authorize(self::PERMISSION_SALES_REPORT);
+
+        [$title, $headings, $rows] = $this->salesReportExportTable($request);
+
+        return $this->downloadListPdf($title, $headings, $rows);
+    }
+
+    public function salesReportExportCsv(Request $request): SymfonyResponse
+    {
+        $this->authorize(self::PERMISSION_SALES_REPORT);
+
+        [$title, $headings, $rows] = $this->salesReportExportTable($request);
+
+        return $this->downloadListCsv(str($title)->slug()->toString(), $headings, $rows);
+    }
+
+    /**
+     * @return array{
+     *     type: string,
+     *     date_from: string|null,
+     *     date_to: string|null,
+     *     branch_id: int|null,
+     *     threshold: int,
+     *     inactive_days: int
+     * }
+     */
+    private function resolvedSalesReportFilters(Request $request): array
+    {
         $types = $this->salesReports->allowedTypes();
 
         $filters = $request->validate([
@@ -441,32 +512,81 @@ class ReportController extends Controller
         }
 
         $canFilterByBranch = $this->salesReports->canFilterByBranch();
-        $filterBranchId = $canFilterByBranch && isset($filters['branch_id']) ? (int) $filters['branch_id'] : null;
 
-        return Inertia::render('admin/reports/sales-report', [
-            'types' => $this->salesReports->typeOptions(),
-            'branches' => $canFilterByBranch ? $this->salesReports->branchOptions() : [],
-            'isBranchScoped' => ! $canFilterByBranch,
-            'filters' => [
-                'type' => $type,
-                'date_from' => $filters['date_from'] ?? null,
-                'date_to' => $filters['date_to'] ?? null,
-                'branch_id' => $canFilterByBranch ? $filterBranchId : null,
-                'threshold' => isset($filters['threshold'])
-                    ? (int) $filters['threshold']
-                    : SalesReportService::DEFAULT_LOW_STOCK_THRESHOLD,
-                'inactive_days' => isset($filters['inactive_days'])
-                    ? (int) $filters['inactive_days']
-                    : SalesReportService::DEFAULT_DEAD_STOCK_DAYS,
-            ],
-            'report' => $this->salesReports->build(
-                $type,
-                $filters['date_from'] ?? null,
-                $filters['date_to'] ?? null,
-                $filterBranchId,
-                isset($filters['threshold']) ? (int) $filters['threshold'] : null,
-                isset($filters['inactive_days']) ? (int) $filters['inactive_days'] : null,
-            ),
-        ]);
+        return [
+            'type' => $type,
+            'date_from' => $filters['date_from'] ?? null,
+            'date_to' => $filters['date_to'] ?? null,
+            'branch_id' => $canFilterByBranch && isset($filters['branch_id']) ? (int) $filters['branch_id'] : null,
+            'threshold' => isset($filters['threshold'])
+                ? (int) $filters['threshold']
+                : SalesReportService::DEFAULT_LOW_STOCK_THRESHOLD,
+            'inactive_days' => isset($filters['inactive_days'])
+                ? (int) $filters['inactive_days']
+                : SalesReportService::DEFAULT_DEAD_STOCK_DAYS,
+        ];
+    }
+
+    /**
+     * @return array{0: string, 1: list<string>, 2: Collection<int, list<string|int|float|null>>}
+     */
+    private function salesReportExportTable(Request $request): array
+    {
+        $resolved = $this->resolvedSalesReportFilters($request);
+
+        $report = $this->salesReports->build(
+            $resolved['type'],
+            $resolved['date_from'],
+            $resolved['date_to'],
+            $resolved['branch_id'],
+            $resolved['threshold'],
+            $resolved['inactive_days'],
+        );
+
+        $columns = $report['columns'] ?? [];
+        $keys = array_column($columns, 'key');
+        $headings = array_column($columns, 'label');
+
+        $rows = collect($report['rows'] ?? [])
+            ->map(fn (array $row): array => $this->salesReportExportRow($keys, $row))
+            ->values();
+
+        $totals = $report['totals'] ?? [];
+        if ($totals !== [] && $keys !== []) {
+            $totalRow = $this->salesReportExportRow($keys, $totals);
+            $firstKey = $keys[0];
+            if (! array_key_exists($firstKey, $totals) || $totals[$firstKey] === null || $totals[$firstKey] === '') {
+                $totalRow[0] = 'Total';
+            }
+            $rows->push($totalRow);
+        }
+
+        return [(string) ($report['label'] ?? 'Sales Report'), $headings, $rows];
+    }
+
+    /**
+     * @param  list<string>  $keys
+     * @param  array<string, mixed>  $row
+     * @return list<string|int|float|null>
+     */
+    private function salesReportExportRow(array $keys, array $row): array
+    {
+        return array_map(function (string $key) use ($row) {
+            $value = $row[$key] ?? null;
+
+            if ($value === null || $value === '') {
+                return '—';
+            }
+
+            if (in_array($key, ['margin', 'discount_pct', 'vat_pct'], true)) {
+                return number_format((float) $value, 1).'%';
+            }
+
+            if (is_float($value) || (is_numeric($value) && str_contains((string) $value, '.'))) {
+                return round((float) $value, 2);
+            }
+
+            return $value;
+        }, $keys);
     }
 }

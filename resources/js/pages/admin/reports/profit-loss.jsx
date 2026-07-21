@@ -18,6 +18,35 @@ function sectionBySlug(sections, slug) {
     return (sections ?? []).find((section) => section.slug === slug) ?? { lines: [], total: 0 };
 }
 
+function percentOf(part, whole) {
+    const amount = Number(part) || 0;
+    const base = Number(whole) || 0;
+
+    if (base <= 0) {
+        return 0;
+    }
+
+    return Math.round((amount / base) * 1000) / 10;
+}
+
+function SummaryCard({ label, value, percent, className, labelClassName, valueClassName }) {
+    return (
+        <div className={['rounded-lg border px-4 py-3 shadow-sm', className].join(' ')}>
+            <p className={['text-[10px] font-semibold uppercase tracking-wider', labelClassName].join(' ')}>
+                {label}
+            </p>
+            <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                <p className={['text-xl font-bold', valueClassName].join(' ')}>
+                    <MoneyCell value={value} />
+                </p>
+                <p className={['text-sm font-semibold tabular-nums opacity-75', valueClassName].join(' ')}>
+                    {Number(percent).toFixed(1)}%
+                </p>
+            </div>
+        </div>
+    );
+}
+
 function StatementLines({ lines, emptyLabel = 'No balances recorded.' }) {
     if (!lines?.length) {
         return (
@@ -96,6 +125,7 @@ export default function ProfitLossReport({ filters = {}, branches = [], isBranch
 
     const hasActiveFilters = Boolean(dateFrom || dateTo || branchId);
     const isProfit = (report.net_result ?? 0) >= 0;
+    const salesBase = Number(report.sales_revenue) || 0;
     const salesRevenue = sectionBySlug(report.sections, 'sales_revenue');
     const salesReturns = sectionBySlug(report.sections, 'sales_returns');
     const salesDiscounts = sectionBySlug(report.sections, 'sales_discounts');
@@ -144,70 +174,70 @@ export default function ProfitLossReport({ filters = {}, branches = [], isBranch
                             <p className="text-xl font-bold">
                                 {formatBdDate(report.date_from ?? dateFrom)} to {formatBdDate(report.date_to ?? dateTo)}
                             </p>
+                            <p className="mt-0.5 text-[11px] text-white/50">Card percentages are of sales revenue</p>
                         </div>
                     </div>
                 </div>
 
-                <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                    <div className="rounded-lg border border-emerald-200/80 bg-emerald-50 px-4 py-3 shadow-sm dark:border-emerald-800 dark:bg-emerald-950/30">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-800/70 dark:text-emerald-300/70">
-                            Net Sales
-                        </p>
-                        <p className="mt-1 text-xl font-bold text-emerald-800 dark:text-emerald-200">
-                            <MoneyCell value={report.net_sales} />
-                        </p>
-                    </div>
-                    <div className="rounded-lg border border-sky-200/80 bg-sky-50 px-4 py-3 shadow-sm dark:border-sky-800 dark:bg-sky-950/30">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-800/70 dark:text-sky-300/70">
-                            Output VAT
-                        </p>
-                        <p className="mt-1 text-xl font-bold text-sky-900 dark:text-sky-200">
-                            <MoneyCell value={report.output_vat} />
-                        </p>
-                    </div>
-                    <div className="rounded-lg border border-amber-200/80 bg-amber-50 px-4 py-3 shadow-sm dark:border-amber-800 dark:bg-amber-950/30">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-800/70 dark:text-amber-300/70">
-                            Gross Profit
-                        </p>
-                        <p className="mt-1 text-xl font-bold text-amber-900 dark:text-amber-200">
-                            <MoneyCell value={report.gross_profit} />
-                        </p>
-                    </div>
-                    <div className="rounded-lg border border-rose-200/80 bg-rose-50 px-4 py-3 shadow-sm dark:border-rose-800 dark:bg-rose-950/30">
-                        <p className="text-[10px] font-semibold uppercase tracking-wider text-rose-800/70 dark:text-rose-300/70">
-                            Operating Expenses
-                        </p>
-                        <p className="mt-1 text-xl font-bold text-rose-900 dark:text-rose-200">
-                            <MoneyCell value={report.operating_expenses} />
-                        </p>
-                    </div>
-                    <div
-                        className={[
-                            'rounded-lg border px-4 py-3 shadow-sm',
+                <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <SummaryCard
+                        label="Net Sales"
+                        value={report.net_sales}
+                        percent={percentOf(report.net_sales, salesBase)}
+                        className="border-emerald-200/80 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30"
+                        labelClassName="text-emerald-800/70 dark:text-emerald-300/70"
+                        valueClassName="text-emerald-800 dark:text-emerald-200"
+                    />
+                    <SummaryCard
+                        label="Discount Applied"
+                        value={report.sales_discounts}
+                        percent={percentOf(report.sales_discounts, salesBase)}
+                        className="border-violet-200/80 bg-violet-50 dark:border-violet-800 dark:bg-violet-950/30"
+                        labelClassName="text-violet-800/70 dark:text-violet-300/70"
+                        valueClassName="text-violet-900 dark:text-violet-200"
+                    />
+                    <SummaryCard
+                        label="Output VAT"
+                        value={report.output_vat}
+                        percent={percentOf(report.output_vat, salesBase)}
+                        className="border-sky-200/80 bg-sky-50 dark:border-sky-800 dark:bg-sky-950/30"
+                        labelClassName="text-sky-800/70 dark:text-sky-300/70"
+                        valueClassName="text-sky-900 dark:text-sky-200"
+                    />
+                    <SummaryCard
+                        label="Gross Profit"
+                        value={report.gross_profit}
+                        percent={percentOf(report.gross_profit, salesBase)}
+                        className="border-amber-200/80 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30"
+                        labelClassName="text-amber-800/70 dark:text-amber-300/70"
+                        valueClassName="text-amber-900 dark:text-amber-200"
+                    />
+                    <SummaryCard
+                        label="Operating Expenses"
+                        value={report.operating_expenses}
+                        percent={percentOf(report.operating_expenses, salesBase)}
+                        className="border-rose-200/80 bg-rose-50 dark:border-rose-800 dark:bg-rose-950/30"
+                        labelClassName="text-rose-800/70 dark:text-rose-300/70"
+                        valueClassName="text-rose-900 dark:text-rose-200"
+                    />
+                    <SummaryCard
+                        label={report.result_label ?? 'Net Result'}
+                        value={Math.abs(report.net_result ?? 0)}
+                        percent={percentOf(report.net_result, salesBase)}
+                        className={
                             isProfit
                                 ? 'border-blue-200/80 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30'
-                                : 'border-amber-200/80 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30',
-                        ].join(' ')}
-                    >
-                        <p
-                            className={[
-                                'text-[10px] font-semibold uppercase tracking-wider',
-                                isProfit
-                                    ? 'text-blue-800/70 dark:text-blue-300/70'
-                                    : 'text-amber-800/70 dark:text-amber-300/70',
-                            ].join(' ')}
-                        >
-                            {report.result_label ?? 'Net Result'}
-                        </p>
-                        <p
-                            className={[
-                                'mt-1 text-xl font-bold',
-                                isProfit ? 'text-blue-900 dark:text-blue-200' : 'text-amber-900 dark:text-amber-200',
-                            ].join(' ')}
-                        >
-                            <MoneyCell value={Math.abs(report.net_result ?? 0)} />
-                        </p>
-                    </div>
+                                : 'border-amber-200/80 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30'
+                        }
+                        labelClassName={
+                            isProfit
+                                ? 'text-blue-800/70 dark:text-blue-300/70'
+                                : 'text-amber-800/70 dark:text-amber-300/70'
+                        }
+                        valueClassName={
+                            isProfit ? 'text-blue-900 dark:text-blue-200' : 'text-amber-900 dark:text-amber-200'
+                        }
+                    />
                 </div>
 
                 <div className="overflow-hidden rounded-lg border bg-card shadow-sm ring-1 ring-blue-950/10">

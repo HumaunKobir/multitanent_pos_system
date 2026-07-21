@@ -551,6 +551,14 @@ return [
             ],
         ],
 
+        'report.sales-report' => [
+            'label' => 'Sales Report',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.sales-report.view' => 'View Sales Report',
+            ],
+        ],
+
         'report.account-ledger' => [
             'label' => 'Account Ledger',
             'group' => 'Reports',

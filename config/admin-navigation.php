@@ -159,6 +159,7 @@ return [
                 ['title' => 'Inventory Stock', 'href' => '/report/inventory-stock', 'permission' => 'report.inventory-stock.view'],
                 ['title' => 'Daily Summary', 'href' => '/report/daily-summary', 'permission' => 'report.daily-summary.view'],
                 ['title' => 'Sales Summary', 'href' => '/report/sales-summary', 'permission' => 'report.sales-summary.view'],
+                ['title' => 'Sales Report', 'href' => '/report/sales-report', 'permission' => 'report.sales-report.view'],
             ],
         ],
         [

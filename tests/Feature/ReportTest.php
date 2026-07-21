@@ -104,6 +104,11 @@ function reportRoutes(): array
             'permission' => ReportController::PERMISSION_SALES_SUMMARY,
             'component' => 'admin/reports/sales-summary',
         ],
+        'sales-report' => [
+            'path' => '/report/sales-report',
+            'permission' => ReportController::PERMISSION_SALES_REPORT,
+            'component' => 'admin/reports/sales-report',
+        ],
         'account-ledger' => [
             'path' => '/report/account-ledger',
             'permission' => ReportController::PERMISSION_ACCOUNT_LEDGER,

@@ -237,6 +237,7 @@ Route::middleware(['auth', 'verified'])->prefix('report')->name('report.')->grou
     Route::get('balance-sheet', [ReportController::class, 'balanceSheet'])->name('balance-sheet');
     Route::get('trial-balance', [ReportController::class, 'trialBalance'])->name('trial-balance');
     Route::get('profit-loss', [ReportController::class, 'profitLoss'])->name('profit-loss');
+    Route::get('sales-report', [ReportController::class, 'salesReport'])->name('sales-report');
 });
 
 Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->group(function () {

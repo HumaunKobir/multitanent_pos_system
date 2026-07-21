@@ -263,6 +263,7 @@ const routes = {
     'report.inventory-stock.export-print': '/report/inventory-stock/export/print',
     'report.daily-summary': '/report/daily-summary',
     'report.sales-summary': '/report/sales-summary',
+    'report.sales-report': '/report/sales-report',
     'report.products.search': '/report/products/search',
     'report.account-ledger': '/report/account-ledger',
     'report.account-transactions': '/report/account-transactions',

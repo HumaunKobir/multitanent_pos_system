@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Reports;
 
 use App\Http\Controllers\Controller;
 use App\Services\ReportService;
+use App\Services\SalesReportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -38,7 +40,12 @@ class ReportController extends Controller
 
     public const PERMISSION_PROFIT_LOSS = 'report.profit-loss.view';
 
-    public function __construct(private ReportService $reports) {}
+    public const PERMISSION_SALES_REPORT = 'report.sales-report.view';
+
+    public function __construct(
+        private ReportService $reports,
+        private SalesReportService $salesReports,
+    ) {}
 
     public function customerLedger(Request $request): Response
     {
@@ -402,6 +409,63 @@ class ReportController extends Controller
                 $filters['date_from'] ?? null,
                 $filters['date_to'] ?? null,
                 $filterBranchId,
+            ),
+        ]);
+    }
+
+    public function salesReport(Request $request): Response
+    {
+        $this->authorize(self::PERMISSION_SALES_REPORT);
+
+        $types = $this->salesReports->allowedTypes();
+
+        $filters = $request->validate([
+            'type' => ['nullable', 'string', Rule::in($types)],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date'],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+            'threshold' => ['nullable', 'integer', 'min:0', 'max:100000'],
+            'inactive_days' => ['nullable', 'integer', 'min:1', 'max:3650'],
+        ]);
+
+        $type = $filters['type'] ?? SalesReportService::TYPE_DAILY;
+        $needsDates = ! in_array($type, [
+            SalesReportService::TYPE_STOCK,
+            SalesReportService::TYPE_LOW_STOCK,
+            SalesReportService::TYPE_DEAD_STOCK,
+        ], true);
+
+        if ($needsDates && ! isset($filters['date_from']) && ! isset($filters['date_to'])) {
+            $filters['date_from'] = now()->startOfMonth()->format('Y-m-d');
+            $filters['date_to'] = now()->format('Y-m-d');
+        }
+
+        $canFilterByBranch = $this->salesReports->canFilterByBranch();
+        $filterBranchId = $canFilterByBranch && isset($filters['branch_id']) ? (int) $filters['branch_id'] : null;
+
+        return Inertia::render('admin/reports/sales-report', [
+            'types' => $this->salesReports->typeOptions(),
+            'branches' => $canFilterByBranch ? $this->salesReports->branchOptions() : [],
+            'isBranchScoped' => ! $canFilterByBranch,
+            'filters' => [
+                'type' => $type,
+                'date_from' => $filters['date_from'] ?? null,
+                'date_to' => $filters['date_to'] ?? null,
+                'branch_id' => $canFilterByBranch ? $filterBranchId : null,
+                'threshold' => isset($filters['threshold'])
+                    ? (int) $filters['threshold']
+                    : SalesReportService::DEFAULT_LOW_STOCK_THRESHOLD,
+                'inactive_days' => isset($filters['inactive_days'])
+                    ? (int) $filters['inactive_days']
+                    : SalesReportService::DEFAULT_DEAD_STOCK_DAYS,
+            ],
+            'report' => $this->salesReports->build(
+                $type,
+                $filters['date_from'] ?? null,
+                $filters['date_to'] ?? null,
+                $filterBranchId,
+                isset($filters['threshold']) ? (int) $filters['threshold'] : null,
+                isset($filters['inactive_days']) ? (int) $filters['inactive_days'] : null,
             ),
         ]);
     }

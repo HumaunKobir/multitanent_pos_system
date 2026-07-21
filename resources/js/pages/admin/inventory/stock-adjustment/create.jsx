@@ -138,7 +138,7 @@ export default function StockAdjustmentCreate({ today }) {
                     </InventoryCard>
 
                     <InventoryCard title="Add Products" icon={Package}>
-                        <ProductSearchBox onAdd={addItem} />
+                        <ProductSearchBox onAdd={addItem} apiRoute="api.products.stock-adjustment" allowZeroStock />
                         {form.errors.items && <p className="mt-1 text-xs text-destructive">{form.errors.items}</p>}
                         {items.length > 0 && (
                             <div className="mt-4">

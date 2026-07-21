@@ -190,6 +190,7 @@ Route::middleware(['auth', 'verified'])->prefix('api')->name('api.')->group(func
     Route::get('products/for-purchase', [ProductSearchController::class, 'forPurchase'])->name('products.purchase');
     Route::get('products/for-sell', [ProductSearchController::class, 'forSell'])->name('products.sell');
     Route::get('products/for-distribution', [ProductSearchController::class, 'forDistribution'])->name('products.distribution');
+    Route::get('products/for-stock-adjustment', [ProductSearchController::class, 'forStockAdjustment'])->name('products.stock-adjustment');
     Route::get('purchases/lookup', PurchaseLookupController::class)->name('purchases.lookup');
     Route::get('sales/lookup', SaleLookupController::class)->name('sales.lookup');
     Route::get('customers', [CustomerSearchController::class, 'index'])->name('customers');

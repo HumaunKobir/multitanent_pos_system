@@ -743,3 +743,48 @@ test('operating branch user cannot access distribution product search', function
         ->getJson('/api/products/for-distribution?search=')
         ->assertForbidden();
 });
+
+test('stock adjustment search includes products with zero stock', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    Permission::findOrCreate('inventory.stock-adjustment.create', 'web');
+    $user->givePermissionTo('inventory.stock-adjustment.create');
+
+    $zeroStockProduct = Product::factory()->create([
+        'branch_id' => $branch->id,
+        'name' => 'Zero Stock Adjustment Product '.fake()->unique()->numerify('###'),
+        'status' => 1,
+    ]);
+
+    $inStockProduct = Product::factory()->create([
+        'branch_id' => $branch->id,
+        'name' => 'In Stock Adjustment Product '.fake()->unique()->numerify('###'),
+        'status' => 1,
+    ]);
+    Batch::factory()->for($inStockProduct)->withStock(5)->create(['branch_id' => $branch->id]);
+
+    $response = $this->actingAs($user)
+        ->getJson('/api/products/for-stock-adjustment?search='.urlencode('Adjustment Product'));
+
+    $response->assertOk();
+
+    $ids = collect($response->json())->pluck('id');
+    $zeroMatch = collect($response->json())->firstWhere('id', $zeroStockProduct->id);
+
+    expect($ids)->toContain($zeroStockProduct->id)
+        ->and($ids)->toContain($inStockProduct->id)
+        ->and((float) $zeroMatch['stock'])->toBe(0.0);
+});
+
+test('stock adjustment search requires create permission', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+
+    $this->actingAs($user)
+        ->getJson('/api/products/for-stock-adjustment?search=')
+        ->assertForbidden();
+});

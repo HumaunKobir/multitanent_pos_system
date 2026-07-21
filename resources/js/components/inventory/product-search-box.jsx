@@ -5,7 +5,12 @@ import { useEffect, useRef, useState } from 'react';
 
 import { Input } from '@/components/ui/input';
 
-export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell', listMaxHeightClassName = 'max-h-64' }) {
+export function ProductSearchBox({
+    onAdd,
+    apiRoute = 'api.products.sell',
+    listMaxHeightClassName = 'max-h-64',
+    allowZeroStock = false,
+}) {
     const [query, setQuery] = useState('');
     const [results, setResults] = useState([]);
     const [loading, setLoading] = useState(false);
@@ -67,7 +72,7 @@ export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell', listMa
     function addItem(product, variation) {
         const availableStock = variation ? parseFloat(variation.stock ?? 0) : parseFloat(product.stock ?? 0);
 
-        if (availableStock <= 0) {
+        if (!allowZeroStock && availableStock <= 0) {
             return false;
         }
 
@@ -187,10 +192,20 @@ export function ProductSearchBox({ onAdd, apiRoute = 'api.products.sell', listMa
     }, []);
 
     function variationRows(product) {
-        return (product.variations ?? []).filter((v) => parseFloat(v.stock ?? 0) > 0);
+        const variations = product.variations ?? [];
+
+        if (allowZeroStock) {
+            return variations;
+        }
+
+        return variations.filter((v) => parseFloat(v.stock ?? 0) > 0);
     }
 
     function isSelectableProduct(product) {
+        if (allowZeroStock) {
+            return true;
+        }
+
         if (!product.has_variations) {
             return parseFloat(product.stock ?? 0) > 0;
         }

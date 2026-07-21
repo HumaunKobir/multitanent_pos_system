@@ -291,6 +291,7 @@ const routes = {
     'api.products.purchase': '/api/products/for-purchase',
     'api.products.sell': '/api/products/for-sell',
     'api.products.distribution': '/api/products/for-distribution',
+    'api.products.stock-adjustment': '/api/products/for-stock-adjustment',
     'api.customers': '/api/customers',
     'api.customers.store': '/api/customers',
     'api.customers.due-alert': '/api/customers/:customer/due-alert',

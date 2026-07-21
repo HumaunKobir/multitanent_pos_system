@@ -237,4 +237,68 @@ class ProductSearchController extends Controller
             return collect($product['variations'])->contains(fn ($v) => (float) $v['stock'] > 0);
         })->values());
     }
+
+    public function forStockAdjustment(Request $request): JsonResponse
+    {
+        $this->authorize('inventory.stock-adjustment.create');
+
+        $branchId = Auth::user()?->branch_id ?? Branch::resolveMainBranchId();
+        $mainBranchId = Branch::resolveMainBranchId();
+
+        $products = Product::forPurchase()
+            ->active()
+            ->with([
+                'variations' => fn ($q) => $q
+                    ->where(function ($query) use ($branchId, $mainBranchId) {
+                        if ($branchId === $mainBranchId) {
+                            $query->where('branch_id', $branchId)
+                                ->orWhereNull('branch_id');
+                        } else {
+                            $query->where('branch_id', $branchId);
+                        }
+                    })
+                    ->select(['id', 'product_id', 'branch_id', 'sku', 'variation_data', 'purchase_price', 'price', 'stock']),
+                'batches' => fn ($q) => $q->atBranchWarehouse($branchId)
+                    ->select(['id', 'product_id', 'branch_id', 'available']),
+                'barcodes' => fn ($q) => $q
+                    ->where('branch_id', $branchId)
+                    ->select(['id', 'product_id', 'product_variation_id', 'code']),
+            ])
+            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s, $branchId) {
+                $q->where('name', 'like', "%{$s}%")
+                    ->orWhere('code', 'like', "%{$s}%")
+                    ->orWhereHas('variations', fn ($variationQuery) => $variationQuery
+                        ->where('branch_id', $branchId)
+                        ->where('sku', 'like', "%{$s}%"))
+                    ->orWhereHas('barcodes', fn ($barcodeQuery) => $barcodeQuery
+                        ->where('branch_id', $branchId)
+                        ->where('code', 'like', "%{$s}%"));
+            }))
+            ->orderBy('name')
+            ->limit(15)
+            ->get(['id', 'name', 'code', 'purchase_price', 'sale_price', 'image']);
+
+        return response()->json($products->map(fn (Product $product) => [
+            'id' => $product->id,
+            'name' => $product->name,
+            'code' => $product->code,
+            'purchase_price' => $product->purchase_price,
+            'sale_price' => $product->sale_price,
+            'image' => $product->image,
+            'has_variations' => $product->variations->isNotEmpty(),
+            'stock' => (float) $product->batches->sum('available'),
+            'barcodes' => $product->barcodes->map(fn ($barcode) => [
+                'code' => $barcode->code,
+                'product_variation_id' => $barcode->product_variation_id,
+            ])->values(),
+            'variations' => $product->variations->map(fn ($v) => [
+                'id' => $v->id,
+                'label' => $v->variation_data['label'] ?? $v->sku,
+                'sku' => $v->sku,
+                'purchase_price' => $v->purchase_price,
+                'sale_price' => $v->price,
+                'stock' => (float) $v->stock,
+            ])->values(),
+        ]));
+    }
 }

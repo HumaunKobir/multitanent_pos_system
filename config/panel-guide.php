@@ -591,7 +591,7 @@ return [
             'steps' => [
                 'Go to Reports → Stock Ledger.',
                 'Select product and date range.',
-                'View purchases, sales, returns, and damage movements.',
+                'View purchases, sales, returns, damage, and stock adjustment movements.',
             ],
         ],
 

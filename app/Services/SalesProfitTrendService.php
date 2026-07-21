@@ -77,8 +77,8 @@ class SalesProfitTrendService
      * @return array{
      *     group_by: string,
      *     period: string,
-     *     trend: list<array{period: string, label: string, sales: float, cost: float, profit: float, margin: float}>,
-     *     comparison: list<array{name: string, sales: float, cost: float, profit: float, margin: float}>,
+     *     trend: list<array{period: string, label: string, sales: float, discount: float, vat: float, cost: float, profit: float, margin: float}>,
+     *     comparison: list<array{name: string, sales: float, discount: float, vat: float, cost: float, profit: float, margin: float}>,
      *     breakdown: array{
      *         columns: list<array{key: string, label: string, align?: string}>,
      *         rows: list<array<string, mixed>>
@@ -109,6 +109,8 @@ class SalesProfitTrendService
                 ->map(fn (array $row) => [
                     'name' => (string) ($row['name'] ?? '—'),
                     'sales' => (float) $row['sales'],
+                    'discount' => (float) $row['discount'],
+                    'vat' => (float) $row['vat'],
                     'cost' => (float) $row['cost'],
                     'profit' => (float) $row['profit'],
                     'margin' => (float) $row['margin'],
@@ -125,7 +127,7 @@ class SalesProfitTrendService
 
     /**
      * @param  Collection<int, array<string, mixed>>  $lines
-     * @return list<array{period: string, label: string, sales: float, cost: float, profit: float, margin: float}>
+     * @return list<array{period: string, label: string, sales: float, discount: float, vat: float, cost: float, profit: float, margin: float}>
      */
     private function trendSeries(Collection $lines, string $period, ?string $dateFrom, ?string $dateTo): array
     {
@@ -143,6 +145,8 @@ class SalesProfitTrendService
             ->map(function (string $key) use ($grouped) {
                 $bucket = $grouped->get($key, collect());
                 $sales = round((float) $bucket->sum('revenue'), 2);
+                $discount = round((float) $bucket->sum('discount'), 2);
+                $vat = round((float) $bucket->sum('vat'), 2);
                 $cost = round((float) $bucket->sum('cost'), 2);
                 $profit = round($sales - $cost, 2);
 
@@ -150,6 +154,8 @@ class SalesProfitTrendService
                     'period' => $key,
                     'label' => $this->periodLabel($key),
                     'sales' => $sales,
+                    'discount' => $discount,
+                    'vat' => $vat,
                     'cost' => $cost,
                     'profit' => $profit,
                     'margin' => $this->percentOf($profit, $sales),
@@ -235,6 +241,8 @@ class SalesProfitTrendService
             ->map(function (Collection $group) use ($groupBy) {
                 $first = $group->first();
                 $sales = round((float) $group->sum('revenue'), 2);
+                $discount = round((float) $group->sum('discount'), 2);
+                $vat = round((float) $group->sum('vat'), 2);
                 $cost = round((float) $group->sum('cost'), 2);
                 $profit = round($sales - $cost, 2);
                 $quantity = round((float) $group->sum('quantity'), 2);
@@ -247,6 +255,10 @@ class SalesProfitTrendService
                     },
                     'quantity' => $quantity,
                     'sales' => $sales,
+                    'discount' => $discount,
+                    'discount_pct' => $this->percentOf($discount, $sales + $discount),
+                    'vat' => $vat,
+                    'vat_pct' => $this->percentOf($vat, $sales),
                     'cost' => $cost,
                     'profit' => $profit,
                     'margin' => $this->percentOf($profit, $sales),
@@ -281,6 +293,10 @@ class SalesProfitTrendService
                 : []),
             ['key' => 'quantity', 'label' => 'Qty', 'align' => 'right'],
             ['key' => 'sales', 'label' => 'Sales', 'align' => 'right'],
+            ['key' => 'discount', 'label' => 'Discount', 'align' => 'right'],
+            ['key' => 'discount_pct', 'label' => 'Discount %', 'align' => 'right'],
+            ['key' => 'vat', 'label' => 'VAT', 'align' => 'right'],
+            ['key' => 'vat_pct', 'label' => 'VAT %', 'align' => 'right'],
             ['key' => 'cost', 'label' => 'Cost', 'align' => 'right'],
             ['key' => 'profit', 'label' => 'Profit', 'align' => 'right'],
             ['key' => 'margin', 'label' => 'Profit %', 'align' => 'right'],
@@ -289,17 +305,23 @@ class SalesProfitTrendService
 
     /**
      * @param  list<array<string, mixed>>  $rows
-     * @return array{quantity: float, sales: float, cost: float, profit: float, margin: float}
+     * @return array{quantity: float, sales: float, discount: float, discount_pct: float, vat: float, vat_pct: float, cost: float, profit: float, margin: float}
      */
     private function totalsFromRows(array $rows): array
     {
         $sales = round(collect($rows)->sum('sales'), 2);
+        $discount = round(collect($rows)->sum('discount'), 2);
+        $vat = round(collect($rows)->sum('vat'), 2);
         $cost = round(collect($rows)->sum('cost'), 2);
         $profit = round($sales - $cost, 2);
 
         return [
             'quantity' => round(collect($rows)->sum('quantity'), 2),
             'sales' => $sales,
+            'discount' => $discount,
+            'discount_pct' => $this->percentOf($discount, $sales + $discount),
+            'vat' => $vat,
+            'vat_pct' => $this->percentOf($vat, $sales),
             'cost' => $cost,
             'profit' => $profit,
             'margin' => $this->percentOf($profit, $sales),

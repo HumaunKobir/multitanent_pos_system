@@ -26,8 +26,8 @@ import {
     useLiveReportFilters,
 } from '@/pages/admin/reports/_shared/report-shell';
 
-const MONEY_KEYS = new Set(['sales', 'cost', 'profit']);
-const PERCENT_KEYS = new Set(['margin']);
+const MONEY_KEYS = new Set(['sales', 'discount', 'vat', 'cost', 'profit']);
+const PERCENT_KEYS = new Set(['margin', 'discount_pct', 'vat_pct']);
 
 function formatAxisMoney(value) {
     const amount = Number(value) || 0;
@@ -310,8 +310,10 @@ export default function SalesProfitTrend({ groups, periods, branches, isBranchSc
                     </>
                 }
             >
-                <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
                     <SummaryCard label="Total Sales" value={report.totals?.sales} />
+                    <SummaryCard label="Total Discount" value={report.totals?.discount} />
+                    <SummaryCard label="Total VAT" value={report.totals?.vat} />
                     <SummaryCard label="Total Cost" value={report.totals?.cost} />
                     <SummaryCard label="Total Profit" value={report.totals?.profit} />
                     <SummaryCard label="Profit %" value={report.totals?.margin} isPercent />

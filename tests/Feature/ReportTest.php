@@ -1318,6 +1318,43 @@ test('stock ledger period in and out include purchase and sale movements for a b
             ->where('totals.balance', 13));
 });
 
+test('stock ledger includes stock adjustment movements', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = reportUser([ReportController::PERMISSION_STOCK_LEDGER]);
+    $user->update(['branch_id' => $branch->id]);
+
+    $product = Product::factory()->create(['branch_id' => $branch->id]);
+    $batch = Batch::factory()->for($product)->withStock(0)->create(['branch_id' => $branch->id]);
+    $date = '2026-07-13';
+
+    $this->travelTo($date.' 09:00:00');
+    $batch->increment('available', 10);
+    $batch->refresh();
+    $batch->adjustmentStock(4);
+    $this->travelTo($date.' 14:00:00');
+    $batch->decrement('available', 2);
+    $batch->refresh();
+    $batch->adjustmentStock(-2);
+    $this->travelBack();
+
+    $this->actingAs($user)
+        ->get('/report/stock-ledger?product_id='.$product->id.'&date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/stock-ledger')
+            ->where('mode', 'ledger')
+            ->has('entries', 2)
+            ->where('entries.0.type', 'Adjustment In')
+            ->where('entries.0.in', 4)
+            ->where('entries.1.type', 'Adjustment Out')
+            ->where('entries.1.out', 2)
+            ->where('totals.in', 4)
+            ->where('totals.out', 2)
+            ->where('totals.balance', 2));
+});
+
 test('admin stock ledger without branch filter includes sales in period totals', function () {
     $this->artisan('permissions:sync');
 

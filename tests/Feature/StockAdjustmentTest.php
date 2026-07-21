@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\ProductLogType;
 use App\Enums\StockAdjustmentType;
 use App\Models\Batch;
 use App\Models\Branch;
@@ -81,6 +82,11 @@ test('stock adjustment decrease reduces batch stock', function () {
         'type' => StockAdjustmentType::Decrease->value,
         'comment' => 'Count correction',
     ]);
+    $this->assertDatabaseHas('product_in_out_logs', [
+        'product_id' => $product->id,
+        'type' => ProductLogType::Adjustment_Out->value,
+        'quantity' => 3,
+    ]);
 });
 
 test('stock adjustment increase adds batch stock', function () {
@@ -120,4 +126,9 @@ test('stock adjustment increase adds batch stock', function () {
         ->assertRedirect(route('inventory.stock-adjustment.index'));
 
     expect((float) $batch->fresh()->available)->toBe(7.0);
+    $this->assertDatabaseHas('product_in_out_logs', [
+        'product_id' => $product->id,
+        'type' => ProductLogType::Adjustment_In->value,
+        'quantity' => 2,
+    ]);
 });

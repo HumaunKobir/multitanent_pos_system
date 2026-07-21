@@ -62,8 +62,8 @@ test('sales profit trend product breakdown includes sales cost and profit', func
         'date' => $date,
         'gross_amount' => 400,
         'discount' => 20,
-        'vat' => 0,
-        'paid_amount' => 380,
+        'vat' => 10,
+        'paid_amount' => 390,
     ]);
 
     SellProduct::query()->create([
@@ -73,7 +73,7 @@ test('sales profit trend product breakdown includes sales cost and profit', func
         'quantity' => 2,
         'free_quantity' => 0,
         'unit_price' => 200,
-        'discount' => 20,
+        'discount' => 0,
         'batches' => [],
     ]);
 
@@ -83,13 +83,19 @@ test('sales profit trend product breakdown includes sales cost and profit', func
         ->assertInertia(fn (Assert $page) => $page
             ->where('report.breakdown.rows.0.name', 'Trend Tee')
             ->where('report.breakdown.rows.0.sales', 380)
+            ->where('report.breakdown.rows.0.discount', 20)
+            ->where('report.breakdown.rows.0.vat', 10)
             ->where('report.breakdown.rows.0.cost', 200)
             ->where('report.breakdown.rows.0.profit', 180)
             ->where('report.totals.sales', 380)
+            ->where('report.totals.discount', 20)
+            ->where('report.totals.vat', 10)
             ->where('report.totals.profit', 180)
             ->where('report.comparison.0.name', 'Trend Tee')
             ->where('report.trend.0.period', $date)
             ->where('report.trend.0.sales', 380)
+            ->where('report.trend.0.discount', 20)
+            ->where('report.trend.0.vat', 10)
             ->where('report.trend.0.profit', 180));
 });
 

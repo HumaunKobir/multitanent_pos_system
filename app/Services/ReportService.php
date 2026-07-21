@@ -2656,6 +2656,8 @@ class ReportService
             ProductLogType::Sale_Return,
             ProductLogType::Damage,
             ProductLogType::Exchange,
+            ProductLogType::Adjustment_In,
+            ProductLogType::Adjustment_Out,
         ];
     }
 

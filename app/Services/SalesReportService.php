@@ -983,6 +983,9 @@ class SalesReportService
     /**
      * Superadmin (no branch) sees every branch sale. Branch users only see their branch.
      *
+     * Invoice-level discounts (invoice / special / coin / round-off) and VAT are allocated
+     * to lines by share of post–line-discount revenue so product/brand/category reports match the sale.
+     *
      * @return Collection<int, array{
      *     sell_id: int,
      *     branch_id: int|null,
@@ -1014,24 +1017,23 @@ class SalesReportService
                 'product.category:id,name',
                 'product.branch:id,name',
                 'variation:id,purchase_price',
-                'sell:id,date,created_at,user_id,branch_id,gross_amount,vat',
+                'sell:id,date,created_at,user_id,branch_id,gross_amount,vat,discount,special_discount_amount,coin_discount_amount,round_off_amount',
             ])
             ->orderBy('sell_products.id')
             ->get();
 
-        $vatBySellId = [];
-        $revenueBySellId = $lines
+        $baseRevenueBySellId = $lines
             ->groupBy('sell_id')
             ->map(function (Collection $sellLines) {
                 return $sellLines->sum(function (SellProduct $line) {
-                    return ((float) $line->quantity * (float) $line->unit_price) - (float) $line->discount;
+                    return $this->lineBaseRevenue($line);
                 });
             });
 
-        return $lines->map(function (SellProduct $line) use ($revenueBySellId) {
+        return $lines->map(function (SellProduct $line) use ($baseRevenueBySellId) {
             $qty = (float) $line->quantity + (float) ($line->free_quantity ?? 0);
-            $lineDiscount = (float) $line->discount + (float) ($line->promotion_discount ?? 0);
-            $revenue = ((float) $line->quantity * (float) $line->unit_price) - (float) $line->discount;
+            $lineOnlyDiscount = (float) $line->discount + (float) ($line->promotion_discount ?? 0);
+            $baseRevenue = $this->lineBaseRevenue($line);
             $cost = $this->costService->costForLine(
                 $line->variation_id ? (int) $line->variation_id : null,
                 $qty,
@@ -1045,25 +1047,31 @@ class SalesReportService
                 $cost = round($unitCost * $qty, 2);
             }
 
-            $sellVat = (float) ($line->sell?->vat ?? 0);
-            $sellRevenueTotal = (float) ($revenueBySellId[$line->sell_id] ?? 0);
-            $allocatedVat = 0.0;
+            $sell = $line->sell;
+            $sellVat = (float) ($sell?->vat ?? 0);
+            $sellInvoiceDiscount = $this->invoiceLevelDiscountTotal($sell);
+            $sellBaseTotal = (float) ($baseRevenueBySellId[$line->sell_id] ?? 0);
+            $share = $sellBaseTotal > 0 ? ($baseRevenue / $sellBaseTotal) : 0.0;
+            $allocatedInvoiceDiscount = $sellInvoiceDiscount > 0 && $share > 0
+                ? round($sellInvoiceDiscount * $share, 2)
+                : 0.0;
+            $allocatedVat = $sellVat > 0 && $share > 0
+                ? round($sellVat * $share, 2)
+                : 0.0;
+            $revenue = round($baseRevenue - $allocatedInvoiceDiscount, 2);
+            $discount = round($lineOnlyDiscount + $allocatedInvoiceDiscount, 2);
 
-            if ($sellVat > 0 && $sellRevenueTotal > 0) {
-                $allocatedVat = round($sellVat * ($revenue / $sellRevenueTotal), 2);
-            }
-
-            $sellDate = $line->sell?->date;
+            $sellDate = $sell?->date;
 
             return [
                 'sell_id' => (int) $line->sell_id,
-                'branch_id' => $line->sell?->branch_id !== null ? (int) $line->sell->branch_id : null,
+                'branch_id' => $sell?->branch_id !== null ? (int) $sell->branch_id : null,
                 'branch_name' => $line->product?->branch?->name
-                    ?? ($line->sell?->branch_id ? 'Branch #'.$line->sell->branch_id : 'All'),
-                'user_id' => $line->sell?->user_id !== null ? (int) $line->sell->user_id : null,
+                    ?? ($sell?->branch_id ? 'Branch #'.$sell->branch_id : 'All'),
+                'user_id' => $sell?->user_id !== null ? (int) $sell->user_id : null,
                 'date' => $sellDate?->format('Y-m-d') ?? '',
                 'month' => $sellDate?->format('Y-m') ?? '',
-                'hour' => $line->sell?->created_at ? (int) $line->sell->created_at->format('G') : 0,
+                'hour' => $sell?->created_at ? (int) $sell->created_at->format('G') : 0,
                 'product_id' => (int) $line->product_id,
                 'product_name' => $line->product?->name ?? '—',
                 'product_code' => $line->product?->code ?? '—',
@@ -1073,42 +1081,75 @@ class SalesReportService
                 'category_name' => $line->product?->category?->name ?? 'Uncategorized',
                 'quantity' => $qty,
                 'revenue' => $revenue,
-                'discount' => $lineDiscount,
+                'discount' => $discount,
                 'vat' => $allocatedVat,
                 'cost' => $cost,
                 '_sell_vat' => $sellVat,
+                '_sell_invoice_discount' => $sellInvoiceDiscount,
+                '_allocated_invoice_discount' => $allocatedInvoiceDiscount,
             ];
         })->pipe(function (Collection $mapped) {
-            // Fix rounding leftovers so allocated VAT equals invoice VAT.
+            // Fix rounding leftovers so allocated totals match the invoice.
             return $mapped
                 ->groupBy('sell_id')
-                ->flatMap(function (Collection $sellLines) {
-                    $sellVat = (float) ($sellLines->first()['_sell_vat'] ?? 0);
-                    $allocated = round($sellLines->sum('vat'), 2);
-                    $diff = round($sellVat - $allocated, 2);
-
-                    if (abs($diff) >= 0.01) {
-                        $lastKey = $sellLines->keys()->last();
-                        $sellLines = $sellLines->map(function (array $line, $key) use ($lastKey, $diff) {
-                            if ($key === $lastKey) {
-                                $line['vat'] = round($line['vat'] + $diff, 2);
-                            }
-
-                            unset($line['_sell_vat']);
-
-                            return $line;
-                        });
-                    } else {
-                        $sellLines = $sellLines->map(function (array $line) {
-                            unset($line['_sell_vat']);
-
-                            return $line;
-                        });
-                    }
-
-                    return $sellLines->values();
-                })
+                ->flatMap(fn (Collection $sellLines) => $this->balanceAllocatedSellAmounts($sellLines)->values())
                 ->values();
+        });
+    }
+
+    private function lineBaseRevenue(SellProduct $line): float
+    {
+        return ((float) $line->quantity * (float) $line->unit_price) - (float) $line->discount;
+    }
+
+    private function invoiceLevelDiscountTotal(?Sell $sell): float
+    {
+        if ($sell === null) {
+            return 0.0;
+        }
+
+        return round(
+            (float) $sell->discount
+            + (float) $sell->special_discount_amount
+            + (float) $sell->coin_discount_amount
+            + (float) $sell->round_off_amount,
+            2,
+        );
+    }
+
+    /**
+     * @param  Collection<int, array<string, mixed>>  $sellLines
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function balanceAllocatedSellAmounts(Collection $sellLines): Collection
+    {
+        $first = $sellLines->first() ?? [];
+        $vatDiff = round((float) ($first['_sell_vat'] ?? 0) - round($sellLines->sum('vat'), 2), 2);
+        $invoiceDiscountDiff = round(
+            (float) ($first['_sell_invoice_discount'] ?? 0) - round($sellLines->sum('_allocated_invoice_discount'), 2),
+            2,
+        );
+        $lastKey = $sellLines->keys()->last();
+
+        return $sellLines->map(function (array $line, $key) use ($lastKey, $vatDiff, $invoiceDiscountDiff) {
+            if ($key === $lastKey) {
+                if (abs($vatDiff) >= 0.01) {
+                    $line['vat'] = round((float) $line['vat'] + $vatDiff, 2);
+                }
+
+                if (abs($invoiceDiscountDiff) >= 0.01) {
+                    $line['_allocated_invoice_discount'] = round(
+                        (float) $line['_allocated_invoice_discount'] + $invoiceDiscountDiff,
+                        2,
+                    );
+                    $line['discount'] = round((float) $line['discount'] + $invoiceDiscountDiff, 2);
+                    $line['revenue'] = round((float) $line['revenue'] - $invoiceDiscountDiff, 2);
+                }
+            }
+
+            unset($line['_sell_vat'], $line['_sell_invoice_discount'], $line['_allocated_invoice_discount']);
+
+            return $line;
         });
     }
 

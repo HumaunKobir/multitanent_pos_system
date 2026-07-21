@@ -52,7 +52,7 @@ test('sales report product wise includes profit and profit percent', function ()
         'type' => SaleType::Sale,
         'date' => $date,
         'gross_amount' => 400,
-        'discount' => 20,
+        'discount' => 0,
         'vat' => 10,
         'paid_amount' => 390,
     ]);
@@ -85,6 +85,70 @@ test('sales report product wise includes profit and profit percent', function ()
             ->where('report.totals.discount_pct', 5)
             ->where('report.totals.vat', 10)
             ->where('report.totals.vat_pct', 2.6));
+});
+
+test('sales report allocates invoice coin and special discounts to product lines', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    $user->givePermissionTo(ReportController::PERMISSION_SALES_REPORT);
+
+    $product = Product::factory()->create([
+        'branch_id' => $branch->id,
+        'name' => 'Discounted Hoodie',
+        'purchase_price' => 100,
+    ]);
+
+    $date = now()->format('Y-m-d');
+    $sell = Sell::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'type' => SaleType::Sale,
+        'date' => $date,
+        'gross_amount' => 500,
+        'discount' => 5,
+        'special_discount_amount' => 0,
+        'coin_discount_amount' => 8,
+        'round_off_amount' => 0,
+        'vat' => 9.74,
+        'paid_amount' => 496.74,
+    ]);
+
+    SellProduct::query()->create([
+        'branch_id' => $branch->id,
+        'sell_id' => $sell->id,
+        'product_id' => $product->id,
+        'quantity' => 1,
+        'free_quantity' => 0,
+        'unit_price' => 500,
+        'discount' => 0,
+        'batches' => [],
+    ]);
+
+    $this->actingAs($user)
+        ->get('/report/sales-report?type=product&date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('report.rows.0.name', 'Discounted Hoodie')
+            ->where('report.rows.0.discount', 13)
+            ->where('report.rows.0.amount', 487)
+            ->where('report.rows.0.vat', 9.74)
+            ->where('report.rows.0.profit', 387));
+
+    $this->actingAs($user)
+        ->get('/report/sales-report?type=fast_moving&date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('report.rows.0.discount', 13)
+            ->where('report.rows.0.vat', 9.74));
+
+    $this->actingAs($user)
+        ->get('/report/sales-report?type=profit&date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('report.rows.0.discount', 13)
+            ->where('report.rows.0.vat', 9.74));
 });
 
 test('superadmin sales report includes sales from every branch', function () {

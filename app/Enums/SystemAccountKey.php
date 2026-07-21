@@ -21,6 +21,7 @@ enum SystemAccountKey: string
     case IntercompanyPayable = 'intercompany_payable';
     case LoansPayable = 'loans_payable';
     case AdvanceFromCustomer = 'advance_from_customer';
+    case CustomerCoinPayable = 'customer_coin_payable';
     case TaxesPayable = 'taxes_payable';
     case OutputVat = 'output_vat';
     case OwnersCapital = 'owners_capital';
@@ -41,6 +42,7 @@ enum SystemAccountKey: string
     case SalaryExpense = 'salary_expense';
     case UtilitiesExpense = 'utilities_expense';
     case DiscountApplied = 'discount_applied';
+    case CoinDiscountApplied = 'coin_discount_applied';
 
     public function accountNumber(): string
     {
@@ -67,6 +69,7 @@ enum SystemAccountKey: string
             self::IntercompanyPayable => 'Intercompany Payable',
             self::LoansPayable => 'Loans Payable',
             self::AdvanceFromCustomer => 'Advance from Customer',
+            self::CustomerCoinPayable => 'Customer Coin Payable',
             self::TaxesPayable => 'Taxes Payable',
             self::OutputVat => 'Output VAT',
             self::OwnersCapital => "Owner's Capital",
@@ -87,6 +90,7 @@ enum SystemAccountKey: string
             self::SalaryExpense => 'Salary',
             self::UtilitiesExpense => 'Utilities',
             self::DiscountApplied => 'Discount Applied',
+            self::CoinDiscountApplied => 'Coin Discount Applied',
         };
     }
 
@@ -97,12 +101,13 @@ enum SystemAccountKey: string
             self::Inventory, self::ProductInventory, self::BranchInventory,
             self::AccountsReceivable, self::CustomerReceivables, self::IntercompanyReceivable => AccountType::Asset,
             self::AccountsPayable, self::SupplierPayables, self::IntercompanyPayable, self::LoansPayable,
-            self::AdvanceFromCustomer, self::TaxesPayable, self::OutputVat => AccountType::Liability,
+            self::AdvanceFromCustomer, self::CustomerCoinPayable, self::TaxesPayable, self::OutputVat => AccountType::Liability,
             self::OwnersCapital, self::RetainedEarnings, self::CurrentYearEarnings, self::OwnersDrawings,
             self::OpeningBalanceEquity, self::OpeningBalanceClearing => AccountType::Equity,
             self::SalesRevenue, self::ProductSales, self::SalesReturns, self::OtherIncome => AccountType::Income,
             self::Expenses, self::CostOfGoodsSold, self::InventoryDamage, self::PurchaseReturns,
-            self::RentExpense, self::SalaryExpense, self::UtilitiesExpense, self::DiscountApplied => AccountType::Expenses,
+            self::RentExpense, self::SalaryExpense, self::UtilitiesExpense, self::DiscountApplied,
+            self::CoinDiscountApplied => AccountType::Expenses,
         };
     }
 
@@ -129,7 +134,8 @@ enum SystemAccountKey: string
             self::OpeningBalanceClearing => self::OpeningBalanceEquity,
             self::ProductSales, self::SalesReturns => self::SalesRevenue,
             self::CostOfGoodsSold, self::InventoryDamage, self::PurchaseReturns,
-            self::RentExpense, self::SalaryExpense, self::UtilitiesExpense, self::DiscountApplied => self::Expenses,
+            self::RentExpense, self::SalaryExpense, self::UtilitiesExpense, self::DiscountApplied,
+            self::CoinDiscountApplied => self::Expenses,
             default => null,
         };
     }

@@ -927,7 +927,7 @@ const ProductForm = forwardRef(function ProductForm({
     const priceFieldsDisabled = hasVariations && allCombosHavePrices && sharedComboPrices === null;
     const priceFieldsRequired = hasVariations && combinations.length > 0 && (someCombosMissingPrices || !allCombosHavePrices);
     const stockFieldsDisabled = allCombosHaveStock;
-    const showInitialStockField = !hasVariations || hasVariations;
+    const showInitialStockField = !hasVariations;
 
     const initialStockTotal = useMemo(
         () => calculateInitialStockTotal({
@@ -1455,46 +1455,23 @@ const ProductForm = forwardRef(function ProductForm({
                 </Card>
 
                 {/* Price & Stock */}
-                <Card title="Price & Stock" icon={DollarSign}>
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-                        <Field label="Purchase Price" required={priceFieldsRequired || (!hasVariations && !priceFieldsDisabled)} error={form.errors.purchase_price}>
-                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.purchase_price} onChange={(e) => handleMainPurchasePriceChange(e.target.value)} placeholder="0.00" disabled={priceFieldsDisabled} />
-                        </Field>
+                {!hasVariations && (
+                    <Card title="Price & Stock" icon={DollarSign}>
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                            <Field label="Purchase Price" required={priceFieldsRequired || (!hasVariations && !priceFieldsDisabled)} error={form.errors.purchase_price}>
+                                <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.purchase_price} onChange={(e) => handleMainPurchasePriceChange(e.target.value)} placeholder="0.00" disabled={priceFieldsDisabled} />
+                            </Field>
 
-                        <Field label="Sale Price" required={priceFieldsRequired || (!hasVariations && !priceFieldsDisabled)} error={form.errors.sale_price}>
-                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.sale_price} onChange={(e) => handleMainSalePriceChange(e.target.value)} placeholder="0.00" disabled={priceFieldsDisabled} />
-                        </Field>
+                            <Field label="Sale Price" required={priceFieldsRequired || (!hasVariations && !priceFieldsDisabled)} error={form.errors.sale_price}>
+                                <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.sale_price} onChange={(e) => handleMainSalePriceChange(e.target.value)} placeholder="0.00" disabled={priceFieldsDisabled} />
+                            </Field>
 
-                        <Field label="Discount Price" error={form.errors.discount_price}>
-                            <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.discount_price} onChange={(e) => form.setData('discount_price', e.target.value)} placeholder="0.00" />
-                        </Field>
-                    </div>
-                    {hasVariations && someCombosMissingPrices && combinations.length > 0 && (
-                        <p className="mt-2 text-xs text-amber-600">
-                            Some combinations are missing prices — set purchase &amp; sale price above, or enter a price on each combination row.
-                        </p>
-                    )}
-                    {hasVariations && sharedComboPrices && (
-                        <p className="mt-2 text-xs text-muted-foreground">
-                            All combinations share the same price — shown above. Change it here to update every combination.
-                        </p>
-                    )}
-                    {priceFieldsDisabled && (
-                        <p className="mt-2 text-xs text-muted-foreground">
-                            Each combination has its own price — use the combination rows below.
-                        </p>
-                    )}
-                    {hasVariations && !allCombosHaveStock && combinations.length > 0 && (
-                        <p className="mt-2 text-xs text-amber-600">
-                            Some combinations are missing stock — this initial stock will be applied to those.
-                        </p>
-                    )}
-                    {hasVariations && allCombosHaveStock && combinations.length > 0 && (
-                        <p className="mt-2 text-xs text-muted-foreground">
-                            All combinations have their own stock — initial stock is not required.
-                        </p>
-                    )}
-                </Card>
+                            <Field label="Discount Price" error={form.errors.discount_price}>
+                                <Input className="h-8 text-xs" type="number" min="0" step="0.01" value={form.data.discount_price} onChange={(e) => form.setData('discount_price', e.target.value)} placeholder="0.00" />
+                            </Field>
+                        </div>
+                    </Card>
+                )}
 
             </div>
 

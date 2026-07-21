@@ -2235,7 +2235,9 @@ class ReportService
 
         if (
             $accountNumber === SystemAccountKey::DiscountApplied->accountNumber()
+            || $accountNumber === SystemAccountKey::CoinDiscountApplied->accountNumber()
             || str_contains($name, 'discount applied')
+            || str_contains($name, 'coin discount')
         ) {
             return 'sales_discounts';
         }

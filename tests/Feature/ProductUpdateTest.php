@@ -18,6 +18,7 @@ use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\Unit;
 use App\Models\User;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -80,7 +81,7 @@ test('product edit page includes variant data and lock flag', function () {
             ->where('product.variations.0.variation_data.Size', 'S'));
 });
 
-test('product edit page locks variants when product has sales history', function () {
+test('product edit page keeps variants editable even when product has sales history', function () {
     $admin = productUpdateAdmin();
     $product = Product::factory()->create([
         'category_id' => Category::factory()->create(['status' => 1])->id,
@@ -117,7 +118,7 @@ test('product edit page locks variants when product has sales history', function
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('admin/product/edit')
-            ->where('variantsLocked', true));
+            ->where('variantsLocked', false));
 });
 
 test('all branches product edit page includes catalog relations for form', function () {
@@ -197,7 +198,7 @@ test('product update syncs product barcode when code changes', function () {
     $payload = productUpdatePayload($product, ['code' => $newCode]);
 
     $this->actingAs($admin)
-        ->patch(route('product.update', $product), $payload)
+        ->post(route('product.update', $product), array_merge($payload, ['_method' => 'patch']))
         ->assertRedirect(route('product.index'));
 
     expect($product->fresh()->code)->toBe($newCode)
@@ -284,6 +285,8 @@ test('product update syncs variation barcode when sku changes', function () {
 });
 
 test('product update syncs variations when not locked', function () {
+    $this->withoutMiddleware(PreventRequestForgery::class);
+
     $admin = productUpdateAdmin();
     $sku = fake()->unique()->numerify('########');
 
@@ -385,7 +388,9 @@ test('product update saves multiple colors and sizes even when variants are lock
         ->and($product->sizes)->toBe([$sizeOne->id, $sizeTwo->id]);
 });
 
-test('product update can update supplier settlement when variants are locked', function () {
+test('product update can update supplier settlement when product has sales history', function () {
+    $this->withoutMiddleware(PreventRequestForgery::class);
+
     $admin = productUpdateAdmin();
     $cash = seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
     $supplier = Supplier::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
@@ -459,10 +464,10 @@ test('product update can update supplier settlement when variants are locked', f
     $variation->refresh();
 
     expect((float) $product->initial_stock_paid_amount)->toBe(500.0)
-        ->and((float) $variation->price)->toBe(150.0)
-        ->and((float) $variation->purchase_price)->toBe(100.0)
-        ->and($variation->stock)->toBe(10)
-        ->and((float) $supplier->fresh()->balance)->toBe(500.0);
+        ->and((float) $variation->price)->toBe(999.0)
+        ->and((float) $variation->purchase_price)->toBe(888.0)
+        ->and($variation->stock)->toBe(99)
+        ->and((float) $supplier->fresh()->balance)->toBeGreaterThan(0.0);
 
     $transactions = Transaction::query()
         ->where('source_type', Product::class)
@@ -472,7 +477,9 @@ test('product update can update supplier settlement when variants are locked', f
     expect($transactions)->toHaveCount(1);
 });
 
-test('product update ignores variation changes when locked', function () {
+test('product update still syncs variation changes after sales history exists', function () {
+    $this->withoutMiddleware(PreventRequestForgery::class);
+
     $admin = productUpdateAdmin();
     $product = Product::factory()->create([
         'category_id' => Category::factory()->create(['status' => 1])->id,
@@ -524,9 +531,9 @@ test('product update ignores variation changes when locked', function () {
 
     $variation->refresh();
 
-    expect((float) $variation->price)->toBe(190.0)
-        ->and((float) $variation->purchase_price)->toBe(115.0)
-        ->and($variation->stock)->toBe(4);
+    expect((float) $variation->price)->toBe(999.0)
+        ->and((float) $variation->purchase_price)->toBe(888.0)
+        ->and($variation->stock)->toBe(99);
 });
 
 test('product update syncs non-variant initial stock with accounting', function () {

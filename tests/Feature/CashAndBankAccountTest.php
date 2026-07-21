@@ -100,6 +100,19 @@ test('system seeds purchase returns and default expense accounts', function () {
     expect($discountApplied->code)->toBe('X001-07');
     expect($discountApplied->parent_id)->toBe($expensesId);
     expect($discountApplied->is_system)->toBeTrue();
+
+    $coinDiscountApplied = SystemAccountService::resolve(SystemAccountKey::CoinDiscountApplied);
+    expect($coinDiscountApplied->name)->toBe('Coin Discount Applied');
+    expect($coinDiscountApplied->code)->toBe('X001-08');
+    expect($coinDiscountApplied->parent_id)->toBe($expensesId);
+    expect($coinDiscountApplied->is_system)->toBeTrue();
+
+    $customerCoinPayable = SystemAccountService::resolve(SystemAccountKey::CustomerCoinPayable);
+    expect($customerCoinPayable->name)->toBe('Customer Coin Payable');
+    expect($customerCoinPayable->code)->toBe('L005');
+    expect($customerCoinPayable->parent_id)->toBeNull();
+    expect($customerCoinPayable->is_system)->toBeTrue();
+    expect($customerCoinPayable->type)->toBe(AccountType::Liability);
 });
 
 test('system accounts cannot be updated or deleted', function () {

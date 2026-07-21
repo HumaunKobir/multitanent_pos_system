@@ -19,6 +19,7 @@ test('chart of accounts seeder creates parent accounts for each type', function 
             SystemAccountKey::AccountsPayable,
             SystemAccountKey::LoansPayable,
             SystemAccountKey::AdvanceFromCustomer,
+            SystemAccountKey::CustomerCoinPayable,
             SystemAccountKey::TaxesPayable,
         ],
         AccountType::Equity->value => [
@@ -82,6 +83,7 @@ test('chart of accounts seeder creates child accounts under parent heads', funct
             SystemAccountKey::SalaryExpense,
             SystemAccountKey::UtilitiesExpense,
             SystemAccountKey::DiscountApplied,
+            SystemAccountKey::CoinDiscountApplied,
         ]],
     ];
 

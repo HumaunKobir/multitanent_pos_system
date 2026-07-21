@@ -149,6 +149,7 @@ class SystemAccountService
             SystemAccountKey::IntercompanyPayable,
             SystemAccountKey::LoansPayable,
             SystemAccountKey::AdvanceFromCustomer,
+            SystemAccountKey::CustomerCoinPayable,
             SystemAccountKey::TaxesPayable,
             SystemAccountKey::OutputVat,
             SystemAccountKey::OwnersCapital,
@@ -169,6 +170,7 @@ class SystemAccountService
             SystemAccountKey::SalaryExpense,
             SystemAccountKey::UtilitiesExpense,
             SystemAccountKey::DiscountApplied,
+            SystemAccountKey::CoinDiscountApplied,
         ];
     }
 
@@ -367,6 +369,7 @@ class SystemAccountService
             SystemAccountKey::IntercompanyPayable => 'L001-02',
             SystemAccountKey::LoansPayable => 'L002',
             SystemAccountKey::AdvanceFromCustomer => 'L003',
+            SystemAccountKey::CustomerCoinPayable => 'L005',
             SystemAccountKey::TaxesPayable => 'L004',
             SystemAccountKey::OutputVat => 'L004-01',
             SystemAccountKey::OwnersCapital => 'E001',
@@ -387,6 +390,7 @@ class SystemAccountService
             SystemAccountKey::SalaryExpense => 'X001-05',
             SystemAccountKey::UtilitiesExpense => 'X001-06',
             SystemAccountKey::DiscountApplied => 'X001-07',
+            SystemAccountKey::CoinDiscountApplied => 'X001-08',
         };
     }
 }

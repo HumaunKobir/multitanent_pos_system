@@ -484,7 +484,7 @@ class ProductController extends Controller
             'paymentAccounts' => $paymentAccounts,
             'product' => $product,
             'formBranchId' => $this->productReplication->resolveFormBranchSelection($product),
-            'variantsLocked' => $this->variantsAreLocked($product),
+            'variantsLocked' => false,
             'initialStockValue' => $this->initialStock->calculateProductInitialStockValue($product),
             'hasExistingSettlement' => $product->initial_stock_supplier_id !== null,
             'selectedColors' => Color::query()
@@ -529,7 +529,7 @@ class ProductController extends Controller
         ]);
         // #endregion
 
-        $variantsLocked = $this->variantsAreLocked($product);
+        $variantsLocked = false;
         $rawCombinations = $variantsLocked ? [] : $request->input('combinations', []);
         $hasVariations = ! empty($rawCombinations);
         $variantsRequested = ! $variantsLocked && $request->boolean('has_variants');
@@ -964,11 +964,6 @@ class ProductController extends Controller
                 ]);
             }
         }
-    }
-
-    private function variantsAreLocked(Product $product): bool
-    {
-        return $product->purchaseProducts()->exists() || $product->sellProducts()->exists();
     }
 
     /**

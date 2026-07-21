@@ -173,6 +173,9 @@ class InventoryAccountingService
 
         $salesBase = round(max(0, (float) $sell->net_amount - (float) $sell->vat), 2);
         $discountApplied = round(max(0, (float) $sell->gross_amount - $salesBase), 2);
+        $coinRedeem = round(max(0, min((float) $sell->coin_discount_amount, $discountApplied)), 2);
+        $commercialDiscount = round(max(0, $discountApplied - $coinRedeem), 2);
+        $coinEarnLiability = $this->coinEarnLiabilityValue($sell);
         $salesGross = round($salesBase + $discountApplied, 2);
         $vatAmount = round((float) $sell->vat, 2);
         $paymentLineTotal = round(array_sum(array_map(
@@ -215,8 +218,21 @@ class InventoryAccountingService
             $lines[] = $this->debitLine(SystemAccountKey::CustomerReceivables, $dueAmount, "Receivable — Sale {$invoice}, {$customerName}", $branchId);
         }
 
-        if ($discountApplied > 0) {
-            $lines[] = $this->debitLine(SystemAccountKey::DiscountApplied, $discountApplied, "Discount applied — Sale {$invoice}", $branchId);
+        if ($commercialDiscount > 0) {
+            $lines[] = $this->debitLine(SystemAccountKey::DiscountApplied, $commercialDiscount, "Discount applied — Sale {$invoice}", $branchId);
+        }
+
+        // Use coins: expense the money value on Coin Discount Applied, and reduce Customer Coin Payable.
+        if ($coinRedeem > 0) {
+            $lines[] = $this->debitLine(SystemAccountKey::CoinDiscountApplied, $coinRedeem, "Coin discount applied — Sale {$invoice}", $branchId);
+            $lines[] = $this->debitLine(SystemAccountKey::CustomerCoinPayable, $coinRedeem, "Coin payable released — Sale {$invoice}", $branchId);
+            $lines[] = $this->creditLine(SystemAccountKey::ProductSales, $coinRedeem, "Coin redeem sales offset — Sale {$invoice}", $branchId);
+        }
+
+        // Earn coins: store money value on Customer Coin Payable (liability). Coin Discount Applied does not change.
+        if ($coinEarnLiability > 0) {
+            $lines[] = $this->debitLine(SystemAccountKey::ProductSales, $coinEarnLiability, "Coin earn sales deferral — Sale {$invoice}", $branchId);
+            $lines[] = $this->creditLine(SystemAccountKey::CustomerCoinPayable, $coinEarnLiability, "Coin earn payable — Sale {$invoice}", $branchId);
         }
 
         if ($salesGross > 0) {
@@ -274,14 +290,16 @@ class InventoryAccountingService
 
     public function postSaleReturn(SaleReturn $saleReturn, array $paymentLines, float $returnCost): Transaction
     {
-        $saleReturn->loadMissing(['customer:id,name']);
+        $saleReturn->loadMissing(['customer:id,name', 'sell:id,gross_amount,coin_discount_amount,coins_earned,coins_redeemed,branch_id']);
 
         $returnNet = round((float) $saleReturn->net_amount, 2);
         $paidAmount = round((float) $saleReturn->paid_amount, 2);
         $returnVat = round((float) $saleReturn->vat_amount, 2);
         $returnBase = round($returnNet - $returnVat, 2);
         $returnDiscount = round(max(0, (float) $saleReturn->discount_amount), 2);
-        $returnGross = round($returnBase + $returnDiscount, 2);
+        $coinRedeemReversed = $this->saleReturnCoinRedeemReversed($saleReturn);
+        $coinEarnReversed = $this->saleReturnCoinEarnReversed($saleReturn);
+        $returnGross = round($returnBase + $returnDiscount + $coinRedeemReversed, 2);
 
         $invoice = $saleReturn->invoice_number;
         $customerName = $saleReturn->customer?->name ?? 'Customer';
@@ -295,6 +313,19 @@ class InventoryAccountingService
 
         if ($returnDiscount > 0) {
             $lines[] = $this->creditLine(SystemAccountKey::DiscountApplied, $returnDiscount, "Discount reversed — Sale Return {$invoice}", $branchId);
+        }
+
+        // Reverse coin use: undo Coin Discount Applied expense and restore Customer Coin Payable.
+        if ($coinRedeemReversed > 0) {
+            $lines[] = $this->creditLine(SystemAccountKey::CoinDiscountApplied, $coinRedeemReversed, "Coin discount reversed — Sale Return {$invoice}", $branchId);
+            $lines[] = $this->debitLine(SystemAccountKey::ProductSales, $coinRedeemReversed, "Coin redeem sales offset reversed — Sale Return {$invoice}", $branchId);
+            $lines[] = $this->creditLine(SystemAccountKey::CustomerCoinPayable, $coinRedeemReversed, "Coin payable restored — Sale Return {$invoice}", $branchId);
+        }
+
+        // Reverse coin earn: remove Customer Coin Payable liability (Coin Discount Applied unchanged).
+        if ($coinEarnReversed > 0) {
+            $lines[] = $this->debitLine(SystemAccountKey::CustomerCoinPayable, $coinEarnReversed, "Coin earn payable reversed — Sale Return {$invoice}", $branchId);
+            $lines[] = $this->creditLine(SystemAccountKey::ProductSales, $coinEarnReversed, "Coin earn sales deferral reversed — Sale Return {$invoice}", $branchId);
         }
 
         if ($returnVat > 0) {
@@ -1236,6 +1267,89 @@ class InventoryAccountingService
     private function debitLine(SystemAccountKey $key, float $amount, string $description, ?int $branchId = null): array
     {
         return $this->line(SystemAccountService::resolve($key, $branchId), $amount, 0.0, true, $description);
+    }
+
+    /**
+     * Money value of coins earned on a sale (coins_earned × coin_value).
+     */
+    private function coinEarnLiabilityValue(Sell $sell): float
+    {
+        $coinsEarned = round(max(0, (float) $sell->coins_earned), 2);
+
+        if ($coinsEarned <= 0) {
+            return 0.0;
+        }
+
+        $coinValue = $this->resolveCoinValue($sell);
+
+        if ($coinValue <= 0) {
+            return 0.0;
+        }
+
+        return round($coinsEarned * $coinValue, 2);
+    }
+
+    /**
+     * Prefer implied coin value from this sale's redeem; otherwise branch coin settings.
+     */
+    private function resolveCoinValue(Sell $sell): float
+    {
+        $redeemed = round(max(0, (float) $sell->coins_redeemed), 2);
+        $redeemValue = round(max(0, (float) $sell->coin_discount_amount), 2);
+
+        if ($redeemed > 0 && $redeemValue > 0) {
+            return round($redeemValue / $redeemed, 6);
+        }
+
+        $settings = app(CoinService::class)->settingsForBranch($sell->branch_id);
+
+        return round(max(0, (float) ($settings?->coin_value ?? 0)), 2);
+    }
+
+    /**
+     * Reverse a proportional share of the parent sale's coin redeem on return.
+     */
+    private function saleReturnCoinRedeemReversed(SaleReturn $saleReturn): float
+    {
+        $sell = $saleReturn->sell;
+        $parentCoinRedeem = round(max(0, (float) ($sell?->coin_discount_amount ?? 0)), 2);
+
+        if ($sell === null || $parentCoinRedeem <= 0) {
+            return 0.0;
+        }
+
+        return round($parentCoinRedeem * $this->saleReturnProportion($saleReturn), 2);
+    }
+
+    /**
+     * Reverse a proportional share of the parent sale's coin earn liability on return.
+     */
+    private function saleReturnCoinEarnReversed(SaleReturn $saleReturn): float
+    {
+        $sell = $saleReturn->sell;
+
+        if ($sell === null) {
+            return 0.0;
+        }
+
+        $parentEarn = $this->coinEarnLiabilityValue($sell);
+
+        if ($parentEarn <= 0) {
+            return 0.0;
+        }
+
+        return round($parentEarn * $this->saleReturnProportion($saleReturn), 2);
+    }
+
+    private function saleReturnProportion(SaleReturn $saleReturn): float
+    {
+        $parentGross = round(max(0, (float) ($saleReturn->sell?->gross_amount ?? 0)), 2);
+
+        if ($parentGross <= 0) {
+            return 0.0;
+        }
+
+        return min(1.0, round((float) $saleReturn->gross_amount / $parentGross, 4));
     }
 
     private function creditLine(SystemAccountKey $key, float $amount, string $description, ?int $branchId = null): array

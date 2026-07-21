@@ -98,6 +98,8 @@ export default function ProfitLossReport({ filters = {}, branches = [], isBranch
     const isProfit = (report.net_result ?? 0) >= 0;
     const salesRevenue = sectionBySlug(report.sections, 'sales_revenue');
     const salesReturns = sectionBySlug(report.sections, 'sales_returns');
+    const salesDiscounts = sectionBySlug(report.sections, 'sales_discounts');
+    const outputVat = sectionBySlug(report.sections, 'output_vat');
     const cogs = sectionBySlug(report.sections, 'cogs');
     const operatingExpenses = sectionBySlug(report.sections, 'operating_expenses');
 
@@ -146,13 +148,21 @@ export default function ProfitLossReport({ filters = {}, branches = [], isBranch
                     </div>
                 </div>
 
-                <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                     <div className="rounded-lg border border-emerald-200/80 bg-emerald-50 px-4 py-3 shadow-sm dark:border-emerald-800 dark:bg-emerald-950/30">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-800/70 dark:text-emerald-300/70">
                             Net Sales
                         </p>
                         <p className="mt-1 text-xl font-bold text-emerald-800 dark:text-emerald-200">
                             <MoneyCell value={report.net_sales} />
+                        </p>
+                    </div>
+                    <div className="rounded-lg border border-sky-200/80 bg-sky-50 px-4 py-3 shadow-sm dark:border-sky-800 dark:bg-sky-950/30">
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-sky-800/70 dark:text-sky-300/70">
+                            Output VAT
+                        </p>
+                        <p className="mt-1 text-xl font-bold text-sky-900 dark:text-sky-200">
+                            <MoneyCell value={report.output_vat} />
                         </p>
                     </div>
                     <div className="rounded-lg border border-amber-200/80 bg-amber-50 px-4 py-3 shadow-sm dark:border-amber-800 dark:bg-amber-950/30">
@@ -228,12 +238,37 @@ export default function ProfitLossReport({ filters = {}, branches = [], isBranch
                                     tone="loss"
                                 />
 
+                                <tr className="bg-violet-700/90 text-white">
+                                    <td colSpan={3} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide">
+                                        (−) Discount Applied
+                                    </td>
+                                </tr>
+                                <StatementLines lines={salesDiscounts.lines} emptyLabel="No discounts recorded." />
+                                <TotalRow
+                                    label="Discount Applied"
+                                    value={report.sales_discounts ?? salesDiscounts.total}
+                                    prefix="(−)"
+                                    tone="loss"
+                                />
+
                                 <TotalRow
                                     label="Net Sales"
                                     value={report.net_sales}
                                     prefix="="
                                     emphasize
                                     tone="profit"
+                                />
+
+                                <tr className="bg-sky-700/90 text-white">
+                                    <td colSpan={3} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide">
+                                        Output VAT (collected)
+                                    </td>
+                                </tr>
+                                <StatementLines lines={outputVat.lines} emptyLabel="No output VAT recorded." />
+                                <TotalRow
+                                    label="Output VAT"
+                                    value={report.output_vat ?? outputVat.total}
+                                    tone="muted"
                                 />
 
                                 <tr className="bg-amber-600/90 text-white">

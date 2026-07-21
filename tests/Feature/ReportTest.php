@@ -492,20 +492,23 @@ test('trial balance and profit loss are branch wise and keep debit credit totals
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/reports/profit-loss')
-            ->where('report.sales_revenue', 500.0)
-            ->where('report.sales_returns', 0.0)
-            ->where('report.net_sales', 500.0)
-            ->where('report.cogs', 0.0)
-            ->where('report.gross_profit', 500.0)
-            ->where('report.operating_expenses', 120.0)
-            ->where('report.total_income', 500.0)
-            ->where('report.total_expenses', 120.0)
-            ->where('report.net_result', 380.0)
+            ->where('report.sales_revenue', fn ($value) => (float) $value === 500.0)
+            ->where('report.sales_returns', fn ($value) => (float) $value === 0.0)
+            ->where('report.sales_discounts', fn ($value) => (float) $value === 0.0)
+            ->where('report.output_vat', fn ($value) => (float) $value === 0.0)
+            ->where('report.net_sales', fn ($value) => (float) $value === 500.0)
+            ->where('report.cogs', fn ($value) => (float) $value === 0.0)
+            ->where('report.gross_profit', fn ($value) => (float) $value === 500.0)
+            ->where('report.operating_expenses', fn ($value) => (float) $value === 120.0)
+            ->where('report.total_income', fn ($value) => (float) $value === 500.0)
+            ->where('report.total_expenses', fn ($value) => (float) $value === 120.0)
+            ->where('report.net_result', fn ($value) => (float) $value === 380.0)
             ->where('report.result_label', 'Net Profit')
             ->where('report.sections', function ($sections): bool {
                 $sections = collect($sections)->keyBy('slug');
 
                 return (float) ($sections['sales_revenue']['total'] ?? 0) === 500.0
+                    && (float) ($sections['sales_discounts']['total'] ?? 0) === 0.0
                     && (float) ($sections['operating_expenses']['total'] ?? 0) === 120.0
                     && (float) ($sections['cogs']['total'] ?? 0) === 0.0;
             }));

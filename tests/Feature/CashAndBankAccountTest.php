@@ -77,6 +77,7 @@ test('system seeds purchase returns and default expense accounts', function () {
     $rent = SystemAccountService::resolve(SystemAccountKey::RentExpense);
     $salary = SystemAccountService::resolve(SystemAccountKey::SalaryExpense);
     $utilities = SystemAccountService::resolve(SystemAccountKey::UtilitiesExpense);
+    $discountApplied = SystemAccountService::resolve(SystemAccountKey::DiscountApplied);
 
     expect($purchaseReturns->name)->toBe('Purchase Returns');
     expect($purchaseReturns->code)->toBe('X001-03');
@@ -94,6 +95,11 @@ test('system seeds purchase returns and default expense accounts', function () {
     expect($utilities->name)->toBe('Utilities');
     expect($utilities->code)->toBe('X001-06');
     expect($utilities->parent_id)->toBe($expensesId);
+
+    expect($discountApplied->name)->toBe('Discount Applied');
+    expect($discountApplied->code)->toBe('X001-07');
+    expect($discountApplied->parent_id)->toBe($expensesId);
+    expect($discountApplied->is_system)->toBeTrue();
 });
 
 test('system accounts cannot be updated or deleted', function () {

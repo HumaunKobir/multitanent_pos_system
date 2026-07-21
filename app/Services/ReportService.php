@@ -2081,6 +2081,8 @@ class ReportService
         $buckets = [
             'sales_revenue' => [],
             'sales_returns' => [],
+            'sales_discounts' => [],
+            'output_vat' => [],
             'cogs' => [],
             'operating_expenses' => [],
         ];
@@ -2095,7 +2097,7 @@ class ReportService
             }
 
             $bucket = $this->profitAndLossBucket($account);
-            $displayAmount = in_array($bucket, ['sales_returns', 'cogs', 'operating_expenses'], true)
+            $displayAmount = in_array($bucket, ['sales_returns', 'sales_discounts', 'cogs', 'operating_expenses'], true)
                 ? round(abs($amount), 2)
                 : $amount;
 
@@ -2118,9 +2120,27 @@ class ReportService
             ];
         }
 
+        foreach ($this->profitAndLossVatAccounts($effectiveBranchId) as $vatAccount) {
+            $closing = $this->accountBalanceAsOfForBranch($vatAccount->id, $resolvedDateTo, $effectiveBranchId);
+            $opening = $this->accountBalanceAsOfForBranch($vatAccount->id, $beforeStartDate, $effectiveBranchId);
+            $amount = round($closing - $opening, 2);
+
+            if (abs($amount) < 0.005) {
+                continue;
+            }
+
+            $buckets['output_vat'][] = [
+                'code' => $vatAccount->code,
+                'name' => $vatAccount->name,
+                'amount' => round(abs($amount), 2),
+            ];
+        }
+
         $salesRevenue = round(collect($buckets['sales_revenue'])->sum('amount'), 2);
         $salesReturns = round(collect($buckets['sales_returns'])->sum('amount'), 2);
-        $netSales = round($salesRevenue - $salesReturns, 2);
+        $salesDiscounts = round(collect($buckets['sales_discounts'])->sum('amount'), 2);
+        $outputVat = round(collect($buckets['output_vat'])->sum('amount'), 2);
+        $netSales = round($salesRevenue - $salesReturns - $salesDiscounts, 2);
         $cogs = round(collect($buckets['cogs'])->sum('amount'), 2);
         $grossProfit = round($netSales - $cogs, 2);
         $operatingExpenses = round(collect($buckets['operating_expenses'])->sum('amount'), 2);
@@ -2138,6 +2158,18 @@ class ReportService
                 'slug' => 'sales_returns',
                 'lines' => $buckets['sales_returns'],
                 'total' => $salesReturns,
+            ],
+            [
+                'type' => 'Discount Applied',
+                'slug' => 'sales_discounts',
+                'lines' => $buckets['sales_discounts'],
+                'total' => $salesDiscounts,
+            ],
+            [
+                'type' => 'Output VAT',
+                'slug' => 'output_vat',
+                'lines' => $buckets['output_vat'],
+                'total' => $outputVat,
             ],
             [
                 'type' => 'Cost of Goods Sold (COGS)',
@@ -2159,15 +2191,31 @@ class ReportService
             'sections' => $sections,
             'sales_revenue' => $salesRevenue,
             'sales_returns' => $salesReturns,
+            'sales_discounts' => $salesDiscounts,
+            'output_vat' => $outputVat,
             'net_sales' => $netSales,
             'cogs' => $cogs,
             'gross_profit' => $grossProfit,
             'operating_expenses' => $operatingExpenses,
             'total_income' => $salesRevenue,
-            'total_expenses' => round($cogs + $operatingExpenses, 2),
+            'total_expenses' => round($salesDiscounts + $cogs + $operatingExpenses, 2),
             'net_result' => $net,
             'result_label' => $net >= 0 ? 'Net Profit' : 'Net Loss',
         ];
+    }
+
+    /**
+     * @return Collection<int, ChartOfAccount>
+     */
+    private function profitAndLossVatAccounts(?int $effectiveBranchId)
+    {
+        return $this->reportAccountsQuery([AccountType::Liability], $effectiveBranchId)
+            ->where(function ($query): void {
+                $query->where('account_number', SystemAccountKey::OutputVat->accountNumber())
+                    ->orWhereRaw('LOWER(name) LIKE ?', ['%output vat%']);
+            })
+            ->orderBy('code')
+            ->get(['id', 'code', 'name', 'type', 'account_number']);
     }
 
     /**
@@ -2183,6 +2231,13 @@ class ReportService
             || str_contains($name, 'sales return')
         ) {
             return 'sales_returns';
+        }
+
+        if (
+            $accountNumber === SystemAccountKey::DiscountApplied->accountNumber()
+            || str_contains($name, 'discount applied')
+        ) {
+            return 'sales_discounts';
         }
 
         if ($account->type === AccountType::Income) {

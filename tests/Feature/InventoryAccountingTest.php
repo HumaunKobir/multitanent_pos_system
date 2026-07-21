@@ -2,6 +2,7 @@
 
 use App\Enums\AccountType;
 use App\Enums\CommonStatus;
+use App\Enums\SaleType;
 use App\Enums\SystemAccountKey;
 use App\Models\Batch;
 use App\Models\Branch;
@@ -10,11 +11,14 @@ use App\Models\Customer;
 use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\Purchase;
+use App\Models\Sell;
 use App\Models\Supplier;
 use App\Models\SupplierPayment;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\InventoryAccountingService;
+use App\Services\InventoryCostService;
+use App\Services\ReportService;
 use App\Services\SystemAccountService;
 use Inertia\Testing\AssertableInertia as Assert;
 use Spatie\Permission\Models\Permission;
@@ -477,4 +481,128 @@ test('purchase edit page pre-fills payment account from journal', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/inventory/purchase/edit')
             ->where('purchase.payment_account_id', $cash->id));
+});
+
+test('sale with discount posts product sales gross and discount applied expense', function () {
+    $user = accountingUser();
+    $cash = seedAccountingAccounts(branchId: $user->branch_id);
+    $product = Product::factory()->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 40,
+    ]);
+    $batch = Batch::factory()->for($product)->withStock(20)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 40,
+    ]);
+
+    $sell = Sell::query()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'date' => now()->format('Y-m-d'),
+        'gross_amount' => 500,
+        'discount' => 50,
+        'discount_type' => 'flat',
+        'discount_value' => 50,
+        'special_discount_amount' => 0,
+        'vat' => 0,
+        'paid_amount' => 450,
+        'type' => SaleType::Sale,
+    ]);
+
+    $sell->products()->create([
+        'branch_id' => $user->branch_id,
+        'product_id' => $product->id,
+        'variation_id' => null,
+        'quantity' => 5,
+        'unit_price' => 100,
+        'discount' => 0,
+        'batches' => [(string) $batch->id => 5.0],
+    ]);
+
+    $sell->load('products');
+    $cogs = app(InventoryCostService::class)->costForSell($sell);
+
+    app(InventoryAccountingService::class)->postSale(
+        $sell->fresh(['customer']),
+        [['payment_account_id' => $cash->id, 'amount' => 450.0]],
+        $cogs,
+    );
+
+    $transaction = Transaction::query()
+        ->where('source_type', Sell::class)
+        ->where('source_id', $sell->id)
+        ->first();
+
+    expect($transaction)->not->toBeNull();
+
+    $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
+    $salesId = SystemAccountService::id(SystemAccountKey::ProductSales, $user->branch_id);
+    $discountId = SystemAccountService::id(SystemAccountKey::DiscountApplied, $user->branch_id);
+
+    expect(round((float) $ledgers->where('account_id', $salesId)->sum('credit'), 2))->toBe(500.0);
+    expect(round((float) $ledgers->where('account_id', $discountId)->sum('debit'), 2))->toBe(50.0);
+    expect(round((float) $ledgers->sum('debit'), 2))->toBe(round((float) $ledgers->sum('credit'), 2));
+
+    $this->actingAs($user);
+
+    $date = now()->format('Y-m-d');
+    $pl = app(ReportService::class)->profitAndLoss($date, $date, $user->branch_id);
+    expect((float) $pl['sales_revenue'])->toBe(500.0);
+    expect((float) $pl['sales_discounts'])->toBe(50.0);
+    expect((float) $pl['net_sales'])->toBe(450.0);
+
+    $bs = app(ReportService::class)->balanceSheet($date);
+    expect($bs['is_balanced'])->toBeTrue();
+});
+
+test('profit and loss includes output vat collected in the period', function () {
+    $user = accountingUser();
+    $cash = seedAccountingAccounts(branchId: $user->branch_id);
+    $product = Product::factory()->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 40,
+    ]);
+    $batch = Batch::factory()->for($product)->withStock(20)->create([
+        'branch_id' => $user->branch_id,
+        'purchase_price' => 40,
+    ]);
+
+    $sell = Sell::query()->create([
+        'branch_id' => $user->branch_id,
+        'user_id' => $user->id,
+        'date' => now()->format('Y-m-d'),
+        'gross_amount' => 1000,
+        'discount' => 0,
+        'vat' => 50,
+        'paid_amount' => 1050,
+        'type' => SaleType::Sale,
+    ]);
+
+    $sell->products()->create([
+        'branch_id' => $user->branch_id,
+        'product_id' => $product->id,
+        'variation_id' => null,
+        'quantity' => 10,
+        'unit_price' => 100,
+        'discount' => 0,
+        'batches' => [(string) $batch->id => 10.0],
+    ]);
+
+    $sell->load('products');
+    $cogs = app(InventoryCostService::class)->costForSell($sell);
+
+    app(InventoryAccountingService::class)->postSale(
+        $sell->fresh(['customer']),
+        [['payment_account_id' => $cash->id, 'amount' => 1050.0]],
+        $cogs,
+    );
+
+    $this->actingAs($user);
+
+    $date = now()->format('Y-m-d');
+    $pl = app(ReportService::class)->profitAndLoss($date, $date, $user->branch_id);
+
+    expect((float) $pl['sales_revenue'])->toBe(1000.0)
+        ->and((float) $pl['output_vat'])->toBe(50.0)
+        ->and((float) $pl['net_sales'])->toBe(1000.0);
 });

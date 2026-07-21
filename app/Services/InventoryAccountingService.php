@@ -172,6 +172,8 @@ class InventoryAccountingService
         $sell->loadMissing('customer:id,name');
 
         $salesBase = round(max(0, (float) $sell->net_amount - (float) $sell->vat), 2);
+        $discountApplied = round(max(0, (float) $sell->gross_amount - $salesBase), 2);
+        $salesGross = round($salesBase + $discountApplied, 2);
         $vatAmount = round((float) $sell->vat, 2);
         $paymentLineTotal = round(array_sum(array_map(
             fn (array $paymentLine): float => max(0, round((float) ($paymentLine['amount'] ?? 0), 2)),
@@ -210,20 +212,24 @@ class InventoryAccountingService
         }
 
         if ($dueAmount > 0) {
-            $lines[] = $this->debitLine(SystemAccountKey::CustomerReceivables, $dueAmount, "Receivable — Sale {$invoice}, {$customerName}");
+            $lines[] = $this->debitLine(SystemAccountKey::CustomerReceivables, $dueAmount, "Receivable — Sale {$invoice}, {$customerName}", $branchId);
         }
 
-        if ($salesBase > 0) {
-            $lines[] = $this->creditLine(SystemAccountKey::ProductSales, $salesBase, "Sales revenue — Sale {$invoice}");
+        if ($discountApplied > 0) {
+            $lines[] = $this->debitLine(SystemAccountKey::DiscountApplied, $discountApplied, "Discount applied — Sale {$invoice}", $branchId);
+        }
+
+        if ($salesGross > 0) {
+            $lines[] = $this->creditLine(SystemAccountKey::ProductSales, $salesGross, "Sales revenue — Sale {$invoice}", $branchId);
         }
 
         if ($vatAmount > 0) {
-            $lines[] = $this->creditLine(SystemAccountKey::OutputVat, $vatAmount, "Output VAT — Sale {$invoice}");
+            $lines[] = $this->creditLine(SystemAccountKey::OutputVat, $vatAmount, "Output VAT — Sale {$invoice}", $branchId);
         }
 
         if ($cogs > 0) {
-            $lines[] = $this->debitLine(SystemAccountKey::CostOfGoodsSold, $cogs, "COGS — Sale {$invoice}");
-            $lines[] = $this->creditLine(SystemAccountKey::ProductInventory, $cogs, "Inventory reduced — Sale {$invoice}");
+            $lines[] = $this->debitLine(SystemAccountKey::CostOfGoodsSold, $cogs, "COGS — Sale {$invoice}", $branchId);
+            $lines[] = $this->creditLine(SystemAccountKey::ProductInventory, $cogs, "Inventory reduced — Sale {$invoice}", $branchId);
         }
 
         return $this->postJournal(
@@ -274,18 +280,25 @@ class InventoryAccountingService
         $paidAmount = round((float) $saleReturn->paid_amount, 2);
         $returnVat = round((float) $saleReturn->vat_amount, 2);
         $returnBase = round($returnNet - $returnVat, 2);
+        $returnDiscount = round(max(0, (float) $saleReturn->discount_amount), 2);
+        $returnGross = round($returnBase + $returnDiscount, 2);
 
         $invoice = $saleReturn->invoice_number;
         $customerName = $saleReturn->customer?->name ?? 'Customer';
+        $branchId = $saleReturn->branch_id;
 
         $lines = [];
 
-        if ($returnBase > 0) {
-            $lines[] = $this->debitLine(SystemAccountKey::SalesReturns, $returnBase, "Sales return — {$invoice}, {$customerName}");
+        if ($returnGross > 0) {
+            $lines[] = $this->debitLine(SystemAccountKey::SalesReturns, $returnGross, "Sales return — {$invoice}, {$customerName}", $branchId);
+        }
+
+        if ($returnDiscount > 0) {
+            $lines[] = $this->creditLine(SystemAccountKey::DiscountApplied, $returnDiscount, "Discount reversed — Sale Return {$invoice}", $branchId);
         }
 
         if ($returnVat > 0) {
-            $lines[] = $this->debitLine(SystemAccountKey::OutputVat, $returnVat, "Output VAT reversed — {$invoice}");
+            $lines[] = $this->debitLine(SystemAccountKey::OutputVat, $returnVat, "Output VAT reversed — {$invoice}", $branchId);
         }
 
         $cashCredit = 0.0;
@@ -302,6 +315,7 @@ class InventoryAccountingService
                 (int) $paymentLine['payment_account_id'],
                 $lineAmount,
                 "Cash refunded — Sale Return {$invoice}",
+                $branchId,
             );
             $cashCredit = round($cashCredit + $lineAmount, 2);
         }
@@ -321,18 +335,19 @@ class InventoryAccountingService
                     (int) $fallbackAccountId,
                     $remainingCredit,
                     "Cash refunded — Sale Return {$invoice}",
+                    $branchId,
                 );
                 $cashCredit = round($cashCredit + $remainingCredit, 2);
             }
         }
 
         if ($arCredit > 0) {
-            $lines[] = $this->creditLine(SystemAccountKey::CustomerReceivables, $arCredit, "Receivable reduced — Sale Return {$invoice}, {$customerName}");
+            $lines[] = $this->creditLine(SystemAccountKey::CustomerReceivables, $arCredit, "Receivable reduced — Sale Return {$invoice}, {$customerName}", $branchId);
         }
 
         if ($returnCost > 0) {
-            $lines[] = $this->debitLine(SystemAccountKey::ProductInventory, $returnCost, "Inventory restored — Sale Return {$invoice}");
-            $lines[] = $this->creditLine(SystemAccountKey::CostOfGoodsSold, $returnCost, "COGS reversed — Sale Return {$invoice}");
+            $lines[] = $this->debitLine(SystemAccountKey::ProductInventory, $returnCost, "Inventory restored — Sale Return {$invoice}", $branchId);
+            $lines[] = $this->creditLine(SystemAccountKey::CostOfGoodsSold, $returnCost, "COGS reversed — Sale Return {$invoice}", $branchId);
         }
 
         return $this->postJournal(

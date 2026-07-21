@@ -40,6 +40,7 @@ enum SystemAccountKey: string
     case RentExpense = 'rent_expense';
     case SalaryExpense = 'salary_expense';
     case UtilitiesExpense = 'utilities_expense';
+    case DiscountApplied = 'discount_applied';
 
     public function accountNumber(): string
     {
@@ -85,6 +86,7 @@ enum SystemAccountKey: string
             self::RentExpense => 'Rent',
             self::SalaryExpense => 'Salary',
             self::UtilitiesExpense => 'Utilities',
+            self::DiscountApplied => 'Discount Applied',
         };
     }
 
@@ -100,7 +102,7 @@ enum SystemAccountKey: string
             self::OpeningBalanceEquity, self::OpeningBalanceClearing => AccountType::Equity,
             self::SalesRevenue, self::ProductSales, self::SalesReturns, self::OtherIncome => AccountType::Income,
             self::Expenses, self::CostOfGoodsSold, self::InventoryDamage, self::PurchaseReturns,
-            self::RentExpense, self::SalaryExpense, self::UtilitiesExpense => AccountType::Expenses,
+            self::RentExpense, self::SalaryExpense, self::UtilitiesExpense, self::DiscountApplied => AccountType::Expenses,
         };
     }
 
@@ -127,7 +129,7 @@ enum SystemAccountKey: string
             self::OpeningBalanceClearing => self::OpeningBalanceEquity,
             self::ProductSales, self::SalesReturns => self::SalesRevenue,
             self::CostOfGoodsSold, self::InventoryDamage, self::PurchaseReturns,
-            self::RentExpense, self::SalaryExpense, self::UtilitiesExpense => self::Expenses,
+            self::RentExpense, self::SalaryExpense, self::UtilitiesExpense, self::DiscountApplied => self::Expenses,
             default => null,
         };
     }

@@ -32,12 +32,12 @@ class SystemAccountService
         $branchId ??= Auth::user()?->branch_id;
         $cacheKey = ($branchId ?? 'global');
 
-        if (isset(self::$configuredBranches[$cacheKey]) || self::isConfigured($branchId)) {
-            self::$configuredBranches[$cacheKey] = true;
-
+        if (isset(self::$configuredBranches[$cacheKey])) {
             return;
         }
 
+        // Always seed so newly added system keys (e.g. Discount Applied) are created
+        // on charts that already have Cash & Bank. seed() is idempotent.
         self::seed($branchId);
         self::$configuredBranches[$cacheKey] = true;
     }
@@ -68,6 +68,25 @@ class SystemAccountService
         }
     }
 
+    /**
+     * Seed the global chart and every branch panel chart that already exists.
+     */
+    public static function seedAllPanels(): void
+    {
+        self::seed(null);
+
+        $branchIds = ChartOfAccount::query()
+            ->where('source_type', Branch::class)
+            ->whereNotNull('source_id')
+            ->distinct()
+            ->orderBy('source_id')
+            ->pluck('source_id');
+
+        foreach ($branchIds as $branchId) {
+            self::seed((int) $branchId);
+        }
+    }
+
     public static function resolve(SystemAccountKey $key, ?int $branchId = null): ChartOfAccount
     {
         $branchId ??= Auth::user()?->branch_id;
@@ -80,7 +99,11 @@ class SystemAccountService
         $account = self::findByKey($key, $branchId);
 
         if ($account === null) {
-            self::ensureConfigured($branchId);
+            // Force a full seed for this panel so missing keys are created even when
+            // Cash & Bank already exists (ensureConfigured used to skip in that case).
+            unset(self::$configuredBranches[$branchId ?? 'global']);
+            self::seed($branchId);
+            self::$configuredBranches[$branchId ?? 'global'] = true;
             $account = self::findByKey($key, $branchId);
         }
 
@@ -145,6 +168,7 @@ class SystemAccountService
             SystemAccountKey::RentExpense,
             SystemAccountKey::SalaryExpense,
             SystemAccountKey::UtilitiesExpense,
+            SystemAccountKey::DiscountApplied,
         ];
     }
 
@@ -362,6 +386,7 @@ class SystemAccountService
             SystemAccountKey::RentExpense => 'X001-04',
             SystemAccountKey::SalaryExpense => 'X001-05',
             SystemAccountKey::UtilitiesExpense => 'X001-06',
+            SystemAccountKey::DiscountApplied => 'X001-07',
         };
     }
 }

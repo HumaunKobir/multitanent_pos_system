@@ -81,6 +81,7 @@ test('chart of accounts seeder creates child accounts under parent heads', funct
             SystemAccountKey::RentExpense,
             SystemAccountKey::SalaryExpense,
             SystemAccountKey::UtilitiesExpense,
+            SystemAccountKey::DiscountApplied,
         ]],
     ];
 

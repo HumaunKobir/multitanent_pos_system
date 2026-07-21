@@ -89,6 +89,16 @@ return [
             ],
         ],
 
+        'inventory.stock-adjustment' => [
+            'label' => 'Stock Adjustment',
+            'group' => 'Inventory',
+            'permissions' => [
+                'inventory.stock-adjustment.view' => 'View Stock Adjustments',
+                'inventory.stock-adjustment.create' => 'Create Stock Adjustment',
+                'inventory.stock-adjustment.delete' => 'Delete Stock Adjustment',
+            ],
+        ],
+
         'inventory.stock-distribution' => [
             'label' => 'Stock Distribution',
             'group' => 'Inventory',
@@ -532,6 +542,30 @@ return [
             'group' => 'Reports',
             'permissions' => [
                 'report.inventory-stock.view' => 'View Inventory Stock',
+            ],
+        ],
+
+        'report.stock-valuation' => [
+            'label' => 'Stock Valuation',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.stock-valuation.view' => 'View Stock Valuation',
+            ],
+        ],
+
+        'report.stock-aging' => [
+            'label' => 'Stock Aging',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.stock-aging.view' => 'View Stock Aging',
+            ],
+        ],
+
+        'report.opening-stock' => [
+            'label' => 'Opening Stock',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.opening-stock.view' => 'View Opening Stock',
             ],
         ],
 

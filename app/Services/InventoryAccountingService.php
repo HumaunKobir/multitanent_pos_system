@@ -21,6 +21,7 @@ use App\Models\PurchaseReturnPayment;
 use App\Models\SaleReturn;
 use App\Models\SaleReturnPayment;
 use App\Models\Sell;
+use App\Models\StockAdjustment;
 use App\Models\StockDistribution;
 use App\Models\StockDistributionProduct;
 use App\Models\Supplier;
@@ -409,6 +410,38 @@ class InventoryAccountingService
             $damage->id,
             $damage->date->format('Y-m-d'),
             "Damage {$serial}",
+            $lines,
+        );
+    }
+
+    public function postStockAdjustment(StockAdjustment $adjustment, float $totalCost): ?Transaction
+    {
+        $totalCost = round(max(0, $totalCost), 2);
+
+        if ($totalCost <= 0) {
+            return null;
+        }
+
+        $serial = $adjustment->serial ?? $adjustment->invoice_number;
+        $branchId = $adjustment->branch_id;
+
+        if ($adjustment->isIncrease()) {
+            $lines = [
+                $this->debitLine(SystemAccountKey::ProductInventory, $totalCost, "Inventory increased — Adjustment {$serial}", $branchId),
+                $this->creditLine(SystemAccountKey::OtherIncome, $totalCost, "Stock adjustment gain — {$serial}", $branchId),
+            ];
+        } else {
+            $lines = [
+                $this->debitLine(SystemAccountKey::InventoryDamage, $totalCost, "Inventory write-off — Adjustment {$serial}", $branchId),
+                $this->creditLine(SystemAccountKey::ProductInventory, $totalCost, "Inventory reduced — Adjustment {$serial}", $branchId),
+            ];
+        }
+
+        return $this->postJournal(
+            StockAdjustment::class,
+            $adjustment->id,
+            $adjustment->date->format('Y-m-d'),
+            "Stock Adjustment {$serial}",
             $lines,
         );
     }

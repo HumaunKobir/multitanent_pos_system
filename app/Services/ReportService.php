@@ -2769,12 +2769,14 @@ class ReportService
             ProductLogType::Purchase,
             ProductLogType::Sale_Return,
             ProductLogType::InitialStock,
-            ProductLogType::Distribution_In => true,
+            ProductLogType::Distribution_In,
+            ProductLogType::Adjustment_In => true,
             ProductLogType::Sale,
             ProductLogType::Damage,
             ProductLogType::Purchase_Return,
             ProductLogType::Exchange,
-            ProductLogType::Distribution_Out => false,
+            ProductLogType::Distribution_Out,
+            ProductLogType::Adjustment_Out => false,
         };
     }
 

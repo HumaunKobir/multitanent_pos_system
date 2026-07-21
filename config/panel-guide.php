@@ -157,6 +157,16 @@ return [
             ],
         ],
 
+        'inventory.stock-adjustment.view' => [
+            'title' => 'Stock Adjustment',
+            'summary' => 'Increase or decrease on-hand stock for corrections.',
+            'steps' => [
+                'Go to Purchases → Stock Adjustment.',
+                'Choose Increase or Decrease.',
+                'Add products and quantities, then save.',
+            ],
+        ],
+
         'inventory.stock-distribution.view' => [
             'title' => 'Distribute Stock',
             'summary' => 'Send stock from the main branch to other branches.',
@@ -590,8 +600,38 @@ return [
             'summary' => 'Current stock list for all products in your scope.',
             'steps' => [
                 'Go to Reports → Inventory Stock.',
-                'Filter by category or search by name.',
-                'See quantity and value on hand now.',
+                'Filter by category, brand, size, or search by name.',
+                'See quantity, cost value, selling value, and expected profit on hand now.',
+            ],
+        ],
+
+        'report.stock-valuation.view' => [
+            'title' => 'Stock Valuation',
+            'summary' => 'Value current inventory at cost and selling price.',
+            'steps' => [
+                'Go to Reports → Stock Valuation.',
+                'Filter by product search, brand, category, size, or branch.',
+                'Review qty, unit cost, cost value, selling value, and expected profit.',
+            ],
+        ],
+
+        'report.stock-aging.view' => [
+            'title' => 'Stock Aging',
+            'summary' => 'See how long current stock has been sitting by age bucket.',
+            'steps' => [
+                'Go to Reports → Stock Aging.',
+                'Filter by product search, brand, category, size, or branch.',
+                'Review quantities in 0–30, 31–60, 61–90, and 90+ day buckets.',
+            ],
+        ],
+
+        'report.opening-stock.view' => [
+            'title' => 'Opening Stock',
+            'summary' => 'List products that were opened with initial stock.',
+            'steps' => [
+                'Go to Reports → Opening Stock.',
+                'Review opening qty, cost, and supplier paid amount.',
+                'To add opening stock, use Settings → Product (Initial Stock field).',
             ],
         ],
 

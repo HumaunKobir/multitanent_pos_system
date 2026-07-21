@@ -104,6 +104,48 @@ class InventoryStockService
     }
 
     /**
+     * Add quantity to a product batch (create one when needed) for stock increases.
+     *
+     * @return array<int, float>
+     */
+    public function addToProductBatch(
+        ?int $branchId,
+        int $productId,
+        float $qty,
+        float $unitCost,
+        Closure $logCallback,
+    ): array {
+        if ($qty <= 0) {
+            return [];
+        }
+
+        $product = Product::query()->findOrFail($productId);
+        $stockBranchId = $product->resolveStockBranchId($branchId ?? $product->branch_id);
+
+        $batch = Batch::query()
+            ->where('product_id', $productId)
+            ->when($stockBranchId !== null, fn ($q) => $q->atBranchWarehouse($stockBranchId))
+            ->latest('id')
+            ->lockForUpdate()
+            ->first();
+
+        if ($batch === null) {
+            $batch = Batch::query()->create([
+                'branch_id' => $stockBranchId,
+                'product_id' => $productId,
+                'purchase_price' => $unitCost > 0 ? $unitCost : (float) $product->purchase_price,
+                'available' => 0,
+            ]);
+        }
+
+        $batch->increment('available', $qty);
+        $batch->refresh();
+        $logCallback($batch, $qty);
+
+        return [$batch->id => $qty];
+    }
+
+    /**
      * Record a stock ledger row for variant products (batch available is not changed).
      */
     public function logVariationMovement(ProductVariation $variation, float $qty, ProductLogType $type): void

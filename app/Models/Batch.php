@@ -104,6 +104,14 @@ class Batch extends Model
         $this->stockLog(ProductLogType::Distribution_In, $quantity);
     }
 
+    public function adjustmentStock(int|float $quantity): void
+    {
+        $this->stockLog(
+            $quantity >= 0 ? ProductLogType::Adjustment_In : ProductLogType::Adjustment_Out,
+            abs($quantity),
+        );
+    }
+
     private function stockLog(ProductLogType $type, int|float $quantity): void
     {
         ProductInOutLog::create([

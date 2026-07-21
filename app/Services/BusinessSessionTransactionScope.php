@@ -15,6 +15,7 @@ use App\Models\ProductInitialStock;
 use App\Models\Purchase;
 use App\Models\SaleReturn;
 use App\Models\Sell;
+use App\Models\StockAdjustment;
 use App\Models\StockDistribution;
 use App\Models\StockDistributionProduct;
 use App\Models\Supplier;
@@ -37,6 +38,7 @@ class BusinessSessionTransactionScope
             Sell::class => Sell::class,
             SaleReturn::class => SaleReturn::class,
             Damage::class => Damage::class,
+            StockAdjustment::class => StockAdjustment::class,
             StockDistribution::class => StockDistribution::class,
             StockDistributionProduct::class => StockDistributionProduct::class,
             SupplierPayment::class => SupplierPayment::class,

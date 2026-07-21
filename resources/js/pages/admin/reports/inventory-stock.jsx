@@ -25,12 +25,27 @@ function formatMoney(value) {
     })}`;
 }
 
+function variantValues(variation) {
+    const stock = parseFloat(variation?.stock ?? 0);
+    const cost = stock * parseFloat(variation?.purchase_price ?? 0);
+    const selling = stock * parseFloat(variation?.price ?? 0);
+
+    return {
+        stock,
+        cost,
+        selling,
+        profit: selling - cost,
+    };
+}
+
 export default function InventoryStockReport({
     products,
     summary = {},
     filters,
     categories,
     brands,
+    sizes = {},
+    productOptions = [],
     branches = {},
     mainBranchId = null,
 }) {
@@ -41,6 +56,8 @@ export default function InventoryStockReport({
     const [search, setSearch] = useState(filters.search ?? '');
     const [categoryId, setCategoryId] = useState(filters.category_id ?? '__all');
     const [brandId, setBrandId] = useState(filters.brand_id ?? '__all');
+    const [sizeId, setSizeId] = useState(filters.size_id ?? '__all');
+    const [productId, setProductId] = useState(filters.product_id ? String(filters.product_id) : '__all');
     const [branchId, setBranchId] = useState(filters.branch_id ?? defaultBranchId);
     const [dateFrom, setDateFrom] = useState(filters.date_from ?? '');
     const [dateTo, setDateTo] = useState(filters.date_to ?? '');
@@ -53,6 +70,8 @@ export default function InventoryStockReport({
                     search: search || undefined,
                     category_id: categoryId === '__all' ? undefined : categoryId,
                     brand_id: brandId === '__all' ? undefined : brandId,
+                    size_id: sizeId === '__all' ? undefined : sizeId,
+                    product_id: productId === '__all' ? undefined : productId,
                     date_from: dateFrom || undefined,
                     date_to: dateTo || undefined,
                     ...(canFilterByBranch ? { branch_id: branchId } : {}),
@@ -60,7 +79,7 @@ export default function InventoryStockReport({
                 { preserveState: true, replace: true },
             );
         },
-        [search, categoryId, brandId, branchId, dateFrom, dateTo, canFilterByBranch],
+        [search, categoryId, brandId, sizeId, productId, branchId, dateFrom, dateTo, canFilterByBranch],
         350,
         { skipFirstRun: true },
     );
@@ -69,6 +88,8 @@ export default function InventoryStockReport({
         setSearch('');
         setCategoryId('__all');
         setBrandId('__all');
+        setSizeId('__all');
+        setProductId('__all');
         setDateFrom('');
         setDateTo('');
         if (canFilterByBranch) {
@@ -78,20 +99,38 @@ export default function InventoryStockReport({
 
     const categoryOptions = Object.entries(categories || {}).map(([value, label]) => ({ value, label }));
     const brandOptions = Object.entries(brands || {}).map(([value, label]) => ({ value, label }));
+    const sizeOptions = Object.entries(sizes || {}).map(([value, label]) => ({ value, label }));
     const branchOptions = Object.entries(branches || {}).map(([value, label]) => ({ value, label }));
 
     const flatRows = (products.data ?? []).flatMap((product) => {
         if (!product.variations?.length) {
-            return [{ ...product, _rowKey: `p-${product.id}`, _isVariant: false }];
+            return [
+                {
+                    ...product,
+                    _rowKey: `p-${product.id}`,
+                    _isVariant: false,
+                    _stock: parseFloat(product.stock_qty ?? product.batches_sum_available ?? 0) || 0,
+                    _costValue: parseFloat(product.cost_value ?? 0),
+                    _sellingValue: parseFloat(product.selling_value ?? 0),
+                    _expectedProfit: parseFloat(product.expected_profit ?? 0),
+                },
+            ];
         }
 
-        return product.variations.map((v) => ({
-            ...product,
-            _rowKey: `v-${v.id}`,
-            _isVariant: true,
-            _variantLabel: v.variation_data?.label ?? v.sku,
-            _variantStock: v.stock,
-        }));
+        return product.variations.map((v) => {
+            const values = variantValues(v);
+
+            return {
+                ...product,
+                _rowKey: `v-${v.id}`,
+                _isVariant: true,
+                _variantLabel: v.variation_data?.label ?? v.sku,
+                _stock: values.stock,
+                _costValue: values.cost,
+                _sellingValue: values.selling,
+                _expectedProfit: values.profit,
+            };
+        });
     });
 
     const columns = [
@@ -138,9 +177,7 @@ export default function InventoryStockReport({
             id: 'stock',
             header: 'Stock',
             render: (row) => {
-                const stock = row._isVariant
-                    ? parseFloat(row._variantStock ?? 0)
-                    : parseFloat(row.batches_sum_available ?? 0) || 0;
+                const stock = row._stock;
                 const branchInitialStock = row.submission_stock_summary?.total ?? 0;
                 const isReceivedFromBranch = row.source_branch_id != null && row.received_at != null;
 
@@ -155,8 +192,23 @@ export default function InventoryStockReport({
                     );
                 }
 
-                return <span className="font-medium">{stock}</span>;
+                return <span className="font-medium">{formatStock(stock)}</span>;
             },
+        },
+        {
+            id: 'cost_value',
+            header: 'Cost Value',
+            render: (row) => formatMoney(row._costValue),
+        },
+        {
+            id: 'selling_value',
+            header: 'Selling Value',
+            render: (row) => formatMoney(row._sellingValue),
+        },
+        {
+            id: 'expected_profit',
+            header: 'Expected Profit',
+            render: (row) => formatMoney(row._expectedProfit),
         },
     ];
 
@@ -172,7 +224,7 @@ export default function InventoryStockReport({
                         </div>
                         <div>
                             <h1 className="text-base font-semibold text-white">Inventory Stock</h1>
-                            <p className="text-xs text-white/60">View product stock by category, brand, or search.</p>
+                            <p className="text-xs text-white/60">View product stock by category, brand, size, or search.</p>
                         </div>
                     </div>
                 </div>
@@ -199,6 +251,19 @@ export default function InventoryStockReport({
                             </SelectContent>
                         </Select>
                     )}
+                    <Select value={productId} onValueChange={(v) => setProductId(v)}>
+                        <SelectTrigger className="w-56">
+                            <SelectValue placeholder="All products" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="__all">All products</SelectItem>
+                            {productOptions.map((opt) => (
+                                <SelectItem key={opt.id} value={String(opt.id)}>
+                                    {opt.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                     <Select value={categoryId} onValueChange={(v) => setCategoryId(v)}>
                         <SelectTrigger className="w-48">
                             <SelectValue placeholder="All categories" />
@@ -225,6 +290,19 @@ export default function InventoryStockReport({
                             ))}
                         </SelectContent>
                     </Select>
+                    <Select value={sizeId} onValueChange={(v) => setSizeId(v)}>
+                        <SelectTrigger className="w-40">
+                            <SelectValue placeholder="All sizes" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="__all">All sizes</SelectItem>
+                            {sizeOptions.map((opt) => (
+                                <SelectItem key={opt.value} value={opt.value}>
+                                    {opt.label}
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                     <ListDateExportBar
                         dateFrom={dateFrom}
                         dateTo={dateTo}
@@ -237,6 +315,8 @@ export default function InventoryStockReport({
                             search,
                             category_id: categoryId,
                             brand_id: brandId,
+                            size_id: sizeId,
+                            product_id: productId,
                             ...(canFilterByBranch ? { branch_id: branchId } : {}),
                         }}
                     />

@@ -17,4 +17,6 @@ enum ProductLogType: int
     case Exchange = 14;
     case Distribution_Out = 15;
     case Distribution_In = 16;
+    case Adjustment_In = 17;
+    case Adjustment_Out = 18;
 }

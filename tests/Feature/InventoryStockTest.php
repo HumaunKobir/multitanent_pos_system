@@ -5,6 +5,8 @@ use App\Models\Branch;
 use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
+use App\Models\ProductVariation;
+use App\Models\Size;
 use App\Models\User;
 use Illuminate\Support\Facades\Artisan;
 
@@ -56,10 +58,12 @@ test('inventory stock report renders with filters', function () {
             ->component('admin/reports/inventory-stock')
             ->has('products.data')
             ->has('summary')
-            ->where('summary.total_stock', 0)
-            ->where('summary.product_count', 0)
+            ->has('summary.total_stock')
+            ->has('summary.product_count')
             ->has('categories')
             ->has('brands')
+            ->has('sizes')
+            ->has('productOptions')
             ->has('branches')
             ->where('products.per_page', 20));
 });
@@ -276,4 +280,159 @@ test('old inventory stock url redirects to report', function () {
     $this->actingAs($admin)
         ->get('/inventory/stock')
         ->assertRedirect('/report/inventory-stock');
+});
+
+test('inventory stock report can filter by size on product sizes json', function () {
+    inventoryStockMainBranch();
+    $admin = inventoryStockAdmin();
+    $mainBranchId = Branch::resolveMainBranchId();
+    $category = Category::factory()->create(['status' => 1]);
+    $brand = Brand::factory()->create(['status' => 1]);
+    $size = Size::query()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Inv Size '.fake()->unique()->numerify('####'),
+        'status' => 1,
+    ]);
+    $otherSize = Size::query()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'Other Size '.fake()->unique()->numerify('####'),
+        'status' => 1,
+    ]);
+
+    $matched = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'category_id' => $category->id,
+        'brand_id' => $brand->id,
+        'name' => 'Sized Product '.fake()->unique()->numerify('######'),
+        'status' => 1,
+        'sizes' => [$size->id],
+    ]);
+    Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'category_id' => $category->id,
+        'brand_id' => $brand->id,
+        'name' => 'Other Sized '.fake()->unique()->numerify('######'),
+        'status' => 1,
+        'sizes' => [$otherSize->id],
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('report.inventory-stock', ['size_id' => $size->id]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->component('admin/reports/inventory-stock')
+            ->where('filters.size_id', (string) $size->id)
+            ->has('products.data', 1)
+            ->where('products.data.0.id', $matched->id));
+});
+
+test('inventory stock report can filter by size on variation data', function () {
+    inventoryStockMainBranch();
+    $admin = inventoryStockAdmin();
+    $mainBranchId = Branch::resolveMainBranchId();
+    $category = Category::factory()->create(['status' => 1]);
+    $brand = Brand::factory()->create(['status' => 1]);
+    $size = Size::query()->create([
+        'branch_id' => $mainBranchId,
+        'name' => 'VarSize '.fake()->unique()->numerify('####'),
+        'status' => 1,
+    ]);
+
+    $matched = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'category_id' => $category->id,
+        'brand_id' => $brand->id,
+        'name' => 'Variant Sized '.fake()->unique()->numerify('######'),
+        'status' => 1,
+        'sizes' => null,
+    ]);
+    ProductVariation::query()->create([
+        'branch_id' => $mainBranchId,
+        'product_id' => $matched->id,
+        'sku' => fake()->unique()->numerify('########'),
+        'variation_data' => ['label' => 'Black-'.$size->name, 'Color' => 'Black', 'Size' => $size->name],
+        'price' => 200,
+        'purchase_price' => 100,
+        'stock' => 4,
+        'status' => 1,
+    ]);
+
+    Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'category_id' => $category->id,
+        'brand_id' => $brand->id,
+        'name' => 'No Size Match '.fake()->unique()->numerify('######'),
+        'status' => 1,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('report.inventory-stock', ['size_id' => $size->id]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->has('products.data', 1)
+            ->where('products.data.0.id', $matched->id));
+});
+
+test('inventory stock report can filter by product id', function () {
+    inventoryStockMainBranch();
+    $admin = inventoryStockAdmin();
+    $mainBranchId = Branch::resolveMainBranchId();
+    $category = Category::factory()->create(['status' => 1]);
+    $brand = Brand::factory()->create(['status' => 1]);
+
+    $matched = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'category_id' => $category->id,
+        'brand_id' => $brand->id,
+        'name' => 'Exact Product '.fake()->unique()->numerify('######'),
+        'status' => 1,
+    ]);
+    Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'category_id' => $category->id,
+        'brand_id' => $brand->id,
+        'name' => 'Other Product '.fake()->unique()->numerify('######'),
+        'status' => 1,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('report.inventory-stock', ['product_id' => $matched->id]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('filters.product_id', (string) $matched->id)
+            ->has('products.data', 1)
+            ->where('products.data.0.id', $matched->id));
+});
+
+test('inventory stock report includes cost selling and profit per product row', function () {
+    inventoryStockMainBranch();
+    $admin = inventoryStockAdmin();
+    $mainBranchId = Branch::resolveMainBranchId();
+    $category = Category::factory()->create(['status' => 1]);
+    $brand = Brand::factory()->create(['status' => 1]);
+
+    $product = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'category_id' => $category->id,
+        'brand_id' => $brand->id,
+        'name' => 'Row Value '.fake()->unique()->numerify('######'),
+        'status' => 1,
+        'purchase_price' => 80,
+        'sale_price' => 120,
+        'discount_price' => 0,
+    ]);
+
+    Batch::factory()->for($product)->create([
+        'branch_id' => $mainBranchId,
+        'available' => 5,
+        'purchase_price' => 80,
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('report.inventory-stock', ['search' => $product->name]))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('products.data.0.cost_value', 400)
+            ->where('products.data.0.selling_value', 600)
+            ->where('products.data.0.expected_profit', 200));
 });

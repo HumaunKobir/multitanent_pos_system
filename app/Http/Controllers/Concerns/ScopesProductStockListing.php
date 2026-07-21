@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Concerns;
 
 use App\Models\Branch;
 use App\Models\Product;
+use App\Models\Size;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -72,6 +73,8 @@ trait ScopesProductStockListing
             'purchase_price',
             'stock',
             'branch_id',
+            'created_at',
+            'updated_at',
         ]);
 
         if ($listBranchId !== null) {
@@ -107,6 +110,61 @@ trait ScopesProductStockListing
         }
 
         return (float) ($product->batches_sum_available ?? 0);
+    }
+
+    /**
+     * Filter products whose JSON sizes contain the size id, or whose
+     * variations reference that size by name/id in variation_data.
+     */
+    protected function applyProductSizeFilter(Builder $query, mixed $sizeId): void
+    {
+        if ($sizeId === null || $sizeId === '' || $sizeId === '__all') {
+            return;
+        }
+
+        $resolvedSizeId = (int) $sizeId;
+        $size = Size::query()->find($resolvedSizeId);
+
+        if ($size === null) {
+            $query->whereRaw('0 = 1');
+
+            return;
+        }
+
+        $sizeName = (string) $size->name;
+
+        $query->where(function (Builder $q) use ($resolvedSizeId, $sizeName): void {
+            $q->whereJsonContains('sizes', $resolvedSizeId)
+                ->orWhereJsonContains('sizes', (string) $resolvedSizeId)
+                ->orWhereHas('variations', function (Builder $variationQuery) use ($resolvedSizeId, $sizeName): void {
+                    $variationQuery
+                        ->where('variation_data->Size', $sizeName)
+                        ->orWhere('variation_data->size', $sizeName)
+                        ->orWhere('variation_data->Size', (string) $resolvedSizeId)
+                        ->orWhere('variation_data->size', (string) $resolvedSizeId)
+                        ->orWhere('variation_data->size_id', $resolvedSizeId)
+                        ->orWhere('variation_data->size_id', (string) $resolvedSizeId);
+                });
+        });
+    }
+
+    /**
+     * @return array{qty: float, cost: float, selling: float, profit: float, unit_cost: float}
+     */
+    protected function resolveProductStockValuation(Product $product): array
+    {
+        $values = $this->resolveProductStockValues($product);
+        $qty = $values['qty'];
+        $cost = round($values['cost'], 2);
+        $selling = round($values['selling'], 2);
+
+        return [
+            'qty' => round($qty, 2),
+            'cost' => $cost,
+            'selling' => $selling,
+            'profit' => round($selling - $cost, 2),
+            'unit_cost' => $qty > 0 ? round($cost / $qty, 2) : 0.0,
+        ];
     }
 
     /**

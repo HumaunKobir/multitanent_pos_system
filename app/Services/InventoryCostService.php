@@ -7,6 +7,7 @@ use App\Models\Damage;
 use App\Models\ProductVariation;
 use App\Models\SaleReturn;
 use App\Models\Sell;
+use App\Models\StockAdjustment;
 use App\Models\StockDistribution;
 use App\Models\StockDistributionProduct;
 
@@ -80,6 +81,35 @@ class InventoryCostService
                 (float) $line->quantity,
                 $line->batches ?? [],
             );
+        }
+
+        return round($total, 2);
+    }
+
+    public function costForStockAdjustment(StockAdjustment $adjustment): float
+    {
+        $adjustment->loadMissing(['products.product:id,purchase_price', 'products.variation:id,purchase_price']);
+
+        $total = 0.0;
+
+        foreach ($adjustment->products as $line) {
+            $batchMap = is_array($line->batches) ? $line->batches : [];
+
+            if ($batchMap !== []) {
+                $total += $this->costFromBatchMap($batchMap);
+
+                continue;
+            }
+
+            $unitCost = (float) $line->unit_cost;
+
+            if ($unitCost <= 0) {
+                $unitCost = $line->variation_id
+                    ? (float) ($line->variation?->purchase_price ?? 0)
+                    : (float) ($line->product?->purchase_price ?? 0);
+            }
+
+            $total += round($unitCost * (float) $line->quantity, 2);
         }
 
         return round($total, 2);

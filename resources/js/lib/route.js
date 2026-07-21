@@ -267,6 +267,7 @@ const routes = {
     'report.sales-report.export-excel': '/report/sales-report/export/excel',
     'report.sales-report.export-pdf': '/report/sales-report/export/pdf',
     'report.sales-report.export-csv': '/report/sales-report/export/csv',
+    'report.sales-profit-trend': '/report/sales-profit-trend',
     'report.products.search': '/report/products/search',
     'report.account-ledger': '/report/account-ledger',
     'report.account-transactions': '/report/account-transactions',

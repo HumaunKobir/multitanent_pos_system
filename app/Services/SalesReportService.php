@@ -133,6 +133,16 @@ class SalesReportService
     }
 
     /**
+     * Sale line economics for reuse by related sales/profit reports.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    public function economicsLines(?string $dateFrom, ?string $dateTo, ?int $filterBranchId = null): Collection
+    {
+        return $this->saleLineEconomics($dateFrom, $dateTo, $this->resolveBranchFilter($filterBranchId));
+    }
+
+    /**
      * @return list<array{id: int, label: string}>
      */
     public function branchOptions(): array

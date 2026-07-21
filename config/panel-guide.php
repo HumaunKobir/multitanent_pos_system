@@ -515,6 +515,16 @@ return [
             ],
         ],
 
+        'report.sales-profit-trend.view' => [
+            'title' => 'Sales Profit Trend',
+            'summary' => 'See sales and profit trends with product, brand, and category charts.',
+            'steps' => [
+                'Go to Reports → Sales Profit Trend.',
+                'Choose product, brand, or category grouping and a date range.',
+                'Review the trend chart, top comparison bars, and the breakdown table.',
+            ],
+        ],
+
         'report.customer-ledger.view' => [
             'title' => 'Customer Ledger',
             'summary' => 'See sales, payments, and due for one customer.',

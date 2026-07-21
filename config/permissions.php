@@ -559,6 +559,14 @@ return [
             ],
         ],
 
+        'report.sales-profit-trend' => [
+            'label' => 'Sales Profit Trend',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.sales-profit-trend.view' => 'View Sales Profit Trend',
+            ],
+        ],
+
         'report.account-ledger' => [
             'label' => 'Account Ledger',
             'group' => 'Reports',

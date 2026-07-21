@@ -160,6 +160,7 @@ return [
                 ['title' => 'Daily Summary', 'href' => '/report/daily-summary', 'permission' => 'report.daily-summary.view'],
                 ['title' => 'Sales Summary', 'href' => '/report/sales-summary', 'permission' => 'report.sales-summary.view'],
                 ['title' => 'Sales Report', 'href' => '/report/sales-report', 'permission' => 'report.sales-report.view'],
+                ['title' => 'Sales Profit Trend', 'href' => '/report/sales-profit-trend', 'permission' => 'report.sales-profit-trend.view'],
             ],
         ],
         [

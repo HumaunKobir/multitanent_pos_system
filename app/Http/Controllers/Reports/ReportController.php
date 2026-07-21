@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Reports;
 use App\Concerns\ExportsFilteredList;
 use App\Http\Controllers\Controller;
 use App\Services\ReportService;
+use App\Services\SalesProfitTrendService;
 use App\Services\SalesReportService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -48,9 +49,12 @@ class ReportController extends Controller
 
     public const PERMISSION_SALES_REPORT = 'report.sales-report.view';
 
+    public const PERMISSION_SALES_PROFIT_TREND = 'report.sales-profit-trend.view';
+
     public function __construct(
         private ReportService $reports,
         private SalesReportService $salesReports,
+        private SalesProfitTrendService $salesProfitTrends,
     ) {}
 
     public function customerLedger(Request $request): Response
@@ -419,6 +423,35 @@ class ReportController extends Controller
         ]);
     }
 
+    public function salesProfitTrend(Request $request): Response
+    {
+        $this->authorize(self::PERMISSION_SALES_PROFIT_TREND);
+
+        $resolved = $this->resolvedSalesProfitTrendFilters($request);
+        $canFilterByBranch = $this->salesProfitTrends->canFilterByBranch();
+
+        return Inertia::render('admin/reports/sales-profit-trend', [
+            'groups' => $this->salesProfitTrends->groupOptions(),
+            'periods' => $this->salesProfitTrends->periodOptions(),
+            'branches' => $canFilterByBranch ? $this->salesProfitTrends->branchOptions() : [],
+            'isBranchScoped' => ! $canFilterByBranch,
+            'filters' => [
+                'group_by' => $resolved['group_by'],
+                'period' => $resolved['period'],
+                'date_from' => $resolved['date_from'],
+                'date_to' => $resolved['date_to'],
+                'branch_id' => $canFilterByBranch ? $resolved['branch_id'] : null,
+            ],
+            'report' => $this->salesProfitTrends->build(
+                $resolved['group_by'],
+                $resolved['period'],
+                $resolved['date_from'],
+                $resolved['date_to'],
+                $resolved['branch_id'],
+            ),
+        ]);
+    }
+
     public function salesReport(Request $request): Response
     {
         $this->authorize(self::PERMISSION_SALES_REPORT);
@@ -474,6 +507,41 @@ class ReportController extends Controller
         [$title, $headings, $rows] = $this->salesReportExportTable($request);
 
         return $this->downloadListCsv(str($title)->slug()->toString(), $headings, $rows);
+    }
+
+    /**
+     * @return array{
+     *     group_by: string,
+     *     period: string,
+     *     date_from: string|null,
+     *     date_to: string|null,
+     *     branch_id: int|null
+     * }
+     */
+    private function resolvedSalesProfitTrendFilters(Request $request): array
+    {
+        $filters = $request->validate([
+            'group_by' => ['nullable', 'string', Rule::in($this->salesProfitTrends->allowedGroups())],
+            'period' => ['nullable', 'string', Rule::in($this->salesProfitTrends->allowedPeriods())],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date'],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+        ]);
+
+        if (! isset($filters['date_from']) && ! isset($filters['date_to'])) {
+            $filters['date_from'] = now()->startOfMonth()->format('Y-m-d');
+            $filters['date_to'] = now()->format('Y-m-d');
+        }
+
+        $canFilterByBranch = $this->salesProfitTrends->canFilterByBranch();
+
+        return [
+            'group_by' => $filters['group_by'] ?? SalesProfitTrendService::GROUP_PRODUCT,
+            'period' => $filters['period'] ?? SalesProfitTrendService::PERIOD_DAILY,
+            'date_from' => $filters['date_from'] ?? null,
+            'date_to' => $filters['date_to'] ?? null,
+            'branch_id' => $canFilterByBranch && isset($filters['branch_id']) ? (int) $filters['branch_id'] : null,
+        ];
     }
 
     /**

@@ -483,7 +483,7 @@ test('purchase edit page pre-fills payment account from journal', function () {
             ->where('purchase.payment_account_id', $cash->id));
 });
 
-test('sale with discount posts product sales gross and discount applied expense', function () {
+test('sale with discount posts product sales gross and discount as contra revenue', function () {
     $user = accountingUser();
     $cash = seedAccountingAccounts(branchId: $user->branch_id);
     $product = Product::factory()->create([
@@ -538,9 +538,16 @@ test('sale with discount posts product sales gross and discount applied expense'
     $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
     $salesId = SystemAccountService::id(SystemAccountKey::ProductSales, $user->branch_id);
     $discountId = SystemAccountService::id(SystemAccountKey::DiscountApplied, $user->branch_id);
+    $salesRevenue = SystemAccountService::resolve(SystemAccountKey::SalesRevenue, $user->branch_id);
+    $discount = SystemAccountService::resolve(SystemAccountKey::DiscountApplied, $user->branch_id);
+    $productSales = SystemAccountService::resolve(SystemAccountKey::ProductSales, $user->branch_id);
 
+    expect($discount->type)->toBe(AccountType::Income)
+        ->and($discount->parent_id)->toBe($salesRevenue->id);
     expect(round((float) $ledgers->where('account_id', $salesId)->sum('credit'), 2))->toBe(500.0);
     expect(round((float) $ledgers->where('account_id', $discountId)->sum('debit'), 2))->toBe(50.0);
+    expect(round((float) $discount->fresh()->current_balance, 2))->toBe(-50.0);
+    expect(round((float) $productSales->fresh()->current_balance + (float) $discount->fresh()->current_balance, 2))->toBe(450.0);
     expect(round((float) $ledgers->sum('debit'), 2))->toBe(round((float) $ledgers->sum('credit'), 2));
 
     $this->actingAs($user);

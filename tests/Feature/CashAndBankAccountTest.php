@@ -72,13 +72,13 @@ test('system seeds default expense accounts and retires purchase returns', funct
     SystemAccountService::seed();
 
     $expensesId = SystemAccountService::id(SystemAccountKey::Expenses);
+    $salesRevenueId = SystemAccountService::id(SystemAccountKey::SalesRevenue);
 
     expect(ChartOfAccount::query()->where('account_number', SystemAccountKey::PurchaseReturns->accountNumber())->exists())->toBeFalse();
 
     $rent = SystemAccountService::resolve(SystemAccountKey::RentExpense);
     $salary = SystemAccountService::resolve(SystemAccountKey::SalaryExpense);
     $utilities = SystemAccountService::resolve(SystemAccountKey::UtilitiesExpense);
-    $discountApplied = SystemAccountService::resolve(SystemAccountKey::DiscountApplied);
 
     expect($rent->name)->toBe('Rent');
     expect($rent->code)->toBe('X001-04');
@@ -92,15 +92,18 @@ test('system seeds default expense accounts and retires purchase returns', funct
     expect($utilities->code)->toBe('X001-06');
     expect($utilities->parent_id)->toBe($expensesId);
 
+    $discountApplied = SystemAccountService::resolve(SystemAccountKey::DiscountApplied);
     expect($discountApplied->name)->toBe('Discount Applied');
-    expect($discountApplied->code)->toBe('X001-07');
-    expect($discountApplied->parent_id)->toBe($expensesId);
+    expect($discountApplied->code)->toBe('I001-03');
+    expect($discountApplied->parent_id)->toBe($salesRevenueId);
+    expect($discountApplied->type)->toBe(AccountType::Income);
     expect($discountApplied->is_system)->toBeTrue();
 
     $coinDiscountApplied = SystemAccountService::resolve(SystemAccountKey::CoinDiscountApplied);
     expect($coinDiscountApplied->name)->toBe('Coin Discount Applied');
-    expect($coinDiscountApplied->code)->toBe('X001-08');
-    expect($coinDiscountApplied->parent_id)->toBe($expensesId);
+    expect($coinDiscountApplied->code)->toBe('I001-04');
+    expect($coinDiscountApplied->parent_id)->toBe($salesRevenueId);
+    expect($coinDiscountApplied->type)->toBe(AccountType::Income);
     expect($coinDiscountApplied->is_system)->toBeTrue();
 
     $customerCoinPayable = SystemAccountService::resolve(SystemAccountKey::CustomerCoinPayable);

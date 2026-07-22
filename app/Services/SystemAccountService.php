@@ -2,10 +2,12 @@
 
 namespace App\Services;
 
+use App\Enums\AccountType;
 use App\Enums\CommonStatus;
 use App\Enums\SystemAccountKey;
 use App\Models\Branch;
 use App\Models\ChartOfAccount;
+use App\Models\Ledger;
 use Illuminate\Support\Facades\Auth;
 
 class SystemAccountService
@@ -50,6 +52,7 @@ class SystemAccountService
 
         try {
             self::migrateRenamedAccountNumbers();
+            self::migrateDiscountAccountsToContraRevenue();
             self::deduplicateSystemAccounts();
 
             foreach (self::orderedKeys() as $key) {
@@ -161,6 +164,8 @@ class SystemAccountService
             SystemAccountKey::SalesRevenue,
             SystemAccountKey::ProductSales,
             SystemAccountKey::SalesReturns,
+            SystemAccountKey::DiscountApplied,
+            SystemAccountKey::CoinDiscountApplied,
             SystemAccountKey::OtherIncome,
             SystemAccountKey::Expenses,
             SystemAccountKey::CostOfGoodsSold,
@@ -168,8 +173,6 @@ class SystemAccountService
             SystemAccountKey::RentExpense,
             SystemAccountKey::SalaryExpense,
             SystemAccountKey::UtilitiesExpense,
-            SystemAccountKey::DiscountApplied,
-            SystemAccountKey::CoinDiscountApplied,
         ];
     }
 
@@ -385,6 +388,8 @@ class SystemAccountService
             SystemAccountKey::SalesRevenue => 'I001',
             SystemAccountKey::ProductSales => 'I001-01',
             SystemAccountKey::SalesReturns => 'I001-02',
+            SystemAccountKey::DiscountApplied => 'I001-03',
+            SystemAccountKey::CoinDiscountApplied => 'I001-04',
             SystemAccountKey::OtherIncome => 'I002',
             SystemAccountKey::Expenses => 'X001',
             SystemAccountKey::CostOfGoodsSold => 'X001-01',
@@ -393,9 +398,66 @@ class SystemAccountService
             SystemAccountKey::RentExpense => 'X001-04',
             SystemAccountKey::SalaryExpense => 'X001-05',
             SystemAccountKey::UtilitiesExpense => 'X001-06',
-            SystemAccountKey::DiscountApplied => 'X001-07',
-            SystemAccountKey::CoinDiscountApplied => 'X001-08',
             SystemAccountKey::TaxesPaid => 'X001-09',
         };
+    }
+
+    /**
+     * Discount Applied used to live under Expenses (debit increases balance).
+     * As contra-revenue under Sales Revenue (Income), debit decreases balance.
+     * Flip leftover expense-style positive balances (including accounts whose
+     * type was already changed to Income without flipping).
+     */
+    private static function migrateDiscountAccountsToContraRevenue(): void
+    {
+        foreach ([SystemAccountKey::DiscountApplied, SystemAccountKey::CoinDiscountApplied] as $key) {
+            $query = ChartOfAccount::query()
+                ->where('account_number', $key->accountNumber())
+                ->where('is_system', true);
+
+            // Branch seed: that panel only. Global seed: every panel.
+            if (self::branchId() !== null) {
+                self::applyPanelSource($query, self::branchId());
+            }
+
+            foreach ($query->orderBy('id')->get() as $account) {
+                if ($account->type === AccountType::Expenses) {
+                    self::flipDiscountAccountBalances($account);
+                    $account->update(['type' => AccountType::Income]);
+
+                    continue;
+                }
+
+                if ($account->type !== AccountType::Income) {
+                    continue;
+                }
+
+                $debit = round((float) Ledger::query()->where('account_id', $account->id)->sum('debit'), 2);
+                $credit = round((float) Ledger::query()->where('account_id', $account->id)->sum('credit'), 2);
+                $balance = round((float) $account->current_balance, 2);
+
+                // Debit-heavy contra-revenue must not sit as a positive income balance.
+                if (($debit - $credit) > 0.005 && $balance > 0.005) {
+                    self::flipDiscountAccountBalances($account);
+                }
+            }
+        }
+    }
+
+    private static function flipDiscountAccountBalances(ChartOfAccount $account): void
+    {
+        $account->update([
+            'current_balance' => round(-1 * (float) $account->current_balance, 2),
+        ]);
+
+        Ledger::query()
+            ->where('account_id', $account->id)
+            ->orderBy('id')
+            ->each(function (Ledger $ledger): void {
+                $ledger->update([
+                    'opening_balance' => round(-1 * (float) $ledger->opening_balance, 2),
+                    'closing_balance' => round(-1 * (float) $ledger->closing_balance, 2),
+                ]);
+            });
     }
 }

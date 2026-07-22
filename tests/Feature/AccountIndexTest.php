@@ -3,6 +3,7 @@
 use App\Enums\AccountType;
 use App\Enums\SystemAccountKey;
 use App\Models\Branch;
+use App\Models\ChartOfAccount;
 use App\Models\User;
 use App\Services\SystemAccountService;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -115,4 +116,60 @@ test('branch user only sees accounts for their branch source', function () {
                 fn ($account) => $account['id'] === $otherBranchCashId,
             ))
         );
+});
+
+test('accounts index shows parent display balance as sum of children without changing posted balance', function () {
+    $this->artisan('permissions:sync');
+
+    $user = accountIndexUser(['accounts.view']);
+    SystemAccountService::seed($user->branch_id);
+
+    $parent = ChartOfAccount::query()->create([
+        'source_type' => Branch::class,
+        'source_id' => $user->branch_id,
+        'parent_id' => null,
+        'type' => AccountType::Asset->value,
+        'name' => 'Display Rollup Parent',
+        'code' => 'A9'.fake()->unique()->numerify('##'),
+        'current_balance' => 10,
+        'status' => 1,
+        'is_system' => false,
+    ]);
+
+    ChartOfAccount::query()->create([
+        'source_type' => Branch::class,
+        'source_id' => $user->branch_id,
+        'parent_id' => $parent->id,
+        'type' => AccountType::Asset->value,
+        'name' => 'Display Rollup Child A',
+        'code' => $parent->code.'-01',
+        'current_balance' => 120.50,
+        'status' => 1,
+        'is_system' => false,
+    ]);
+
+    ChartOfAccount::query()->create([
+        'source_type' => Branch::class,
+        'source_id' => $user->branch_id,
+        'parent_id' => $parent->id,
+        'type' => AccountType::Asset->value,
+        'name' => 'Display Rollup Child B',
+        'code' => $parent->code.'-02',
+        'current_balance' => 80.25,
+        'status' => 1,
+        'is_system' => false,
+    ]);
+
+    $this->actingAs($user)
+        ->get(route('accounts.index'))
+        ->assertSuccessful()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/accounts/account/index')
+            ->where('accounts', fn ($accounts) => collect($accounts)->contains(
+                fn ($account) => $account['id'] === $parent->id
+                    && (float) $account['current_balance'] === 10.0
+                    && (float) $account['display_balance'] === 210.75,
+            )));
+
+    expect((float) $parent->fresh()->current_balance)->toBe(10.0);
 });

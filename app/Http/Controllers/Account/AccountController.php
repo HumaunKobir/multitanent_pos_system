@@ -14,6 +14,7 @@ use App\Services\SystemAccountService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -33,20 +34,15 @@ class AccountController extends Controller
 
         SystemAccountService::ensureConfigured($branchId);
 
-        $accounts = ChartOfAccount::query()
+        $allAccounts = ChartOfAccount::query()
             ->forPanel()
-            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
-                $q->where('name', 'like', "%{$s}%")
-                    ->orWhere('code', 'like', "%{$s}%");
-            }))
-            ->when($request->type, fn ($q, $t) => $q->where('type', $t))
             ->orderBy('code')
             ->get(['id', 'parent_id', 'code', 'account_number', 'name', 'type', 'current_balance', 'description', 'status', 'is_system']);
 
         $currentYearEarnings = $this->reports->currentYearEarningsAsOf();
         $currentYearEarningsNumber = SystemAccountKey::CurrentYearEarnings->accountNumber();
 
-        $accounts->transform(function (ChartOfAccount $account) use ($currentYearEarnings, $currentYearEarningsNumber) {
+        $allAccounts->transform(function (ChartOfAccount $account) use ($currentYearEarnings, $currentYearEarningsNumber) {
             if ($account->account_number === $currentYearEarningsNumber) {
                 $account->current_balance = $currentYearEarnings;
                 $account->description = $account->description ?: 'Computed from income and expenses until year-end close.';
@@ -54,6 +50,32 @@ class AccountController extends Controller
 
             return $account;
         });
+
+        $displayBalances = $this->displayBalancesByAccountId($allAccounts);
+
+        $accounts = $allAccounts
+            ->when($request->search, fn (Collection $accounts, string $search) => $accounts
+                ->filter(fn (ChartOfAccount $account) => str_contains(strtolower((string) $account->name), strtolower($search))
+                    || str_contains(strtolower((string) $account->code), strtolower($search)))
+                ->values())
+            ->when($request->type, fn (Collection $accounts, string|int $type) => $accounts
+                ->filter(function (ChartOfAccount $account) use ($type) {
+                    $accountType = $account->type instanceof AccountType
+                        ? $account->type->value
+                        : (int) $account->type;
+
+                    return $accountType === (int) $type;
+                })
+                ->values())
+            ->map(function (ChartOfAccount $account) use ($displayBalances) {
+                $account->setAttribute(
+                    'display_balance',
+                    $displayBalances[(int) $account->id] ?? round((float) $account->current_balance, 2),
+                );
+
+                return $account;
+            })
+            ->values();
 
         $parentAccounts = ChartOfAccount::query()
             ->forPanel()
@@ -216,5 +238,41 @@ class AccountController extends Controller
         }
 
         $query->where('source_type', Branch::class)->where('source_id', $branchId);
+    }
+
+    /**
+     * Chart of Accounts page only: parent display balance = own + descendants.
+     * Does not change current_balance or any posting logic.
+     *
+     * @param  Collection<int, ChartOfAccount>  $accounts
+     * @return array<int, float>
+     */
+    private function displayBalancesByAccountId(Collection $accounts): array
+    {
+        $childrenByParent = $accounts->groupBy(
+            fn (ChartOfAccount $account) => $account->parent_id !== null ? (int) $account->parent_id : 0,
+        );
+        $memo = [];
+
+        $compute = function (int $accountId) use (&$compute, &$memo, $accounts, $childrenByParent): float {
+            if (array_key_exists($accountId, $memo)) {
+                return $memo[$accountId];
+            }
+
+            $account = $accounts->firstWhere('id', $accountId);
+            $own = round((float) ($account?->current_balance ?? 0), 2);
+            $childSum = collect($childrenByParent->get($accountId, []))
+                ->sum(fn (ChartOfAccount $child) => $compute((int) $child->id));
+
+            return $memo[$accountId] = round($own + $childSum, 2);
+        };
+
+        $balances = [];
+
+        foreach ($accounts as $account) {
+            $balances[(int) $account->id] = $compute((int) $account->id);
+        }
+
+        return $balances;
     }
 }

@@ -43,6 +43,7 @@ function AccountRow({ node, depth, onEdit, onDelete, expandedIds, toggleExpand }
     const hasChildren = node.children.length > 0;
     const isExpanded = expandedIds.has(node.id);
     const indent = depth * 28;
+    const balance = parseFloat(node.display_balance ?? node.current_balance ?? 0) || 0;
 
     return (
         <>
@@ -89,9 +90,9 @@ function AccountRow({ node, depth, onEdit, onDelete, expandedIds, toggleExpand }
                     {node.account_number ?? '—'}
                 </span>
 
-                {/* Balance */}
+                {/* Balance (display-only rollup for parents; postings unchanged) */}
                 <span className="w-36 shrink-0 text-right font-mono text-xs tabular-nums text-foreground">
-                    {parseFloat(node.current_balance).toLocaleString('en-BD', { minimumFractionDigits: 2 })}
+                    {balance.toLocaleString('en-BD', { minimumFractionDigits: 2 })}
                 </span>
 
                 {/* Actions */}

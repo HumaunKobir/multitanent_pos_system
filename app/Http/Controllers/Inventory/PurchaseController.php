@@ -49,7 +49,7 @@ class PurchaseController extends Controller
     {
         return $this->applyDateColumnFilters(
             Purchase::query()->ownBranchUser()
-                ->purchase()
+                ->purchaseOrInitialStock()
                 ->with([
                     'supplier:id,name,company_name,phone',
                     'purchaseReturns:id,purchase_id,invoice_sequence',
@@ -57,6 +57,7 @@ class PurchaseController extends Controller
                 ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                     $q->where('invoice_sequence', 'like', "%{$s}%")
                         ->orWhere('serial', 'like', "%{$s}%")
+                        ->orWhere('comment', 'like', "%{$s}%")
                         ->orWhereHas('supplier', fn ($q) => $q
                             ->where('name', 'like', "%{$s}%")
                             ->orWhere('company_name', 'like', "%{$s}%")
@@ -86,6 +87,7 @@ class PurchaseController extends Controller
                     $index + 1,
                     $purchase->invoice_number,
                     optional($purchase->date)?->format('Y-m-d') ?? '—',
+                    $purchase->purchase_type?->label() ?? 'Purchase',
                     $supplierLabel !== '' ? $supplierLabel : '—',
                     round((float) $purchase->net_amount, 2),
                     round((float) $purchase->paid_amount, 2),
@@ -105,10 +107,13 @@ class PurchaseController extends Controller
 
         $purchases->through(function (Purchase $purchase): array {
             $latestReturn = $purchase->purchaseReturns->sortByDesc('id')->first();
+            $isRegularPurchase = $purchase->purchase_type === PurchaseType::Purchase;
 
             return [
                 ...$purchase->toArray(),
-                'can_edit' => $this->canEditPurchase($purchase),
+                'purchase_type_label' => $purchase->purchase_type?->label() ?? 'Purchase',
+                'can_edit' => $isRegularPurchase && $this->canEditPurchase($purchase),
+                'can_delete' => $isRegularPurchase,
                 'has_return' => $latestReturn !== null,
                 'return_invoice_number' => $latestReturn?->invoice_number,
             ];
@@ -126,7 +131,7 @@ class PurchaseController extends Controller
 
         return $this->downloadListExcel(
             'purchases',
-            ['#', 'Invoice', 'Date', 'Supplier', 'Total', 'Paid', 'Due', 'Note'],
+            ['#', 'Invoice', 'Date', 'Type', 'Supplier', 'Total', 'Paid', 'Due', 'Note'],
             $this->exportRows($request),
         );
     }
@@ -137,7 +142,7 @@ class PurchaseController extends Controller
 
         return $this->downloadListPdf(
             'Purchases',
-            ['#', 'Invoice', 'Date', 'Supplier', 'Total', 'Paid', 'Due', 'Note'],
+            ['#', 'Invoice', 'Date', 'Type', 'Supplier', 'Total', 'Paid', 'Due', 'Note'],
             $this->exportRows($request),
         );
     }
@@ -148,7 +153,7 @@ class PurchaseController extends Controller
 
         return $this->printListHtml(
             'Purchases',
-            ['#', 'Invoice', 'Date', 'Supplier', 'Total', 'Paid', 'Due', 'Note'],
+            ['#', 'Invoice', 'Date', 'Type', 'Supplier', 'Total', 'Paid', 'Due', 'Note'],
             $this->exportRows($request),
         );
     }
@@ -762,6 +767,12 @@ class PurchaseController extends Controller
     {
         $this->authorize('inventory.purchase.delete');
         $this->authorizeBranchUserRecord($purchase);
+
+        if ($purchase->purchase_type !== PurchaseType::Purchase) {
+            return redirect()
+                ->route('inventory.purchase.index')
+                ->with('error', 'Only regular purchases can be deleted from this list.');
+        }
 
         $purchase->load(['purchaseProducts']);
 

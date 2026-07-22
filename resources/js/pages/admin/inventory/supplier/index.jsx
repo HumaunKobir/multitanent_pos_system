@@ -177,7 +177,39 @@ export default function SupplierIndex({ suppliers, filters }) {
         )},
         { id: 'company', header: 'Company', render: (row) => row.company_name ?? '—' },
         { id: 'address', header: 'Address', render: (row) => row.address ?? '—' },
-        { id: 'balance', header: 'Balance', render: (row) => `৳${parseFloat(row.balance).toFixed(2)}` },
+        {
+            id: 'paid',
+            header: 'Paid',
+            render: (row) => (
+                <span className="tabular-nums text-green-700 dark:text-green-400">
+                    ৳{parseFloat(row.paid_amount ?? 0).toFixed(2)}
+                </span>
+            ),
+        },
+        {
+            id: 'due',
+            header: 'Due',
+            render: (row) => {
+                const due = parseFloat(row.due_amount ?? 0);
+
+                return (
+                    <span
+                        className={
+                            due > 0
+                                ? 'tabular-nums font-semibold text-destructive'
+                                : 'tabular-nums font-semibold text-green-700 dark:text-green-400'
+                        }
+                    >
+                        ৳{due.toFixed(2)}
+                    </span>
+                );
+            },
+        },
+        {
+            id: 'balance',
+            header: 'Balance',
+            render: (row) => <span className="tabular-nums">৳{parseFloat(row.balance ?? 0).toFixed(2)}</span>,
+        },
         { id: 'actions', header: 'Actions', align: 'right', render: (row) => (
             <AdminInlineActions
                 prefix="party.supplier"

@@ -13,4 +13,15 @@ enum PurchaseType: int
     case Purchase_Return = 5;
     case InitialStock = 6;
     case OpeningBalance = 7;
+
+    public function label(): string
+    {
+        return match ($this) {
+            self::Purchase => 'Purchase',
+            self::Damage => 'Damage',
+            self::Purchase_Return => 'Purchase Return',
+            self::InitialStock => 'Initial Stock',
+            self::OpeningBalance => 'Opening Balance',
+        };
+    }
 }

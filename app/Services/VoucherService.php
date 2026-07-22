@@ -16,18 +16,34 @@ class VoucherService
     public static function nextVoucherNo(VoucherType $type): string
     {
         $prefix = $type->prefix();
-        $last = Voucher::withTrashed()
+        $pattern = '/^'.preg_quote($prefix, '/').'(\d+)$/';
+
+        $maxSequence = Voucher::withTrashed()
             ->where('type', $type)
             ->where('voucher_no', 'like', $prefix.'%')
-            ->orderByDesc('id')
-            ->value('voucher_no');
+            ->pluck('voucher_no')
+            ->reduce(function (int $max, string $voucherNo) use ($pattern): int {
+                if (preg_match($pattern, $voucherNo, $matches)) {
+                    return max($max, (int) $matches[1]);
+                }
 
-        $next = 1001;
-        if ($last && preg_match('/'.preg_quote($prefix, '/').'(\d+)/', $last, $m)) {
-            $next = (int) $m[1] + 1;
-        }
+                return $max;
+            }, 1000);
 
-        return $prefix.$next;
+        return $prefix.($maxSequence + 1);
+    }
+
+    /**
+     * Allocate the next sequential voucher number inside an open DB transaction.
+     */
+    public static function allocateNextVoucherNo(VoucherType $type): string
+    {
+        Voucher::withTrashed()
+            ->where('type', $type)
+            ->lockForUpdate()
+            ->pluck('id');
+
+        return self::nextVoucherNo($type);
     }
 
     public static function nextTransactionReference(): string
@@ -94,8 +110,11 @@ class VoucherService
      */
     private function createVoucherRecord(array $data, User $user): Voucher
     {
+        $type = VoucherType::from((int) $data['type']);
+
         $voucher = new Voucher;
         $this->fillVoucher($voucher, $data);
+        $voucher->voucher_no = self::allocateNextVoucherNo($type);
         $voucher->created_by = $user->id;
         $voucher->branch_id = $user->branch_id;
         $voucher->save();
@@ -242,21 +261,13 @@ class VoucherService
         }
 
         if ($type === VoucherType::Expense) {
-            $lines = $data['lines'] ?? [];
-            $glLines = $this->buildHeadLines($lines, VoucherLineSide::Debit, $masterNarration);
-            $total = array_sum(array_column($glLines, 'debit'));
-            $paymentAccountId = (int) ($data['payment_account_id'] ?? 0);
-            $paymentType = ChartOfAccount::findOrFail($paymentAccountId)->type;
-
-            $glLines[] = [
-                'account_id' => $paymentAccountId,
-                'debit' => 0.0,
-                'credit' => $total,
-                'decrease' => AccountPostingRules::decreaseForSide($paymentType, false),
-                'description' => $creditDescription,
-            ];
-
-            return $glLines;
+            return $this->buildExpenseGlLines(
+                $data['lines'] ?? [],
+                (int) ($data['payment_account_id'] ?? 0),
+                $masterNarration,
+                $creditDescription,
+                $voucher?->branch_id,
+            );
         }
 
         if ($type === VoucherType::Income) {
@@ -307,6 +318,34 @@ class VoucherService
                 'description' => $line['narration'] ?? $masterNarration,
             ];
         }
+
+        return $glLines;
+    }
+
+    /**
+     * Expense voucher lines debit expense heads (or VAT Payable for remittance), then credit cash/bank.
+     *
+     * @param  array<int, array{account_id: int, amount: float|int, narration?: ?string}>  $lines
+     * @return array<int, array{account_id: int, debit: float, credit: float, decrease: bool, description?: ?string}>
+     */
+    private function buildExpenseGlLines(
+        array $lines,
+        int $paymentAccountId,
+        ?string $masterNarration,
+        ?string $creditDescription,
+        ?int $branchId = null,
+    ): array {
+        $glLines = $this->buildHeadLines($lines, VoucherLineSide::Debit, $masterNarration);
+        $cashTotal = round(array_sum(array_column($glLines, 'debit')), 2);
+        $paymentAccount = ChartOfAccount::query()->findOrFail($paymentAccountId);
+
+        $glLines[] = [
+            'account_id' => $paymentAccount->id,
+            'debit' => 0.0,
+            'credit' => $cashTotal,
+            'decrease' => AccountPostingRules::decreaseForSide($paymentAccount->type, false),
+            'description' => $creditDescription,
+        ];
 
         return $glLines;
     }

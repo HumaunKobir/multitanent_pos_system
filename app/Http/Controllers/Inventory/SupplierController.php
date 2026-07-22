@@ -29,6 +29,10 @@ class SupplierController extends Controller
     {
         return $this->applyCreatedAtDateFilters(
             Supplier::ownBranch()
+                ->withSum('payments as paid_amount', 'amount')
+                ->withSum([
+                    'purchases as due_amount' => fn (Builder $query) => $query->supplierPayable(),
+                ], 'due_amount')
                 ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
                     $q->where('name', 'like', "%{$s}%")
                         ->orWhere('phone', 'like', "%{$s}%")
@@ -53,7 +57,9 @@ class SupplierController extends Controller
                 $supplier->name,
                 $supplier->phone,
                 $supplier->address ?? '—',
-                (float) $supplier->balance,
+                round((float) ($supplier->paid_amount ?? 0), 2),
+                round((float) ($supplier->due_amount ?? 0), 2),
+                round((float) $supplier->balance, 2),
                 optional($supplier->created_at)?->format('Y-m-d H:i') ?? '—',
             ]);
     }
@@ -65,6 +71,15 @@ class SupplierController extends Controller
         $suppliers = $this->listQuery($request)
             ->paginate(20)
             ->withQueryString();
+
+        $suppliers->through(function (Supplier $supplier): array {
+            return [
+                ...$supplier->toArray(),
+                'paid_amount' => round((float) ($supplier->paid_amount ?? 0), 2),
+                'due_amount' => round((float) ($supplier->due_amount ?? 0), 2),
+                'balance' => round((float) $supplier->balance, 2),
+            ];
+        });
 
         return Inertia::render('admin/inventory/supplier/index', [
             'suppliers' => $suppliers,
@@ -78,7 +93,7 @@ class SupplierController extends Controller
 
         return $this->downloadListExcel(
             'suppliers',
-            ['#', 'Company', 'Name', 'Phone', 'Address', 'Balance', 'Created At'],
+            ['#', 'Company', 'Name', 'Phone', 'Address', 'Paid', 'Due', 'Balance', 'Created At'],
             $this->exportRows($request),
         );
     }
@@ -89,7 +104,7 @@ class SupplierController extends Controller
 
         return $this->downloadListPdf(
             'Suppliers',
-            ['#', 'Company', 'Name', 'Phone', 'Address', 'Balance', 'Created At'],
+            ['#', 'Company', 'Name', 'Phone', 'Address', 'Paid', 'Due', 'Balance', 'Created At'],
             $this->exportRows($request),
         );
     }
@@ -100,7 +115,7 @@ class SupplierController extends Controller
 
         return $this->printListHtml(
             'Suppliers',
-            ['#', 'Company', 'Name', 'Phone', 'Address', 'Balance', 'Created At'],
+            ['#', 'Company', 'Name', 'Phone', 'Address', 'Paid', 'Due', 'Balance', 'Created At'],
             $this->exportRows($request),
         );
     }

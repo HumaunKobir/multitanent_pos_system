@@ -43,6 +43,7 @@ enum SystemAccountKey: string
     case UtilitiesExpense = 'utilities_expense';
     case DiscountApplied = 'discount_applied';
     case CoinDiscountApplied = 'coin_discount_applied';
+    case TaxesPaid = 'taxes_paid';
 
     public function accountNumber(): string
     {
@@ -71,7 +72,7 @@ enum SystemAccountKey: string
             self::AdvanceFromCustomer => 'Advance from Customer',
             self::CustomerCoinPayable => 'Customer Coin Payable',
             self::TaxesPayable => 'Taxes Payable',
-            self::OutputVat => 'Output VAT',
+            self::OutputVat => 'VAT Payable',
             self::OwnersCapital => "Owner's Capital",
             self::RetainedEarnings => 'Retained Earnings',
             self::CurrentYearEarnings => 'Current Year Earnings',
@@ -91,6 +92,7 @@ enum SystemAccountKey: string
             self::UtilitiesExpense => 'Utilities',
             self::DiscountApplied => 'Discount Applied',
             self::CoinDiscountApplied => 'Coin Discount Applied',
+            self::TaxesPaid => 'Taxes Paid',
         };
     }
 
@@ -107,7 +109,7 @@ enum SystemAccountKey: string
             self::SalesRevenue, self::ProductSales, self::SalesReturns, self::OtherIncome => AccountType::Income,
             self::Expenses, self::CostOfGoodsSold, self::InventoryDamage, self::PurchaseReturns,
             self::RentExpense, self::SalaryExpense, self::UtilitiesExpense, self::DiscountApplied,
-            self::CoinDiscountApplied => AccountType::Expenses,
+            self::CoinDiscountApplied, self::TaxesPaid => AccountType::Expenses,
         };
     }
 
@@ -135,7 +137,7 @@ enum SystemAccountKey: string
             self::ProductSales, self::SalesReturns => self::SalesRevenue,
             self::CostOfGoodsSold, self::InventoryDamage, self::PurchaseReturns,
             self::RentExpense, self::SalaryExpense, self::UtilitiesExpense, self::DiscountApplied,
-            self::CoinDiscountApplied => self::Expenses,
+            self::CoinDiscountApplied, self::TaxesPaid => self::Expenses,
             default => null,
         };
     }
@@ -143,7 +145,7 @@ enum SystemAccountKey: string
     public function isDefaultSeeded(): bool
     {
         return match ($this) {
-            self::BankAccount, self::BranchInventory => false,
+            self::BankAccount, self::BranchInventory, self::TaxesPaid => false,
             default => true,
         };
     }

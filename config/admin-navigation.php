@@ -54,6 +54,13 @@ return [
             ],
         ],
         [
+            'title' => 'Parties',
+            'icon' => 'contact',
+            'href' => '/party/parties',
+            'single' => true,
+            'permission' => 'party.parties.view',
+        ],
+        [
             'title' => 'Suppliers',
             'icon' => 'user',
             'children' => [

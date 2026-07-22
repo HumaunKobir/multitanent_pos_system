@@ -38,6 +38,7 @@ use App\Models\User;
 use App\Models\Voucher;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 
@@ -1834,6 +1835,11 @@ class ReportService
             ->where('account_id', $accountId)
             ->when($dateFrom, fn (Builder $q, string $d) => $q->whereDate('date', '>=', $d))
             ->when($dateTo, fn (Builder $q, string $d) => $q->whereDate('date', '<=', $d))
+            ->with([
+                'transaction' => fn ($query) => $query->with([
+                    'source' => fn (MorphTo $morphTo) => $morphTo->morphWith($this->transactionSourcePartyWith()),
+                ]),
+            ])
             ->orderBy('date')
             ->orderBy('id')
             ->get();
@@ -1855,6 +1861,7 @@ class ReportService
                 'reference' => $ledger->transaction_id
                     ? 'TXN-'.str_pad((string) $ledger->transaction_id, 6, '0', STR_PAD_LEFT)
                     : '—',
+                'party' => $this->partyLabelFromTransaction($ledger->transaction),
                 'debit' => $debit,
                 'credit' => $credit,
                 'balance' => $balance,
@@ -1914,6 +1921,7 @@ class ReportService
             ->with([
                 'debitAccount:id,code,name',
                 'creditAccount:id,code,name',
+                'source' => fn (MorphTo $morphTo) => $morphTo->morphWith($this->transactionSourcePartyWith()),
             ])
             ->orderByDesc('date')
             ->orderByDesc('id')
@@ -1939,6 +1947,7 @@ class ReportService
                     'id' => $transaction->id,
                     'date' => $transaction->date->format('Y-m-d'),
                     'description' => $transaction->description ?? '—',
+                    'party' => $this->partyLabelFromTransaction($transaction),
                     'amount' => (float) $transaction->amount,
                     'debit_account' => $transaction->debitAccount
                         ? "{$transaction->debitAccount->code} — {$transaction->debitAccount->name}"
@@ -1953,6 +1962,81 @@ class ReportService
                 ];
             })
             ->all();
+    }
+
+    /**
+     * @return array<class-string, list<string>>
+     */
+    private function transactionSourcePartyWith(): array
+    {
+        return [
+            Voucher::class => ['party'],
+            Purchase::class => ['supplier:id,name,company_name'],
+            PurchaseReturn::class => ['supplier:id,name,company_name'],
+            Sell::class => ['customer:id,name'],
+            SaleReturn::class => ['customer:id,name'],
+            SupplierPayment::class => ['supplier:id,name,company_name'],
+            CustomerPayment::class => ['customer:id,name'],
+        ];
+    }
+
+    private function partyLabelFromTransaction(?Transaction $transaction): string
+    {
+        if ($transaction === null) {
+            return 'N/A';
+        }
+
+        $source = $transaction->relationLoaded('source')
+            ? $transaction->source
+            : $transaction->source()->first();
+
+        if ($source === null) {
+            return 'N/A';
+        }
+
+        if ($source instanceof Voucher) {
+            $party = $source->relationLoaded('party') ? $source->party : $source->party()->first();
+
+            return $this->formatContactName($party);
+        }
+
+        if ($source instanceof Purchase || $source instanceof PurchaseReturn || $source instanceof SupplierPayment) {
+            $supplier = $source->relationLoaded('supplier') ? $source->supplier : $source->supplier()->first();
+
+            return $this->formatContactName($supplier);
+        }
+
+        if ($source instanceof Sell || $source instanceof SaleReturn || $source instanceof CustomerPayment) {
+            $customer = $source->relationLoaded('customer') ? $source->customer : $source->customer()->first();
+
+            return $this->formatContactName($customer);
+        }
+
+        return 'N/A';
+    }
+
+    private function formatContactName(mixed $contact): string
+    {
+        if ($contact === null) {
+            return 'N/A';
+        }
+
+        $name = trim((string) ($contact->name ?? ''));
+        $company = trim((string) ($contact->company_name ?? ''));
+
+        if ($company !== '' && $name !== '') {
+            return $company.' — '.$name;
+        }
+
+        if ($name !== '') {
+            return $name;
+        }
+
+        if ($company !== '') {
+            return $company;
+        }
+
+        return 'N/A';
     }
 
     /**
@@ -2083,7 +2167,8 @@ class ReportService
             'sales_revenue' => [],
             'sales_returns' => [],
             'sales_discounts' => [],
-            'output_vat' => [],
+            'vat_collected' => [],
+            'vat_paid' => [],
             'cogs' => [],
             'operating_expenses' => [],
         ];
@@ -2122,30 +2207,68 @@ class ReportService
         }
 
         foreach ($this->profitAndLossVatAccounts($effectiveBranchId) as $vatAccount) {
-            $closing = $this->accountBalanceAsOfForBranch($vatAccount->id, $resolvedDateTo, $effectiveBranchId);
-            $opening = $this->accountBalanceAsOfForBranch($vatAccount->id, $beforeStartDate, $effectiveBranchId);
-            $amount = round($closing - $opening, 2);
+            [$periodDebit, $periodCredit] = $this->accountPeriodSidesForBranch(
+                $vatAccount->id,
+                $resolvedDateFrom,
+                $resolvedDateTo,
+                $effectiveBranchId,
+            );
 
-            if (abs($amount) < 0.005) {
-                continue;
+            if ($periodCredit >= 0.005) {
+                $buckets['vat_collected'][] = [
+                    'code' => $vatAccount->code,
+                    'name' => $vatAccount->name,
+                    'amount' => round($periodCredit, 2),
+                ];
             }
 
-            $buckets['output_vat'][] = [
-                'code' => $vatAccount->code,
-                'name' => $vatAccount->name,
-                'amount' => round(abs($amount), 2),
-            ];
+            if ($periodDebit >= 0.005) {
+                $buckets['vat_paid'][] = [
+                    'code' => $vatAccount->code,
+                    'name' => 'VAT Paid',
+                    'amount' => round($periodDebit, 2),
+                ];
+            }
         }
 
         $salesRevenue = round(collect($buckets['sales_revenue'])->sum('amount'), 2);
         $salesReturns = round(collect($buckets['sales_returns'])->sum('amount'), 2);
         $salesDiscounts = round(collect($buckets['sales_discounts'])->sum('amount'), 2);
-        $outputVat = round(collect($buckets['output_vat'])->sum('amount'), 2);
+        $vatCollected = round(collect($buckets['vat_collected'])->sum('amount'), 2);
+        $vatPaid = round(collect($buckets['vat_paid'])->sum('amount'), 2);
+        $netVatPayable = round($vatCollected - $vatPaid, 2);
         $netSales = round($salesRevenue - $salesReturns - $salesDiscounts, 2);
         $cogs = round(collect($buckets['cogs'])->sum('amount'), 2);
         $grossProfit = round($netSales - $cogs, 2);
         $operatingExpenses = round(collect($buckets['operating_expenses'])->sum('amount'), 2);
         $net = round($grossProfit - $operatingExpenses, 2);
+
+        $vatPayableCode = collect($buckets['vat_collected'])->pluck('code')->first()
+            ?? collect($buckets['vat_paid'])->pluck('code')->first()
+            ?? $this->systemAccountCode(SystemAccountKey::OutputVat, $effectiveBranchId);
+
+        $vatPayableLines = [];
+        if ($vatCollected >= 0.005) {
+            $vatPayableLines[] = [
+                'code' => $vatPayableCode,
+                'name' => 'VAT Payable',
+                'amount' => $vatCollected,
+            ];
+        }
+        if ($vatPaid >= 0.005) {
+            $vatPayableLines[] = [
+                'code' => $vatPayableCode,
+                'name' => '(−) VAT Paid',
+                'amount' => $vatPaid,
+            ];
+        }
+        if ($vatPayableLines === [] && abs($netVatPayable) >= 0.005) {
+            $vatPayableLines[] = [
+                'code' => $vatPayableCode,
+                'name' => 'VAT Payable',
+                'amount' => $netVatPayable,
+            ];
+        }
 
         $sections = [
             [
@@ -2167,10 +2290,10 @@ class ReportService
                 'total' => $salesDiscounts,
             ],
             [
-                'type' => 'Output VAT',
-                'slug' => 'output_vat',
-                'lines' => $buckets['output_vat'],
-                'total' => $outputVat,
+                'type' => 'VAT Payable (liability)',
+                'slug' => 'vat_payable',
+                'lines' => $vatPayableLines,
+                'total' => $netVatPayable,
             ],
             [
                 'type' => 'Cost of Goods Sold (COGS)',
@@ -2193,7 +2316,11 @@ class ReportService
             'sales_revenue' => $salesRevenue,
             'sales_returns' => $salesReturns,
             'sales_discounts' => $salesDiscounts,
-            'output_vat' => $outputVat,
+            'output_vat' => $netVatPayable,
+            'vat_collected' => $vatCollected,
+            'vat_paid' => $vatPaid,
+            'vat_payable' => $netVatPayable,
+            'net_vat_payable' => $netVatPayable,
             'net_sales' => $netSales,
             'cogs' => $cogs,
             'gross_profit' => $grossProfit,
@@ -2213,10 +2340,45 @@ class ReportService
         return $this->reportAccountsQuery([AccountType::Liability], $effectiveBranchId)
             ->where(function ($query): void {
                 $query->where('account_number', SystemAccountKey::OutputVat->accountNumber())
+                    ->orWhereRaw('LOWER(name) LIKE ?', ['%vat payable%'])
                     ->orWhereRaw('LOWER(name) LIKE ?', ['%output vat%']);
             })
             ->orderBy('code')
             ->get(['id', 'code', 'name', 'type', 'account_number']);
+    }
+
+    private function systemAccountCode(SystemAccountKey $key, ?int $branchId): string
+    {
+        try {
+            return (string) SystemAccountService::resolve($key, $branchId)->code;
+        } catch (\Throwable) {
+            return match ($key) {
+                SystemAccountKey::OutputVat => 'L004-01',
+                default => '',
+            };
+        }
+    }
+
+    /**
+     * @return array{0: float, 1: float}
+     */
+    private function accountPeriodSidesForBranch(
+        int $accountId,
+        string $dateFrom,
+        string $dateTo,
+        ?int $branchId,
+    ): array {
+        $row = $this->transactionScope->scopeLedgerForBranch(Ledger::query(), $branchId)
+            ->where('account_id', $accountId)
+            ->whereDate('date', '>=', $dateFrom)
+            ->whereDate('date', '<=', $dateTo)
+            ->selectRaw('COALESCE(SUM(debit), 0) as period_debit, COALESCE(SUM(credit), 0) as period_credit')
+            ->first();
+
+        return [
+            round((float) ($row->period_debit ?? 0), 2),
+            round((float) ($row->period_credit ?? 0), 2),
+        ];
     }
 
     /**

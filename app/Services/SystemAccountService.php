@@ -338,6 +338,7 @@ class SystemAccountService
         $retiredAccountNumbers = [
             SystemAccountKey::BankAccount->accountNumber(),
             SystemAccountKey::BranchInventory->accountNumber(),
+            SystemAccountKey::TaxesPaid->accountNumber(),
             'SYS:input_vat',
             'SYS:current_liabilities',
             'SYS:equity',
@@ -391,6 +392,7 @@ class SystemAccountService
             SystemAccountKey::UtilitiesExpense => 'X001-06',
             SystemAccountKey::DiscountApplied => 'X001-07',
             SystemAccountKey::CoinDiscountApplied => 'X001-08',
+            SystemAccountKey::TaxesPaid => 'X001-09',
         };
     }
 }

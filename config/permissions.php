@@ -148,6 +148,17 @@ return [
 
         // ── Parties ───────────────────────────────────────────────────────────
 
+        'party.parties' => [
+            'label' => 'Parties',
+            'group' => 'Parties',
+            'permissions' => [
+                'party.parties.view' => 'View Parties',
+                'party.parties.create' => 'Create Party',
+                'party.parties.update' => 'Update Party',
+                'party.parties.delete' => 'Delete Party',
+            ],
+        ],
+
         'party.supplier' => [
             'label' => 'Suppliers',
             'group' => 'Parties',

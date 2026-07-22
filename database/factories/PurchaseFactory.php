@@ -40,6 +40,11 @@ class PurchaseFactory extends Factory
         return $this->state(['purchase_type' => PurchaseType::Purchase]);
     }
 
+    public function initialStock(): static
+    {
+        return $this->state(['purchase_type' => PurchaseType::InitialStock]);
+    }
+
     public function withSupplier(Supplier $supplier): static
     {
         return $this->state([

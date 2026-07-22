@@ -7,6 +7,7 @@ use App\Enums\VoucherType;
 use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Models\Customer;
+use App\Models\Party;
 use App\Models\Supplier;
 use App\Models\User;
 use App\Models\Voucher;
@@ -48,10 +49,14 @@ function voucherLeafAccount(SystemAccountKey $parentKey, AccountType $type, stri
     return $account;
 }
 
-test('income voucher index includes suppliers and customers as contacts', function () {
+test('income voucher index includes parties suppliers and customers as contacts', function () {
     $this->artisan('permissions:sync');
 
     $user = voucherUser(['accounts.view']);
+    $party = Party::factory()->create([
+        'branch_id' => $user->branch_id,
+        'name' => 'Voucher Party '.fake()->unique()->numerify('####'),
+    ]);
     $supplier = Supplier::factory()->create([
         'branch_id' => $user->branch_id,
         'name' => 'Voucher Supplier '.fake()->unique()->numerify('####'),
@@ -66,15 +71,51 @@ test('income voucher index includes suppliers and customers as contacts', functi
         ->assertSuccessful()
         ->assertInertia(fn ($page) => $page
             ->component('admin/accounts/vouchers/index')
+            ->where('contacts.parties', fn ($parties) => collect($parties)->contains('id', $party->id))
             ->where('contacts.suppliers', fn ($suppliers) => collect($suppliers)->contains('id', $supplier->id))
             ->where('contacts.customers', fn ($customers) => collect($customers)->contains('id', $customer->id)));
+});
+
+test('income voucher can be saved with a party contact', function () {
+    $this->artisan('permissions:sync');
+
+    $user = voucherUser(['accounts.create']);
+    $cash = seedAccountingAccounts(user: $user);
+    $incomeAccount = voucherLeafAccount(SystemAccountKey::SalesRevenue, AccountType::Income, 'income-party-voucher');
+    $party = Party::factory()->create(['branch_id' => $user->branch_id, 'name' => 'Received Party']);
+
+    $this->actingAs($user)
+        ->post('/accounts/vouchers', [
+            'type' => VoucherType::Income->value,
+            'voucher_no' => 'INC-PARTY-'.fake()->unique()->numerify('####'),
+            'date' => '2026-06-06',
+            'party_key' => "party:{$party->id}",
+            'payment_account_id' => $cash->id,
+            'lines' => [
+                [
+                    'account_id' => $incomeAccount->id,
+                    'amount' => 900,
+                    'narration' => 'Misc income from party',
+                ],
+            ],
+        ])
+        ->assertRedirect(route('accounts.vouchers.index', ['type' => 'income']))
+        ->assertSessionHas('success');
+
+    $voucher = Voucher::query()->latest('id')->first();
+
+    expect($voucher)->not->toBeNull();
+    expect($voucher->type)->toBe(VoucherType::Income);
+    expect($voucher->party_type)->toBe(Party::class);
+    expect($voucher->party_id)->toBe($party->id);
+    expect($voucher->party?->name)->toBe('Received Party');
 });
 
 test('income voucher can be saved with a customer contact', function () {
     $this->artisan('permissions:sync');
 
     $user = voucherUser(['accounts.create']);
-    $cash = seedAccountingAccounts();
+    $cash = seedAccountingAccounts(user: $user);
     $incomeAccount = voucherLeafAccount(SystemAccountKey::SalesRevenue, AccountType::Income, 'income-voucher');
     $customer = Customer::factory()->create(['branch_id' => $user->branch_id]);
 
@@ -109,7 +150,7 @@ test('expense voucher can be saved with a supplier contact', function () {
     $this->artisan('permissions:sync');
 
     $user = voucherUser(['accounts.create']);
-    $cash = seedAccountingAccounts();
+    $cash = seedAccountingAccounts(user: $user);
     $expenseAccount = voucherLeafAccount(SystemAccountKey::Expenses, AccountType::Expenses, 'expense-voucher');
     $supplier = Supplier::factory()->create(['branch_id' => $user->branch_id]);
 

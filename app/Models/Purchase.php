@@ -106,4 +106,15 @@ class Purchase extends Model
             PurchaseType::OpeningBalance,
         ]);
     }
+
+    /**
+     * Regular purchases plus product initial-stock settlements (excludes opening balance).
+     */
+    public function scopePurchaseOrInitialStock(Builder $q): Builder
+    {
+        return $q->whereIn('purchase_type', [
+            PurchaseType::Purchase,
+            PurchaseType::InitialStock,
+        ]);
+    }
 }

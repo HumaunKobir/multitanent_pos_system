@@ -201,6 +201,16 @@ return [
             ],
         ],
 
+        'party.parties.view' => [
+            'title' => 'Parties',
+            'summary' => 'Manage third parties used on income and expense vouchers.',
+            'steps' => [
+                'Go to Parties.',
+                'Add a party with name and optional phone or email.',
+                'Select them in income Received By or expense Paid To.',
+            ],
+        ],
+
         'party.customer.view' => [
             'title' => 'Customer',
             'summary' => 'Manage customer records, phone numbers, and due balances.',

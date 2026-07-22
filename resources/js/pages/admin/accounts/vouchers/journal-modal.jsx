@@ -8,6 +8,7 @@ import { useForm } from '@inertiajs/react';
 import { Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import { GroupedAccountSelect } from './grouped-account-select';
+import { loadVoucherCreateDefaults } from './load-voucher-create-defaults';
 import { VoucherFormFooter } from './voucher-form-footer';
 import { VoucherModalShell } from './voucher-modal-shell';
 
@@ -31,41 +32,57 @@ export default function JournalVoucherModal({ open, onOpenChange, item, accounts
 
     useEffect(() => {
         if (!open) return;
-        if (item) {
-            const debits = item.lines?.filter((l) => l.side === 'debit') ?? [];
-            const credits = item.lines?.filter((l) => l.side === 'credit') ?? [];
+
+        let cancelled = false;
+
+        async function hydrate() {
+            if (item) {
+                const debits = item.lines?.filter((l) => l.side === 'debit') ?? [];
+                const credits = item.lines?.filter((l) => l.side === 'credit') ?? [];
+                form.setData({
+                    type: TYPE_JOURNAL,
+                    voucher_no: item.voucher_no ?? '',
+                    date: item.date ?? '',
+                    transaction_reference: item.transaction_reference ?? '',
+                    narration: item.narration ?? '',
+                    lines: [
+                        ...(debits.length ? debits : [emptyLine('debit')]).map((l) => ({
+                            side: 'debit',
+                            account_id: String(l.account_id ?? ''),
+                            amount: String(l.amount ?? ''),
+                            narration: l.narration ?? '',
+                        })),
+                        ...(credits.length ? credits : [emptyLine('credit')]).map((l) => ({
+                            side: 'credit',
+                            account_id: String(l.account_id ?? ''),
+                            amount: String(l.amount ?? ''),
+                            narration: l.narration ?? '',
+                        })),
+                    ],
+                });
+                form.clearErrors();
+                return;
+            }
+
+            const nextDefaults = await loadVoucherCreateDefaults('journal', defaults);
+            if (cancelled) return;
+
             form.setData({
                 type: TYPE_JOURNAL,
-                voucher_no: item.voucher_no ?? '',
-                date: item.date ?? '',
-                transaction_reference: item.transaction_reference ?? '',
-                narration: item.narration ?? '',
-                lines: [
-                    ...(debits.length ? debits : [emptyLine('debit')]).map((l) => ({
-                        side: 'debit',
-                        account_id: String(l.account_id ?? ''),
-                        amount: String(l.amount ?? ''),
-                        narration: l.narration ?? '',
-                    })),
-                    ...(credits.length ? credits : [emptyLine('credit')]).map((l) => ({
-                        side: 'credit',
-                        account_id: String(l.account_id ?? ''),
-                        amount: String(l.amount ?? ''),
-                        narration: l.narration ?? '',
-                    })),
-                ],
-            });
-        } else {
-            form.setData({
-                type: TYPE_JOURNAL,
-                voucher_no: defaults?.voucher_no ?? '',
-                date: defaults?.date ?? '',
-                transaction_reference: defaults?.transaction_reference ?? '',
+                voucher_no: nextDefaults.voucher_no ?? '',
+                date: nextDefaults.date || defaults?.date || '',
+                transaction_reference: nextDefaults.transaction_reference ?? '',
                 narration: '',
                 lines: [emptyLine('debit'), emptyLine('credit')],
             });
+            form.clearErrors();
         }
-        form.clearErrors();
+
+        hydrate();
+
+        return () => {
+            cancelled = true;
+        };
     }, [open, item]);
 
     const { debitTotal, creditTotal } = useMemo(() => {
@@ -204,7 +221,7 @@ export default function JournalVoucherModal({ open, onOpenChange, item, accounts
                             Voucher No
                             <RequiredMark />
                         </Label>
-                        <Input className="mt-1" value={form.data.voucher_no} onChange={(e) => form.setData('voucher_no', e.target.value)} />
+                        <Input className="mt-1" value={form.data.voucher_no} readOnly={!isEditing} />
                         {form.errors.voucher_no && <p className="mt-1 text-xs text-destructive">{form.errors.voucher_no}</p>}
                     </div>
                     <div>

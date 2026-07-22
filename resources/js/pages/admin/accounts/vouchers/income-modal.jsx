@@ -8,6 +8,7 @@ import { useForm } from '@inertiajs/react';
 import { Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import { FlatAccountSelect, GroupedAccountSelect } from './grouped-account-select';
+import { loadVoucherCreateDefaults } from './load-voucher-create-defaults';
 import { VoucherContactSelect } from './voucher-contact-select';
 import { VoucherFormFooter } from './voucher-form-footer';
 import { VoucherModalShell } from './voucher-modal-shell';
@@ -35,36 +36,52 @@ export default function IncomeVoucherModal({ open, onOpenChange, item, accountsP
 
     useEffect(() => {
         if (!open) return;
-        if (item) {
+
+        let cancelled = false;
+
+        async function hydrate() {
+            if (item) {
+                form.setData({
+                    type: TYPE_INCOME,
+                    voucher_no: item.voucher_no ?? '',
+                    date: item.date ?? '',
+                    transaction_reference: item.transaction_reference ?? '',
+                    party_key: item.party_key ?? '',
+                    payment_account_id: String(item.payment_account_id ?? ''),
+                    debit_description: '',
+                    narration: item.narration ?? '',
+                    lines: (item.lines?.length ? item.lines : [emptyRow()]).map((l) => ({
+                        account_id: String(l.account_id ?? ''),
+                        amount: String(l.amount ?? ''),
+                        narration: l.narration ?? '',
+                    })),
+                });
+                form.clearErrors();
+                return;
+            }
+
+            const nextDefaults = await loadVoucherCreateDefaults('income', defaults);
+            if (cancelled) return;
+
             form.setData({
                 type: TYPE_INCOME,
-                voucher_no: item.voucher_no ?? '',
-                date: item.date ?? '',
-                transaction_reference: item.transaction_reference ?? '',
-                party_key: item.party_key ?? '',
-                payment_account_id: String(item.payment_account_id ?? ''),
-                debit_description: '',
-                narration: item.narration ?? '',
-                lines: (item.lines?.length ? item.lines : [emptyRow()]).map((l) => ({
-                    account_id: String(l.account_id ?? ''),
-                    amount: String(l.amount ?? ''),
-                    narration: l.narration ?? '',
-                })),
-            });
-        } else {
-            form.setData({
-                type: TYPE_INCOME,
-                voucher_no: defaults?.voucher_no ?? '',
-                date: defaults?.date ?? '',
-                transaction_reference: defaults?.transaction_reference ?? '',
+                voucher_no: nextDefaults.voucher_no ?? '',
+                date: nextDefaults.date || defaults?.date || '',
+                transaction_reference: nextDefaults.transaction_reference ?? '',
                 party_key: '',
                 payment_account_id: '',
                 debit_description: '',
                 narration: '',
                 lines: [emptyRow()],
             });
+            form.clearErrors();
         }
-        form.clearErrors();
+
+        hydrate();
+
+        return () => {
+            cancelled = true;
+        };
     }, [open, item]);
 
     const total = useMemo(() => form.data.lines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0), [form.data.lines]);
@@ -125,7 +142,7 @@ export default function IncomeVoucherModal({ open, onOpenChange, item, accountsP
                             Voucher No
                             <RequiredMark />
                         </Label>
-                        <Input className="mt-1" value={form.data.voucher_no} onChange={(e) => form.setData('voucher_no', e.target.value)} />
+                        <Input className="mt-1" value={form.data.voucher_no} readOnly={!isEditing} />
                         {form.errors.voucher_no && <p className="mt-1 text-xs text-destructive">{form.errors.voucher_no}</p>}
                     </div>
                     <div>

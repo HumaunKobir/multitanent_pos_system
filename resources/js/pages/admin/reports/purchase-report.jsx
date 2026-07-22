@@ -153,6 +153,11 @@ export default function PurchaseReport({
                             header: 'Invoice',
                             render: (row) => <span className="font-mono text-xs">{row.invoice}</span>,
                         },
+                        {
+                            id: 'type',
+                            header: 'Type',
+                            render: (row) => row.purchase_type_label ?? 'Purchase',
+                        },
                         { id: 'supplier', header: 'Supplier', render: (row) => row.supplier_name },
                         { id: 'branch', header: 'Branch', render: (row) => row.branch_name },
                         {

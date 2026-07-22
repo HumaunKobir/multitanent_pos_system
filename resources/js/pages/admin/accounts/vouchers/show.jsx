@@ -42,7 +42,7 @@ function voucherHeadAccounts(voucher) {
 
     if (voucher.type_slug === 'income') {
         return {
-            partyLabel: 'Received from',
+            partyLabel: 'Received by',
             creditLabel: 'Account head (credit)',
             debitLabel: 'Received in (debit)',
             creditValue: creditNames,
@@ -240,7 +240,7 @@ export default function VoucherShow({ voucher }) {
                         </p>
                         <p>
                             <span className="font-semibold">
-                                {typeSlug === 'expense' ? 'Paid To:' : typeSlug === 'income' ? 'Received From:' : 'Party:'}
+                                {typeSlug === 'expense' ? 'Paid To:' : typeSlug === 'income' ? 'Received By:' : 'Party:'}
                             </span>{' '}
                             {voucher.party_name || '—'}
                             {voucher.party_email ? ` (${voucher.party_email})` : ''}

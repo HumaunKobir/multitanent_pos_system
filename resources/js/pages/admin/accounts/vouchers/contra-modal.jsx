@@ -6,6 +6,7 @@ import { route } from '@/lib/route';
 import { useForm } from '@inertiajs/react';
 import { useEffect } from 'react';
 import { FlatAccountSelect } from './grouped-account-select';
+import { loadVoucherCreateDefaults } from './load-voucher-create-defaults';
 import { VoucherFormFooter } from './voucher-form-footer';
 import { VoucherModalShell } from './voucher-modal-shell';
 
@@ -29,25 +30,35 @@ export default function ContraVoucherModal({ open, onOpenChange, item, assetAcco
 
     useEffect(() => {
         if (!open) return;
-        if (item) {
+
+        let cancelled = false;
+
+        async function hydrate() {
+            if (item) {
+                form.setData({
+                    type: TYPE_CONTRA,
+                    voucher_no: item.voucher_no ?? '',
+                    date: item.date ?? '',
+                    transaction_reference: item.transaction_reference ?? '',
+                    from_account_id: String(item.from_account_id ?? ''),
+                    to_account_id: String(item.to_account_id ?? ''),
+                    total_amount: String(item.total_amount ?? ''),
+                    narration: item.narration ?? '',
+                    debit_description: '',
+                    credit_description: '',
+                });
+                form.clearErrors();
+                return;
+            }
+
+            const nextDefaults = await loadVoucherCreateDefaults('contra', defaults);
+            if (cancelled) return;
+
             form.setData({
                 type: TYPE_CONTRA,
-                voucher_no: item.voucher_no ?? '',
-                date: item.date ?? '',
-                transaction_reference: item.transaction_reference ?? '',
-                from_account_id: String(item.from_account_id ?? ''),
-                to_account_id: String(item.to_account_id ?? ''),
-                total_amount: String(item.total_amount ?? ''),
-                narration: item.narration ?? '',
-                debit_description: '',
-                credit_description: '',
-            });
-        } else {
-            form.setData({
-                type: TYPE_CONTRA,
-                voucher_no: defaults?.voucher_no ?? '',
-                date: defaults?.date ?? '',
-                transaction_reference: defaults?.transaction_reference ?? '',
+                voucher_no: nextDefaults.voucher_no ?? '',
+                date: nextDefaults.date || defaults?.date || '',
+                transaction_reference: nextDefaults.transaction_reference ?? '',
                 from_account_id: '',
                 to_account_id: '',
                 total_amount: '',
@@ -55,8 +66,14 @@ export default function ContraVoucherModal({ open, onOpenChange, item, assetAcco
                 debit_description: '',
                 credit_description: '',
             });
+            form.clearErrors();
         }
-        form.clearErrors();
+
+        hydrate();
+
+        return () => {
+            cancelled = true;
+        };
     }, [open, item]);
 
     function submit(e) {
@@ -104,7 +121,7 @@ export default function ContraVoucherModal({ open, onOpenChange, item, assetAcco
                             Voucher No
                             <RequiredMark />
                         </Label>
-                        <Input className="mt-1" value={form.data.voucher_no} onChange={(e) => form.setData('voucher_no', e.target.value)} />
+                        <Input className="mt-1" value={form.data.voucher_no} readOnly={!isEditing} />
                         {form.errors.voucher_no && <p className="mt-1 text-xs text-destructive">{form.errors.voucher_no}</p>}
                     </div>
                     <div>

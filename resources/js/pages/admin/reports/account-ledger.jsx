@@ -51,6 +51,7 @@ export default function AccountLedgerReport({
                       date: dateFrom,
                       description: 'Opening balance',
                       reference: '—',
+                      party: 'N/A',
                       debit: 0,
                       credit: 0,
                       balance: opening_balance,
@@ -107,6 +108,11 @@ export default function AccountLedgerReport({
                         { id: 'date', header: 'Date', render: (row) => formatBdDate(row.date) },
                         { id: 'ref', header: 'Reference', render: (row) => <span className="font-mono text-xs">{row.reference}</span> },
                         { id: 'desc', header: 'Description', render: (row) => row.description },
+                        {
+                            id: 'party',
+                            header: 'Party',
+                            render: (row) => row.party || 'N/A',
+                        },
                         {
                             id: 'debit',
                             header: 'Debit',

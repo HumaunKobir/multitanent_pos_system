@@ -3,10 +3,12 @@
 namespace App\Http\Requests\Account;
 
 use App\Enums\AccountType;
+use App\Enums\SystemAccountKey;
 use App\Enums\VoucherLineSide;
 use App\Enums\VoucherType;
 use App\Models\ChartOfAccount;
 use App\Models\Customer;
+use App\Models\Party;
 use App\Models\Supplier;
 use App\Services\VoucherContactPicker;
 use Illuminate\Foundation\Http\FormRequest;
@@ -42,7 +44,7 @@ class StoreVoucherRequest extends FormRequest
 
         $base = [
             'type' => ['required', Rule::enum(VoucherType::class)],
-            'voucher_no' => ['required', 'string', 'max:50', Rule::unique('vouchers', 'voucher_no')->whereNull('deleted_at')],
+            'voucher_no' => ['nullable', 'string', 'max:50'],
             'date' => ['required', 'date'],
             'transaction_reference' => ['nullable', 'string', 'max:100'],
             'narration' => ['nullable', 'string'],
@@ -64,7 +66,7 @@ class StoreVoucherRequest extends FormRequest
                 'total_amount' => ['required', 'numeric', 'min:0.01'],
             ]),
             VoucherType::Expense => array_merge($base, [
-                'party_key' => ['nullable', 'string', 'regex:/^(supplier|customer):\d+$/'],
+                'party_key' => ['nullable', 'string', 'regex:/^(party|supplier|customer):\d+$/'],
                 'party_type' => ['nullable', 'string'],
                 'party_id' => ['nullable', 'integer'],
                 'payment_account_id' => ['required', 'exists:chart_of_accounts,id'],
@@ -74,7 +76,7 @@ class StoreVoucherRequest extends FormRequest
                 'lines.*.narration' => ['nullable', 'string', 'max:500'],
             ]),
             VoucherType::Income => array_merge($base, [
-                'party_key' => ['nullable', 'string', 'regex:/^(supplier|customer):\d+$/'],
+                'party_key' => ['nullable', 'string', 'regex:/^(party|supplier|customer):\d+$/'],
                 'party_type' => ['nullable', 'string'],
                 'party_id' => ['nullable', 'integer'],
                 'payment_account_id' => ['required', 'exists:chart_of_accounts,id'],
@@ -194,17 +196,33 @@ class StoreVoucherRequest extends FormRequest
 
     private function validateExpenseLines(Validator $validator): void
     {
-        $ids = collect($this->input('lines', []))->pluck('account_id')->all();
-        $invalid = ChartOfAccount::query()
-            ->whereIn('id', $ids)
-            ->where(function ($q) {
-                $q->where('type', '!=', AccountType::Expenses)
-                    ->orWhereNull('parent_id');
-            })
-            ->exists();
+        $ids = collect($this->input('lines', []))->pluck('account_id')->filter()->all();
 
-        if ($invalid) {
-            $validator->errors()->add('lines', 'Expense lines must use expense posting accounts.');
+        if ($ids === []) {
+            return;
+        }
+
+        $accounts = ChartOfAccount::query()
+            ->whereIn('id', $ids)
+            ->get(['id', 'type', 'parent_id', 'account_number']);
+
+        $invalid = $accounts->contains(function (ChartOfAccount $account): bool {
+            if ($account->parent_id === null) {
+                return true;
+            }
+
+            if ($account->type === AccountType::Expenses) {
+                return false;
+            }
+
+            return $account->account_number !== SystemAccountKey::OutputVat->accountNumber();
+        });
+
+        if ($invalid || $accounts->count() !== count(array_unique($ids))) {
+            $validator->errors()->add(
+                'lines',
+                'Expense lines must use expense posting accounts or VAT Payable.',
+            );
         }
     }
 
@@ -234,6 +252,7 @@ class StoreVoucherRequest extends FormRequest
         }
 
         $exists = match ($type) {
+            Party::class => Party::query()->ownBranch()->whereKey($id)->exists(),
             Supplier::class => Supplier::query()->ownBranch()->whereKey($id)->exists(),
             Customer::class => Customer::query()->ownBranch()->whereKey($id)->exists(),
             default => false,

@@ -177,6 +177,8 @@ class PurchaseReportService
             'id' => $purchase->id,
             'date' => $purchase->date?->format('Y-m-d'),
             'invoice' => $purchase->invoice_number,
+            'purchase_type' => $purchase->purchase_type?->value,
+            'purchase_type_label' => $purchase->purchase_type?->label() ?? 'Purchase',
             'supplier_id' => $purchase->supplier_id,
             'supplier_name' => $purchase->supplier?->name ?? '—',
             'supplier_phone' => $purchase->supplier?->phone,
@@ -198,7 +200,7 @@ class PurchaseReportService
         ?int $branchId,
     ): Builder {
         return Purchase::query()
-            ->purchase()
+            ->purchaseOrInitialStock()
             ->when($supplierId !== null, fn (Builder $q) => $q->where('supplier_id', $supplierId))
             ->when($dateFrom, fn (Builder $q) => $q->whereDate('date', '>=', Carbon::parse($dateFrom)->toDateString()))
             ->when($dateTo, fn (Builder $q) => $q->whereDate('date', '<=', Carbon::parse($dateTo)->toDateString()))

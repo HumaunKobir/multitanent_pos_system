@@ -3,16 +3,26 @@
 namespace App\Services;
 
 use App\Models\Customer;
+use App\Models\Party;
 use App\Models\Supplier;
 
 class VoucherContactPicker
 {
     /**
-     * @return array{suppliers: array<int, array{id: int, name: string}>, customers: array<int, array{id: int, name: string}>}
+     * @return array{
+     *     parties: array<int, array{id: int, name: string}>,
+     *     suppliers: array<int, array{id: int, name: string}>,
+     *     customers: array<int, array{id: int, name: string}>
+     * }
      */
     public static function contacts(): array
     {
         return [
+            'parties' => Party::query()
+                ->ownBranch()
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->all(),
             'suppliers' => Supplier::query()
                 ->ownBranch()
                 ->orderBy('name')
@@ -33,6 +43,7 @@ class VoucherContactPicker
         }
 
         return match ($partyType) {
+            Party::class => "party:{$partyId}",
             Supplier::class => "supplier:{$partyId}",
             Customer::class => "customer:{$partyId}",
             default => null,
@@ -51,6 +62,7 @@ class VoucherContactPicker
         [$type, $id] = explode(':', $key, 2);
 
         $partyType = match ($type) {
+            'party' => Party::class,
             'supplier' => Supplier::class,
             'customer' => Customer::class,
             default => null,

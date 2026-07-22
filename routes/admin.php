@@ -30,6 +30,7 @@ use App\Http\Controllers\Inventory\SupplierPaymentController;
 use App\Http\Controllers\OnlineCustomerController;
 use App\Http\Controllers\OnlineOrderController;
 use App\Http\Controllers\PanelGuideController;
+use App\Http\Controllers\Party\PartyController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\Reports\InventoryStockController;
 use App\Http\Controllers\Reports\OpeningStockController;
@@ -165,6 +166,7 @@ Route::middleware(['auth', 'verified'])->prefix('inventory')->name('inventory.')
 });
 
 Route::middleware(['auth', 'verified'])->prefix('party')->name('party.')->group(function () {
+    Route::resource('parties', PartyController::class)->except(['create', 'edit', 'show']);
     Route::get('supplier/export/excel', [SupplierController::class, 'exportExcel'])->name('supplier.export-excel');
     Route::get('supplier/export/pdf', [SupplierController::class, 'exportPdf'])->name('supplier.export-pdf');
     Route::get('supplier/export/print', [SupplierController::class, 'exportPrint'])->name('supplier.export-print');

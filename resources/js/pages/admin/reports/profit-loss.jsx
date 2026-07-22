@@ -129,7 +129,7 @@ export default function ProfitLossReport({ filters = {}, branches = [], isBranch
     const salesRevenue = sectionBySlug(report.sections, 'sales_revenue');
     const salesReturns = sectionBySlug(report.sections, 'sales_returns');
     const salesDiscounts = sectionBySlug(report.sections, 'sales_discounts');
-    const outputVat = sectionBySlug(report.sections, 'output_vat');
+    const vatPayable = sectionBySlug(report.sections, 'vat_payable');
     const cogs = sectionBySlug(report.sections, 'cogs');
     const operatingExpenses = sectionBySlug(report.sections, 'operating_expenses');
 
@@ -197,9 +197,9 @@ export default function ProfitLossReport({ filters = {}, branches = [], isBranch
                         valueClassName="text-violet-900 dark:text-violet-200"
                     />
                     <SummaryCard
-                        label="Output VAT"
-                        value={report.output_vat}
-                        percent={percentOf(report.output_vat, salesBase)}
+                        label="VAT Payable"
+                        value={report.vat_payable ?? report.net_vat_payable ?? report.output_vat}
+                        percent={percentOf(report.vat_payable ?? report.net_vat_payable ?? report.output_vat, salesBase)}
                         className="border-sky-200/80 bg-sky-50 dark:border-sky-800 dark:bg-sky-950/30"
                         labelClassName="text-sky-800/70 dark:text-sky-300/70"
                         valueClassName="text-sky-900 dark:text-sky-200"
@@ -291,13 +291,14 @@ export default function ProfitLossReport({ filters = {}, branches = [], isBranch
 
                                 <tr className="bg-sky-700/90 text-white">
                                     <td colSpan={3} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide">
-                                        Output VAT (collected)
+                                        VAT Payable (liability)
                                     </td>
                                 </tr>
-                                <StatementLines lines={outputVat.lines} emptyLabel="No output VAT recorded." />
+                                <StatementLines lines={vatPayable.lines} emptyLabel="No VAT payable in this period." />
                                 <TotalRow
-                                    label="Output VAT"
-                                    value={report.output_vat ?? outputVat.total}
+                                    label="VAT Payable"
+                                    value={report.vat_payable ?? report.net_vat_payable ?? report.output_vat ?? vatPayable.total}
+                                    emphasize
                                     tone="muted"
                                 />
 

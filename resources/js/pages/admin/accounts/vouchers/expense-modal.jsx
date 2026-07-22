@@ -8,6 +8,7 @@ import { useForm } from '@inertiajs/react';
 import { Plus, Trash2 } from 'lucide-react';
 import { useEffect, useMemo } from 'react';
 import { FlatAccountSelect, GroupedAccountSelect } from './grouped-account-select';
+import { loadVoucherCreateDefaults } from './load-voucher-create-defaults';
 import { VoucherContactSelect } from './voucher-contact-select';
 import { VoucherFormFooter } from './voucher-form-footer';
 import { VoucherModalShell } from './voucher-modal-shell';
@@ -35,36 +36,52 @@ export default function ExpenseVoucherModal({ open, onOpenChange, item, accounts
 
     useEffect(() => {
         if (!open) return;
-        if (item) {
+
+        let cancelled = false;
+
+        async function hydrate() {
+            if (item) {
+                form.setData({
+                    type: TYPE_EXPENSE,
+                    voucher_no: item.voucher_no ?? '',
+                    date: item.date ?? '',
+                    transaction_reference: item.transaction_reference ?? '',
+                    party_key: item.party_key ?? '',
+                    payment_account_id: String(item.payment_account_id ?? ''),
+                    credit_description: '',
+                    narration: item.narration ?? '',
+                    lines: (item.lines?.length ? item.lines : [emptyRow()]).map((l) => ({
+                        account_id: String(l.account_id ?? ''),
+                        amount: String(l.amount ?? ''),
+                        narration: l.narration ?? '',
+                    })),
+                });
+                form.clearErrors();
+                return;
+            }
+
+            const nextDefaults = await loadVoucherCreateDefaults('expense', defaults);
+            if (cancelled) return;
+
             form.setData({
                 type: TYPE_EXPENSE,
-                voucher_no: item.voucher_no ?? '',
-                date: item.date ?? '',
-                transaction_reference: item.transaction_reference ?? '',
-                party_key: item.party_key ?? '',
-                payment_account_id: String(item.payment_account_id ?? ''),
-                credit_description: '',
-                narration: item.narration ?? '',
-                lines: (item.lines?.length ? item.lines : [emptyRow()]).map((l) => ({
-                    account_id: String(l.account_id ?? ''),
-                    amount: String(l.amount ?? ''),
-                    narration: l.narration ?? '',
-                })),
-            });
-        } else {
-            form.setData({
-                type: TYPE_EXPENSE,
-                voucher_no: defaults?.voucher_no ?? '',
-                date: defaults?.date ?? '',
-                transaction_reference: defaults?.transaction_reference ?? '',
+                voucher_no: nextDefaults.voucher_no ?? '',
+                date: nextDefaults.date || defaults?.date || '',
+                transaction_reference: nextDefaults.transaction_reference ?? '',
                 party_key: '',
                 payment_account_id: '',
                 credit_description: '',
                 narration: '',
                 lines: [emptyRow()],
             });
+            form.clearErrors();
         }
-        form.clearErrors();
+
+        hydrate();
+
+        return () => {
+            cancelled = true;
+        };
     }, [open, item]);
 
     const total = useMemo(() => form.data.lines.reduce((s, l) => s + (parseFloat(l.amount) || 0), 0), [form.data.lines]);
@@ -122,7 +139,7 @@ export default function ExpenseVoucherModal({ open, onOpenChange, item, accounts
                 <div className="grid gap-4 sm:grid-cols-3">
                     <div>
                         <Label>Voucher No</Label>
-                        <Input className="mt-1" value={form.data.voucher_no} onChange={(e) => form.setData('voucher_no', e.target.value)} />
+                        <Input className="mt-1" value={form.data.voucher_no} readOnly={!isEditing} />
                         {form.errors.voucher_no && <p className="mt-1 text-xs text-destructive">{form.errors.voucher_no}</p>}
                     </div>
                     <div>
@@ -140,6 +157,9 @@ export default function ExpenseVoucherModal({ open, onOpenChange, item, accounts
                             value={form.data.party_key}
                             onChange={(value) => form.setData('party_key', value)}
                         />
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                            Remit collected VAT with head VAT Payable (L004-01).
+                        </p>
                         {form.errors.party_key && <p className="mt-1 text-sm text-destructive">{form.errors.party_key}</p>}
                     </div>
                 </div>

@@ -124,3 +124,38 @@ test('purchase report all suppliers includes supplier-wise summary', function ()
             ->where('totals.discount', 120)
             ->where('totals.net_amount', 1180));
 });
+
+test('purchase report includes initial stock supplier from product create settlement', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    $user->givePermissionTo(ReportController::PERMISSION_PURCHASE_REPORT);
+
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $branch->id,
+        'name' => 'Product Create Supplier',
+    ]);
+    $date = now()->format('Y-m-d');
+
+    Purchase::factory()
+        ->initialStock()
+        ->withSupplier($supplier)
+        ->withUser($user)
+        ->withAmounts(800, 0, 0, 0)
+        ->create([
+            'date' => $date,
+            'comment' => 'Initial stock — Demo Product',
+        ]);
+
+    $this->actingAs($user)
+        ->get('/report/purchase-report?supplier_id='.$supplier->id.'&date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/purchase-report')
+            ->has('rows', 1)
+            ->where('rows.0.supplier_name', 'Product Create Supplier')
+            ->where('rows.0.purchase_type_label', 'Initial Stock')
+            ->where('totals.gross_amount', 800)
+            ->where('supplier_summaries.0.supplier_name', 'Product Create Supplier'));
+});

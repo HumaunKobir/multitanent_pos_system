@@ -77,6 +77,27 @@ export default function PurchaseIndex({ purchases, filters }) {
         },
         { id: 'date', header: 'Date', render: (row) => formatBdDate(row.date) },
         {
+            id: 'type',
+            header: 'Type',
+            render: (row) => {
+                const label = row.purchase_type_label ?? 'Purchase';
+                const isInitialStock = label === 'Initial Stock';
+
+                return (
+                    <Badge
+                        variant="outline"
+                        className={
+                            isInitialStock
+                                ? 'border-amber-300 bg-amber-50 text-[10px] text-amber-900'
+                                : 'text-[10px]'
+                        }
+                    >
+                        {label}
+                    </Badge>
+                );
+            },
+        },
+        {
             id: 'supplier',
             header: 'Supplier',
             render: (row) => {
@@ -145,7 +166,7 @@ export default function PurchaseIndex({ purchases, filters }) {
                     id={row.id}
                     showRoute="inventory.purchase.show"
                     editRoute={row.can_edit ? 'inventory.purchase.edit' : undefined}
-                    onDelete={() => setDeleting(row)}
+                    onDelete={row.can_delete ? () => setDeleting(row) : undefined}
                 />
             ),
         },

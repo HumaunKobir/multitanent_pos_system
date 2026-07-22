@@ -7,6 +7,13 @@ import { cn } from '@/lib/utils';
 function buildGroups(contacts) {
     return [
         {
+            label: 'Parties',
+            items: (contacts.parties ?? []).map((party) => ({
+                value: `party:${party.id}`,
+                label: party.name,
+            })),
+        },
+        {
             label: 'Suppliers',
             items: (contacts.suppliers ?? []).map((supplier) => ({
                 value: `supplier:${supplier.id}`,

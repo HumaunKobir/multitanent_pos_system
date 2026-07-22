@@ -100,6 +100,9 @@ export default function AccountTransactionsReport({ accounts = [], filters = {},
                                     </p>
                                     <p className="text-sm font-medium">{txn.description}</p>
                                     <p className="text-xs text-muted-foreground">
+                                        Party: {txn.party || 'N/A'}
+                                    </p>
+                                    <p className="text-xs text-muted-foreground">
                                         {formatBdDate(txn.date)} · {txn.source}
                                     </p>
                                 </div>

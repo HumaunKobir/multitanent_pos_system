@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Enums\AccountType;
 use App\Enums\CommonStatus;
+use App\Enums\SystemAccountKey;
 use App\Enums\VoucherType;
 use App\Models\ChartOfAccount;
 use Illuminate\Support\Collection;
@@ -18,9 +19,26 @@ class VoucherAccountsPicker
         return match ($type) {
             VoucherType::Journal => self::groupedAllLeafAccounts(),
             VoucherType::Contra => [],
-            VoucherType::Expense => self::groupedLeafAccounts([AccountType::Expenses]),
+            VoucherType::Expense => self::expenseVoucherAccounts(),
             VoucherType::Income => self::groupedLeafAccounts([AccountType::Income]),
         };
+    }
+
+    /**
+     * Expense vouchers may debit expense heads or VAT Payable (to remit collected VAT).
+     *
+     * @return array<int, array{type: string, groups: array<int, array{parent: array{id: int, code: string, name: string}, accounts: array<int, array{id: int, label: string}>}>}>
+     */
+    private static function expenseVoucherAccounts(): array
+    {
+        $accounts = self::leafAccountsQuery()
+            ->where(function ($query): void {
+                $query->where('type', AccountType::Expenses)
+                    ->orWhere('account_number', SystemAccountKey::OutputVat->accountNumber());
+            })
+            ->get();
+
+        return self::buildGroupedPicker($accounts);
     }
 
     /**

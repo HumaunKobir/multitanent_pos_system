@@ -165,6 +165,7 @@ return [
                 ['title' => 'Sales Summary', 'href' => '/report/sales-summary', 'permission' => 'report.sales-summary.view'],
                 ['title' => 'Sales Report', 'href' => '/report/sales-report', 'permission' => 'report.sales-report.view'],
                 ['title' => 'Sales Profit Trend', 'href' => '/report/sales-profit-trend', 'permission' => 'report.sales-profit-trend.view'],
+                ['title' => 'Purchase Report', 'href' => '/report/purchase-report', 'permission' => 'report.purchase-report.view'],
             ],
         ],
         [

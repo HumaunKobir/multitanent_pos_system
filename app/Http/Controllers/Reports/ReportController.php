@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Reports;
 
 use App\Concerns\ExportsFilteredList;
 use App\Http\Controllers\Controller;
+use App\Services\PurchaseReportService;
 use App\Services\ReportService;
 use App\Services\SalesProfitTrendService;
 use App\Services\SalesReportService;
@@ -51,10 +52,13 @@ class ReportController extends Controller
 
     public const PERMISSION_SALES_PROFIT_TREND = 'report.sales-profit-trend.view';
 
+    public const PERMISSION_PURCHASE_REPORT = 'report.purchase-report.view';
+
     public function __construct(
         private ReportService $reports,
         private SalesReportService $salesReports,
         private SalesProfitTrendService $salesProfitTrends,
+        private PurchaseReportService $purchaseReports,
     ) {}
 
     public function customerLedger(Request $request): Response
@@ -449,6 +453,47 @@ class ReportController extends Controller
                 $resolved['date_to'],
                 $resolved['branch_id'],
             ),
+        ]);
+    }
+
+    public function purchaseReport(Request $request): Response
+    {
+        $this->authorize(self::PERMISSION_PURCHASE_REPORT);
+
+        $filters = $request->validate([
+            'supplier_id' => ['nullable', 'integer', 'exists:suppliers,id'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
+        ]);
+
+        if (! isset($filters['date_from']) && ! isset($filters['date_to'])) {
+            $filters['date_from'] = now()->startOfMonth()->format('Y-m-d');
+            $filters['date_to'] = now()->format('Y-m-d');
+        }
+
+        $canFilterByBranch = $this->purchaseReports->canFilterByBranch();
+        $filterBranchId = $canFilterByBranch && isset($filters['branch_id']) ? (int) $filters['branch_id'] : null;
+        $supplierId = isset($filters['supplier_id']) ? (int) $filters['supplier_id'] : null;
+
+        $report = $this->purchaseReports->build(
+            $supplierId,
+            $filters['date_from'] ?? null,
+            $filters['date_to'] ?? null,
+            $filterBranchId,
+        );
+
+        return Inertia::render('admin/reports/purchase-report', [
+            'suppliers' => $this->purchaseReports->supplierOptions(),
+            'branches' => $canFilterByBranch ? $this->purchaseReports->branchOptions() : [],
+            'isBranchScoped' => ! $canFilterByBranch,
+            'filters' => [
+                'supplier_id' => $supplierId,
+                'date_from' => $filters['date_from'] ?? null,
+                'date_to' => $filters['date_to'] ?? null,
+                'branch_id' => $canFilterByBranch ? ($filters['branch_id'] ?? null) : null,
+            ],
+            ...$report,
         ]);
     }
 

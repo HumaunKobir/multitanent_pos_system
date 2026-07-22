@@ -254,6 +254,7 @@ Route::middleware(['auth', 'verified'])->prefix('report')->name('report.')->grou
     Route::get('sales-report/export/csv', [ReportController::class, 'salesReportExportCsv'])->name('sales-report.export-csv');
     Route::get('sales-report', [ReportController::class, 'salesReport'])->name('sales-report');
     Route::get('sales-profit-trend', [ReportController::class, 'salesProfitTrend'])->name('sales-profit-trend');
+    Route::get('purchase-report', [ReportController::class, 'purchaseReport'])->name('purchase-report');
 });
 
 Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->group(function () {

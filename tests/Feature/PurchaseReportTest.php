@@ -1,0 +1,126 @@
+<?php
+
+use App\Http\Controllers\Reports\ReportController;
+use App\Models\Branch;
+use App\Models\Purchase;
+use App\Models\Supplier;
+use App\Models\User;
+use Inertia\Testing\AssertableInertia as Assert;
+
+test('guests are redirected from purchase report', function () {
+    $this->get('/report/purchase-report')->assertRedirect(route('login'));
+});
+
+test('purchase report page loads with default date range', function () {
+    $this->artisan('permissions:sync');
+
+    $user = User::factory()->create();
+    $user->givePermissionTo(ReportController::PERMISSION_PURCHASE_REPORT);
+
+    $this->actingAs($user)
+        ->get('/report/purchase-report')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/purchase-report')
+            ->has('suppliers')
+            ->has('rows')
+            ->has('supplier_summaries')
+            ->has('totals')
+            ->where('filters.date_from', now()->startOfMonth()->format('Y-m-d'))
+            ->where('filters.date_to', now()->format('Y-m-d')));
+});
+
+test('purchase report filters by supplier and date and returns totals', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    $user->givePermissionTo(ReportController::PERMISSION_PURCHASE_REPORT);
+
+    $supplierA = Supplier::factory()->create(['branch_id' => $branch->id, 'name' => 'Alpha Supply']);
+    $supplierB = Supplier::factory()->create(['branch_id' => $branch->id, 'name' => 'Beta Supply']);
+
+    $date = now()->format('Y-m-d');
+
+    Purchase::factory()
+        ->purchase()
+        ->withSupplier($supplierA)
+        ->withUser($user)
+        ->withAmounts(1000, 100, 50, 400)
+        ->create(['date' => $date]);
+
+    Purchase::factory()
+        ->purchase()
+        ->withSupplier($supplierA)
+        ->withUser($user)
+        ->withAmounts(500, 50, 0, 0)
+        ->create(['date' => $date]);
+
+    Purchase::factory()
+        ->purchase()
+        ->withSupplier($supplierB)
+        ->withUser($user)
+        ->withAmounts(200, 0, 0, 200)
+        ->create(['date' => $date]);
+
+    Purchase::factory()
+        ->purchase()
+        ->withSupplier($supplierA)
+        ->withUser($user)
+        ->withAmounts(999, 0, 0, 0)
+        ->create(['date' => now()->subMonth()->format('Y-m-d')]);
+
+    $this->actingAs($user)
+        ->get('/report/purchase-report?supplier_id='.$supplierA->id.'&date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/purchase-report')
+            ->where('supplier.name', 'Alpha Supply')
+            ->has('rows', 2)
+            ->has('supplier_summaries', 1)
+            ->where('totals.invoice_count', 2)
+            ->where('totals.gross_amount', 1500)
+            ->where('totals.discount', 150)
+            ->where('totals.vat', 50)
+            ->where('totals.net_amount', 1400)
+            ->where('supplier_summaries.0.supplier_name', 'Alpha Supply')
+            ->where('supplier_summaries.0.discount', 150)
+            ->where('supplier_summaries.0.net_amount', 1400));
+});
+
+test('purchase report all suppliers includes supplier-wise summary', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    $user->givePermissionTo(ReportController::PERMISSION_PURCHASE_REPORT);
+
+    $supplierA = Supplier::factory()->create(['branch_id' => $branch->id, 'name' => 'Alpha Supply']);
+    $supplierB = Supplier::factory()->create(['branch_id' => $branch->id, 'name' => 'Beta Supply']);
+    $date = now()->format('Y-m-d');
+
+    Purchase::factory()
+        ->purchase()
+        ->withSupplier($supplierA)
+        ->withUser($user)
+        ->withAmounts(1000, 100, 0, 0)
+        ->create(['date' => $date]);
+
+    Purchase::factory()
+        ->purchase()
+        ->withSupplier($supplierB)
+        ->withUser($user)
+        ->withAmounts(300, 20, 0, 0)
+        ->create(['date' => $date]);
+
+    $this->actingAs($user)
+        ->get('/report/purchase-report?date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('supplier', null)
+            ->has('rows', 2)
+            ->has('supplier_summaries', 2)
+            ->where('totals.gross_amount', 1300)
+            ->where('totals.discount', 120)
+            ->where('totals.net_amount', 1180));
+});

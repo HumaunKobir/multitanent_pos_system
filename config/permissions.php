@@ -601,6 +601,14 @@ return [
             ],
         ],
 
+        'report.purchase-report' => [
+            'label' => 'Purchase Report',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.purchase-report.view' => 'View Purchase Report',
+            ],
+        ],
+
         'report.account-ledger' => [
             'label' => 'Account Ledger',
             'group' => 'Reports',

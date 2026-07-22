@@ -545,6 +545,16 @@ return [
             ],
         ],
 
+        'report.purchase-report.view' => [
+            'title' => 'Purchase Report',
+            'summary' => 'See purchases by supplier and date with totals and discounts.',
+            'steps' => [
+                'Go to Reports → Purchase Report.',
+                'Filter by supplier (or All) and date range.',
+                'Review invoice rows, overall totals, and supplier-wise totals.',
+            ],
+        ],
+
         'report.cash-flow.view' => [
             'title' => 'Cash Flow',
             'summary' => 'Track money in and out of accounts over time.',

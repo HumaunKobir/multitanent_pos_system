@@ -338,6 +338,7 @@ class PurchaseController extends Controller
 
         $purchase->load([
             'supplier',
+            'user:id,name',
             'branch:id,name,logo',
             'purchaseProducts.product',
             'purchaseProducts.variation',
@@ -371,6 +372,7 @@ class PurchaseController extends Controller
                 'supplier_payment_details' => $this->allocations->supplierAllocationDetailsForPurchase($purchase, $paymentAccountLabels),
                 'can_edit' => $this->canEditPurchase($purchase),
                 'is_fully_returned' => $isFullyReturned,
+                'created_by_name' => $purchase->user?->name,
             ],
         ]);
     }

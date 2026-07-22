@@ -1,8 +1,8 @@
 import { useAppToast } from '@/contexts/app-toast-context';
 import { formatBdDate } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
-import { Head, router, usePage } from '@inertiajs/react';
-import { BookOpen, Eye, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Eye, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Button } from '@/components/ui/button';
@@ -40,7 +40,6 @@ export default function VouchersIndex({
     const [search, setSearch] = useState(filters.search ?? '');
     const [formOpen, setFormOpen] = useState(false);
     const [editing, setEditing] = useState(null);
-    const [viewing, setViewing] = useState(null);
     const [deleting, setDeleting] = useState(null);
     useEffect(() => {
         if (flash?.success) toast.success(flash.success);
@@ -58,10 +57,6 @@ export default function VouchersIndex({
         { skipFirstRun: true },
     );
 
-    function switchType(slug) {
-        router.get(route('accounts.vouchers.index', { query: { type: slug, search: search || undefined } }));
-    }
-
     function openCreate() {
         setEditing(null);
         setFormOpen(true);
@@ -73,22 +68,12 @@ export default function VouchersIndex({
                 headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                 credentials: 'same-origin',
             });
+            if (!res.ok) {
+                throw new Error('Failed to load voucher');
+            }
             const data = await res.json();
             setEditing(data.voucher);
             setFormOpen(true);
-        } catch {
-            toast.error('Could not load voucher');
-        }
-    }
-
-    async function openView(row) {
-        try {
-            const res = await fetch(route('accounts.vouchers.show', row.id), {
-                headers: { Accept: 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                credentials: 'same-origin',
-            });
-            const data = await res.json();
-            setViewing(data.voucher);
         } catch {
             toast.error('Could not load voucher');
         }
@@ -131,8 +116,10 @@ export default function VouchersIndex({
             render: (row) => (
                 <div className="flex justify-end gap-1">
                     {can('accounts.view') && (
-                        <Button size="sm" variant="outline" className="h-7 w-7 p-0" onClick={() => openView(row)}>
-                            <Eye className="size-3.5" />
+                        <Button size="sm" variant="outline" className="h-7 w-7 p-0" asChild>
+                            <Link href={route('accounts.vouchers.show', row.id)} title="View">
+                                <Eye className="size-3.5" />
+                            </Link>
                         </Button>
                     )}
                     {can('accounts.update') && (
@@ -195,40 +182,6 @@ export default function VouchersIndex({
                 {activeType === 'expense' && <ExpenseVoucherModal {...modalProps} />}
                 {activeType === 'income' && <IncomeVoucherModal {...modalProps} />}
             </Can>
-
-            <Dialog open={!!viewing} onOpenChange={(open) => !open && setViewing(null)}>
-                <DialogContent className="max-w-lg">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <BookOpen className="size-4" />
-                            {viewing?.voucher_no}
-                        </DialogTitle>
-                        <DialogDescription>
-                            {viewing?.date && formatBdDate(viewing.date)} · ৳{parseFloat(viewing?.total_amount ?? 0).toFixed(2)}
-                        </DialogDescription>
-                    </DialogHeader>
-                    {viewing?.lines?.length > 0 && (
-                        <ul className="max-h-48 space-y-1 overflow-auto text-sm">
-                            {viewing.lines.map((l) => (
-                                <li key={l.id} className="flex justify-between gap-2 border-b border-border/50 py-1">
-                                    <span>
-                                        {l.side}: {l.account_label}
-                                    </span>
-                                    <span className="font-mono">{parseFloat(l.amount).toFixed(2)}</span>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                    {viewing?.narration && <p className="text-sm text-muted-foreground">{viewing.narration}</p>}
-                    <DialogFooter>
-                        <DialogClose asChild>
-                            <Button variant="outline" size="sm">
-                                Close
-                            </Button>
-                        </DialogClose>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
 
             {can('accounts.delete') && (
             <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>

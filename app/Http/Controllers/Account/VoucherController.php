@@ -76,21 +76,29 @@ class VoucherController extends Controller
             ->with('success', 'Voucher created successfully.');
     }
 
-    public function show(Voucher $voucher): JsonResponse
+    public function show(Request $request, Voucher $voucher): Response|JsonResponse
     {
         $this->authorize('accounts.view');
 
         $voucher->load([
             'lines.account:id,code,name',
-            'party:id,name',
+            'party',
             'fromAccount:id,code,name',
             'toAccount:id,code,name',
             'paymentAccount:id,code,name',
             'createdBy:id,name',
         ]);
 
-        return response()->json([
-            'voucher' => $this->formatVoucher($voucher),
+        $formatted = $this->formatVoucher($voucher);
+
+        if ($request->wantsJson() && ! $request->header('X-Inertia')) {
+            return response()->json([
+                'voucher' => $formatted,
+            ]);
+        }
+
+        return Inertia::render('admin/accounts/vouchers/show', [
+            'voucher' => $this->formatVoucherForShow($voucher, $formatted),
         ]);
     }
 
@@ -143,30 +151,98 @@ class VoucherController extends Controller
      */
     private function formatVoucher(Voucher $voucher): array
     {
+        $party = $voucher->party;
+
         return [
             'id' => $voucher->id,
             'type' => $voucher->type->value,
             'type_slug' => $voucher->type->slug(),
+            'type_label' => $voucher->type->label(),
             'voucher_no' => $voucher->voucher_no,
             'date' => $voucher->date->format('Y-m-d'),
             'transaction_reference' => $voucher->transaction_reference,
             'party_type' => $voucher->party_type,
             'party_id' => $voucher->party_id,
             'party_key' => VoucherContactPicker::partyKey($voucher->party_type, $voucher->party_id),
-            'party_name' => $voucher->party?->name,
+            'party_name' => $party?->name,
+            'party_email' => is_object($party) && isset($party->email) ? $party->email : null,
             'from_account_id' => $voucher->from_account_id,
             'to_account_id' => $voucher->to_account_id,
             'payment_account_id' => $voucher->payment_account_id,
+            'from_account_name' => $voucher->fromAccount?->name,
+            'to_account_name' => $voucher->toAccount?->name,
+            'payment_account_name' => $voucher->paymentAccount?->name,
             'narration' => $voucher->narration,
             'total_amount' => (float) $voucher->total_amount,
+            'created_by_name' => $voucher->createdBy?->name,
+            'status' => $voucher->trashed() ? 'Void' : 'Active',
             'lines' => $voucher->lines->map(fn ($line) => [
                 'id' => $line->id,
                 'side' => $line->side->value,
                 'account_id' => $line->account_id,
                 'account_label' => $line->account ? "{$line->account->code} — {$line->account->name}" : null,
+                'account_name' => $line->account?->name,
                 'amount' => (float) $line->amount,
                 'narration' => $line->narration,
             ])->values()->all(),
         ];
+    }
+
+    /**
+     * Detail/print view includes both sides of the entry (payment/contra accounts).
+     *
+     * @param  array<string, mixed>  $formatted
+     * @return array<string, mixed>
+     */
+    private function formatVoucherForShow(Voucher $voucher, array $formatted): array
+    {
+        $lines = $formatted['lines'];
+
+        if (
+            in_array($voucher->type, [VoucherType::Income, VoucherType::Expense], true)
+            && $voucher->paymentAccount
+        ) {
+            $paymentSide = $voucher->type === VoucherType::Income ? 'debit' : 'credit';
+            array_unshift($lines, [
+                'id' => 'payment-'.$voucher->payment_account_id,
+                'side' => $paymentSide,
+                'account_id' => $voucher->payment_account_id,
+                'account_label' => "{$voucher->paymentAccount->code} — {$voucher->paymentAccount->name}",
+                'account_name' => $voucher->paymentAccount->name,
+                'amount' => (float) $voucher->total_amount,
+                'narration' => null,
+            ]);
+        }
+
+        if (
+            $voucher->type === VoucherType::Contra
+            && $voucher->fromAccount
+            && $voucher->toAccount
+        ) {
+            $lines = [
+                [
+                    'id' => 'contra-debit-'.$voucher->to_account_id,
+                    'side' => 'debit',
+                    'account_id' => $voucher->to_account_id,
+                    'account_label' => "{$voucher->toAccount->code} — {$voucher->toAccount->name}",
+                    'account_name' => $voucher->toAccount->name,
+                    'amount' => (float) $voucher->total_amount,
+                    'narration' => null,
+                ],
+                [
+                    'id' => 'contra-credit-'.$voucher->from_account_id,
+                    'side' => 'credit',
+                    'account_id' => $voucher->from_account_id,
+                    'account_label' => "{$voucher->fromAccount->code} — {$voucher->fromAccount->name}",
+                    'account_name' => $voucher->fromAccount->name,
+                    'amount' => (float) $voucher->total_amount,
+                    'narration' => null,
+                ],
+            ];
+        }
+
+        $formatted['lines'] = $lines;
+
+        return $formatted;
     }
 }

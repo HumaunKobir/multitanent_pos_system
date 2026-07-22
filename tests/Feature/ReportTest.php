@@ -608,7 +608,9 @@ test('branch user daily summary only includes their branch expenses', function (
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/reports/daily-summary')
             ->where('summary.expenses.count', 1)
-            ->where('summary.expenses.amount', $expenseOwn));
+            ->where('summary.expenses.amount', $expenseOwn)
+            ->where('summary.records.expenses.0.type_slug', 'expense')
+            ->where('summary.records.expenses.0.gross', $expenseOwn));
 
     $admin = reportUser([ReportController::PERMISSION_DAILY_SUMMARY]);
     $admin->update(['branch_id' => null]);

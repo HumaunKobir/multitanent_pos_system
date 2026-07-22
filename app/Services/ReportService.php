@@ -1318,6 +1318,7 @@ class ReportService
             'paid' => 0.0,
             'due' => 0.0,
             'type' => $voucher->type->value,
+            'type_slug' => $voucher->type->slug(),
         ];
     }
 

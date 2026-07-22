@@ -16,6 +16,22 @@ import {
     useLiveReportFilters,
 } from '@/pages/admin/reports/_shared/report-shell';
 
+function SupplierNameCell({ company, name }) {
+    const companyName = company?.trim();
+    const personName = name?.trim();
+
+    if (companyName) {
+        return (
+            <div>
+                <p className="font-medium">{companyName}</p>
+                {personName ? <p className="text-xs text-muted-foreground">{personName}</p> : null}
+            </div>
+        );
+    }
+
+    return personName || '—';
+}
+
 function TotalsBar({ totals }) {
     if (!totals || totals.invoice_count === 0) {
         return null;
@@ -137,9 +153,10 @@ export default function PurchaseReport({
             >
                 {supplier ? (
                     <ReportInfoBanner>
-                        <strong>{supplier.name}</strong>
-                        {supplier.company_name ? ` · ${supplier.company_name}` : ''}
-                        {supplier.phone ? ` · ${supplier.phone}` : ''}
+                        <SupplierNameCell company={supplier.company_name} name={supplier.name} />
+                        {supplier.phone ? (
+                            <span className="ml-2 text-xs text-muted-foreground">· {supplier.phone}</span>
+                        ) : null}
                     </ReportInfoBanner>
                 ) : (
                     <ReportInfoBanner>Showing purchases for all suppliers in the selected period.</ReportInfoBanner>
@@ -158,7 +175,13 @@ export default function PurchaseReport({
                             header: 'Type',
                             render: (row) => row.purchase_type_label ?? 'Purchase',
                         },
-                        { id: 'supplier', header: 'Supplier', render: (row) => row.supplier_name },
+                        {
+                            id: 'supplier',
+                            header: 'Supplier',
+                            render: (row) => (
+                                <SupplierNameCell company={row.supplier_company} name={row.supplier_name} />
+                            ),
+                        },
                         { id: 'branch', header: 'Branch', render: (row) => row.branch_name },
                         {
                             id: 'gross',
@@ -192,11 +215,12 @@ export default function PurchaseReport({
                     </h2>
                     <DataTable
                         columns={[
-                            { id: 'supplier', header: 'Supplier', render: (row) => row.supplier_name },
                             {
-                                id: 'company',
-                                header: 'Company',
-                                render: (row) => row.supplier_company || '—',
+                                id: 'supplier',
+                                header: 'Supplier',
+                                render: (row) => (
+                                    <SupplierNameCell company={row.supplier_company} name={row.supplier_name} />
+                                ),
                             },
                             {
                                 id: 'count',

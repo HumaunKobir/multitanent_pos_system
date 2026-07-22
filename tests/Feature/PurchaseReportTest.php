@@ -37,7 +37,11 @@ test('purchase report filters by supplier and date and returns totals', function
     $user = User::factory()->create(['branch_id' => $branch->id]);
     $user->givePermissionTo(ReportController::PERMISSION_PURCHASE_REPORT);
 
-    $supplierA = Supplier::factory()->create(['branch_id' => $branch->id, 'name' => 'Alpha Supply']);
+    $supplierA = Supplier::factory()->create([
+        'branch_id' => $branch->id,
+        'name' => 'Alpha Supply',
+        'company_name' => 'Alpha Trading Co',
+    ]);
     $supplierB = Supplier::factory()->create(['branch_id' => $branch->id, 'name' => 'Beta Supply']);
 
     $date = now()->format('Y-m-d');
@@ -76,7 +80,10 @@ test('purchase report filters by supplier and date and returns totals', function
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/reports/purchase-report')
             ->where('supplier.name', 'Alpha Supply')
+            ->where('supplier.company_name', 'Alpha Trading Co')
             ->has('rows', 2)
+            ->where('rows.0.supplier_company', 'Alpha Trading Co')
+            ->where('rows.0.supplier_name', 'Alpha Supply')
             ->has('supplier_summaries', 1)
             ->where('totals.invoice_count', 2)
             ->where('totals.gross_amount', 1500)
@@ -84,6 +91,7 @@ test('purchase report filters by supplier and date and returns totals', function
             ->where('totals.vat', 50)
             ->where('totals.net_amount', 1400)
             ->where('supplier_summaries.0.supplier_name', 'Alpha Supply')
+            ->where('supplier_summaries.0.supplier_company', 'Alpha Trading Co')
             ->where('supplier_summaries.0.discount', 150)
             ->where('supplier_summaries.0.net_amount', 1400));
 });

@@ -165,7 +165,6 @@ class SystemAccountService
             SystemAccountKey::Expenses,
             SystemAccountKey::CostOfGoodsSold,
             SystemAccountKey::InventoryDamage,
-            SystemAccountKey::PurchaseReturns,
             SystemAccountKey::RentExpense,
             SystemAccountKey::SalaryExpense,
             SystemAccountKey::UtilitiesExpense,
@@ -339,6 +338,7 @@ class SystemAccountService
             SystemAccountKey::BankAccount->accountNumber(),
             SystemAccountKey::BranchInventory->accountNumber(),
             SystemAccountKey::TaxesPaid->accountNumber(),
+            SystemAccountKey::PurchaseReturns->accountNumber(),
             'SYS:input_vat',
             'SYS:current_liabilities',
             'SYS:equity',
@@ -347,7 +347,10 @@ class SystemAccountService
 
         $query = ChartOfAccount::query()->whereIn('account_number', $retiredAccountNumbers);
 
-        self::applyPanelSource($query, self::branchId());
+        // Branch panel seed: retire only that panel. Global seed: retire across every panel.
+        if (self::branchId() !== null) {
+            self::applyPanelSource($query, self::branchId());
+        }
 
         $query->delete();
     }

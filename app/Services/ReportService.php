@@ -2412,11 +2412,9 @@ class ReportService
         if (
             $accountNumber === SystemAccountKey::CostOfGoodsSold->accountNumber()
             || $accountNumber === SystemAccountKey::InventoryDamage->accountNumber()
-            || $accountNumber === SystemAccountKey::PurchaseReturns->accountNumber()
             || str_contains($name, 'cost of goods')
             || str_contains($name, 'cogs')
             || str_contains($name, 'inventory damage')
-            || str_contains($name, 'purchase return')
         ) {
             return 'cogs';
         }

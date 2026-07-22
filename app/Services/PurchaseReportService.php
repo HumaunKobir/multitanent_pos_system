@@ -181,6 +181,7 @@ class PurchaseReportService
             'purchase_type_label' => $purchase->purchase_type?->label() ?? 'Purchase',
             'supplier_id' => $purchase->supplier_id,
             'supplier_name' => $purchase->supplier?->name ?? '—',
+            'supplier_company' => $purchase->supplier?->company_name,
             'supplier_phone' => $purchase->supplier?->phone,
             'branch_name' => $purchase->branch?->name ?? '—',
             'gross_amount' => round((float) $purchase->gross_amount, 2),

@@ -68,21 +68,17 @@ test('system seeds default cash and bank payment accounts', function () {
     expect($nagad->is_system)->toBeTrue();
 });
 
-test('system seeds purchase returns and default expense accounts', function () {
+test('system seeds default expense accounts and retires purchase returns', function () {
     SystemAccountService::seed();
 
     $expensesId = SystemAccountService::id(SystemAccountKey::Expenses);
 
-    $purchaseReturns = SystemAccountService::resolve(SystemAccountKey::PurchaseReturns);
+    expect(ChartOfAccount::query()->where('account_number', SystemAccountKey::PurchaseReturns->accountNumber())->exists())->toBeFalse();
+
     $rent = SystemAccountService::resolve(SystemAccountKey::RentExpense);
     $salary = SystemAccountService::resolve(SystemAccountKey::SalaryExpense);
     $utilities = SystemAccountService::resolve(SystemAccountKey::UtilitiesExpense);
     $discountApplied = SystemAccountService::resolve(SystemAccountKey::DiscountApplied);
-
-    expect($purchaseReturns->name)->toBe('Purchase Returns');
-    expect($purchaseReturns->code)->toBe('X001-03');
-    expect($purchaseReturns->parent_id)->toBe($expensesId);
-    expect($purchaseReturns->is_system)->toBeTrue();
 
     expect($rent->name)->toBe('Rent');
     expect($rent->code)->toBe('X001-04');

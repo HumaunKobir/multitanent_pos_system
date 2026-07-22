@@ -50,7 +50,8 @@ test('expense voucher picker includes vat payable and excludes taxes paid', func
     );
 
     expect($ids)->toContain($vatPayable->id)
-        ->and($labels->first(fn (string $label) => str_contains($label, 'Taxes Paid')))->toBeNull();
+        ->and($labels->first(fn (string $label) => str_contains($label, 'Taxes Paid')))->toBeNull()
+        ->and($labels->first(fn (string $label) => str_contains($label, 'Purchase Returns')))->toBeNull();
 });
 
 test('expense voucher with vat payable decreases the liability', function () {

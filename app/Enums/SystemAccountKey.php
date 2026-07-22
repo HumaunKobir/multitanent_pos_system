@@ -145,7 +145,7 @@ enum SystemAccountKey: string
     public function isDefaultSeeded(): bool
     {
         return match ($this) {
-            self::BankAccount, self::BranchInventory, self::TaxesPaid => false,
+            self::BankAccount, self::BranchInventory, self::TaxesPaid, self::PurchaseReturns => false,
             default => true,
         };
     }

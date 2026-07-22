@@ -78,7 +78,6 @@ test('chart of accounts seeder creates child accounts under parent heads', funct
         [SystemAccountKey::Expenses, [
             SystemAccountKey::CostOfGoodsSold,
             SystemAccountKey::InventoryDamage,
-            SystemAccountKey::PurchaseReturns,
             SystemAccountKey::RentExpense,
             SystemAccountKey::SalaryExpense,
             SystemAccountKey::UtilitiesExpense,
@@ -104,6 +103,8 @@ test('chart of accounts seeder does not create input vat or wrapper categories',
     $this->seed(ChartOfAccountsSeeder::class);
 
     expect(ChartOfAccount::query()->where('account_number', 'SYS:input_vat')->exists())->toBeFalse();
+    expect(ChartOfAccount::query()->where('account_number', SystemAccountKey::PurchaseReturns->accountNumber())->exists())->toBeFalse();
+    expect(ChartOfAccount::query()->where('account_number', SystemAccountKey::TaxesPaid->accountNumber())->exists())->toBeFalse();
     expect(ChartOfAccount::query()->where('account_number', 'SYS:current_assets')->exists())->toBeFalse();
     expect(ChartOfAccount::query()->where('account_number', 'SYS:current_liabilities')->exists())->toBeFalse();
     expect(ChartOfAccount::query()->where('account_number', 'SYS:income')->exists())->toBeFalse();

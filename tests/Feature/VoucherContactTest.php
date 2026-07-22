@@ -60,6 +60,7 @@ test('income voucher index includes parties suppliers and customers as contacts'
     $supplier = Supplier::factory()->create([
         'branch_id' => $user->branch_id,
         'name' => 'Voucher Supplier '.fake()->unique()->numerify('####'),
+        'company_name' => 'Supplier Co '.fake()->unique()->numerify('####'),
     ]);
     $customer = Customer::factory()->create([
         'branch_id' => $user->branch_id,
@@ -72,7 +73,9 @@ test('income voucher index includes parties suppliers and customers as contacts'
         ->assertInertia(fn ($page) => $page
             ->component('admin/accounts/vouchers/index')
             ->where('contacts.parties', fn ($parties) => collect($parties)->contains('id', $party->id))
-            ->where('contacts.suppliers', fn ($suppliers) => collect($suppliers)->contains('id', $supplier->id))
+            ->where('contacts.suppliers', fn ($suppliers) => collect($suppliers)->contains(
+                fn ($row) => (int) $row['id'] === $supplier->id && ($row['company_name'] ?? null) === $supplier->company_name
+            ))
             ->where('contacts.customers', fn ($customers) => collect($customers)->contains('id', $customer->id)));
 });
 

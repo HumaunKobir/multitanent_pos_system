@@ -10,9 +10,9 @@ class VoucherContactPicker
 {
     /**
      * @return array{
-     *     parties: array<int, array{id: int, name: string}>,
-     *     suppliers: array<int, array{id: int, name: string}>,
-     *     customers: array<int, array{id: int, name: string}>
+     *     parties: array<int, array{id: int, name: string|null}>,
+     *     suppliers: array<int, array{id: int, name: string|null, company_name: string|null}>,
+     *     customers: array<int, array{id: int, name: string|null}>
      * }
      */
     public static function contacts(): array
@@ -26,7 +26,7 @@ class VoucherContactPicker
             'suppliers' => Supplier::query()
                 ->ownBranch()
                 ->orderBy('name')
-                ->get(['id', 'name'])
+                ->get(['id', 'name', 'company_name'])
                 ->all(),
             'customers' => Customer::query()
                 ->ownBranch()

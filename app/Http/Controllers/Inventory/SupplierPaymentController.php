@@ -53,6 +53,10 @@ class SupplierPaymentController extends Controller
                                 ->orWhere('phone', 'like', "%{$search}%"))
                             ->orWhereHas('allocations.purchase', fn ($pq) => $pq
                                 ->where('serial', 'like', "%{$search}%"));
+
+                        if (preg_match('/^INVSP0*(\d+)$/i', trim($search), $matches) === 1) {
+                            $q->orWhere('id', (int) $matches[1]);
+                        }
                     });
                 }),
             $request,

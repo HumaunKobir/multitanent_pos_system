@@ -10,24 +10,41 @@ function buildGroups(contacts) {
             label: 'Parties',
             items: (contacts.parties ?? []).map((party) => ({
                 value: `party:${party.id}`,
-                label: party.name,
+                label: contactLabel(party),
             })),
         },
         {
             label: 'Suppliers',
             items: (contacts.suppliers ?? []).map((supplier) => ({
                 value: `supplier:${supplier.id}`,
-                label: supplier.name,
+                label: contactLabel(supplier),
             })),
         },
         {
             label: 'Customers',
             items: (contacts.customers ?? []).map((customer) => ({
                 value: `customer:${customer.id}`,
-                label: customer.name,
+                label: contactLabel(customer),
             })),
         },
     ].filter((group) => group.items.length > 0);
+}
+
+function contactLabel(contact) {
+    const name = typeof contact?.name === 'string' ? contact.name.trim() : '';
+    const company = typeof contact?.company_name === 'string' ? contact.company_name.trim() : '';
+
+    if (company && name) {
+        return `${company} (${name})`;
+    }
+
+    return company || name || `Contact #${contact?.id ?? '?'}`;
+}
+
+function matchesQuery(label, normalizedQuery) {
+    return String(label ?? '')
+        .toLowerCase()
+        .includes(normalizedQuery);
 }
 
 function handleListWheel(event) {
@@ -62,7 +79,7 @@ export function VoucherContactSelect({ value, onChange, contacts = {}, placehold
         return groups
             .map((group) => ({
                 ...group,
-                items: group.items.filter((item) => item.label.toLowerCase().includes(normalizedQuery)),
+                items: group.items.filter((item) => matchesQuery(item.label, normalizedQuery)),
             }))
             .filter((group) => group.items.length > 0);
     }, [groups, query]);

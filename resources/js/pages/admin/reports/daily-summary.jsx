@@ -218,11 +218,23 @@ const recordModules = [
     { key: 'purchases', title: 'Purchases', icon: HandCoins, showRoute: 'inventory.purchase.show', headerClass: 'bg-blue-600', accentClass: 'text-blue-700 dark:text-blue-300', showPaid: true },
     { key: 'purchase_returns', title: 'Purchase Returns', icon: Undo2, showRoute: 'inventory.purchase-return.show', headerClass: 'bg-orange-600', accentClass: 'text-orange-700 dark:text-orange-300', showPaid: true },
     { key: 'damages', title: 'Damage', icon: AlertTriangle, showRoute: 'inventory.damage.show', headerClass: 'bg-red-600', accentClass: 'text-red-700 dark:text-red-300', showPaid: false },
-    { key: 'supplier_payments', title: 'Supplier Payments', icon: Wallet, showRoute: null, headerClass: 'bg-violet-600', accentClass: 'text-violet-700 dark:text-violet-300', showPaid: false },
-    { key: 'customer_collections', title: 'Customer Collections', icon: HandCoins, showRoute: null, headerClass: 'bg-teal-600', accentClass: 'text-teal-700 dark:text-teal-300', showPaid: false },
+    { key: 'supplier_payments', title: 'Supplier Payments', icon: Wallet, showRoute: null, indexRoute: 'party.supplier-payment.index', headerClass: 'bg-violet-600', accentClass: 'text-violet-700 dark:text-violet-300', showPaid: false },
+    { key: 'customer_collections', title: 'Customer Collections', icon: HandCoins, showRoute: null, indexRoute: 'party.customer-due-collection.index', headerClass: 'bg-teal-600', accentClass: 'text-teal-700 dark:text-teal-300', showPaid: false },
     { key: 'expenses', title: 'Expenses', icon: ReceiptText, showRoute: 'accounts.vouchers.show', headerClass: 'bg-rose-600', accentClass: 'text-rose-700 dark:text-rose-300', showPaid: false },
     { key: 'vouchers', title: 'Vouchers', icon: Receipt, showRoute: 'accounts.vouchers.show', headerClass: 'bg-indigo-600', accentClass: 'text-indigo-700 dark:text-indigo-300', showPaid: false },
 ];
+
+function recordHref(module, item) {
+    if (module.showRoute) {
+        return route(module.showRoute, item.id);
+    }
+
+    if (module.indexRoute && item.reference) {
+        return route(module.indexRoute, { query: { search: item.reference } });
+    }
+
+    return null;
+}
 
 function DayRecordCard({ module, items }) {
     const [expanded, setExpanded] = useState(false);
@@ -256,9 +268,9 @@ function DayRecordCard({ module, items }) {
                             className="flex flex-col gap-1 rounded-md border border-dashed border-black/10 bg-white/70 px-2.5 py-1.5 text-xs sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-2 dark:border-white/10 dark:bg-slate-950/40"
                         >
                             <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5">
-                                {module.showRoute ? (
+                                {recordHref(module, item) ? (
                                     <Link
-                                        href={route(module.showRoute, item.id)}
+                                        href={recordHref(module, item)}
                                         className="font-mono font-medium text-blue-700 hover:underline dark:text-blue-300"
                                     >
                                         {item.reference}

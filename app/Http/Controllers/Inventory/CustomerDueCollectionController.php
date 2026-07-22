@@ -51,6 +51,10 @@ class CustomerDueCollectionController extends Controller
                         ->orWhereHas('customer', fn ($cq) => $cq
                             ->where('name', 'like', "%{$search}%")
                             ->orWhere('phone', 'like', "%{$search}%"));
+
+                    if (preg_match('/^INVCP0*(\d+)$/i', trim($search), $matches) === 1) {
+                        $q->orWhere('id', (int) $matches[1]);
+                    }
                 });
             })
             ->latest()

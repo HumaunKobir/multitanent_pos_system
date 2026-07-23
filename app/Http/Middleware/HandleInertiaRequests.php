@@ -57,7 +57,7 @@ class HandleInertiaRequests extends Middleware
                 'user' => $user instanceof User ? $user : null,
                 'customer' => $customer,
                 'permissions' => $user instanceof User
-                    ? ($user->bypassesPermissionChecks()
+                    ? ($user->hasUnrestrictedPermissions()
                         ? ['*']
                         : $user->getAllPermissions()->pluck('name')->values()->all())
                     : [],

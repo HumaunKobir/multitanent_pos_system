@@ -267,10 +267,10 @@ test('sync steadfast order status updates courier status from api', function () 
     expect($updated->courier_status)->toBe('pending');
 });
 
-test('superadmin is redirected from online orders', function () {
+test('superadmin can view online orders', function () {
     $this->actingAs(User::factory()->create(['branch_id' => null]))
         ->get(route('online-order.index'))
-        ->assertRedirect(route('dashboard'));
+        ->assertOk();
 });
 
 test('admin can view online orders index', function () {

@@ -51,4 +51,16 @@ class EcommerceBranchService
     {
         self::$resolvedId = null;
     }
+
+    /**
+     * @return list<string>
+     */
+    public static function permissionNames(): array
+    {
+        return collect(config('permissions.modules', []))
+            ->filter(fn (array $module): bool => ($module['group'] ?? '') === 'Ecommerce')
+            ->flatMap(fn (array $module): array => array_keys($module['permissions']))
+            ->values()
+            ->all();
+    }
 }

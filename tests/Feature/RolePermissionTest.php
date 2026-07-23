@@ -281,10 +281,8 @@ test('superadmin sees full navigation', function () {
     expect($titles)->toContain('Branch');
     expect($titles)->toContain('User');
     expect($titles)->toContain('Roles');
-    expect($titles)->not->toContain('Contact Messages');
-    expect($titles)->not->toContain('Online Orders');
-    expect($titles)->not->toContain('Subscribers');
-    expect($titles)->not->toContain('Website Manage');
+    expect($titles)->toContain('Website Manage');
+    expect($titles)->toContain('Sales');
     expect($titles)->toContain('Dashboard');
 });
 
@@ -297,6 +295,32 @@ test('branch user with no role sees no permission-gated menu items', function ()
     expect($titles)->not->toContain('Roles');
     expect($titles)->not->toContain('Contact Messages');
     expect($titles)->not->toContain('Dashboard');
+});
+
+test('operating branch user with ecommerce permissions sees website manage navigation', function () {
+    $this->artisan('permissions:sync');
+
+    EcommerceBranchService::resetResolvedId();
+
+    $operatingBranch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $operatingBranch->id]);
+    $user->givePermissionTo('online-order.view');
+
+    $titles = collect(app(AdminNavigation::class)->build($user))->pluck('title')->toArray();
+
+    expect($titles)->toContain('Website Manage');
+});
+
+test('operating branch user with ecommerce permissions can open contact list', function () {
+    $this->artisan('permissions:sync');
+
+    $operatingBranch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $operatingBranch->id]);
+    $user->givePermissionTo('contact-list.view');
+
+    $this->actingAs($user)
+        ->get(route('contact-list.index'))
+        ->assertOk();
 });
 
 test('ecommerce branch user sees contact messages in navigation', function () {

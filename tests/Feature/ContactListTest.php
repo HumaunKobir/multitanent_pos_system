@@ -92,10 +92,10 @@ test('ecommerce branch user can view contact messages for their branch', functio
         );
 });
 
-test('superadmin is redirected from contact list', function () {
+test('superadmin can view contact list', function () {
     $this->actingAs(contactListSuperAdmin())
         ->get('/contact-list')
-        ->assertRedirect(route('dashboard'));
+        ->assertOk();
 });
 
 test('ecommerce branch user can view contact list with messages', function () {

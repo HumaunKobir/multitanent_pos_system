@@ -4,7 +4,6 @@ namespace App\Support;
 
 use App\Models\Branch;
 use App\Models\User;
-use App\Services\EcommerceBranchService;
 
 class AdminNavigation
 {
@@ -22,7 +21,7 @@ class AdminNavigation
         $sections = [];
 
         foreach (config('admin-navigation.sections', []) as $section) {
-            if (! $user->usesBranchPanel() && ($section['ecommerce_only'] ?? false)) {
+            if (! $user->usesBranchPanel() && ($section['ecommerce_only'] ?? false) && ! $user->canAccessEcommercePanel()) {
                 continue;
             }
 
@@ -30,11 +29,11 @@ class AdminNavigation
                 continue;
             }
 
-            if ($user->usesBranchPanel() && ($section['ecommerce_only'] ?? false) && ! EcommerceBranchService::isEcommerceBranchStatic($user->branch_id)) {
+            if ($user->usesBranchPanel() && ($section['ecommerce_only'] ?? false) && ! $user->canAccessEcommercePanel()) {
                 continue;
             }
 
-            if ($user->usesAdminPanel() && ($section['branch_only'] ?? false)) {
+            if ($user->usesAdminPanel() && ($section['branch_only'] ?? false) && ! $this->adminPanelCanSeeBranchSection($user, $section)) {
                 continue;
             }
 
@@ -122,8 +121,7 @@ class AdminNavigation
             return true;
         }
 
-        return $user->usesBranchPanel()
-            && EcommerceBranchService::isEcommerceBranchStatic($user->branch_id);
+        return $user->canAccessEcommercePanel();
     }
 
     /**
@@ -163,5 +161,13 @@ class AdminNavigation
         }
 
         return $section['href'] ?? null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $section
+     */
+    protected function adminPanelCanSeeBranchSection(User $user, array $section): bool
+    {
+        return $user->hasUnrestrictedPermissions() && ($section['unrestricted_admin'] ?? false);
     }
 }

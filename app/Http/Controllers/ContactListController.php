@@ -16,7 +16,7 @@ class ContactListController extends Controller
         $this->authorize('contact-list.view');
 
         $contacts = Contact::query()
-            ->ownBranch()
+            ->accessibleAtBranch($this->ecommerceBranchId())
             ->when($request->search, function ($query, $search) {
                 $query->where(function ($inner) use ($search) {
                     $inner->where('name', 'like', "%{$search}%")
@@ -48,10 +48,14 @@ class ContactListController extends Controller
 
     protected function authorizeContact(Contact $contact): void
     {
-        $branchId = Auth::user()?->branch_id;
-
-        if ($branchId !== null && $contact->branch_id !== $branchId) {
+        if ($contact->branch_id !== $this->ecommerceBranchId()) {
             abort(403);
         }
+    }
+
+    protected function ecommerceBranchId(): int
+    {
+        return Auth::user()?->ecommercePanelBranchId()
+            ?? abort(403);
     }
 }

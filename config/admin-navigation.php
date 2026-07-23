@@ -15,6 +15,7 @@ return [
     | - admin_only: visible only in the admin panel (superadmin)
     | - primary_admin_only: visible only for user id 1 on the main branch
     | - branch_only: visible only in the branch panel
+    | - unrestricted_admin: branch panel section also visible to unrestricted admins on the admin panel
     | - permission: required permission to see this item (null = always visible)
     |
     */
@@ -31,6 +32,7 @@ return [
             'title' => 'Sales',
             'icon' => 'circle-dollar-sign',
             'branch_only' => true,
+            'unrestricted_admin' => true,
             'children' => [
                 ['title' => 'Sale', 'href' => '/inventory/sell', 'permission' => 'inventory.sell.view'],
                 ['title' => 'Sale Return', 'href' => '/inventory/sale-return', 'permission' => 'inventory.sale-return.view'],

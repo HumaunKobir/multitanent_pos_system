@@ -77,10 +77,10 @@ test('ecommerce branch user can view subscribers', function () {
         );
 });
 
-test('superadmin is redirected from subscriber list', function () {
+test('superadmin can view subscriber list', function () {
     $this->actingAs(subscriberListSuperAdmin())
         ->get('/subscriber-list')
-        ->assertRedirect(route('dashboard'));
+        ->assertOk();
 });
 
 test('ecommerce branch user can delete a subscriber', function () {

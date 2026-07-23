@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\EcommerceBranchService;
 use App\Support\AdminNavigation;
 use App\Traits\HasBranch;
 use Database\Factories\UserFactory;
@@ -50,6 +51,11 @@ class User extends Authenticatable
         return $this->id === self::SUPER_ADMIN_ID;
     }
 
+    public function hasUnrestrictedPermissions(): bool
+    {
+        return $this->bypassesPermissionChecks() || $this->isSuperAdmin();
+    }
+
     public function isProtectedFromPasswordReset(): bool
     {
         return $this->id === self::SUPER_ADMIN_ID
@@ -69,6 +75,24 @@ class User extends Authenticatable
     public function usesBranchPanel(): bool
     {
         return $this->isBranchUser() && ! Branch::isMainBranch($this->branch_id);
+    }
+
+    public function canAccessEcommercePanel(): bool
+    {
+        if ($this->hasUnrestrictedPermissions()) {
+            return true;
+        }
+
+        if ($this->usesBranchPanel() && EcommerceBranchService::isEcommerceBranchStatic($this->branch_id)) {
+            return true;
+        }
+
+        return $this->hasAnyPermission(EcommerceBranchService::permissionNames());
+    }
+
+    public function ecommercePanelBranchId(): int
+    {
+        return EcommerceBranchService::resolveIdStatic();
     }
 
     public function isSystemEcommerceAdmin(): bool

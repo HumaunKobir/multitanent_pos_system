@@ -53,6 +53,7 @@ class SystemAccountService
         try {
             self::migrateRenamedAccountNumbers();
             self::migrateDiscountAccountsToContraRevenue();
+            self::migrateTaxesPaidToContraLiability();
             self::deduplicateSystemAccounts();
 
             foreach (self::orderedKeys() as $key) {
@@ -155,6 +156,7 @@ class SystemAccountService
             SystemAccountKey::CustomerCoinPayable,
             SystemAccountKey::TaxesPayable,
             SystemAccountKey::OutputVat,
+            SystemAccountKey::TaxesPaid,
             SystemAccountKey::OwnersCapital,
             SystemAccountKey::RetainedEarnings,
             SystemAccountKey::CurrentYearEarnings,
@@ -340,7 +342,6 @@ class SystemAccountService
         $retiredAccountNumbers = [
             SystemAccountKey::BankAccount->accountNumber(),
             SystemAccountKey::BranchInventory->accountNumber(),
-            SystemAccountKey::TaxesPaid->accountNumber(),
             SystemAccountKey::PurchaseReturns->accountNumber(),
             'SYS:input_vat',
             'SYS:current_liabilities',
@@ -379,6 +380,7 @@ class SystemAccountService
             SystemAccountKey::CustomerCoinPayable => 'L005',
             SystemAccountKey::TaxesPayable => 'L004',
             SystemAccountKey::OutputVat => 'L004-01',
+            SystemAccountKey::TaxesPaid => 'L004-02',
             SystemAccountKey::OwnersCapital => 'E001',
             SystemAccountKey::RetainedEarnings => 'E002',
             SystemAccountKey::CurrentYearEarnings => 'E002-01',
@@ -398,8 +400,46 @@ class SystemAccountService
             SystemAccountKey::RentExpense => 'X001-04',
             SystemAccountKey::SalaryExpense => 'X001-05',
             SystemAccountKey::UtilitiesExpense => 'X001-06',
-            SystemAccountKey::TaxesPaid => 'X001-09',
         };
+    }
+
+    /**
+     * Taxes Paid used to be an expense (or soft-deleted). Restore/reseed it as a
+     * contra-liability under Taxes Payable so the parent nets collected − paid.
+     */
+    private static function migrateTaxesPaidToContraLiability(): void
+    {
+        $query = ChartOfAccount::withTrashed()
+            ->where('account_number', SystemAccountKey::TaxesPaid->accountNumber())
+            ->where('is_system', true);
+
+        if (self::branchId() !== null) {
+            self::applyPanelSource($query, self::branchId());
+        }
+
+        $taxesPayableId = self::findByKey(SystemAccountKey::TaxesPayable)?->id;
+
+        foreach ($query->orderBy('id')->get() as $account) {
+            if ($account->trashed()) {
+                $account->restore();
+            }
+
+            $wasExpense = $account->type === AccountType::Expenses;
+            $balance = round((float) $account->current_balance, 2);
+
+            if ($wasExpense && abs($balance) >= 0.005) {
+                // Expense debit left a positive balance; liability debit should be negative.
+                self::flipDiscountAccountBalances($account);
+            }
+
+            $account->update([
+                'type' => AccountType::Liability,
+                'parent_id' => $taxesPayableId ?? $account->parent_id,
+                'code' => self::fixedCode(SystemAccountKey::TaxesPaid),
+                'name' => SystemAccountKey::TaxesPaid->defaultName(),
+                'is_system' => true,
+            ]);
+        }
     }
 
     /**

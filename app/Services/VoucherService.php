@@ -323,7 +323,7 @@ class VoucherService
     }
 
     /**
-     * Expense voucher lines debit expense heads (or VAT Payable for remittance), then credit cash/bank.
+     * Expense voucher lines debit expense heads (or Taxes Paid for remittance), then credit cash/bank.
      *
      * @param  array<int, array{account_id: int, amount: float|int, narration?: ?string}>  $lines
      * @return array<int, array{account_id: int, debit: float, credit: float, decrease: bool, description?: ?string}>

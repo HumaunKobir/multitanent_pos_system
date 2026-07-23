@@ -103,13 +103,14 @@ enum SystemAccountKey: string
             self::Inventory, self::ProductInventory, self::BranchInventory,
             self::AccountsReceivable, self::CustomerReceivables, self::IntercompanyReceivable => AccountType::Asset,
             self::AccountsPayable, self::SupplierPayables, self::IntercompanyPayable, self::LoansPayable,
-            self::AdvanceFromCustomer, self::CustomerCoinPayable, self::TaxesPayable, self::OutputVat => AccountType::Liability,
+            self::AdvanceFromCustomer, self::CustomerCoinPayable, self::TaxesPayable, self::OutputVat,
+            self::TaxesPaid => AccountType::Liability,
             self::OwnersCapital, self::RetainedEarnings, self::CurrentYearEarnings, self::OwnersDrawings,
             self::OpeningBalanceEquity, self::OpeningBalanceClearing => AccountType::Equity,
             self::SalesRevenue, self::ProductSales, self::SalesReturns, self::OtherIncome,
             self::DiscountApplied, self::CoinDiscountApplied => AccountType::Income,
             self::Expenses, self::CostOfGoodsSold, self::InventoryDamage, self::PurchaseReturns,
-            self::RentExpense, self::SalaryExpense, self::UtilitiesExpense, self::TaxesPaid => AccountType::Expenses,
+            self::RentExpense, self::SalaryExpense, self::UtilitiesExpense => AccountType::Expenses,
         };
     }
 
@@ -132,11 +133,11 @@ enum SystemAccountKey: string
             self::BranchInventory => self::Inventory,
             self::CustomerReceivables, self::IntercompanyReceivable => self::AccountsReceivable,
             self::SupplierPayables, self::IntercompanyPayable => self::AccountsPayable,
-            self::OutputVat => self::TaxesPayable,
+            self::OutputVat, self::TaxesPaid => self::TaxesPayable,
             self::OpeningBalanceClearing => self::OpeningBalanceEquity,
             self::ProductSales, self::SalesReturns, self::DiscountApplied, self::CoinDiscountApplied => self::SalesRevenue,
             self::CostOfGoodsSold, self::InventoryDamage, self::PurchaseReturns,
-            self::RentExpense, self::SalaryExpense, self::UtilitiesExpense, self::TaxesPaid => self::Expenses,
+            self::RentExpense, self::SalaryExpense, self::UtilitiesExpense => self::Expenses,
             default => null,
         };
     }
@@ -144,7 +145,7 @@ enum SystemAccountKey: string
     public function isDefaultSeeded(): bool
     {
         return match ($this) {
-            self::BankAccount, self::BranchInventory, self::TaxesPaid, self::PurchaseReturns => false,
+            self::BankAccount, self::BranchInventory, self::PurchaseReturns => false,
             default => true,
         };
     }

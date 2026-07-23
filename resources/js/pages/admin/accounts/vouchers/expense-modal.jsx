@@ -158,7 +158,7 @@ export default function ExpenseVoucherModal({ open, onOpenChange, item, accounts
                             onChange={(value) => form.setData('party_key', value)}
                         />
                         <p className="mt-1 text-[11px] text-muted-foreground">
-                            Remit collected VAT with head VAT Payable (L004-01).
+                            Remit collected VAT with head Taxes Paid (L004-02).
                         </p>
                         {form.errors.party_key && <p className="mt-1 text-sm text-destructive">{form.errors.party_key}</p>}
                     </div>

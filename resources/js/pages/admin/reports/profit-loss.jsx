@@ -197,7 +197,7 @@ export default function ProfitLossReport({ filters = {}, branches = [], isBranch
                         valueClassName="text-violet-900 dark:text-violet-200"
                     />
                     <SummaryCard
-                        label="VAT Payable"
+                        label="Net Taxes Payable"
                         value={report.vat_payable ?? report.net_vat_payable ?? report.output_vat}
                         percent={percentOf(report.vat_payable ?? report.net_vat_payable ?? report.output_vat, salesBase)}
                         className="border-sky-200/80 bg-sky-50 dark:border-sky-800 dark:bg-sky-950/30"
@@ -291,12 +291,12 @@ export default function ProfitLossReport({ filters = {}, branches = [], isBranch
 
                                 <tr className="bg-sky-700/90 text-white">
                                     <td colSpan={3} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide">
-                                        VAT Payable (liability)
+                                        Taxes Payable
                                     </td>
                                 </tr>
-                                <StatementLines lines={vatPayable.lines} emptyLabel="No VAT payable in this period." />
+                                <StatementLines lines={vatPayable.lines} emptyLabel="No taxes payable activity in this period." />
                                 <TotalRow
-                                    label="VAT Payable"
+                                    label="Net Taxes Payable"
                                     value={report.vat_payable ?? report.net_vat_payable ?? report.output_vat ?? vatPayable.total}
                                     emphasize
                                     tone="muted"

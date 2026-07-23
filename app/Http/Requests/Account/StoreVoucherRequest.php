@@ -215,13 +215,13 @@ class StoreVoucherRequest extends FormRequest
                 return false;
             }
 
-            return $account->account_number !== SystemAccountKey::OutputVat->accountNumber();
+            return $account->account_number !== SystemAccountKey::TaxesPaid->accountNumber();
         });
 
         if ($invalid || $accounts->count() !== count(array_unique($ids))) {
             $validator->errors()->add(
                 'lines',
-                'Expense lines must use expense posting accounts or VAT Payable.',
+                'Expense lines must use expense posting accounts or Taxes Paid.',
             );
         }
     }

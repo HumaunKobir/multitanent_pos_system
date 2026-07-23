@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Enums\AccountType;
+use App\Enums\SystemAccountKey;
 use App\Models\ChartOfAccount;
 use App\Models\Ledger;
 use App\Models\Transaction;
@@ -182,7 +183,13 @@ class TransactionService
         // start at zero and accumulate entries in either direction. Only
         // balance-sheet accounts (Asset, Liability) need an insufficient-balance guard.
         $account = ChartOfAccount::find((int) $line['account_id']);
-        if ($account && in_array($account->type, [AccountType::Income, AccountType::Expenses])) {
+        if ($account && in_array($account->type, [AccountType::Income, AccountType::Expenses], true)) {
+            return;
+        }
+
+        // Taxes Paid is a contra-liability under Taxes Payable; remittances debit it
+        // from zero into a negative balance (same rollup idea as sales discounts).
+        if ($account?->account_number === SystemAccountKey::TaxesPaid->accountNumber()) {
             return;
         }
 

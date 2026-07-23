@@ -2214,19 +2214,41 @@ class ReportService
                 $effectiveBranchId,
             );
 
-            if ($periodCredit >= 0.005) {
+            $isTaxesPaid = $vatAccount->account_number === SystemAccountKey::TaxesPaid->accountNumber()
+                || str_contains(strtolower((string) $vatAccount->name), 'tax paid')
+                || str_contains(strtolower((string) $vatAccount->name), 'taxes paid');
+
+            if ($isTaxesPaid) {
+                // Remittance posts to Taxes Paid (debit). Do not treat Output VAT
+                // return reversals as tax paid.
+                $paidAmount = round($periodDebit - $periodCredit, 2);
+
+                if ($paidAmount >= 0.005) {
+                    $buckets['vat_paid'][] = [
+                        'code' => $vatAccount->code,
+                        'name' => $vatAccount->name,
+                        'amount' => $paidAmount,
+                    ];
+                }
+
+                continue;
+            }
+
+            // VAT Payable: net collected in period (sales credits − return debits).
+            $collectedAmount = round($periodCredit - $periodDebit, 2);
+
+            if ($collectedAmount >= 0.005) {
                 $buckets['vat_collected'][] = [
                     'code' => $vatAccount->code,
                     'name' => $vatAccount->name,
-                    'amount' => round($periodCredit, 2),
+                    'amount' => $collectedAmount,
                 ];
-            }
-
-            if ($periodDebit >= 0.005) {
+            } elseif ($collectedAmount <= -0.005) {
+                // Net return / reversal exceeds collections in the period.
                 $buckets['vat_paid'][] = [
                     'code' => $vatAccount->code,
-                    'name' => 'VAT Paid',
-                    'amount' => round($periodDebit, 2),
+                    'name' => '(−) VAT Reversed',
+                    'amount' => round(abs($collectedAmount), 2),
                 ];
             }
         }
@@ -2244,7 +2266,6 @@ class ReportService
         $net = round($grossProfit - $operatingExpenses, 2);
 
         $vatPayableCode = collect($buckets['vat_collected'])->pluck('code')->first()
-            ?? collect($buckets['vat_paid'])->pluck('code')->first()
             ?? $this->systemAccountCode(SystemAccountKey::OutputVat, $effectiveBranchId);
 
         $vatPayableLines = [];
@@ -2255,11 +2276,13 @@ class ReportService
                 'amount' => $vatCollected,
             ];
         }
-        if ($vatPaid >= 0.005) {
+        foreach ($buckets['vat_paid'] as $paidLine) {
             $vatPayableLines[] = [
-                'code' => $vatPayableCode,
-                'name' => '(−) VAT Paid',
-                'amount' => $vatPaid,
+                'code' => $paidLine['code'],
+                'name' => str_starts_with((string) $paidLine['name'], '(−)')
+                    ? $paidLine['name']
+                    : '(−) '.$paidLine['name'],
+                'amount' => $paidLine['amount'],
             ];
         }
         if ($vatPayableLines === [] && abs($netVatPayable) >= 0.005) {
@@ -2290,7 +2313,7 @@ class ReportService
                 'total' => $salesDiscounts,
             ],
             [
-                'type' => 'VAT Payable (liability)',
+                'type' => 'Taxes Payable',
                 'slug' => 'vat_payable',
                 'lines' => $vatPayableLines,
                 'total' => $netVatPayable,
@@ -2340,8 +2363,11 @@ class ReportService
         return $this->reportAccountsQuery([AccountType::Liability], $effectiveBranchId)
             ->where(function ($query): void {
                 $query->where('account_number', SystemAccountKey::OutputVat->accountNumber())
+                    ->orWhere('account_number', SystemAccountKey::TaxesPaid->accountNumber())
                     ->orWhereRaw('LOWER(name) LIKE ?', ['%vat payable%'])
-                    ->orWhereRaw('LOWER(name) LIKE ?', ['%output vat%']);
+                    ->orWhereRaw('LOWER(name) LIKE ?', ['%output vat%'])
+                    ->orWhereRaw('LOWER(name) LIKE ?', ['%taxes paid%'])
+                    ->orWhereRaw('LOWER(name) LIKE ?', ['%tax paid%']);
             })
             ->orderBy('code')
             ->get(['id', 'code', 'name', 'type', 'account_number']);
@@ -2354,6 +2380,7 @@ class ReportService
         } catch (\Throwable) {
             return match ($key) {
                 SystemAccountKey::OutputVat => 'L004-01',
+                SystemAccountKey::TaxesPaid => 'L004-02',
                 default => '',
             };
         }

@@ -25,7 +25,7 @@ class VoucherAccountsPicker
     }
 
     /**
-     * Expense vouchers may debit expense heads or VAT Payable (to remit collected VAT).
+     * Expense vouchers may debit expense heads or Taxes Paid (to remit collected VAT).
      *
      * @return array<int, array{type: string, groups: array<int, array{parent: array{id: int, code: string, name: string}, accounts: array<int, array{id: int, label: string}>}>}>
      */
@@ -34,7 +34,7 @@ class VoucherAccountsPicker
         $accounts = self::leafAccountsQuery()
             ->where(function ($query): void {
                 $query->where('type', AccountType::Expenses)
-                    ->orWhere('account_number', SystemAccountKey::OutputVat->accountNumber());
+                    ->orWhere('account_number', SystemAccountKey::TaxesPaid->accountNumber());
             })
             ->get();
 

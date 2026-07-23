@@ -12,7 +12,7 @@ use App\Services\TransactionService;
 use Database\Seeders\ChartOfAccountsSeeder;
 use Spatie\Permission\Models\Permission;
 
-test('profit and loss net vat payable decreases after vat payable expense', function () {
+test('profit and loss nets taxes paid against vat payable', function () {
     $this->artisan('permissions:sync');
     $this->seed(ChartOfAccountsSeeder::class);
 
@@ -24,6 +24,7 @@ test('profit and loss net vat payable decreases after vat payable expense', func
     SystemAccountService::seed($branch->id);
     $cash = seedAccountingAccounts(user: $user);
     $vatPayable = SystemAccountService::resolve(SystemAccountKey::OutputVat, $branch->id);
+    $taxesPaid = SystemAccountService::resolve(SystemAccountKey::TaxesPaid, $branch->id);
     $date = now()->format('Y-m-d');
 
     app(TransactionService::class)->recordJournalEntry([
@@ -66,7 +67,7 @@ test('profit and loss net vat payable decreases after vat payable expense', func
             'payment_account_id' => $cash->id,
             'lines' => [
                 [
-                    'account_id' => $vatPayable->id,
+                    'account_id' => $taxesPaid->id,
                     'amount' => 120,
                     'narration' => 'Pay VAT',
                 ],
@@ -84,9 +85,9 @@ test('profit and loss net vat payable decreases after vat payable expense', func
 
     $vatSection = collect($after['sections'])->firstWhere('slug', 'vat_payable');
     expect($vatSection['total'])->toBe(180.0)
-        ->and($vatSection['type'])->toBe('VAT Payable (liability)')
+        ->and($vatSection['type'])->toBe('Taxes Payable')
         ->and($vatSection['lines'][0]['code'])->toBe('L004-01')
         ->and($vatSection['lines'][0]['name'])->toBe('VAT Payable')
-        ->and($vatSection['lines'][1]['code'])->toBe('L004-01')
-        ->and($vatSection['lines'][1]['name'])->toBe('(−) VAT Paid');
+        ->and($vatSection['lines'][1]['code'])->toBe('L004-02')
+        ->and($vatSection['lines'][1]['name'])->toBe('(−) Taxes Paid');
 });

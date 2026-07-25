@@ -94,12 +94,14 @@ export default function ProductIndex({ products, filters, categories, brands, ta
 
     const flatRows = (products.data ?? []).flatMap((product) => {
         if (!product.variations?.length) {
-            return [{ ...product, _rowKey: `p-${product.id}`, _isVariant: false }];
+            return [{ ...product, _rowKey: `p-${product.id}`, _isVariant: false, _showProductActions: true }];
         }
-        return product.variations.map((v) => ({
+
+        return product.variations.map((v, index) => ({
             ...product,
             _rowKey: `v-${v.id}`,
             _isVariant: true,
+            _showProductActions: index === 0,
             _variantLabel: v.variation_data?.label ?? v.sku,
             _variantPrice: parseFloat(v.price ?? 0),
             _variantPurchasePrice: parseFloat(v.purchase_price ?? 0),
@@ -212,7 +214,7 @@ export default function ProductIndex({ products, filters, categories, brands, ta
                     prefix="product"
                     id={row.slug}
                     editRoute="product.edit"
-                    onDelete={row._isVariant ? undefined : () => setDeleting(row)}
+                    onDelete={row._showProductActions ? () => setDeleting(row) : undefined}
                 />
             ),
         },

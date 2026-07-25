@@ -48,7 +48,7 @@ class PurchaseController extends Controller
     private function listQuery(Request $request): Builder
     {
         return $this->applyDateColumnFilters(
-            Purchase::query()->ownBranchUser()
+            Purchase::query()->visibleInBranchCatalog()
                 ->purchaseOrInitialStock()
                 ->with([
                     'supplier:id,name,company_name,phone',
@@ -112,8 +112,10 @@ class PurchaseController extends Controller
             return [
                 ...$purchase->toArray(),
                 'purchase_type_label' => $purchase->purchase_type?->label() ?? 'Purchase',
-                'can_edit' => $isRegularPurchase && $this->canEditPurchase($purchase),
-                'can_delete' => $isRegularPurchase,
+                'can_edit' => $isRegularPurchase
+                    && $purchase->isMutableByCurrentUser()
+                    && $this->canEditPurchase($purchase),
+                'can_delete' => $isRegularPurchase && $purchase->isMutableByCurrentUser(),
                 'has_return' => $latestReturn !== null,
                 'return_invoice_number' => $latestReturn?->invoice_number,
             ];
@@ -385,7 +387,10 @@ class PurchaseController extends Controller
     public function edit(Purchase $purchase): Response|RedirectResponse
     {
         $this->authorize('inventory.purchase.update');
-        $this->authorizeBranchUserRecord($purchase);
+
+        if (! $purchase->isMutableByCurrentUser()) {
+            abort(404);
+        }
 
         if (PurchaseReturn::where('purchase_id', $purchase->id)->exists()) {
             return redirect()
@@ -512,7 +517,10 @@ class PurchaseController extends Controller
     public function update(Request $request, Purchase $purchase): RedirectResponse
     {
         $this->authorize('inventory.purchase.update');
-        $this->authorizeBranchUserRecord($purchase);
+
+        if (! $purchase->isMutableByCurrentUser()) {
+            abort(404);
+        }
 
         if (PurchaseReturn::where('purchase_id', $purchase->id)->exists()) {
             return back()->with('error', 'This purchase cannot be edited because it has returns.');
@@ -766,7 +774,10 @@ class PurchaseController extends Controller
     public function destroy(Purchase $purchase): RedirectResponse
     {
         $this->authorize('inventory.purchase.delete');
-        $this->authorizeBranchUserRecord($purchase);
+
+        if (! $purchase->isMutableByCurrentUser()) {
+            abort(404);
+        }
 
         if ($purchase->purchase_type !== PurchaseType::Purchase) {
             return redirect()

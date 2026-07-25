@@ -34,7 +34,7 @@ test('branch user only sees their own sells in index', function () {
             ->has('sells.data', 1));
 });
 
-test('branch user only sees their own purchases in index', function () {
+test('branch user sees all branch purchases in index', function () {
     $this->artisan('permissions:sync');
 
     $branch = Branch::factory()->create();
@@ -66,7 +66,7 @@ test('branch user only sees their own purchases in index', function () {
         ->assertOk()
         ->assertInertia(fn ($page) => $page
             ->component('admin/inventory/purchase/index')
-            ->has('purchases.data', 1));
+            ->has('purchases.data', 2));
 });
 
 test('super admin can find branch user sells by customer search', function () {

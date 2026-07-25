@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\Auth;
 
 class Purchase extends Model
 {
@@ -116,5 +117,43 @@ class Purchase extends Model
             PurchaseType::Purchase,
             PurchaseType::InitialStock,
         ]);
+    }
+
+    /**
+     * Purchase list uses the same branch scope as the purchase report.
+     */
+    public function scopeVisibleInBranchCatalog(Builder $query): Builder
+    {
+        return $query->ownBranch();
+    }
+
+    public function isAccessibleByCurrentUser(): bool
+    {
+        $user = Auth::user();
+
+        if ($user?->isSuperAdmin()) {
+            return true;
+        }
+
+        if ($user?->branch_id === null) {
+            return false;
+        }
+
+        return (int) $this->branch_id === (int) $user->branch_id;
+    }
+
+    public function isMutableByCurrentUser(): bool
+    {
+        if (! $this->isAccessibleByCurrentUser()) {
+            return false;
+        }
+
+        $user = Auth::user();
+
+        if ($user?->isSuperAdmin()) {
+            return true;
+        }
+
+        return (int) $this->user_id === (int) $user->id;
     }
 }

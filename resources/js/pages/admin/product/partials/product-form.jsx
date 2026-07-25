@@ -886,7 +886,7 @@ const ProductForm = forwardRef(function ProductForm({
 
     const branchSelectOptions = useMemo(
         () => [
-            { value: '__none', label: 'All branches' },
+            { value: 'all', label: 'All branches' },
             ...Object.entries(branches || {}).map(([value, label]) => ({ value, label })),
         ],
         [branches],
@@ -1080,7 +1080,9 @@ const ProductForm = forwardRef(function ProductForm({
         });
     }
 
-    const effectiveBranchId = form.data.branch_id != null && form.data.branch_id !== ''
+    const effectiveBranchId = form.data.branch_id != null
+        && form.data.branch_id !== ''
+        && form.data.branch_id !== 'all'
         ? String(form.data.branch_id)
         : null;
 
@@ -1172,8 +1174,8 @@ const ProductForm = forwardRef(function ProductForm({
                             <Field label="Branch" error={form.errors.branch_id}>
                                 <SmartSelect
                                     options={branchSelectOptions}
-                                    value={form.data.branch_id ? String(form.data.branch_id) : '__none'}
-                                    onValueChange={(v) => form.setData('branch_id', v === '__none' ? '' : v)}
+                                    value={form.data.branch_id ? String(form.data.branch_id) : 'all'}
+                                    onValueChange={(v) => form.setData('branch_id', v === 'all' ? 'all' : v)}
                                     placeholder="Search branch…"
                                     triggerClassName="h-8 text-xs"
                                     optionsClassName="max-h-52"

@@ -25,6 +25,13 @@ use Illuminate\Validation\ValidationException;
 
 class ProductBranchReplicationService
 {
+    public const string ALL_BRANCHES = 'all';
+
+    public static function wantsAllBranches(mixed $value): bool
+    {
+        return $value === self::ALL_BRANCHES;
+    }
+
     public function __construct(
         private BranchCatalogReplicationService $catalogReplication,
         private ProductInitialStockService $initialStock,
@@ -168,13 +175,10 @@ class ProductBranchReplicationService
             );
         }
 
-        $branchId = $this->resolveStoreBranchId(
-            filled($data['branch_id'] ?? null) ? (int) $data['branch_id'] : null,
-        );
+        $rawBranchId = $data['branch_id'] ?? null;
+        unset($data['branch_id']);
 
-        if ($branchId === null) {
-            unset($data['branch_id']);
-
+        if (self::wantsAllBranches($rawBranchId)) {
             return $this->createForBranches(
                 $data,
                 $combinations,
@@ -184,6 +188,10 @@ class ProductBranchReplicationService
                 $photoPaths,
             );
         }
+
+        $branchId = $this->resolveStoreBranchId(
+            is_numeric($rawBranchId) ? (int) $rawBranchId : Branch::resolveMainBranchId(),
+        );
 
         if (! Branch::isMainBranch($branchId)) {
             unset($data['branch_id']);
@@ -416,15 +424,11 @@ class ProductBranchReplicationService
             return (string) $selection;
         }
 
-        if ($product->product_group_id !== null) {
-            return '';
-        }
-
-        if (Branch::isMainBranch((int) $product->branch_id)) {
+        if ($product->branch_id !== null) {
             return (string) $product->branch_id;
         }
 
-        return '';
+        return (string) Branch::resolveMainBranchId();
     }
 
     /**

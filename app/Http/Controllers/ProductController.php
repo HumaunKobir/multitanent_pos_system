@@ -33,6 +33,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Rules\In;
 use Illuminate\Validation\Rules\Unique;
 use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
@@ -299,7 +300,7 @@ class ProductController extends Controller
 
         $data = $request->validate([
             'has_variants' => ['nullable', 'boolean'],
-            'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')],
+            'branch_id' => $this->branchSelectionRules(),
             'category_id' => ['required', Rule::exists('categories', 'id')],
             'brand_id' => ['required', Rule::exists('brands', 'id')],
             'unit_id' => ['required', Rule::exists('units', 'id')],
@@ -542,7 +543,7 @@ class ProductController extends Controller
 
         $data = $request->validate([
             'has_variants' => ['nullable', 'boolean'],
-            'branch_id' => ['nullable', 'integer', Rule::exists('branches', 'id')],
+            'branch_id' => $this->branchSelectionRules(),
             'category_id' => ['required', Rule::exists('categories', 'id')],
             'brand_id' => ['required', Rule::exists('brands', 'id')],
             'unit_id' => ['required', Rule::exists('units', 'id')],
@@ -679,8 +680,11 @@ class ProductController extends Controller
                     $data['discount_price'] = $data['discount_price'] ?? 0;
 
                     $branchSelectionProvided = $request->exists('branch_id');
-                    $selectedBranchId = filled($data['branch_id'] ?? null) ? (int) $data['branch_id'] : null;
-                    $requestedAllBranches = $branchSelectionProvided && blank($data['branch_id'] ?? null);
+                    $requestedAllBranches = $branchSelectionProvided
+                        && ProductBranchReplicationService::wantsAllBranches($data['branch_id'] ?? null);
+                    $selectedBranchId = $requestedAllBranches
+                        ? null
+                        : (filled($data['branch_id'] ?? null) ? (int) $data['branch_id'] : null);
                     $previousSelection = $this->productReplication->resolveStoredSelection($product);
 
                     if ($branchSelectionProvided) {
@@ -1009,6 +1013,7 @@ class ProductController extends Controller
 
                 if ($variation) {
                     $oldStock = (int) $variation->stock;
+                    $oldPurchasePrice = (float) $variation->purchase_price;
                     $sku = $this->barcodes->resolveVariationBarcode(
                         (int) $product->branch_id,
                         $combo['sku'],
@@ -1032,6 +1037,13 @@ class ProductController extends Controller
                             $product,
                             $variation,
                             $stockDelta,
+                            (float) $purchasePrice,
+                            $product->name.' — '.($variationData['label'] ?? $combo['variant']),
+                        );
+                    } elseif (round($oldPurchasePrice, 2) !== round((float) $purchasePrice, 2)) {
+                        $this->initialStock->reconcileUnitCostChange(
+                            $product,
+                            $variation,
                             (float) $purchasePrice,
                             $product->name.' — '.($variationData['label'] ?? $combo['variant']),
                         );
@@ -1388,5 +1400,19 @@ class ProductController extends Controller
             $previousTotalAmount,
             $previousSettlement,
         );
+    }
+
+    /**
+     * @return list<string|In>
+     */
+    private function branchSelectionRules(): array
+    {
+        $branchIds = Branch::query()->active()->pluck('id')->map(fn (int $id): string => (string) $id)->all();
+
+        return [
+            'nullable',
+            'string',
+            Rule::in(array_merge([ProductBranchReplicationService::ALL_BRANCHES], $branchIds)),
+        ];
     }
 }

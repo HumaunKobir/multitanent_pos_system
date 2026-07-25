@@ -83,10 +83,9 @@ test('editing variants on a grouped all-branches product updates the edited bran
         'variation_data' => ['label' => 'Black-0', 'Color' => 'Black', 'Size' => '0'],
     ]);
 
-    // Simulate the edit page for the branch product: formBranchId resolves to '' for a
-    // grouped product with no stored selection, so the form submits branch_id=''.
+    // Edit form should default to the product's own branch, not "All branches".
     $payload = [
-        'branch_id' => '',
+        'branch_id' => (string) $otherBranch->id,
         'category_id' => (string) $categoryId,
         'brand_id' => (string) $brandId,
         'unit_id' => (string) $unitId,

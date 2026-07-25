@@ -48,9 +48,12 @@ class ProductInitialStockService
         $delta = $newQuantity - $oldQuantity;
 
         if ($delta === 0 && $record->exists) {
-            if ((float) $record->unit_cost !== round($unitCost, 2)) {
-                $record->update(['unit_cost' => $unitCost]);
-            }
+            $this->reconcileUnitCostChange(
+                $product,
+                null,
+                $unitCost,
+                $product->name,
+            );
 
             return;
         }
@@ -145,6 +148,61 @@ class ProductInitialStockService
             round($quantity * $unitCost, 2),
             true,
             $this->variationLabel($variation),
+        );
+    }
+
+    public function reconcileUnitCostChange(
+        Product $product,
+        ?ProductVariation $variation,
+        float $newUnitCost,
+        string $label,
+    ): void {
+        $record = ProductInitialStock::query()->firstWhere([
+            'product_id' => $product->id,
+            'product_variation_id' => $variation?->id,
+        ]);
+
+        if ($record === null) {
+            return;
+        }
+
+        $quantity = $variation !== null
+            ? max(0, (int) $variation->stock)
+            : max(0, (int) $record->quantity);
+
+        $oldUnitCost = (float) $record->unit_cost;
+        $roundedNewUnitCost = round($newUnitCost, 2);
+
+        if (round($oldUnitCost, 2) === $roundedNewUnitCost) {
+            return;
+        }
+
+        if ($variation === null) {
+            $batch = $this->resolveBatch($record, $product, $roundedNewUnitCost);
+
+            $record->update([
+                'unit_cost' => $roundedNewUnitCost,
+                'batch_id' => $batch->id,
+            ]);
+        } else {
+            $record->update(['unit_cost' => $roundedNewUnitCost]);
+        }
+
+        if ($quantity <= 0) {
+            return;
+        }
+
+        $valueDelta = round($quantity * ($roundedNewUnitCost - $oldUnitCost), 2);
+
+        if ($valueDelta === 0.0 || $this->skipPerRecordAccounting) {
+            return;
+        }
+
+        $this->accounting->postProductInitialStockMovement(
+            $record,
+            abs($valueDelta),
+            $valueDelta > 0,
+            $label,
         );
     }
 

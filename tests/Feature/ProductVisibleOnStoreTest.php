@@ -178,7 +178,7 @@ test('all-branches create with visible yes publishes ecommerce copy on storefron
     $admin->assignRole($role);
 
     $payload = visibleOnStorePayload($mainBranch, [
-        'branch_id' => '',
+        'branch_id' => 'all',
         'visible' => 'yes',
         'name' => 'All Branch Visible '.fake()->unique()->numerify('######'),
     ]);

@@ -302,7 +302,7 @@ test('all branches product maps branch specific catalog ids', function () {
 
     $this->actingAs($admin)
         ->post(route('product.store'), [
-            'branch_id' => null,
+            'branch_id' => 'all',
             'category_id' => (string) $category->id,
             'brand_id' => (string) $brand->id,
             'unit_id' => (string) $unit->id,
@@ -393,7 +393,7 @@ test('all branches product replicates catalog to ecommerce branch', function () 
 
     $this->actingAs($admin)
         ->post(route('product.store'), [
-            'branch_id' => null,
+            'branch_id' => 'all',
             'category_id' => (string) $categoryResponse->json('value'),
             'brand_id' => (string) $brandResponse->json('value'),
             'unit_id' => (string) $unit->id,
@@ -465,7 +465,7 @@ test('all branches product maps existing catalog by name instead of duplicating'
 
     $this->actingAs($admin)
         ->post(route('product.store'), [
-            'branch_id' => null,
+            'branch_id' => 'all',
             'category_id' => (string) $mainCategory->id,
             'brand_id' => (string) $brand->id,
             'unit_id' => (string) $unit->id,
@@ -594,7 +594,7 @@ test('all branches product creates one product per active branch with correct br
 
     $this->actingAs($admin)
         ->post(route('product.store'), [
-            'branch_id' => null,
+            'branch_id' => 'all',
             'category_id' => (string) $category->id,
             'brand_id' => (string) $brand->id,
             'unit_id' => (string) $unit->id,

@@ -173,7 +173,7 @@ test('all branches product creates isolated copy for each active branch', functi
     $manualCode = 'A'.fake()->unique()->numerify('#######');
 
     $payload = validProductPayload([
-        'branch_id' => null,
+        'branch_id' => 'all',
         'name' => $productName,
         'code' => $manualCode,
     ]);
@@ -227,7 +227,7 @@ test('all branches product auto-generated barcode uses numeric base across branc
     $productName = 'Numeric Barcode Product '.fake()->unique()->numerify('######');
 
     $payload = validProductPayload([
-        'branch_id' => null,
+        'branch_id' => 'all',
         'name' => $productName,
         'code' => '',
     ]);
@@ -270,7 +270,7 @@ test('main branch admin can create all branches product without duplicate slug e
     $productName = 'All Branch Product '.fake()->unique()->numerify('######');
 
     $payload = validProductPayload([
-        'branch_id' => null,
+        'branch_id' => 'all',
         'name' => $productName,
         'code' => '',
     ]);
@@ -305,7 +305,7 @@ test('all branches product applies initial stock only to main branch copy', func
     $productName = 'Stock Scope Product '.fake()->unique()->numerify('######');
 
     $payload = validProductPayload([
-        'branch_id' => null,
+        'branch_id' => 'all',
         'name' => $productName,
         'initial_stock' => '20',
         'purchase_price' => '50',
@@ -354,7 +354,7 @@ test('all branches variation product applies initial stock only on main branch v
     $sku = fake()->unique()->numerify('########');
 
     $payload = validProductPayload([
-        'branch_id' => null,
+        'branch_id' => 'all',
         'name' => $productName,
         'purchase_price' => '0',
         'sale_price' => '0',

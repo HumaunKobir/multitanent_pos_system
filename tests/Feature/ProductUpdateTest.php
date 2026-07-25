@@ -915,7 +915,7 @@ test('product update allows unchanged name for all branch group siblings', funct
     ]);
 
     $payload = productUpdatePayload($productA, [
-        'branch_id' => '',
+        'branch_id' => (string) $productA->branch_id,
         'name' => $productName,
         'sale_price' => '350',
     ]);
@@ -1003,7 +1003,7 @@ test('updating all branches product to specific branch removes other branch copi
 
     $this->actingAs($admin)
         ->post(route('product.store'), [
-            'branch_id' => '',
+            'branch_id' => 'all',
             'category_id' => (string) $category->id,
             'brand_id' => (string) $brand->id,
             'unit_id' => (string) $unit->id,
@@ -1173,7 +1173,7 @@ test('updating specific branch product to all branches creates missing branch co
     expect(Product::query()->where('name', $productName)->count())->toBe(2);
 
     $expandPayload = productUpdatePayload($mainProduct->fresh(), [
-        'branch_id' => '',
+        'branch_id' => 'all',
         'initial_stock' => '20',
         'purchase_price' => '200',
         'sale_price' => '300',
@@ -1282,4 +1282,129 @@ test('product gallery photo can be deleted', function () {
 
     expect(ProductPhoto::query()->whereKey($photo->id)->exists())->toBeFalse();
     Storage::disk('public')->assertMissing('products/photos/to-delete.jpg');
+});
+
+test('grouped product edit page defaults branch field to product branch', function () {
+    $admin = productUpdateAdmin();
+    $operatingBranch = Branch::factory()->create();
+    $groupId = (string) Str::uuid();
+
+    $product = Product::factory()->create([
+        'branch_id' => $operatingBranch->id,
+        'product_group_id' => $groupId,
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+    ]);
+
+    $this->actingAs($admin)
+        ->get(route('product.edit', $product))
+        ->assertOk()
+        ->assertInertia(fn ($page) => $page
+            ->where('formBranchId', (string) $operatingBranch->id));
+});
+
+test('updating grouped product without selecting all branches does not create extra branch copies', function () {
+    $admin = productUpdateAdmin();
+
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => 'Main Branch'])->toArray(),
+    );
+
+    $dressShop = Branch::factory()->create(['name' => 'Dress Shop Test '.fake()->unique()->numerify('###')]);
+    $coolnessPoint = Branch::factory()->create(['name' => 'Coolness Point Test '.fake()->unique()->numerify('###')]);
+    $groupId = (string) Str::uuid();
+    $productName = 'Branch Scoped Edit '.fake()->unique()->numerify('######');
+
+    $dressProduct = Product::factory()->create([
+        'branch_id' => $dressShop->id,
+        'product_group_id' => $groupId,
+        'name' => $productName,
+        'category_id' => Category::factory()->create(['status' => 1, 'branch_id' => $dressShop->id])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1, 'branch_id' => $dressShop->id])->id,
+        'unit_id' => Unit::query()->create(['branch_id' => $dressShop->id, 'name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+    ]);
+
+    Product::factory()->create([
+        'branch_id' => Branch::resolveMainBranchId(),
+        'product_group_id' => $groupId,
+        'source_branch_id' => $dressShop->id,
+        'name' => $productName,
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $dressProduct), productUpdatePayload($dressProduct, [
+            'branch_id' => (string) $dressShop->id,
+            'name' => $productName.' Updated',
+            'sale_price' => '175',
+        ]))
+        ->assertRedirect(route('product.index'));
+
+    expect(Product::query()->where('name', $productName.' Updated')->count())->toBe(2)
+        ->and(Product::query()->where('name', $productName.' Updated')->where('branch_id', $coolnessPoint->id)->exists())->toBeFalse();
+});
+
+test('product update purchase price change adjusts batch valuation and supplier payable', function () {
+    $admin = productUpdateAdmin();
+    $cash = seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    $supplier = Supplier::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID, 'balance' => 600]);
+
+    $product = Product::factory()->create([
+        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+        'purchase_price' => 100,
+        'sale_price' => 150,
+        'initial_stock_supplier_id' => $supplier->id,
+        'initial_stock_paid_amount' => 400,
+        'initial_stock_payment_account_id' => $cash->id,
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), productUpdatePayload($product, [
+            'branch_id' => (string) Branch::MAIN_BRANCH_ID,
+            'initial_stock' => '10',
+            'purchase_price' => '100',
+            'initial_stock_supplier_id' => (string) $supplier->id,
+            'initial_stock_paid_amount' => '400',
+            'initial_stock_payment_account_id' => (string) $cash->id,
+        ]))
+        ->assertRedirect(route('product.index'));
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), productUpdatePayload($product, [
+            'branch_id' => (string) Branch::MAIN_BRANCH_ID,
+            'initial_stock' => '10',
+            'purchase_price' => '120',
+            'initial_stock_supplier_id' => (string) $supplier->id,
+            'initial_stock_paid_amount' => '400',
+            'initial_stock_payment_account_id' => (string) $cash->id,
+        ]))
+        ->assertRedirect(route('product.index'));
+
+    $batch = Batch::query()->where('product_id', $product->id)->first();
+    $record = ProductInitialStock::query()->where('product_id', $product->id)->first();
+
+    expect((float) $batch->purchase_price)->toBe(120.0)
+        ->and((float) $record->unit_cost)->toBe(120.0)
+        ->and((float) $supplier->fresh()->balance)->toBe(800.0);
+
+    $transaction = Transaction::query()
+        ->where('source_type', Product::class)
+        ->where('source_id', $product->id)
+        ->first();
+
+    $ledgers = Ledger::query()->where('transaction_id', $transaction->id)->get();
+
+    expect(round($ledgers->sum('debit'), 2))->toBe(1200.0)
+        ->and(round($ledgers->sum('credit'), 2))->toBe(1200.0);
 });

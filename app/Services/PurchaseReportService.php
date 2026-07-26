@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Branch;
 use App\Models\Purchase;
+use App\Models\StockAdjustment;
 use App\Models\Supplier;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -12,6 +13,10 @@ use Illuminate\Support\Facades\Auth;
 
 class PurchaseReportService
 {
+    public function __construct(
+        private SupplierFundedStockAdjustmentService $supplierAdjustments,
+    ) {}
+
     /**
      * @return list<array{id: int, label: string}>
      */
@@ -73,12 +78,27 @@ class PurchaseReportService
             ->orderByDesc('id')
             ->get();
 
-        $rows = $purchases
+        $purchaseRows = $purchases
             ->map(fn (Purchase $purchase) => $this->mapPurchaseRow($purchase))
+            ->values();
+
+        $adjustmentRows = $this->stockAdjustmentRows($supplierId, $dateFrom, $dateTo, $branchId);
+
+        $rows = $purchaseRows
+            ->merge($adjustmentRows)
+            ->sort(function (array $a, array $b): int {
+                $dateCompare = strcmp($b['date'] ?? '', $a['date'] ?? '');
+
+                if ($dateCompare !== 0) {
+                    return $dateCompare;
+                }
+
+                return ($b['sort_id'] ?? 0) <=> ($a['sort_id'] ?? 0);
+            })
             ->values()
             ->all();
 
-        $supplierSummaries = $this->supplierSummaries($purchases);
+        $supplierSummaries = $this->supplierSummariesFromRows($rows);
 
         $supplier = null;
         if ($supplierId !== null) {
@@ -102,26 +122,23 @@ class PurchaseReportService
     }
 
     /**
-     * @param  Collection<int, Purchase>  $purchases
+     * @param  list<array<string, mixed>>  $rows
      * @return list<array<string, mixed>>
      */
-    private function supplierSummaries(Collection $purchases): array
+    private function supplierSummariesFromRows(array $rows): array
     {
-        return $purchases
-            ->groupBy(fn (Purchase $purchase) => $purchase->supplier_id ?? 0)
+        return collect($rows)
+            ->groupBy(fn (array $row) => $row['supplier_id'] ?? 0)
             ->map(function (Collection $group) {
-                /** @var Purchase $first */
+                /** @var array<string, mixed> $first */
                 $first = $group->first();
-                $supplier = $first->supplier;
-
-                $rows = $group->map(fn (Purchase $purchase) => $this->mapPurchaseRow($purchase))->values();
-                $totals = $this->totalsFromRows($rows->all());
+                $totals = $this->totalsFromRows($group->values()->all());
 
                 return [
-                    'supplier_id' => $supplier?->id,
-                    'supplier_name' => $supplier?->name ?? 'Unknown supplier',
-                    'supplier_phone' => $supplier?->phone,
-                    'supplier_company' => $supplier?->company_name,
+                    'supplier_id' => $first['supplier_id'] ?? null,
+                    'supplier_name' => $first['supplier_name'] ?? 'Unknown supplier',
+                    'supplier_phone' => $first['supplier_phone'] ?? null,
+                    'supplier_company' => $first['supplier_company'] ?? null,
                     'invoice_count' => $totals['invoice_count'],
                     'gross_amount' => $totals['gross_amount'],
                     'discount' => $totals['discount'],
@@ -174,6 +191,8 @@ class PurchaseReportService
         $net = round($purchase->net_amount, 2);
 
         return [
+            'row_key' => 'purchase-'.$purchase->id,
+            'sort_id' => $purchase->id,
             'id' => $purchase->id,
             'date' => $purchase->date?->format('Y-m-d'),
             'invoice' => $purchase->invoice_number,
@@ -191,6 +210,81 @@ class PurchaseReportService
             'paid_amount' => round((float) $purchase->paid_amount, 2),
             'due_amount' => round((float) $purchase->due_amount, 2),
             'payment_type' => $purchase->payment_type?->name ?? '—',
+        ];
+    }
+
+    /**
+     * @return list<array<string, mixed>>
+     */
+    private function stockAdjustmentRows(
+        ?int $supplierId,
+        ?string $dateFrom,
+        ?string $dateTo,
+        ?int $branchId,
+    ): array {
+        $adjustments = $this->supplierAdjustments->branchQuery($dateFrom, $dateTo, $branchId)
+            ->with([
+                'products.product:id,initial_stock_supplier_id,purchase_price',
+                'products.variation:id,purchase_price',
+            ])
+            ->orderByDesc('date')
+            ->orderByDesc('id')
+            ->get();
+
+        if ($adjustments->isEmpty()) {
+            return [];
+        }
+
+        $branchNames = Branch::query()
+            ->whereIn('id', $adjustments->pluck('branch_id')->filter()->unique()->all())
+            ->pluck('name', 'id');
+
+        $rows = [];
+
+        foreach ($this->supplierAdjustments->fundedEntries($adjustments, $supplierId) as $entry) {
+            $rows[] = $this->mapStockAdjustmentRow(
+                $entry['adjustment'],
+                $entry['supplier'],
+                $entry['signed_amount'],
+                $branchNames->get($entry['adjustment']->branch_id, '—'),
+            );
+        }
+
+        return $rows;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mapStockAdjustmentRow(
+        StockAdjustment $adjustment,
+        Supplier $supplier,
+        float $signedAmount,
+        string $branchName,
+    ): array {
+        $amount = round($signedAmount, 2);
+        $gross = round(abs($signedAmount), 2);
+
+        return [
+            'row_key' => "stock-adjustment-{$adjustment->id}-{$supplier->id}",
+            'sort_id' => $adjustment->id,
+            'id' => $adjustment->id,
+            'date' => $adjustment->date?->format('Y-m-d'),
+            'invoice' => $adjustment->invoice_number,
+            'purchase_type' => 'stock_adjustment',
+            'purchase_type_label' => 'Stock Adjustment ('.$adjustment->type->label().')',
+            'supplier_id' => $supplier->id,
+            'supplier_name' => $supplier->name,
+            'supplier_company' => $supplier->company_name,
+            'supplier_phone' => $supplier->phone,
+            'branch_name' => $branchName,
+            'gross_amount' => $gross,
+            'discount' => 0.0,
+            'vat' => 0.0,
+            'net_amount' => $amount,
+            'paid_amount' => 0.0,
+            'due_amount' => $amount,
+            'payment_type' => '—',
         ];
     }
 

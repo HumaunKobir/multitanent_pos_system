@@ -2040,7 +2040,7 @@ test('branch stock ledger includes initial stock movements', function () {
             ->where('entries.0.in', 12));
 });
 
-test('stock ledger shows negative in column for initial stock decreases from product edit', function () {
+test('stock ledger shows product edit stock decreases in out column', function () {
     $this->artisan('permissions:sync');
 
     $branch = Branch::factory()->create();
@@ -2065,8 +2065,11 @@ test('stock ledger shows negative in column for initial stock decreases from pro
             ->where('mode', 'ledger')
             ->has('entries', 2)
             ->where('entries.0.in', 10)
-            ->where('entries.1.in', -3)
-            ->where('entries.1.out', 0)
+            ->where('entries.1.in', 0)
+            ->where('entries.1.out', 3)
+            ->where('entries.1.type', 'Stock Edit')
+            ->where('totals.in', 10)
+            ->where('totals.out', 3)
             ->where('product.current_stock', 7));
 });
 

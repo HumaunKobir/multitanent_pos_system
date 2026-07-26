@@ -1,10 +1,14 @@
 <?php
 
+use App\Enums\StockAdjustmentType;
 use App\Http\Controllers\Reports\ReportController;
+use App\Models\Batch;
 use App\Models\Branch;
+use App\Models\Product;
 use App\Models\Purchase;
 use App\Models\Supplier;
 use App\Models\User;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Inertia\Testing\AssertableInertia as Assert;
 
 test('guests are redirected from purchase report', function () {
@@ -166,4 +170,134 @@ test('purchase report includes initial stock supplier from product create settle
             ->where('rows.0.purchase_type_label', 'Initial Stock')
             ->where('totals.gross_amount', 800)
             ->where('supplier_summaries.0.supplier_name', 'Product Create Supplier'));
+});
+
+test('purchase report includes supplier stock adjustment increases and decreases', function () {
+    $this->withoutMiddleware(PreventRequestForgery::class);
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    $user->givePermissionTo(ReportController::PERMISSION_PURCHASE_REPORT);
+    $user->givePermissionTo([
+        'inventory.stock-adjustment.view',
+        'inventory.stock-adjustment.create',
+    ]);
+
+    seedAccountingAccounts(branchId: $branch->id);
+
+    $supplier = Supplier::factory()->create([
+        'branch_id' => $branch->id,
+        'name' => 'Adjustment Supplier',
+    ]);
+    $date = now()->format('Y-m-d');
+
+    Purchase::factory()
+        ->purchase()
+        ->withSupplier($supplier)
+        ->withUser($user)
+        ->withAmounts(500, 0, 0, 0)
+        ->create(['date' => $date]);
+
+    $product = Product::factory()->create([
+        'branch_id' => $branch->id,
+        'initial_stock_supplier_id' => $supplier->id,
+        'purchase_price' => 50,
+        'sale_price' => 100,
+        'status' => 1,
+    ]);
+
+    Batch::factory()->create([
+        'branch_id' => $branch->id,
+        'product_id' => $product->id,
+        'purchase_price' => 50,
+        'available' => 10,
+    ]);
+
+    $this->actingAs($user)
+        ->post(route('inventory.stock-adjustment.store'), [
+            'date' => $date,
+            'type' => StockAdjustmentType::Increase->value,
+            'comment' => 'Found extra stock',
+            'items' => [
+                ['product_id' => $product->id, 'variation_id' => null, 'quantity' => 2],
+            ],
+        ])
+        ->assertRedirect(route('inventory.stock-adjustment.index'));
+
+    $this->actingAs($user)
+        ->post(route('inventory.stock-adjustment.store'), [
+            'date' => $date,
+            'type' => StockAdjustmentType::Decrease->value,
+            'comment' => 'Count correction',
+            'items' => [
+                ['product_id' => $product->id, 'variation_id' => null, 'quantity' => 1],
+            ],
+        ])
+        ->assertRedirect(route('inventory.stock-adjustment.index'));
+
+    $this->actingAs($user)
+        ->get('/report/purchase-report?supplier_id='.$supplier->id.'&date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/reports/purchase-report')
+            ->has('rows', 3)
+            ->where('rows.0.purchase_type_label', 'Stock Adjustment (Decrease)')
+            ->where('rows.0.net_amount', -50)
+            ->where('rows.1.purchase_type_label', 'Stock Adjustment (Increase)')
+            ->where('rows.1.net_amount', 100)
+            ->where('totals.invoice_count', 3)
+            ->where('totals.gross_amount', 650)
+            ->where('totals.net_amount', 550)
+            ->where('totals.due_amount', 550)
+            ->where('supplier_summaries.0.supplier_name', 'Adjustment Supplier')
+            ->where('supplier_summaries.0.net_amount', 550));
+});
+
+test('purchase report excludes stock adjustments without supplier funding', function () {
+    $this->withoutMiddleware(PreventRequestForgery::class);
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    $user->givePermissionTo(ReportController::PERMISSION_PURCHASE_REPORT);
+    $user->givePermissionTo([
+        'inventory.stock-adjustment.view',
+        'inventory.stock-adjustment.create',
+    ]);
+
+    seedAccountingAccounts(branchId: $branch->id);
+
+    $date = now()->format('Y-m-d');
+
+    $product = Product::factory()->create([
+        'branch_id' => $branch->id,
+        'purchase_price' => 40,
+        'sale_price' => 80,
+        'status' => 1,
+    ]);
+
+    Batch::factory()->create([
+        'branch_id' => $branch->id,
+        'product_id' => $product->id,
+        'purchase_price' => 40,
+        'available' => 5,
+    ]);
+
+    $this->actingAs($user)
+        ->post(route('inventory.stock-adjustment.store'), [
+            'date' => $date,
+            'type' => StockAdjustmentType::Increase->value,
+            'items' => [
+                ['product_id' => $product->id, 'variation_id' => null, 'quantity' => 2],
+            ],
+        ])
+        ->assertRedirect(route('inventory.stock-adjustment.index'));
+
+    $this->actingAs($user)
+        ->get('/report/purchase-report?date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->has('rows', 0)
+            ->where('totals.invoice_count', 0));
 });

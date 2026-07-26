@@ -8,6 +8,7 @@ use App\Models\ProductVariation;
 use App\Models\SaleReturn;
 use App\Models\Sell;
 use App\Models\StockAdjustment;
+use App\Models\StockAdjustmentProduct;
 use App\Models\StockDistribution;
 use App\Models\StockDistributionProduct;
 
@@ -93,26 +94,31 @@ class InventoryCostService
         $total = 0.0;
 
         foreach ($adjustment->products as $line) {
-            $batchMap = is_array($line->batches) ? $line->batches : [];
-
-            if ($batchMap !== []) {
-                $total += $this->costFromBatchMap($batchMap);
-
-                continue;
-            }
-
-            $unitCost = (float) $line->unit_cost;
-
-            if ($unitCost <= 0) {
-                $unitCost = $line->variation_id
-                    ? (float) ($line->variation?->purchase_price ?? 0)
-                    : (float) ($line->product?->purchase_price ?? 0);
-            }
-
-            $total += round($unitCost * (float) $line->quantity, 2);
+            $total += $this->costForStockAdjustmentLine($line);
         }
 
         return round($total, 2);
+    }
+
+    public function costForStockAdjustmentLine(StockAdjustmentProduct $line): float
+    {
+        $line->loadMissing(['product:id,purchase_price', 'variation:id,purchase_price']);
+
+        $batchMap = is_array($line->batches) ? $line->batches : [];
+
+        if ($batchMap !== []) {
+            return $this->costFromBatchMap($batchMap);
+        }
+
+        $unitCost = (float) $line->unit_cost;
+
+        if ($unitCost <= 0) {
+            $unitCost = $line->variation_id
+                ? (float) ($line->variation?->purchase_price ?? 0)
+                : (float) ($line->product?->purchase_price ?? 0);
+        }
+
+        return round($unitCost * (float) $line->quantity, 2);
     }
 
     public function costForSaleReturn(SaleReturn $saleReturn): float

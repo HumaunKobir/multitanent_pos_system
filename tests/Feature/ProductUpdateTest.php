@@ -1,5 +1,6 @@
 <?php
 
+use App\Enums\SystemAccountKey;
 use App\Models\Barcode;
 use App\Models\Batch;
 use App\Models\Branch;
@@ -18,6 +19,7 @@ use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\Unit;
 use App\Models\User;
+use App\Services\SystemAccountService;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -587,6 +589,47 @@ test('product update syncs non-variant initial stock with accounting', function 
         ->get();
 
     expect($transactions)->toHaveCount(2);
+});
+
+test('product update opening stock without supplier posts to product inventory and owners capital', function () {
+    $admin = productUpdateAdmin();
+    seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+
+    $inventory = SystemAccountService::resolve(SystemAccountKey::ProductInventory, Branch::MAIN_BRANCH_ID);
+    $capital = SystemAccountService::resolve(SystemAccountKey::OwnersCapital, Branch::MAIN_BRANCH_ID);
+
+    $initialInventory = (float) $inventory->fresh()->current_balance;
+    $initialCapital = (float) $capital->fresh()->current_balance;
+
+    $product = Product::factory()->create([
+        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+        'purchase_price' => 100,
+        'sale_price' => 150,
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), productUpdatePayload($product, [
+            'initial_stock' => '10',
+            'purchase_price' => '100',
+        ]))
+        ->assertRedirect(route('product.index'));
+
+    expect((float) $inventory->fresh()->current_balance)->toBe(round($initialInventory + 1000, 2))
+        ->and((float) $capital->fresh()->current_balance)->toBe(round($initialCapital + 1000, 2));
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), productUpdatePayload($product, [
+            'initial_stock' => '12',
+            'purchase_price' => '100',
+        ]))
+        ->assertRedirect(route('product.index'));
+
+    expect((float) $inventory->fresh()->current_balance)->toBe(round($initialInventory + 1200, 2))
+        ->and((float) $capital->fresh()->current_balance)->toBe(round($initialCapital + 1200, 2));
 });
 
 test('product update can add supplier settlement to existing initial stock', function () {

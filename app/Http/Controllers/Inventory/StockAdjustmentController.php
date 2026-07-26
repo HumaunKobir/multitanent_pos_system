@@ -217,10 +217,7 @@ class StockAdjustmentController extends Controller
                 }
 
                 $adjustment->load('products');
-                $this->accounting->postStockAdjustment(
-                    $adjustment,
-                    $this->costService->costForStockAdjustment($adjustment),
-                );
+                $this->accounting->postStockAdjustment($adjustment);
             });
         } catch (\Throwable $e) {
             return back()

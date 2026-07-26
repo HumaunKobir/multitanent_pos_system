@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\AccountType;
 use App\Enums\ReceivedPaymentMethod;
 use App\Enums\SystemAccountKey;
+use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Models\Customer;
@@ -22,6 +23,7 @@ use App\Models\SaleReturn;
 use App\Models\SaleReturnPayment;
 use App\Models\Sell;
 use App\Models\StockAdjustment;
+use App\Models\StockAdjustmentProduct;
 use App\Models\StockDistribution;
 use App\Models\StockDistributionProduct;
 use App\Models\Supplier;
@@ -414,27 +416,49 @@ class InventoryAccountingService
         );
     }
 
-    public function postStockAdjustment(StockAdjustment $adjustment, float $totalCost): ?Transaction
+    public function postStockAdjustment(StockAdjustment $adjustment): ?Transaction
     {
-        $totalCost = round(max(0, $totalCost), 2);
-
-        if ($totalCost <= 0) {
-            return null;
-        }
+        $adjustment->loadMissing([
+            'products.product:id,name,initial_stock_supplier_id,branch_id,purchase_price',
+            'products.variation:id,purchase_price',
+        ]);
 
         $serial = $adjustment->serial ?? $adjustment->invoice_number;
         $branchId = $adjustment->branch_id;
+        $isIncrease = $adjustment->isIncrease();
+        $lines = [];
 
-        if ($adjustment->isIncrease()) {
-            $lines = [
-                $this->debitLine(SystemAccountKey::ProductInventory, $totalCost, "Inventory increased — Adjustment {$serial}", $branchId),
-                $this->creditLine(SystemAccountKey::OtherIncome, $totalCost, "Stock adjustment gain — {$serial}", $branchId),
-            ];
-        } else {
-            $lines = [
-                $this->debitLine(SystemAccountKey::InventoryDamage, $totalCost, "Inventory write-off — Adjustment {$serial}", $branchId),
-                $this->creditLine(SystemAccountKey::ProductInventory, $totalCost, "Inventory reduced — Adjustment {$serial}", $branchId),
-            ];
+        foreach ($adjustment->products as $line) {
+            $product = $line->product;
+
+            if ($product === null) {
+                continue;
+            }
+
+            $lineCost = app(InventoryCostService::class)->costForStockAdjustmentLine($line);
+
+            if ($lineCost <= 0) {
+                continue;
+            }
+
+            $supplier = $this->resolveStockAdjustmentSupplier($product, $line);
+            $label = ($isIncrease ? 'Inventory increased' : 'Inventory reduced')." — Adjustment {$serial}, {$product->name}";
+
+            $lines = array_merge(
+                $lines,
+                $this->inventoryFundingJournalLines(
+                    $lineCost,
+                    $isIncrease,
+                    $label,
+                    $branchId,
+                    $supplier,
+                    updateSupplierBalance: true,
+                ),
+            );
+        }
+
+        if ($lines === []) {
+            return null;
         }
 
         return $this->postJournal(
@@ -1063,17 +1087,16 @@ class InventoryAccountingService
         $direction = $increase ? 'increased' : 'reduced';
         $date = now()->format('Y-m-d');
 
-        $lines = $increase
-            ? [
-                $this->debitLine(SystemAccountKey::ProductInventory, $amount, "Initial stock {$direction} — {$productLabel}", $branchId),
-                $this->creditLine(SystemAccountKey::OpeningBalanceClearing, $amount, "Opening balance offset — Initial stock {$productLabel}", $branchId),
-            ]
-            : [
-                $this->debitLine(SystemAccountKey::OpeningBalanceClearing, $amount, "Opening balance offset — Initial stock {$productLabel}", $branchId),
-                $this->creditLine(SystemAccountKey::ProductInventory, $amount, "Initial stock {$direction} — {$productLabel}", $branchId),
-            ];
+        $lines = $this->inventoryFundingJournalLines(
+            $amount,
+            $increase,
+            "Initial stock {$direction} — {$productLabel}",
+            $branchId,
+            supplier: null,
+            updateSupplierBalance: false,
+        );
 
-        $transaction = $this->postJournal(
+        return $this->postJournal(
             ProductInitialStock::class,
             $record->id ?? 0,
             $date,
@@ -1081,15 +1104,6 @@ class InventoryAccountingService
             $lines,
             validateBalance: $increase,
         );
-
-        $this->closeOpeningBalanceClearingToCapital(
-            $date,
-            ProductInitialStock::class,
-            $record->id ?? 0,
-            $branchId,
-        );
-
-        return $transaction;
     }
 
     public function postProductInitialStockSupplierSettlement(
@@ -1132,27 +1146,93 @@ class InventoryAccountingService
         $branchId = $product->branch_id;
         $date = now()->format('Y-m-d');
 
-        $lines = [
-            $this->debitLine(SystemAccountKey::ProductInventory, $amount, "Initial stock — {$product->name}", $branchId),
-            $this->creditLine(SystemAccountKey::OpeningBalanceClearing, $amount, "Opening balance offset — Initial stock {$product->name}", $branchId),
-        ];
+        $lines = $this->inventoryFundingJournalLines(
+            $amount,
+            true,
+            "Initial stock — {$product->name}",
+            $branchId,
+            supplier: null,
+            updateSupplierBalance: false,
+        );
 
-        $transaction = $this->postJournal(
+        return $this->postJournal(
             Product::class,
             $product->id,
             $date,
             "Product initial stock — {$product->name}",
             $lines,
         );
+    }
 
-        $this->closeOpeningBalanceClearingToCapital(
-            $date,
-            Product::class,
-            $product->id,
-            $branchId,
-        );
+    /**
+     * @return list<array{account_id: int, debit: float, credit: float, decrease: bool, description?: ?string}>
+     */
+    private function inventoryFundingJournalLines(
+        float $amount,
+        bool $increase,
+        string $description,
+        ?int $branchId,
+        ?Supplier $supplier,
+        bool $updateSupplierBalance,
+    ): array {
+        $amount = round($amount, 2);
 
-        return $transaction;
+        if ($amount <= 0) {
+            return [];
+        }
+
+        if ($supplier !== null) {
+            if ($updateSupplierBalance) {
+                if ($increase) {
+                    $supplier->increment('balance', $amount);
+                } else {
+                    $supplier->decrement('balance', $amount);
+                }
+            }
+
+            $supplierName = $supplier->name;
+
+            return $increase
+                ? [
+                    $this->debitLine(SystemAccountKey::ProductInventory, $amount, $description, $branchId),
+                    $this->creditLine(SystemAccountKey::SupplierPayables, $amount, "Supplier payable — {$description}, {$supplierName}", $branchId),
+                ]
+                : [
+                    $this->debitLine(SystemAccountKey::SupplierPayables, $amount, "Supplier payable reduced — {$description}, {$supplierName}", $branchId),
+                    $this->creditLine(SystemAccountKey::ProductInventory, $amount, $description, $branchId),
+                ];
+        }
+
+        return $increase
+            ? [
+                $this->debitLine(SystemAccountKey::ProductInventory, $amount, $description, $branchId),
+                $this->creditLine(SystemAccountKey::OwnersCapital, $amount, "Owner funded stock — {$description}", $branchId),
+            ]
+            : [
+                $this->debitLine(SystemAccountKey::OwnersCapital, $amount, "Owner funded stock reduced — {$description}", $branchId),
+                $this->creditLine(SystemAccountKey::ProductInventory, $amount, $description, $branchId),
+            ];
+    }
+
+    private function resolveStockAdjustmentSupplier(Product $product, StockAdjustmentProduct $line): ?Supplier
+    {
+        if ($product->initial_stock_supplier_id !== null) {
+            return Supplier::query()->find($product->initial_stock_supplier_id);
+        }
+
+        $batchMap = is_array($line->batches) ? $line->batches : [];
+
+        if ($batchMap === []) {
+            return null;
+        }
+
+        $batch = Batch::query()->find(array_key_first($batchMap));
+
+        if ($batch?->supplier_id === null) {
+            return null;
+        }
+
+        return Supplier::query()->find($batch->supplier_id);
     }
 
     /**

@@ -367,24 +367,19 @@ class ReportService
         $totalOut = 0.0;
 
         $entries = $logs->map(function (ProductInOutLog $log) use (&$totalIn, &$totalOut) {
-            $quantity = (float) $log->quantity;
-            $isIn = $this->isStockInMovement($log->type);
-
-            if ($isIn) {
-                $totalIn += $quantity;
-            } else {
-                $totalOut += $quantity;
-            }
+            $movement = $this->resolveStockLedgerColumns((float) $log->quantity, (int) $log->type);
+            $totalIn += $movement['in'];
+            $totalOut += $movement['out'];
 
             return [
                 'date' => $log->created_at->format('Y-m-d'),
                 'branch' => $log->branch?->name ?? 'Main Branch',
                 'product' => $log->product?->name ?? '—',
                 'product_code' => $log->product?->code,
-                'type' => $this->productLogLabel($log->type),
+                'type' => $this->productLogLabel((int) $log->type, (float) $log->quantity),
                 'reference' => $log->remark ?? '—',
-                'in' => $isIn ? $quantity : 0.0,
-                'out' => $isIn ? 0.0 : $quantity,
+                'in' => $movement['in'],
+                'out' => $movement['out'],
             ];
         })->all();
 
@@ -446,23 +441,17 @@ class ReportService
         $totalOut = 0.0;
 
         $entries = $logs->map(function (ProductInOutLog $log) use (&$balance, &$totalIn, &$totalOut, $branchId) {
-            $quantity = (float) $log->quantity;
-            $isIn = $this->isStockInMovement($log->type);
-
-            if ($isIn) {
-                $totalIn += $quantity;
-                $balance += $quantity;
-            } else {
-                $totalOut += $quantity;
-                $balance -= $quantity;
-            }
+            $movement = $this->resolveStockLedgerColumns((float) $log->quantity, (int) $log->type);
+            $totalIn += $movement['in'];
+            $totalOut += $movement['out'];
+            $balance += $movement['balance_delta'];
 
             $entry = [
                 'date' => $log->created_at->format('Y-m-d'),
-                'type' => $this->productLogLabel($log->type),
+                'type' => $this->productLogLabel((int) $log->type, (float) $log->quantity),
                 'reference' => $log->remark ?? '—',
-                'in' => $isIn ? $quantity : 0.0,
-                'out' => $isIn ? 0.0 : $quantity,
+                'in' => $movement['in'],
+                'out' => $movement['out'],
                 'balance' => round($balance, 2),
             ];
 
@@ -2906,13 +2895,7 @@ class ReportService
             ->orderBy('id')
             ->get(['type', 'quantity'])
             ->each(function (ProductInOutLog $log) use (&$balance) {
-                $quantity = (float) $log->quantity;
-
-                if ($this->isStockInMovement($log->type)) {
-                    $balance += $quantity;
-                } else {
-                    $balance -= $quantity;
-                }
+                $balance += $this->resolveStockLedgerColumns((float) $log->quantity, (int) $log->type)['balance_delta'];
             });
 
         return $balance;
@@ -2931,13 +2914,7 @@ class ReportService
             ->orderBy('id')
             ->get(['type', 'quantity'])
             ->each(function (ProductInOutLog $log) use (&$balance) {
-                $quantity = (float) $log->quantity;
-
-                if ($this->isStockInMovement($log->type)) {
-                    $balance += $quantity;
-                } else {
-                    $balance -= $quantity;
-                }
+                $balance += $this->resolveStockLedgerColumns((float) $log->quantity, (int) $log->type)['balance_delta'];
             });
 
         return $balance;
@@ -2953,6 +2930,36 @@ class ReportService
         }
 
         return $query->where('branch_id', $branchId);
+    }
+
+    /**
+     * @return array{in: float, out: float, balance_delta: float}
+     */
+    private function resolveStockLedgerColumns(float $quantity, int $type): array
+    {
+        if ($quantity === 0.0) {
+            return ['in' => 0.0, 'out' => 0.0, 'balance_delta' => 0.0];
+        }
+
+        $isInType = $this->isStockInMovement($type);
+
+        if ($isInType) {
+            if ($quantity > 0) {
+                return ['in' => $quantity, 'out' => 0.0, 'balance_delta' => $quantity];
+            }
+
+            $amount = abs($quantity);
+
+            return ['in' => 0.0, 'out' => $amount, 'balance_delta' => -$amount];
+        }
+
+        if ($quantity > 0) {
+            return ['in' => 0.0, 'out' => $quantity, 'balance_delta' => -$quantity];
+        }
+
+        $amount = abs($quantity);
+
+        return ['in' => $amount, 'out' => 0.0, 'balance_delta' => $amount];
     }
 
     private function isStockInMovement(int $type): bool
@@ -2978,8 +2985,12 @@ class ReportService
         };
     }
 
-    private function productLogLabel(int $type): string
+    private function productLogLabel(int $type, float $quantity = 0): string
     {
+        if ($type === ProductLogType::InitialStock->value && $quantity < 0) {
+            return 'Stock Edit';
+        }
+
         try {
             $enum = ProductLogType::from($type);
 

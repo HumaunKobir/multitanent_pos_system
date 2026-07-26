@@ -203,8 +203,8 @@ export default function PurchaseReport({
                         { id: 'due', header: 'Due', render: (row) => <MoneyCell value={row.due_amount} /> },
                     ]}
                     rows={rows}
-                    rowKey={(row) => row.id}
-                    emptyMessage="No purchases found for this filter."
+                    rowKey={(row) => row.row_key ?? row.id}
+                    emptyMessage="No purchases or stock adjustments found for this filter."
                 />
 
                 <TotalsBar totals={totals} />

@@ -5,7 +5,6 @@ namespace App\Services;
 use App\Enums\AccountType;
 use App\Enums\ReceivedPaymentMethod;
 use App\Enums\SystemAccountKey;
-use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Models\Customer;
@@ -23,7 +22,6 @@ use App\Models\SaleReturn;
 use App\Models\SaleReturnPayment;
 use App\Models\Sell;
 use App\Models\StockAdjustment;
-use App\Models\StockAdjustmentProduct;
 use App\Models\StockDistribution;
 use App\Models\StockDistributionProduct;
 use App\Models\Supplier;
@@ -416,58 +414,13 @@ class InventoryAccountingService
         );
     }
 
+    /**
+     * Stock adjustments correct on-hand quantity only; they are not purchases
+     * and must not post supplier payables, owner capital, or inventory GL entries.
+     */
     public function postStockAdjustment(StockAdjustment $adjustment): ?Transaction
     {
-        $adjustment->loadMissing([
-            'products.product:id,name,initial_stock_supplier_id,branch_id,purchase_price',
-            'products.variation:id,purchase_price',
-        ]);
-
-        $serial = $adjustment->serial ?? $adjustment->invoice_number;
-        $branchId = $adjustment->branch_id;
-        $isIncrease = $adjustment->isIncrease();
-        $lines = [];
-
-        foreach ($adjustment->products as $line) {
-            $product = $line->product;
-
-            if ($product === null) {
-                continue;
-            }
-
-            $lineCost = app(InventoryCostService::class)->costForStockAdjustmentLine($line);
-
-            if ($lineCost <= 0) {
-                continue;
-            }
-
-            $supplier = $this->resolveStockAdjustmentSupplier($product, $line);
-            $label = ($isIncrease ? 'Inventory increased' : 'Inventory reduced')." — Adjustment {$serial}, {$product->name}";
-
-            $lines = array_merge(
-                $lines,
-                $this->inventoryFundingJournalLines(
-                    $lineCost,
-                    $isIncrease,
-                    $label,
-                    $branchId,
-                    $supplier,
-                    updateSupplierBalance: true,
-                ),
-            );
-        }
-
-        if ($lines === []) {
-            return null;
-        }
-
-        return $this->postJournal(
-            StockAdjustment::class,
-            $adjustment->id,
-            $adjustment->date->format('Y-m-d'),
-            "Stock Adjustment {$serial}",
-            $lines,
-        );
+        return null;
     }
 
     public function postStockDistribution(StockDistribution $distribution, float $totalCost): Transaction
@@ -1212,27 +1165,6 @@ class InventoryAccountingService
                 $this->debitLine(SystemAccountKey::OwnersCapital, $amount, "Owner funded stock reduced — {$description}", $branchId),
                 $this->creditLine(SystemAccountKey::ProductInventory, $amount, $description, $branchId),
             ];
-    }
-
-    private function resolveStockAdjustmentSupplier(Product $product, StockAdjustmentProduct $line): ?Supplier
-    {
-        if ($product->initial_stock_supplier_id !== null) {
-            return Supplier::query()->find($product->initial_stock_supplier_id);
-        }
-
-        $batchMap = is_array($line->batches) ? $line->batches : [];
-
-        if ($batchMap === []) {
-            return null;
-        }
-
-        $batch = Batch::query()->find(array_key_first($batchMap));
-
-        if ($batch?->supplier_id === null) {
-            return null;
-        }
-
-        return Supplier::query()->find($batch->supplier_id);
     }
 
     /**

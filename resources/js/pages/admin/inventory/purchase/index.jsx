@@ -82,7 +82,6 @@ export default function PurchaseIndex({ purchases, filters }) {
             render: (row) => {
                 const label = row.purchase_type_label ?? 'Purchase';
                 const isInitialStock = label === 'Initial Stock';
-                const isStockAdjustment = row.row_type === 'stock_adjustment' || label.startsWith('Stock Adjustment');
 
                 return (
                     <Badge
@@ -90,9 +89,7 @@ export default function PurchaseIndex({ purchases, filters }) {
                         className={
                             isInitialStock
                                 ? 'border-amber-300 bg-amber-50 text-[10px] text-amber-900'
-                                : isStockAdjustment
-                                  ? 'border-violet-300 bg-violet-50 text-[10px] text-violet-900'
-                                  : 'text-[10px]'
+                                : 'text-[10px]'
                         }
                     >
                         {label}
@@ -165,9 +162,9 @@ export default function PurchaseIndex({ purchases, filters }) {
             align: 'right',
             render: (row) => (
                 <AdminRowActions
-                    prefix={row.action_prefix ?? 'inventory.purchase'}
+                    prefix="inventory.purchase"
                     id={row.id}
-                    showRoute={row.show_route ?? 'inventory.purchase.show'}
+                    showRoute="inventory.purchase.show"
                     editRoute={row.can_edit ? 'inventory.purchase.edit' : undefined}
                     onDelete={row.can_delete ? () => setDeleting(row) : undefined}
                 />
@@ -187,7 +184,7 @@ export default function PurchaseIndex({ purchases, filters }) {
                         </div>
                         <div>
                             <h1 className="text-base font-semibold text-white">Purchases</h1>
-                            <p className="text-xs text-white/60">Manage purchases and supplier-funded stock adjustments.</p>
+                            <p className="text-xs text-white/60">Manage purchases and supplier payments.</p>
                         </div>
                     </div>
                     <AdminCreateLink
@@ -218,7 +215,7 @@ export default function PurchaseIndex({ purchases, filters }) {
                     />
                 </div>
 
-                <DataTable columns={columns} rows={purchases.data} rowKey={(row) => row.row_key ?? row.id} emptyMessage="No purchases or stock adjustments found." />
+                <DataTable columns={columns} rows={purchases.data} rowKey="id" emptyMessage="No purchases found." />
 
                 {can('inventory.purchase.delete') && (
                 <Dialog open={!!deleting} onOpenChange={(open) => (!open ? setDeleting(null) : null)}>

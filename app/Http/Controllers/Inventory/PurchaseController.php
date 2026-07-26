@@ -19,9 +19,9 @@ use App\Models\StockDistribution;
 use App\Models\Supplier;
 use App\Services\InventoryAccountingService;
 use App\Services\PartyPaymentAllocationService;
-use App\Services\PurchaseListService;
 use App\Services\StockDistributionService;
 use App\Support\StorageUrl;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -43,37 +43,56 @@ class PurchaseController extends Controller
         private InventoryAccountingService $accounting,
         private StockDistributionService $distribution,
         private PartyPaymentAllocationService $allocations,
-        private PurchaseListService $purchaseList,
     ) {}
+
+    private function listQuery(Request $request): Builder
+    {
+        return $this->applyDateColumnFilters(
+            Purchase::query()->visibleInBranchCatalog()
+                ->purchaseOrInitialStock()
+                ->with([
+                    'supplier:id,name,company_name,phone',
+                    'purchaseReturns:id,purchase_id,invoice_sequence',
+                ])
+                ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s) {
+                    $q->where('invoice_sequence', 'like', "%{$s}%")
+                        ->orWhere('serial', 'like', "%{$s}%")
+                        ->orWhere('comment', 'like', "%{$s}%")
+                        ->orWhereHas('supplier', fn ($q) => $q
+                            ->where('name', 'like', "%{$s}%")
+                            ->orWhere('company_name', 'like', "%{$s}%")
+                            ->orWhere('phone', 'like', "%{$s}%"));
+                })),
+            $request,
+            'date',
+        )->latest();
+    }
 
     /**
      * @return Collection<int, list<string|int|float>>
      */
     private function exportRows(Request $request): Collection
     {
-        return $this->purchaseList
-            ->filteredRows($request, self::LIST_EXPORT_LIMIT)
+        return $this->listQuery($request)
+            ->limit(self::LIST_EXPORT_LIMIT)
+            ->get()
             ->values()
-            ->map(function (array $row, int $index): array {
-                $supplier = $row['supplier'] ?? null;
-                $supplierLabel = is_array($supplier)
-                    ? trim(($supplier['company_name'] ? $supplier['company_name'].' — ' : '').($supplier['name'] ?? ''))
+            ->map(function (Purchase $purchase, int $index): array {
+                $supplier = $purchase->supplier;
+                $supplierLabel = $supplier
+                    ? trim(($supplier->company_name ? $supplier->company_name.' — ' : '').($supplier->name ?? ''))
                     : '—';
-
-                $gross = (float) ($row['gross_amount'] ?? 0);
-                $vat = (float) ($row['vat'] ?? 0);
-                $discount = (float) ($row['discount'] ?? 0);
 
                 return [
                     $index + 1,
-                    $row['invoice_number'] ?? '—',
-                    $row['date'] ?? '—',
-                    $row['purchase_type_label'] ?? 'Purchase',
+                    $purchase->invoice_number,
+                    optional($purchase->date)?->format('Y-m-d') ?? '—',
+                    $purchase->purchase_type?->label() ?? 'Purchase',
                     $supplierLabel !== '' ? $supplierLabel : '—',
-                    round($gross + $vat - $discount, 2),
-                    round((float) ($row['paid_amount'] ?? 0), 2),
-                    round((float) ($row['due_amount'] ?? 0), 2),
-                    $row['comment'] ?: '—',
+                    round((float) $purchase->net_amount, 2),
+                    round((float) $purchase->paid_amount, 2),
+                    round((float) $purchase->due_amount, 2),
+                    $purchase->comment ?: '—',
                 ];
             });
     }
@@ -82,7 +101,25 @@ class PurchaseController extends Controller
     {
         $this->authorize('inventory.purchase.view');
 
-        $purchases = $this->purchaseList->paginatedIndex($request);
+        $purchases = $this->listQuery($request)
+            ->paginate(20)
+            ->withQueryString();
+
+        $purchases->through(function (Purchase $purchase): array {
+            $latestReturn = $purchase->purchaseReturns->sortByDesc('id')->first();
+            $isRegularPurchase = $purchase->purchase_type === PurchaseType::Purchase;
+
+            return [
+                ...$purchase->toArray(),
+                'purchase_type_label' => $purchase->purchase_type?->label() ?? 'Purchase',
+                'can_edit' => $isRegularPurchase
+                    && $purchase->isMutableByCurrentUser()
+                    && $this->canEditPurchase($purchase),
+                'can_delete' => $isRegularPurchase && $purchase->isMutableByCurrentUser(),
+                'has_return' => $latestReturn !== null,
+                'return_invoice_number' => $latestReturn?->invoice_number,
+            ];
+        });
 
         return Inertia::render('admin/inventory/purchase/index', [
             'purchases' => $purchases,

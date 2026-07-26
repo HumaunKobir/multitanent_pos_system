@@ -2040,6 +2040,36 @@ test('branch stock ledger includes initial stock movements', function () {
             ->where('entries.0.in', 12));
 });
 
+test('stock ledger shows negative in column for initial stock decreases from product edit', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = reportUser([ReportController::PERMISSION_STOCK_LEDGER]);
+    $user->update(['branch_id' => $branch->id]);
+
+    $product = Product::factory()->create(['branch_id' => $branch->id]);
+    $date = now()->format('Y-m-d');
+    $batch = Batch::factory()->for($product)->withStock(10)->create(['branch_id' => $branch->id]);
+
+    $this->travelTo($date.' 10:00:00');
+    $batch->initialStock(10);
+    $batch->decrement('available', 3);
+    $batch->refresh();
+    $batch->initialStock(-3);
+    $this->travelBack();
+
+    $this->actingAs($user)
+        ->get('/report/stock-ledger?product_id='.$product->id.'&date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('mode', 'ledger')
+            ->has('entries', 2)
+            ->where('entries.0.in', 10)
+            ->where('entries.1.in', -3)
+            ->where('entries.1.out', 0)
+            ->where('product.current_stock', 7));
+});
+
 test('daily summary includes initial stock settlements from product accounting', function () {
     $this->artisan('permissions:sync');
 

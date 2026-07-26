@@ -19,6 +19,21 @@ function QtyCell({ value, className = '' }) {
     return <span className={className}>{parseFloat(value ?? 0).toFixed(2)}</span>;
 }
 
+function InQtyCell({ value }) {
+    const amount = parseFloat(value ?? 0);
+
+    if (amount === 0) {
+        return '—';
+    }
+
+    return (
+        <QtyCell
+            value={amount}
+            className={amount < 0 ? 'text-red-700 dark:text-red-400' : 'text-emerald-700 dark:text-emerald-400'}
+        />
+    );
+}
+
 export default function StockLedgerReport({
     products = [],
     branches = [],
@@ -104,8 +119,7 @@ export default function StockLedgerReport({
             {
                 id: 'in',
                 header: 'In',
-                render: (row) =>
-                    row.isOpening || row.in <= 0 ? '—' : <QtyCell value={row.in} className="text-emerald-700 dark:text-emerald-400" />,
+                render: (row) => (row.isOpening ? '—' : <InQtyCell value={row.in} />),
             },
             {
                 id: 'out',

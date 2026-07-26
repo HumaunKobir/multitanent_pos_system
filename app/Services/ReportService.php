@@ -530,27 +530,35 @@ class ReportService
     /**
      * @return list<array<string, mixed>>
      */
-    public function dateWiseStock(?int $productId, ?string $dateFrom, ?string $dateTo): array
-    {
+    public function dateWiseStock(
+        ?int $productId,
+        ?string $dateFrom,
+        ?string $dateTo,
+        ?int $filterBranchId = null,
+    ): array {
+        $effectiveBranchId = $this->resolveReportBranchFilter($filterBranchId);
+
         return ProductInOutLog::query()
-            ->when($this->branchId(), fn (Builder $q, int $id) => $q->where('branch_id', $id))
-            ->when($productId, fn (Builder $q, int $id) => $q->where('product_id', $id))
+            ->when($effectiveBranchId !== null, fn (Builder $q) => $this->scopeProductInOutLogForBranch($q, $effectiveBranchId))
+            ->when($productId !== null, fn (Builder $q) => $q->where('product_id', $productId))
             ->when($dateFrom, fn (Builder $q, string $d) => $q->whereDate('created_at', '>=', $d))
             ->when($dateTo, fn (Builder $q, string $d) => $q->whereDate('created_at', '<=', $d))
-            ->with(['product:id,name'])
+            ->with(['product:id,name,code'])
             ->orderByDesc('created_at')
+            ->orderByDesc('id')
             ->limit(500)
             ->get()
             ->map(fn (ProductInOutLog $log) => [
                 'date' => $log->created_at->format('Y-m-d'),
                 'time' => $log->created_at->format('H:i'),
                 'product' => $log->product?->name ?? '—',
-                'sku' => '—',
+                'sku' => $log->product?->code ?? '—',
                 'type' => $this->productLogLabel($log->type),
                 'quantity' => (int) $log->quantity,
                 'stock' => (int) $log->stock,
                 'remark' => $log->remark ?? '—',
             ])
+            ->values()
             ->all();
     }
 

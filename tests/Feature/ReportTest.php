@@ -1231,6 +1231,34 @@ test('superadmin stock ledger shows all movements by default', function () {
             ->has('entries', 1));
 });
 
+test('date wise stock filters movements by selected product only', function () {
+    $this->artisan('permissions:sync');
+
+    $user = reportUser([ReportController::PERMISSION_DATE_WISE_STOCK]);
+    $branch = Branch::factory()->create();
+    $user->update(['branch_id' => $branch->id]);
+
+    $productA = Product::factory()->create(['branch_id' => $branch->id, 'name' => 'Date Stock A']);
+    $productB = Product::factory()->create(['branch_id' => $branch->id, 'name' => 'Date Stock B']);
+    $date = '2026-06-06';
+
+    $batchA = Batch::factory()->for($productA)->withStock(10)->create(['branch_id' => $branch->id]);
+    $batchB = Batch::factory()->for($productB)->withStock(10)->create(['branch_id' => $branch->id]);
+
+    $this->travelTo($date.' 10:00:00');
+    $batchA->inStock(3);
+    $batchB->inStock(7);
+    $this->travelBack();
+
+    $this->actingAs($user)
+        ->getJson('/report/date-wise-stock?product_id='.$productA->id.'&date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertJsonCount(1, 'entries')
+        ->assertJsonPath('entries.0.product', 'Date Stock A')
+        ->assertJsonPath('entries.0.quantity', 3)
+        ->assertJsonMissing(['product' => 'Date Stock B']);
+});
+
 test('branch user account ledger cannot see another branch account metadata', function () {
     $this->artisan('permissions:sync');
 

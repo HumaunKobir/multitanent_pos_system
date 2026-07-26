@@ -1,37 +1,141 @@
 import { formatBdDate } from '@/lib/format-bd-date';
 import { route } from '@/lib/route';
-import { Head, router } from '@inertiajs/react';
-import { CalendarRange, Package } from 'lucide-react';
-import { useState } from 'react';
+import { Head } from '@inertiajs/react';
+import { Building2, CalendarRange, Package } from 'lucide-react';
+import { useCallback, useRef, useState } from 'react';
 
 import { DataTable } from '@/components/ui/data-table';
+import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import {
     ReportDateInput,
     ReportFilterField,
     ReportFilterReset,
     ReportPage,
+    ReportProductSearch,
     ReportSelect,
-    useLiveReportFilters,
 } from '@/pages/admin/reports/_shared/report-shell';
 
-export default function DateWiseStockReport({ products = [], filters = {}, entries = [] }) {
+export default function DateWiseStockReport({
+    branches = [],
+    isBranchScoped = false,
+    selected_product: initialSelectedProduct = null,
+    filters = {},
+    entries: initialEntries = [],
+}) {
+    const [branchId, setBranchId] = useState(filters.branch_id ? String(filters.branch_id) : 'all');
     const [productId, setProductId] = useState(filters.product_id ? String(filters.product_id) : 'all');
     const [dateFrom, setDateFrom] = useState(filters.date_from ?? '');
     const [dateTo, setDateTo] = useState(filters.date_to ?? '');
+    const [rows, setRows] = useState(initialEntries);
+    const [selectedProduct, setSelectedProduct] = useState(initialSelectedProduct);
+    const [loading, setLoading] = useState(false);
+    const requestIdRef = useRef(0);
 
-    useLiveReportFilters(
-        'report.date-wise-stock',
-        { product_id: productId === 'all' ? '' : productId, date_from: dateFrom, date_to: dateTo },
-        [productId, dateFrom, dateTo],
+    const showBranchFilter = !isBranchScoped && branches.length > 0;
+
+    const buildParams = useCallback(
+        (overrides = {}) => {
+            const branch = overrides.branchId ?? branchId;
+            const product = overrides.productId ?? productId;
+            const from = overrides.dateFrom ?? dateFrom;
+            const to = overrides.dateTo ?? dateTo;
+            const params = new URLSearchParams();
+
+            if (showBranchFilter && branch !== 'all') {
+                params.set('branch_id', String(branch));
+            }
+
+            if (product !== 'all') {
+                params.set('product_id', String(product));
+            }
+
+            if (from) {
+                params.set('date_from', from);
+            }
+
+            if (to) {
+                params.set('date_to', to);
+            }
+
+            return params;
+        },
+        [branchId, productId, dateFrom, dateTo, showBranchFilter],
     );
 
-    const hasActiveFilters = Boolean((productId !== 'all' && productId !== '') || dateFrom || dateTo);
+    const loadEntries = useCallback(
+        async (overrides = {}) => {
+            const requestId = ++requestIdRef.current;
+            setLoading(true);
+            setRows([]);
+
+            try {
+                const params = buildParams(overrides);
+                const queryString = params.toString();
+                const url = route('report.date-wise-stock') + (queryString ? `?${queryString}` : '');
+
+                window.history.replaceState({}, '', url);
+
+                const response = await fetch(url, {
+                    credentials: 'include',
+                    headers: {
+                        Accept: 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
+
+                if (!response.ok || requestId !== requestIdRef.current) {
+                    return;
+                }
+
+                const data = await response.json();
+                setRows(Array.isArray(data.entries) ? data.entries : []);
+                setSelectedProduct(data.selected_product ?? null);
+            } catch {
+                if (requestId === requestIdRef.current) {
+                    setRows([]);
+                }
+            } finally {
+                if (requestId === requestIdRef.current) {
+                    setLoading(false);
+                }
+            }
+        },
+        [buildParams],
+    );
+
+    useDebouncedEffect(
+        () => loadEntries(),
+        [dateFrom, dateTo, loadEntries],
+        350,
+        { skipFirstRun: true },
+    );
+
+    const hasActiveFilters = Boolean(
+        (showBranchFilter && branchId !== 'all' && branchId !== '') ||
+            (productId !== 'all' && productId !== '') ||
+            dateFrom ||
+            dateTo,
+    );
+
+    function handleProductChange(nextProductId) {
+        setProductId(nextProductId);
+        loadEntries({ productId: nextProductId });
+    }
+
+    function handleBranchChange(nextBranchId) {
+        setBranchId(nextBranchId);
+        setProductId('all');
+        loadEntries({ branchId: nextBranchId, productId: 'all' });
+    }
 
     function resetFilters() {
+        setBranchId('all');
         setProductId('all');
         setDateFrom('');
         setDateTo('');
-        router.get(route('report.date-wise-stock'), {}, { preserveState: true, replace: true });
+        setSelectedProduct(null);
+        window.history.replaceState({}, '', route('report.date-wise-stock'));
+        loadEntries({ branchId: 'all', productId: 'all', dateFrom: '', dateTo: '' });
     }
 
     return (
@@ -43,14 +147,24 @@ export default function DateWiseStockReport({ products = [], filters = {}, entri
                 filterActions={<ReportFilterReset onClick={resetFilters} disabled={!hasActiveFilters} />}
                 filterBar={
                     <>
-                        <ReportFilterField label="Product" icon={Package} className="sm:col-span-2">
-                            <ReportSelect
+                        {showBranchFilter && (
+                            <ReportFilterField label="Branch" icon={Building2}>
+                                <ReportSelect
+                                    value={branchId}
+                                    onChange={handleBranchChange}
+                                    options={[
+                                        { value: 'all', label: 'All branches' },
+                                        ...branches.map((b) => ({ value: String(b.id), label: b.label })),
+                                    ]}
+                                />
+                            </ReportFilterField>
+                        )}
+                        <ReportFilterField label="Product" icon={Package} className="sm:col-span-2 lg:col-span-1 xl:col-span-2">
+                            <ReportProductSearch
                                 value={productId}
-                                onChange={setProductId}
-                                options={[
-                                    { value: 'all', label: 'All products' },
-                                    ...products.map((p) => ({ value: String(p.id), label: p.label })),
-                                ]}
+                                onChange={handleProductChange}
+                                selectedProduct={selectedProduct}
+                                branchId={branchId}
                             />
                         </ReportFilterField>
                         <ReportFilterField label="From date" icon={CalendarRange}>
@@ -73,9 +187,9 @@ export default function DateWiseStockReport({ products = [], filters = {}, entri
                         { id: 'stock', header: 'Stock After', render: (row) => row.stock },
                         { id: 'remark', header: 'Remark', render: (row) => row.remark },
                     ]}
-                    rows={entries}
-                    rowKey={(row, i) => `${row.date}-${row.time}-${i}`}
-                    emptyMessage="No stock movements for this period."
+                    rows={rows}
+                    rowKey={(row, i) => `${row.date}-${row.time}-${row.product}-${row.sku}-${i}`}
+                    emptyMessage={loading ? 'Loading stock movements…' : 'No stock movements for this period.'}
                 />
             </ReportPage>
         </>

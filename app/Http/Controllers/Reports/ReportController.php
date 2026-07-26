@@ -148,24 +148,50 @@ class ReportController extends Controller
         ]);
     }
 
-    public function dateWiseStock(Request $request): Response
+    public function dateWiseStock(Request $request): Response|JsonResponse
     {
         $this->authorize(self::PERMISSION_DATE_WISE_STOCK);
 
         $filters = $request->validate([
             'product_id' => ['nullable', 'integer', 'exists:products,id'],
+            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
         ]);
 
+        $canFilterByBranch = $this->reports->canFilterByBranch();
+        $filterBranchId = $canFilterByBranch && isset($filters['branch_id']) ? (int) $filters['branch_id'] : null;
+        $productId = isset($filters['product_id']) ? (int) $filters['product_id'] : null;
+
+        $normalizedFilters = [
+            'product_id' => $productId,
+            'branch_id' => isset($filters['branch_id']) ? (int) $filters['branch_id'] : null,
+            'date_from' => $filters['date_from'] ?? null,
+            'date_to' => $filters['date_to'] ?? null,
+        ];
+
+        $selectedProduct = $this->reports->selectedProductOption($productId, $filterBranchId);
+        $entries = $this->reports->dateWiseStock(
+            $productId,
+            $filters['date_from'] ?? null,
+            $filters['date_to'] ?? null,
+            $filterBranchId,
+        );
+
+        if ($request->expectsJson() && ! $request->header('X-Inertia')) {
+            return response()->json([
+                'entries' => $entries,
+                'filters' => $normalizedFilters,
+                'selected_product' => $selectedProduct,
+            ]);
+        }
+
         return Inertia::render('admin/reports/date-wise-stock', [
-            'products' => $this->reports->productOptions(),
-            'filters' => $filters,
-            'entries' => $this->reports->dateWiseStock(
-                isset($filters['product_id']) ? (int) $filters['product_id'] : null,
-                $filters['date_from'] ?? null,
-                $filters['date_to'] ?? null,
-            ),
+            'branches' => $canFilterByBranch ? $this->reports->branchOptions() : [],
+            'isBranchScoped' => ! $canFilterByBranch,
+            'selected_product' => $selectedProduct,
+            'filters' => $normalizedFilters,
+            'entries' => $entries,
         ]);
     }
 
@@ -333,7 +359,7 @@ class ReportController extends Controller
 
     public function searchProducts(Request $request): JsonResponse
     {
-        $this->authorize(self::PERMISSION_SALES_SUMMARY);
+        $this->authorizeReportProductSearch();
 
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:100'],
@@ -701,5 +727,19 @@ class ReportController extends Controller
 
             return $value;
         }, $keys);
+    }
+
+    private function authorizeReportProductSearch(): void
+    {
+        $user = Auth::user();
+
+        abort_unless(
+            $user && (
+                $user->can(self::PERMISSION_SALES_SUMMARY)
+                || $user->can(self::PERMISSION_DATE_WISE_STOCK)
+                || $user->can(self::PERMISSION_STOCK_LEDGER)
+            ),
+            403,
+        );
     }
 }

@@ -1316,7 +1316,9 @@ test('stock ledger calculates opening balance before date range', function () {
             ->has('entries', 1)
             ->where('entries.0.out', 3)
             ->where('entries.0.balance', 7)
-            ->where('totals.balance', 7));
+            ->where('totals.opening', 10)
+            ->where('totals.balance', 7)
+            ->where('totals.closing', 7));
 });
 
 test('stock ledger period in and out include purchase and sale movements for a branch', function () {

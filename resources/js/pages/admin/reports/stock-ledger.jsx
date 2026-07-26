@@ -79,7 +79,11 @@ export default function StockLedgerReport({
     }
 
     const displayRows = useMemo(() => {
-        if (isOverview || !product || !dateFrom) {
+        if (isOverview || !product) {
+            return entries;
+        }
+
+        if (!dateFrom) {
             return entries;
         }
 
@@ -97,6 +101,9 @@ export default function StockLedgerReport({
             ...entries,
         ];
     }, [isOverview, product, dateFrom, opening_stock, entries]);
+
+    const showLedgerDetails = Boolean(product);
+    const closingBalance = totals.closing ?? totals.balance ?? 0;
 
     const columns = useMemo(() => {
         const cols = [{ id: 'date', header: 'Date', render: (row) => formatBdDate(row.date) }];
@@ -129,7 +136,7 @@ export default function StockLedgerReport({
             },
         );
 
-        if (!isOverview) {
+        if (showLedgerDetails) {
             cols.push({
                 id: 'balance',
                 header: 'Balance',
@@ -138,7 +145,7 @@ export default function StockLedgerReport({
         }
 
         return cols;
-    }, [isOverview, showBranchColumn]);
+    }, [isOverview, showBranchColumn, showLedgerDetails]);
 
     return (
         <>
@@ -200,24 +207,37 @@ export default function StockLedgerReport({
                     emptyMessage="No stock movements for this period."
                 />
 
-                {entries.length > 0 && (
+                {(entries.length > 0 || (showLedgerDetails && dateFrom)) && (
                     <div className="mt-4 space-y-2">
                         <div className="flex flex-wrap justify-end gap-4 rounded-lg border border-blue-950/10 bg-gradient-to-r from-slate-50 to-blue-50/30 px-4 py-3 text-sm dark:from-slate-900/50 dark:to-blue-950/20 sm:gap-6">
+                            {showLedgerDetails && (
+                                <span title="Stock on hand at the start of the selected date range">
+                                    Opening:{' '}
+                                    <QtyCell value={opening_stock} className="font-semibold text-blue-950 dark:text-blue-200" />
+                                </span>
+                            )}
                             <span title="Total quantity received in the selected date range (purchase, initial stock, sale return, distribution in)">
-                                Period In: <QtyCell value={totals.in} className="font-semibold text-emerald-700 dark:text-emerald-400" />
+                                Period In: <QtyCell value={totals.in ?? 0} className="font-semibold text-emerald-700 dark:text-emerald-400" />
                             </span>
                             <span title="Total quantity issued in the selected date range (sale, damage, purchase return, exchange, distribution out)">
-                                Period Out: <QtyCell value={totals.out} className="font-semibold text-red-700 dark:text-red-400" />
+                                Period Out: <QtyCell value={totals.out ?? 0} className="font-semibold text-red-700 dark:text-red-400" />
                             </span>
-                            {!isOverview && (
+                            {showLedgerDetails ? (
                                 <span title="Opening stock + Period In − Period Out">
-                                    Closing: <QtyCell value={totals.balance} className="font-semibold text-blue-950 dark:text-blue-200" />
+                                    Closing:{' '}
+                                    <QtyCell value={closingBalance} className="font-semibold text-blue-950 dark:text-blue-200" />
+                                </span>
+                            ) : (
+                                <span title="Net stock movement in the selected period">
+                                    Net movement:{' '}
+                                    <QtyCell value={closingBalance} className="font-semibold text-blue-950 dark:text-blue-200" />
                                 </span>
                             )}
                         </div>
                         <p className="text-right text-xs text-muted-foreground">
-                            Period In / Out are totals for the selected date range only
-                            {!isOverview ? ' (Opening stock is shown separately and is not included)' : ''}.
+                            {showLedgerDetails
+                                ? 'Opening is stock before the date range. Period In / Out are movement totals only. Closing is the balance at end of period.'
+                                : 'Select a product to view opening balance, running balance, and closing stock. Period In / Out are totals for the selected date range.'}
                         </p>
                     </div>
                 )}

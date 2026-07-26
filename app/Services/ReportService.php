@@ -389,9 +389,11 @@ class ReportService
             'opening_stock' => 0,
             'entries' => $entries,
             'totals' => [
+                'opening' => 0.0,
                 'in' => round($totalIn, 2),
                 'out' => round($totalOut, 2),
                 'balance' => round($totalIn - $totalOut, 2),
+                'closing' => round($totalIn - $totalOut, 2),
             ],
             'current_stock' => 0,
         ];
@@ -475,9 +477,11 @@ class ReportService
             'opening_stock' => round($openingStock, 2),
             'entries' => $entries,
             'totals' => [
+                'opening' => round($openingStock, 2),
                 'in' => round($totalIn, 2),
                 'out' => round($totalOut, 2),
                 'balance' => round($balance, 2),
+                'closing' => round($balance, 2),
             ],
             'current_stock' => round($currentStock, 2),
         ];

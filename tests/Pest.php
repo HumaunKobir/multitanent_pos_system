@@ -6,6 +6,7 @@ use App\Models\Brand;
 use App\Models\Category;
 use App\Models\ChartOfAccount;
 use App\Models\Product;
+use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\Unit;
 use App\Models\User;
@@ -110,7 +111,7 @@ function seedAccountingAccounts(float $minimumBalance = 100000, ?int $branchId =
     return $cash;
 }
 
-function validProductPayload(array $overrides = []): array
+function baseProductPayload(array $overrides = []): array
 {
     Branch::query()->firstOrCreate(
         ['id' => Branch::MAIN_BRANCH_ID],
@@ -132,6 +133,45 @@ function validProductPayload(array $overrides = []): array
         'visible' => 'no',
         'status' => '1',
     ], $overrides);
+}
+
+function validProductPayload(array $overrides = []): array
+{
+    return withInitialStockSupplier(baseProductPayload($overrides));
+}
+
+function withInitialStockSupplier(array $payload, ?int $branchId = null): array
+{
+    if (! empty($payload['initial_stock_supplier_id'])) {
+        return $payload;
+    }
+
+    $branchId ??= Branch::MAIN_BRANCH_ID;
+
+    if (isset($payload['branch_id']) && $payload['branch_id'] !== 'all' && filled($payload['branch_id'])) {
+        $branchId = (int) $payload['branch_id'];
+    }
+
+    $hasStock = isset($payload['initial_stock']) && (int) $payload['initial_stock'] > 0;
+
+    if (! $hasStock && isset($payload['combinations']) && is_array($payload['combinations'])) {
+        foreach ($payload['combinations'] as $combo) {
+            if ((int) ($combo['stock'] ?? 0) > 0) {
+                $hasStock = true;
+                break;
+            }
+        }
+    }
+
+    if (! $hasStock) {
+        return $payload;
+    }
+
+    $supplier = Supplier::factory()->create(['branch_id' => $branchId]);
+
+    return array_merge($payload, [
+        'initial_stock_supplier_id' => (string) $supplier->id,
+    ]);
 }
 
 /**

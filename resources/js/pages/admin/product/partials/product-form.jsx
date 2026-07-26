@@ -490,6 +490,7 @@ const VariationBuilder = forwardRef(function VariationBuilder({
     sizeOptions = [],
     initialVariations = [],
     locked = false,
+    stockReadOnly = false,
     defaultCombinationPrices = null,
     onChange,
     onEnabledChange,
@@ -782,6 +783,11 @@ const VariationBuilder = forwardRef(function VariationBuilder({
 
                     {combinations.length > 0 && (
                         <div className="overflow-x-auto rounded border">
+                            {stockReadOnly && (
+                                <p className="border-b bg-muted/20 px-2 py-1.5 text-[10px] text-muted-foreground">
+                                    Existing variant stock is read-only. You can set stock for newly built combinations only.
+                                </p>
+                            )}
                             <table className="w-full text-xs">
                                 <thead className="border-b bg-muted/40 text-left">
                                     <tr>
@@ -830,7 +836,14 @@ const VariationBuilder = forwardRef(function VariationBuilder({
                                                 {errors[`combinations.${idx}.sku`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.sku`]}</p>}
                                             </td>
                                             <td className="p-2">
-                                                <Input type="number" min="0" className="h-7 w-20 text-xs" value={combo.stock} onChange={(e) => updateCombo(idx, 'stock', e.target.value)} disabled={locked} />
+                                                <Input
+                                                    type="number"
+                                                    min="0"
+                                                    className="h-7 w-20 text-xs"
+                                                    value={combo.stock}
+                                                    onChange={(e) => updateCombo(idx, 'stock', e.target.value)}
+                                                    disabled={locked || (stockReadOnly && combo.id)}
+                                                />
                                                 {errors[`combinations.${idx}.stock`] && <p className="mt-0.5 text-[10px] text-destructive">{errors[`combinations.${idx}.stock`]}</p>}
                                             </td>
                                             <td className="p-2">
@@ -926,7 +939,7 @@ const ProductForm = forwardRef(function ProductForm({
 
     const priceFieldsDisabled = hasVariations && allCombosHavePrices && sharedComboPrices === null;
     const priceFieldsRequired = hasVariations && combinations.length > 0 && (someCombosMissingPrices || !allCombosHavePrices);
-    const stockFieldsDisabled = allCombosHaveStock;
+    const stockFieldsDisabled = isEditing || allCombosHaveStock;
     const showInitialStockField = !hasVariations;
 
     const initialStockTotal = useMemo(
@@ -1139,6 +1152,13 @@ const ProductForm = forwardRef(function ProductForm({
                 }
             }
 
+            if (showInitialStockSettlement && !form.data.initial_stock_supplier_id) {
+                const message = 'Select a supplier for initial stock.';
+                form.setError('initial_stock_supplier_id', message);
+                toast.error(message);
+                return { ok: false, error: message };
+            }
+
             if (showInitialStockSettlement) {
                 const paidAmount = parseFloat(form.data.initial_stock_paid_amount || 0) || 0;
 
@@ -1303,7 +1323,13 @@ const ProductForm = forwardRef(function ProductForm({
                                     onChange={(e) => form.setData('initial_stock', e.target.value)}
                                     placeholder="0"
                                     disabled={stockFieldsDisabled}
+                                    readOnly={isEditing}
                                 />
+                                {isEditing && (
+                                    <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
+                                        Stock cannot be changed here. Use stock adjustment instead.
+                                    </p>
+                                )}
                             </Field>
                         )}
 
@@ -1315,7 +1341,7 @@ const ProductForm = forwardRef(function ProductForm({
                                     </p>
                                 )}
 
-                                <Field label="Supplier (optional)" error={form.errors.initial_stock_supplier_id} className="sm:col-span-2 lg:col-span-1">
+                                <Field label="Supplier" required error={form.errors.initial_stock_supplier_id} className="sm:col-span-2 lg:col-span-1">
                                     <SmartSelect
                                         options={supplierSelectOptions}
                                         value={form.data.initial_stock_supplier_id ? String(form.data.initial_stock_supplier_id) : null}
@@ -1338,13 +1364,10 @@ const ProductForm = forwardRef(function ProductForm({
                                                 };
                                             });
                                         }}
-                                        placeholder="No supplier — opening balance"
+                                        placeholder="Select supplier"
                                         triggerClassName="h-8 text-xs"
                                         optionsClassName="max-h-52"
                                     />
-                                    <p className="mt-0.5 text-[10px] leading-tight text-muted-foreground">
-                                        Leave empty to record initial stock against opening balance instead of a supplier payable.
-                                    </p>
                                 </Field>
 
                                 <Field label="Stock Value">
@@ -1449,6 +1472,7 @@ const ProductForm = forwardRef(function ProductForm({
                         sizeOptions={branchSizeOptions}
                         initialVariations={initialVariations}
                         locked={variantsLocked}
+                        stockReadOnly={isEditing}
                         defaultCombinationPrices={defaultCombinationPrices}
                         onChange={(combos) => form.setData('combinations', combos)}
                         onEnabledChange={handleVariationsToggle}

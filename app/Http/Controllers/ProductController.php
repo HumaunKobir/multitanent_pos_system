@@ -609,6 +609,13 @@ class ProductController extends Controller
         $mainInitialStock = (int) ($data['initial_stock'] ?? 0);
         unset($data['initial_stock']);
 
+        [$combinations, $mainInitialStock] = $this->preserveStockOnProductUpdate(
+            $product,
+            $hasVariations,
+            $combinations,
+            $mainInitialStock,
+        );
+
         $settlement = InitialStockSettlement::fromRequest($data);
         unset(
             $data['initial_stock_supplier_id'],
@@ -1364,6 +1371,52 @@ class ProductController extends Controller
         return Branch::resolveAdminCatalogBranchId();
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $combinations
+     * @return array{0: array<int, array<string, mixed>>, 1: int}
+     */
+    private function preserveStockOnProductUpdate(
+        Product $product,
+        bool $hasVariations,
+        array $combinations,
+        int $requestedMainInitialStock,
+    ): array {
+        if ($hasVariations) {
+            $preservedCombinations = [];
+
+            foreach ($combinations as $combo) {
+                if (! empty($combo['id'])) {
+                    $variation = $product->variations()->find((int) $combo['id']);
+
+                    if ($variation !== null) {
+                        $combo['stock'] = (string) $variation->stock;
+                    }
+                }
+
+                $preservedCombinations[] = $combo;
+            }
+
+            return [$preservedCombinations, $requestedMainInitialStock];
+        }
+
+        $record = $product->initialStockRecord()->first();
+
+        if ($record !== null) {
+            return [$combinations, (int) $record->quantity];
+        }
+
+        $batchStock = (int) Batch::query()
+            ->where('product_id', $product->id)
+            ->whereNull('product_variation_id')
+            ->sum('available');
+
+        if ($batchStock > 0) {
+            return [$combinations, $batchStock];
+        }
+
+        return [$combinations, 0];
+    }
+
     private function assertInitialStockSettlement(
         InitialStockSettlement $settlement,
         float $initialStockValue,
@@ -1371,6 +1424,12 @@ class ProductController extends Controller
     ): void {
         if ($initialStockValue <= 0) {
             return;
+        }
+
+        if (! $settlement->usesSupplier()) {
+            throw ValidationException::withMessages([
+                'initial_stock_supplier_id' => 'Select a supplier for initial stock.',
+            ]);
         }
 
         if ($settlement->paidAmount > round($initialStockValue + 0.001, 2)) {

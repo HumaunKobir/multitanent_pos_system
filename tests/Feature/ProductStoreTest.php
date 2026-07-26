@@ -633,6 +633,17 @@ test('product store rejects initial stock paid amount above stock value', functi
         ->assertSessionHasErrors('initial_stock_paid_amount');
 });
 
+test('product store requires supplier when initial stock is provided', function () {
+    $admin = productStoreAdmin();
+
+    $this->actingAs($admin)
+        ->post(route('product.store'), baseProductPayload([
+            'initial_stock' => '10',
+            'purchase_price' => '50',
+        ]))
+        ->assertSessionHasErrors('initial_stock_supplier_id');
+});
+
 test('product store saves gallery photos', function () {
     Storage::fake('public');
 

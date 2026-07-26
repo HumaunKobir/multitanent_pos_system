@@ -1,6 +1,5 @@
 <?php
 
-use App\Enums\SystemAccountKey;
 use App\Models\Barcode;
 use App\Models\Batch;
 use App\Models\Branch;
@@ -19,7 +18,6 @@ use App\Models\Supplier;
 use App\Models\Transaction;
 use App\Models\Unit;
 use App\Models\User;
-use App\Services\SystemAccountService;
 use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
@@ -36,9 +34,9 @@ function productUpdateAdmin(): User
     return $admin;
 }
 
-function productUpdatePayload(Product $product, array $overrides = []): array
+function productUpdatePayload(Product $product, array $overrides = [], bool $autoSupplier = true): array
 {
-    return array_merge([
+    $payload = array_merge([
         'category_id' => (string) $product->category_id,
         'brand_id' => (string) $product->brand_id,
         'unit_id' => (string) $product->unit_id,
@@ -49,6 +47,10 @@ function productUpdatePayload(Product $product, array $overrides = []): array
         'visible' => 'yes',
         'status' => '1',
     ], $overrides);
+
+    return $autoSupplier
+        ? withInitialStockSupplier($payload, (int) $product->branch_id)
+        : $payload;
 }
 
 test('product edit page includes variant data and lock flag', function () {
@@ -335,7 +337,7 @@ test('product update syncs variations when not locked', function () {
 
     expect((float) $variation->price)->toBe(220.0)
         ->and((float) $variation->purchase_price)->toBe(130.0)
-        ->and($variation->stock)->toBe(7);
+        ->and($variation->stock)->toBe(5);
 });
 
 test('product update saves multiple colors and sizes even when variants are locked', function () {
@@ -468,7 +470,7 @@ test('product update can update supplier settlement when product has sales histo
     expect((float) $product->initial_stock_paid_amount)->toBe(500.0)
         ->and((float) $variation->price)->toBe(999.0)
         ->and((float) $variation->purchase_price)->toBe(888.0)
-        ->and($variation->stock)->toBe(99)
+        ->and($variation->stock)->toBe(10)
         ->and((float) $supplier->fresh()->balance)->toBeGreaterThan(0.0);
 
     $transactions = Transaction::query()
@@ -535,7 +537,7 @@ test('product update still syncs variation changes after sales history exists', 
 
     expect((float) $variation->price)->toBe(999.0)
         ->and((float) $variation->purchase_price)->toBe(888.0)
-        ->and($variation->stock)->toBe(99);
+        ->and($variation->stock)->toBe(4);
 });
 
 test('product update syncs non-variant initial stock with accounting', function () {
@@ -574,14 +576,14 @@ test('product update syncs non-variant initial stock with accounting', function 
         ->assertRedirect(route('product.index'));
 
     $batch->refresh();
-    expect((float) $batch->available)->toBe(15.0);
+    expect((float) $batch->available)->toBe(10.0);
 
     $record = ProductInitialStock::query()
         ->where('product_id', $product->id)
         ->whereNull('product_variation_id')
         ->first();
 
-    expect($record->quantity)->toBe(15);
+    expect($record->quantity)->toBe(10);
 
     $transactions = Transaction::query()
         ->where('source_type', ProductInitialStock::class)
@@ -624,19 +626,13 @@ test('product update initial stock matches on hand without double reducing batch
 
     $batch->refresh();
 
-    expect((float) $batch->available)->toBe(7.0)
-        ->and((int) ProductInitialStock::query()->where('product_id', $product->id)->value('quantity'))->toBe(7);
+    expect((float) $batch->available)->toBe(10.0)
+        ->and((int) ProductInitialStock::query()->where('product_id', $product->id)->value('quantity'))->toBe(10);
 });
 
-test('product update opening stock without supplier posts to product inventory and owners capital', function () {
+test('product update rejects initial stock without supplier', function () {
     $admin = productUpdateAdmin();
     seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
-
-    $inventory = SystemAccountService::resolve(SystemAccountKey::ProductInventory, Branch::MAIN_BRANCH_ID);
-    $capital = SystemAccountService::resolve(SystemAccountKey::OwnersCapital, Branch::MAIN_BRANCH_ID);
-
-    $initialInventory = (float) $inventory->fresh()->current_balance;
-    $initialCapital = (float) $capital->fresh()->current_balance;
 
     $product = Product::factory()->create([
         'branch_id' => Branch::MAIN_BRANCH_ID,
@@ -652,21 +648,9 @@ test('product update opening stock without supplier posts to product inventory a
         ->patch(route('product.update', $product), productUpdatePayload($product, [
             'initial_stock' => '10',
             'purchase_price' => '100',
-        ]))
-        ->assertRedirect(route('product.index'));
-
-    expect((float) $inventory->fresh()->current_balance)->toBe(round($initialInventory + 1000, 2))
-        ->and((float) $capital->fresh()->current_balance)->toBe(round($initialCapital + 1000, 2));
-
-    $this->actingAs($admin)
-        ->patch(route('product.update', $product), productUpdatePayload($product, [
-            'initial_stock' => '12',
-            'purchase_price' => '100',
-        ]))
-        ->assertRedirect(route('product.index'));
-
-    expect((float) $inventory->fresh()->current_balance)->toBe(round($initialInventory + 1200, 2))
-        ->and((float) $capital->fresh()->current_balance)->toBe(round($initialCapital + 1200, 2));
+            'initial_stock_supplier_id' => '',
+        ], autoSupplier: false))
+        ->assertSessionHasErrors('initial_stock_supplier_id');
 });
 
 test('product update can add supplier settlement to existing initial stock', function () {

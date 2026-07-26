@@ -2042,6 +2042,37 @@ test('branch stock ledger includes initial stock movements', function () {
             ->where('entries.0.in', 12));
 });
 
+test('stock ledger current stock matches inventory warehouse stock', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = reportUser([ReportController::PERMISSION_STOCK_LEDGER]);
+    $user->update(['branch_id' => $branch->id]);
+
+    $product = Product::factory()->create(['branch_id' => $branch->id]);
+
+    Batch::factory()->create([
+        'branch_id' => $branch->id,
+        'product_id' => $product->id,
+        'available' => 288,
+    ]);
+
+    Batch::factory()->create([
+        'branch_id' => null,
+        'product_id' => $product->id,
+        'available' => 12,
+    ]);
+
+    $date = now()->format('Y-m-d');
+
+    $this->actingAs($user)
+        ->get('/report/stock-ledger?product_id='.$product->id.'&date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('product.current_stock', 288)
+            ->where('totals.closing', 288));
+});
+
 test('stock ledger shows product edit stock decreases in out column', function () {
     $this->artisan('permissions:sync');
 

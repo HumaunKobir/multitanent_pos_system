@@ -1040,13 +1040,17 @@ class ProductController extends Controller
                             (float) $purchasePrice,
                             $product->name.' — '.($variationData['label'] ?? $combo['variant']),
                         );
-                    } elseif (round($oldPurchasePrice, 2) !== round((float) $purchasePrice, 2)) {
-                        $this->initialStock->reconcileUnitCostChange(
-                            $product,
-                            $variation,
-                            (float) $purchasePrice,
-                            $product->name.' — '.($variationData['label'] ?? $combo['variant']),
-                        );
+                    } else {
+                        $this->initialStock->syncVariationOpeningStockRecord($product, $variation->fresh());
+
+                        if (round($oldPurchasePrice, 2) !== round((float) $purchasePrice, 2)) {
+                            $this->initialStock->reconcileUnitCostChange(
+                                $product,
+                                $variation,
+                                (float) $purchasePrice,
+                                $product->name.' — '.($variationData['label'] ?? $combo['variant']),
+                            );
+                        }
                     }
 
                     Barcode::query()->updateOrCreate(

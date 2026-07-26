@@ -591,6 +591,43 @@ test('product update syncs non-variant initial stock with accounting', function 
     expect($transactions)->toHaveCount(2);
 });
 
+test('product update initial stock matches on hand without double reducing batch stock', function () {
+    $admin = productUpdateAdmin();
+    seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+
+    $product = Product::factory()->create([
+        'branch_id' => Branch::MAIN_BRANCH_ID,
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+        'purchase_price' => 50,
+        'sale_price' => 80,
+    ]);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), productUpdatePayload($product, [
+            'initial_stock' => '10',
+            'purchase_price' => '50',
+        ]))
+        ->assertRedirect(route('product.index'));
+
+    $batch = Batch::query()->where('product_id', $product->id)->firstOrFail();
+    $batch->decrement('available', 3);
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), productUpdatePayload($product, [
+            'initial_stock' => '7',
+            'purchase_price' => '50',
+        ]))
+        ->assertRedirect(route('product.index'));
+
+    $batch->refresh();
+
+    expect((float) $batch->available)->toBe(7.0)
+        ->and((int) ProductInitialStock::query()->where('product_id', $product->id)->value('quantity'))->toBe(7);
+});
+
 test('product update opening stock without supplier posts to product inventory and owners capital', function () {
     $admin = productUpdateAdmin();
     seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);

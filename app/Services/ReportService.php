@@ -9,7 +9,6 @@ use App\Enums\ReceivedPaymentMethod;
 use App\Enums\SaleType;
 use App\Enums\SystemAccountKey;
 use App\Enums\VoucherType;
-use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Models\Color;
@@ -22,7 +21,6 @@ use App\Models\ProductExchange;
 use App\Models\ProductExchangeProduct;
 use App\Models\ProductInitialStock;
 use App\Models\ProductInOutLog;
-use App\Models\ProductVariation;
 use App\Models\Promotion;
 use App\Models\Purchase;
 use App\Models\PurchaseReturn;
@@ -48,6 +46,7 @@ class ReportService
         private InventoryCostService $costService,
         private BusinessSessionTransactionScope $transactionScope,
         private SellExchangeOverlayService $exchangeOverlay,
+        private ProductBranchStockService $productBranchStock,
     ) {}
 
     /**
@@ -464,7 +463,7 @@ class ReportService
             return $entry;
         })->all();
 
-        $currentStock = $this->productCurrentStock($productId, $branchId);
+        $currentStock = $this->productBranchStock->currentStock($productId, $branchId);
 
         return [
             'mode' => 'ledger',
@@ -532,7 +531,7 @@ class ReportService
         $effectiveBranchId = $this->resolveReportBranchFilter($filterBranchId);
 
         return ProductInOutLog::query()
-            ->when($effectiveBranchId !== null, fn (Builder $q) => $this->scopeProductInOutLogForBranch($q, $effectiveBranchId))
+            ->when($effectiveBranchId !== null, fn (Builder $q) => $this->productBranchStock->scopeLogsForWarehouse($q, $effectiveBranchId))
             ->when($productId !== null, fn (Builder $q) => $q->where('product_id', $productId))
             ->when($dateFrom, fn (Builder $q, string $d) => $q->whereDate('created_at', '>=', $d))
             ->when($dateTo, fn (Builder $q, string $d) => $q->whereDate('created_at', '<=', $d))
@@ -2825,7 +2824,7 @@ class ReportService
         $allowedTypes = $this->allStockMovementTypes();
 
         return ProductInOutLog::query()
-            ->when($branchId !== null, fn (Builder $q) => $this->scopeProductInOutLogForBranch($q, $branchId))
+            ->when($branchId !== null, fn (Builder $q) => $this->productBranchStock->scopeLogsForWarehouse($q, $branchId))
             ->when($productId !== null, fn (Builder $q) => $q->where('product_id', $productId))
             ->when($dateFrom, fn (Builder $q, string $date) => $q->whereDate('created_at', '>=', $date))
             ->when($dateTo, fn (Builder $q, string $date) => $q->whereDate('created_at', '<=', $date))
@@ -2848,42 +2847,6 @@ class ReportService
             ProductLogType::Adjustment_In,
             ProductLogType::Adjustment_Out,
         ];
-    }
-
-    private function productCurrentStock(int $productId, ?int $branchId): float
-    {
-        $variationQuery = ProductVariation::query()->where('product_id', $productId);
-
-        if ($branchId !== null) {
-            $variationQuery->where('branch_id', $branchId);
-        }
-
-        if ($variationQuery->exists()) {
-            return (float) $variationQuery->sum('stock');
-        }
-
-        $query = Batch::query()->where('product_id', $productId);
-
-        if ($branchId === null) {
-            return (float) $query->sum('available');
-        }
-
-        return (float) $this->scopeBatchForBranch($query, $branchId)->sum('available');
-    }
-
-    private function scopeBatchForBranch(Builder $query, int $branchId): Builder
-    {
-        if (Branch::isMainBranch($branchId)) {
-            return $query->where(function (Builder $q) {
-                $q->where('branch_id', Branch::MAIN_BRANCH_ID)
-                    ->orWhereNull('branch_id');
-            });
-        }
-
-        return $query->where(function (Builder $q) use ($branchId) {
-            $q->where('branch_id', $branchId)
-                ->orWhereNull('branch_id');
-        });
     }
 
     private function productStockBalanceBeforeAllBranches(int $productId, string $dateFrom): float
@@ -2910,7 +2873,7 @@ class ReportService
         $balance = 0.0;
         $allowedTypes = array_map(fn ($t) => $t->value, $this->allStockMovementTypes());
 
-        $this->scopeProductInOutLogForBranch(ProductInOutLog::query(), $branchId)
+        $this->productBranchStock->scopeLogsForWarehouse(ProductInOutLog::query(), $branchId)
             ->where('product_id', $productId)
             ->whereDate('created_at', '<', $dateFrom)
             ->whereIn('type', $allowedTypes)
@@ -2922,18 +2885,6 @@ class ReportService
             });
 
         return $balance;
-    }
-
-    private function scopeProductInOutLogForBranch(Builder $query, int $branchId): Builder
-    {
-        if (Branch::isMainBranch($branchId)) {
-            return $query->where(function (Builder $q) {
-                $q->where('branch_id', Branch::MAIN_BRANCH_ID)
-                    ->orWhereNull('branch_id');
-            });
-        }
-
-        return $query->where('branch_id', $branchId);
     }
 
     /**

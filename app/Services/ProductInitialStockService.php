@@ -45,9 +45,35 @@ class ProductInitialStockService
         ]);
 
         $oldQuantity = (int) ($record->quantity ?? 0);
-        $delta = $newQuantity - $oldQuantity;
+        $batch = null;
 
-        if ($delta === 0 && $record->exists) {
+        if ($newQuantity > 0) {
+            $batch = $this->resolveBatch($record, $product, $unitCost);
+        } elseif ($record->batch_id !== null) {
+            $batch = Batch::query()->find($record->batch_id);
+        }
+
+        $delta = $batch !== null
+            ? $newQuantity - (int) round((float) $batch->available)
+            : $newQuantity - $oldQuantity;
+
+        if ($delta === 0) {
+            if ($newQuantity === 0) {
+                if ($record->exists) {
+                    $record->delete();
+                }
+
+                return;
+            }
+
+            $record->fill([
+                'batch_id' => $batch?->id,
+                'branch_id' => $product->branch_id,
+                'quantity' => $newQuantity,
+                'unit_cost' => $unitCost,
+            ]);
+            $record->save();
+
             $this->reconcileUnitCostChange(
                 $product,
                 null,
@@ -58,18 +84,12 @@ class ProductInitialStockService
             return;
         }
 
-        $batch = null;
-
-        if ($newQuantity > 0) {
-            $batch = $this->resolveBatch($record, $product, $unitCost);
-
+        if ($newQuantity > 0 && $batch !== null) {
             if ($delta < 0 && (float) $batch->available < abs($delta)) {
                 throw new RuntimeException('Cannot reduce initial stock below the quantity already used from stock.');
             }
-        } elseif ($record->batch_id !== null) {
-            $batch = Batch::query()->find($record->batch_id);
-
-            if ($batch !== null && (float) $batch->available < abs($delta)) {
+        } elseif ($batch !== null && $newQuantity === 0) {
+            if ((float) $batch->available < abs($delta)) {
                 throw new RuntimeException('Cannot reduce initial stock below the quantity already used from stock.');
             }
         }
@@ -243,6 +263,7 @@ class ProductInitialStockService
                 $delta > 0,
                 $label,
             );
+            $this->syncVariationOpeningStockRecord($product, $variation, $record);
         }
 
         if ($this->skipPerRecordAccounting) {
@@ -255,6 +276,43 @@ class ProductInitialStockService
             $delta > 0,
             $label,
         );
+    }
+
+    public function syncVariationOpeningStockRecord(
+        Product $product,
+        ProductVariation $variation,
+        ?ProductInitialStock $record = null,
+    ): void {
+        $record ??= ProductInitialStock::query()->firstWhere([
+            'product_id' => $product->id,
+            'product_variation_id' => $variation->id,
+        ]);
+
+        $stock = max(0, (int) $variation->stock);
+
+        if ($stock === 0) {
+            $record?->delete();
+
+            return;
+        }
+
+        if ($record === null) {
+            ProductInitialStock::query()->create([
+                'product_id' => $product->id,
+                'product_variation_id' => $variation->id,
+                'branch_id' => $variation->branch_id ?? $product->branch_id,
+                'quantity' => $stock,
+                'unit_cost' => (float) $variation->purchase_price,
+            ]);
+
+            return;
+        }
+
+        $record->update([
+            'quantity' => $stock,
+            'unit_cost' => (float) $variation->purchase_price,
+            'branch_id' => $variation->branch_id ?? $product->branch_id,
+        ]);
     }
 
     /**
@@ -559,7 +617,7 @@ class ProductInitialStockService
 
         ProductInOutLog::create([
             'batch_id' => $batch->id,
-            'branch_id' => $product->branch_id,
+            'branch_id' => $branchId,
             'product_id' => $product->id,
             'quantity' => $increase ? $quantity : -$quantity,
             'type' => ProductLogType::InitialStock->value,

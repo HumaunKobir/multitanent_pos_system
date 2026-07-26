@@ -6,8 +6,11 @@ use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Product;
 use App\Models\ProductInitialStock;
+use App\Models\Unit;
 use App\Models\User;
+use Illuminate\Foundation\Http\Middleware\PreventRequestForgery;
 use Inertia\Testing\AssertableInertia as Assert;
+use Spatie\Permission\Models\Permission;
 
 function openingStockMainBranch(): int
 {
@@ -85,4 +88,62 @@ test('opening stock report lists initial stock records', function () {
             ->where('rows.data.0.stock_value', 1200)
             ->where('summary.total_qty', 12)
             ->where('summary.total_value', 1200));
+});
+
+test('opening stock report reflects non-variant product edit initial stock changes', function () {
+    $this->withoutMiddleware(PreventRequestForgery::class);
+
+    $mainBranchId = openingStockMainBranch();
+    $admin = openingStockAdmin();
+    Permission::findOrCreate('product.update', 'web');
+    $admin->givePermissionTo('product.update');
+
+    seedAccountingAccounts(branchId: $mainBranchId);
+
+    $product = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'category_id' => Category::factory()->create(['status' => 1])->id,
+        'brand_id' => Brand::factory()->create(['status' => 1])->id,
+        'unit_id' => Unit::query()->create(['name' => 'Unit '.fake()->unique()->numerify('####'), 'status' => 1])->id,
+        'code' => fake()->unique()->numerify('########'),
+        'purchase_price' => 50,
+        'sale_price' => 80,
+        'status' => 1,
+    ]);
+
+    $payload = [
+        'category_id' => (string) $product->category_id,
+        'brand_id' => (string) $product->brand_id,
+        'unit_id' => (string) $product->unit_id,
+        'name' => $product->name,
+        'code' => $product->code,
+        'purchase_price' => '50',
+        'sale_price' => '80',
+        'visible' => 'yes',
+        'status' => '1',
+    ];
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), array_merge($payload, ['initial_stock' => '10']))
+        ->assertRedirect(route('product.index'));
+
+    $this->actingAs($admin)
+        ->get(route('report.opening-stock', ['search' => $product->name]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('rows.data.0.quantity', 10)
+            ->where('rows.data.0.stock_value', 500));
+
+    $this->actingAs($admin)
+        ->patch(route('product.update', $product), array_merge($payload, ['initial_stock' => '7']))
+        ->assertRedirect(route('product.index'));
+
+    $this->actingAs($admin)
+        ->get(route('report.opening-stock', ['search' => $product->name]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('rows.data.0.quantity', 7)
+            ->where('rows.data.0.stock_value', 350)
+            ->where('summary.total_qty', 7)
+            ->where('summary.total_value', 350));
 });

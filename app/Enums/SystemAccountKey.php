@@ -37,6 +37,8 @@ enum SystemAccountKey: string
     case Expenses = 'expenses';
     case CostOfGoodsSold = 'cost_of_goods_sold';
     case InventoryDamage = 'inventory_damage';
+    case StockAdjustmentGain = 'stock_adjustment_gain';
+    case StockAdjustmentLoss = 'stock_adjustment_loss';
     case PurchaseReturns = 'purchase_returns';
     case RentExpense = 'rent_expense';
     case SalaryExpense = 'salary_expense';
@@ -86,6 +88,8 @@ enum SystemAccountKey: string
             self::Expenses => 'Expenses',
             self::CostOfGoodsSold => 'Cost of Goods Sold',
             self::InventoryDamage => 'Inventory Damage / Write-off',
+            self::StockAdjustmentGain => 'Stock Adjustment Gain',
+            self::StockAdjustmentLoss => 'Stock Adjustment Loss',
             self::PurchaseReturns => 'Purchase Returns',
             self::RentExpense => 'Rent',
             self::SalaryExpense => 'Salary',
@@ -108,8 +112,8 @@ enum SystemAccountKey: string
             self::OwnersCapital, self::RetainedEarnings, self::CurrentYearEarnings, self::OwnersDrawings,
             self::OpeningBalanceEquity, self::OpeningBalanceClearing => AccountType::Equity,
             self::SalesRevenue, self::ProductSales, self::SalesReturns, self::OtherIncome,
-            self::DiscountApplied, self::CoinDiscountApplied => AccountType::Income,
-            self::Expenses, self::CostOfGoodsSold, self::InventoryDamage, self::PurchaseReturns,
+            self::StockAdjustmentGain, self::DiscountApplied, self::CoinDiscountApplied => AccountType::Income,
+            self::Expenses, self::CostOfGoodsSold, self::InventoryDamage, self::StockAdjustmentLoss, self::PurchaseReturns,
             self::RentExpense, self::SalaryExpense, self::UtilitiesExpense => AccountType::Expenses,
         };
     }
@@ -136,7 +140,8 @@ enum SystemAccountKey: string
             self::OutputVat, self::TaxesPaid => self::TaxesPayable,
             self::OpeningBalanceClearing => self::OpeningBalanceEquity,
             self::ProductSales, self::SalesReturns, self::DiscountApplied, self::CoinDiscountApplied => self::SalesRevenue,
-            self::CostOfGoodsSold, self::InventoryDamage, self::PurchaseReturns,
+            self::StockAdjustmentGain => self::OtherIncome,
+            self::CostOfGoodsSold, self::InventoryDamage, self::StockAdjustmentLoss, self::PurchaseReturns,
             self::RentExpense, self::SalaryExpense, self::UtilitiesExpense => self::Expenses,
             default => null,
         };

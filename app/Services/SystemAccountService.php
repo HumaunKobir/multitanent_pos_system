@@ -172,6 +172,8 @@ class SystemAccountService
             SystemAccountKey::Expenses,
             SystemAccountKey::CostOfGoodsSold,
             SystemAccountKey::InventoryDamage,
+            SystemAccountKey::StockAdjustmentGain,
+            SystemAccountKey::StockAdjustmentLoss,
             SystemAccountKey::RentExpense,
             SystemAccountKey::SalaryExpense,
             SystemAccountKey::UtilitiesExpense,
@@ -393,6 +395,7 @@ class SystemAccountService
             SystemAccountKey::DiscountApplied => 'I001-03',
             SystemAccountKey::CoinDiscountApplied => 'I001-04',
             SystemAccountKey::OtherIncome => 'I002',
+            SystemAccountKey::StockAdjustmentGain => 'I002-01',
             SystemAccountKey::Expenses => 'X001',
             SystemAccountKey::CostOfGoodsSold => 'X001-01',
             SystemAccountKey::InventoryDamage => 'X001-02',
@@ -400,6 +403,7 @@ class SystemAccountService
             SystemAccountKey::RentExpense => 'X001-04',
             SystemAccountKey::SalaryExpense => 'X001-05',
             SystemAccountKey::UtilitiesExpense => 'X001-06',
+            SystemAccountKey::StockAdjustmentLoss => 'X001-07',
         };
     }
 

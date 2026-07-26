@@ -415,12 +415,78 @@ class InventoryAccountingService
     }
 
     /**
-     * Stock adjustments correct on-hand quantity only; they are not purchases
-     * and must not post supplier payables, owner capital, or inventory GL entries.
+     * Stock adjustments update on-hand quantity and post inventory vs adjustment gain/loss.
+     * They are not purchases and must not affect supplier payables or purchase reports.
      */
     public function postStockAdjustment(StockAdjustment $adjustment): ?Transaction
     {
-        return null;
+        $adjustment->loadMissing([
+            'products.product:id,name,branch_id,purchase_price',
+            'products.variation:id,purchase_price',
+        ]);
+
+        $serial = $adjustment->serial ?? $adjustment->invoice_number;
+        $branchId = $adjustment->branch_id;
+        $isIncrease = $adjustment->isIncrease();
+        $totalCost = 0.0;
+
+        foreach ($adjustment->products as $line) {
+            if ($line->product === null) {
+                continue;
+            }
+
+            $lineCost = app(InventoryCostService::class)->costForStockAdjustmentLine($line);
+
+            if ($lineCost > 0) {
+                $totalCost += $lineCost;
+            }
+        }
+
+        $totalCost = round($totalCost, 2);
+
+        if ($totalCost <= 0) {
+            return null;
+        }
+
+        SystemAccountService::ensureConfigured($branchId);
+
+        $lines = $isIncrease
+            ? [
+                $this->debitLine(
+                    SystemAccountKey::ProductInventory,
+                    $totalCost,
+                    "Inventory increased — Stock Adjustment {$serial}",
+                    $branchId,
+                ),
+                $this->creditLine(
+                    SystemAccountKey::StockAdjustmentGain,
+                    $totalCost,
+                    "Stock adjustment gain — Adjustment {$serial}",
+                    $branchId,
+                ),
+            ]
+            : [
+                $this->debitLine(
+                    SystemAccountKey::StockAdjustmentLoss,
+                    $totalCost,
+                    "Stock adjustment loss — Adjustment {$serial}",
+                    $branchId,
+                ),
+                $this->creditLine(
+                    SystemAccountKey::ProductInventory,
+                    $totalCost,
+                    "Inventory reduced — Stock Adjustment {$serial}",
+                    $branchId,
+                ),
+            ];
+
+        return $this->postJournal(
+            StockAdjustment::class,
+            $adjustment->id,
+            $adjustment->date->format('Y-m-d'),
+            "Stock Adjustment {$serial}",
+            $lines,
+        );
     }
 
     public function postStockDistribution(StockDistribution $distribution, float $totalCost): Transaction

@@ -216,6 +216,8 @@ class StockAdjustmentController extends Controller
                     $adjustment->products()->create($line);
                 }
 
+                $adjustment->load('products');
+                $this->accounting->postStockAdjustment($adjustment);
             });
         } catch (\Throwable $e) {
             return back()

@@ -5,6 +5,7 @@ use App\Enums\StockAdjustmentType;
 use App\Enums\SystemAccountKey;
 use App\Models\Batch;
 use App\Models\Branch;
+use App\Models\Ledger;
 use App\Models\Product;
 use App\Models\StockAdjustment;
 use App\Models\Supplier;
@@ -138,7 +139,7 @@ test('stock adjustment increase adds batch stock', function () {
     ]);
 });
 
-test('stock adjustment does not post accounting entries', function () {
+test('stock adjustment increase debits product inventory and credits stock adjustment gain', function () {
     $this->withoutMiddleware(PreventRequestForgery::class);
 
     $branch = stockAdjustmentBranch();
@@ -146,27 +147,29 @@ test('stock adjustment does not post accounting entries', function () {
     seedAccountingAccounts(branchId: $branch->id);
 
     $inventory = SystemAccountService::resolve(SystemAccountKey::ProductInventory, $branch->id);
-    $capital = SystemAccountService::resolve(SystemAccountKey::OwnersCapital, $branch->id);
+    $gain = SystemAccountService::resolve(SystemAccountKey::StockAdjustmentGain, $branch->id);
+    $loss = SystemAccountService::resolve(SystemAccountKey::StockAdjustmentLoss, $branch->id);
     $payables = SystemAccountService::resolve(SystemAccountKey::SupplierPayables, $branch->id);
     $supplier = Supplier::factory()->create(['branch_id' => $branch->id, 'balance' => 0]);
 
     $initialInventory = (float) $inventory->fresh()->current_balance;
-    $initialCapital = (float) $capital->fresh()->current_balance;
+    $initialGain = (float) $gain->fresh()->current_balance;
+    $initialLoss = (float) $loss->fresh()->current_balance;
     $initialPayables = (float) $payables->fresh()->current_balance;
 
     $product = Product::factory()->create([
         'branch_id' => $branch->id,
         'initial_stock_supplier_id' => $supplier->id,
-        'purchase_price' => 50,
-        'sale_price' => 100,
+        'purchase_price' => 100,
+        'sale_price' => 200,
         'status' => 1,
     ]);
 
     Batch::factory()->create([
         'branch_id' => $branch->id,
         'product_id' => $product->id,
-        'purchase_price' => 50,
-        'available' => 4,
+        'purchase_price' => 100,
+        'available' => 8,
     ]);
 
     $this->actingAs($user)
@@ -174,20 +177,82 @@ test('stock adjustment does not post accounting entries', function () {
             'date' => now()->format('Y-m-d'),
             'type' => StockAdjustmentType::Increase->value,
             'items' => [
-                ['product_id' => $product->id, 'variation_id' => null, 'quantity' => 3],
+                ['product_id' => $product->id, 'variation_id' => null, 'quantity' => 2],
             ],
         ])
         ->assertRedirect(route('inventory.stock-adjustment.index'));
 
-    expect((float) $inventory->fresh()->current_balance)->toBe($initialInventory)
-        ->and((float) $capital->fresh()->current_balance)->toBe($initialCapital)
+    expect((float) $inventory->fresh()->current_balance)->toBe(round($initialInventory + 200, 2))
+        ->and((float) $gain->fresh()->current_balance)->toBe(round($initialGain + 200, 2))
+        ->and((float) $loss->fresh()->current_balance)->toBe($initialLoss)
         ->and((float) $payables->fresh()->current_balance)->toBe($initialPayables)
         ->and((float) $supplier->fresh()->balance)->toBe(0.0);
 
     $adjustment = StockAdjustment::query()->latest('id')->firstOrFail();
-
-    expect(Transaction::query()
+    $transaction = Transaction::query()
         ->where('source_type', StockAdjustment::class)
         ->where('source_id', $adjustment->id)
-        ->exists())->toBeFalse();
+        ->first();
+
+    expect($transaction)->not->toBeNull();
+
+    $accountIds = Ledger::query()->where('transaction_id', $transaction->id)->pluck('account_id')->all();
+
+    expect($accountIds)->toContain($inventory->id, $gain->id);
+});
+
+test('stock adjustment decrease debits stock adjustment loss and credits product inventory', function () {
+    $this->withoutMiddleware(PreventRequestForgery::class);
+
+    $branch = stockAdjustmentBranch();
+    $user = stockAdjustmentUser($branch);
+    seedAccountingAccounts(branchId: $branch->id);
+
+    $inventory = SystemAccountService::resolve(SystemAccountKey::ProductInventory, $branch->id);
+    $gain = SystemAccountService::resolve(SystemAccountKey::StockAdjustmentGain, $branch->id);
+    $loss = SystemAccountService::resolve(SystemAccountKey::StockAdjustmentLoss, $branch->id);
+
+    $initialInventory = (float) $inventory->fresh()->current_balance;
+    $initialGain = (float) $gain->fresh()->current_balance;
+    $initialLoss = (float) $loss->fresh()->current_balance;
+
+    $product = Product::factory()->create([
+        'branch_id' => $branch->id,
+        'purchase_price' => 100,
+        'sale_price' => 200,
+        'status' => 1,
+    ]);
+
+    Batch::factory()->create([
+        'branch_id' => $branch->id,
+        'product_id' => $product->id,
+        'purchase_price' => 100,
+        'available' => 10,
+    ]);
+
+    $this->actingAs($user)
+        ->post(route('inventory.stock-adjustment.store'), [
+            'date' => now()->format('Y-m-d'),
+            'type' => StockAdjustmentType::Decrease->value,
+            'items' => [
+                ['product_id' => $product->id, 'variation_id' => null, 'quantity' => 2],
+            ],
+        ])
+        ->assertRedirect(route('inventory.stock-adjustment.index'));
+
+    expect((float) $inventory->fresh()->current_balance)->toBe(round($initialInventory - 200, 2))
+        ->and((float) $loss->fresh()->current_balance)->toBe(round($initialLoss + 200, 2))
+        ->and((float) $gain->fresh()->current_balance)->toBe($initialGain);
+
+    $adjustment = StockAdjustment::query()->latest('id')->firstOrFail();
+    $transaction = Transaction::query()
+        ->where('source_type', StockAdjustment::class)
+        ->where('source_id', $adjustment->id)
+        ->first();
+
+    expect($transaction)->not->toBeNull();
+
+    $accountIds = Ledger::query()->where('transaction_id', $transaction->id)->pluck('account_id')->all();
+
+    expect($accountIds)->toContain($inventory->id, $loss->id);
 });

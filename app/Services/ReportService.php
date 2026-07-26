@@ -2433,15 +2433,21 @@ class ReportService
         }
 
         if ($account->type === AccountType::Income) {
+            if ($accountNumber === SystemAccountKey::StockAdjustmentGain->accountNumber()) {
+                return 'other_income';
+            }
+
             return 'sales_revenue';
         }
 
         if (
             $accountNumber === SystemAccountKey::CostOfGoodsSold->accountNumber()
             || $accountNumber === SystemAccountKey::InventoryDamage->accountNumber()
+            || $accountNumber === SystemAccountKey::StockAdjustmentLoss->accountNumber()
             || str_contains($name, 'cost of goods')
             || str_contains($name, 'cogs')
             || str_contains($name, 'inventory damage')
+            || str_contains($name, 'stock adjustment loss')
         ) {
             return 'cogs';
         }

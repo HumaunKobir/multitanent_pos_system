@@ -1253,10 +1253,116 @@ test('date wise stock filters movements by selected product only', function () {
     $this->actingAs($user)
         ->getJson('/report/date-wise-stock?product_id='.$productA->id.'&date_from='.$date.'&date_to='.$date)
         ->assertOk()
+        ->assertJsonPath('mode', 'ledger')
         ->assertJsonCount(1, 'entries')
         ->assertJsonPath('entries.0.product', 'Date Stock A')
-        ->assertJsonPath('entries.0.quantity', 3)
+        ->assertJsonPath('entries.0.in_qty', 3)
+        ->assertJsonPath('entries.0.transaction_type', 'Purchase')
         ->assertJsonMissing(['product' => 'Date Stock B']);
+});
+
+test('date wise stock includes purchase sale and adjustment movements', function () {
+    $this->artisan('permissions:sync');
+
+    $user = reportUser([ReportController::PERMISSION_DATE_WISE_STOCK]);
+    $branch = Branch::factory()->create();
+    $user->update(['branch_id' => $branch->id]);
+
+    $product = Product::factory()->create([
+        'branch_id' => $branch->id,
+        'name' => 'Ledger Product',
+        'purchase_price' => 10,
+    ]);
+    $batch = Batch::factory()->for($product)->withStock(0)->create([
+        'branch_id' => $branch->id,
+        'purchase_price' => 10,
+    ]);
+
+    $date = '2026-06-10';
+
+    $this->travelTo($date.' 09:00:00');
+    $batch->inStock(50);
+    $this->travelTo($date.' 11:00:00');
+    $batch->outStock(20);
+    $this->travelTo($date.' 15:00:00');
+    $batch->adjustmentStock(5);
+    $this->travelTo($date.' 16:00:00');
+    $batch->adjustmentStock(-2);
+    $this->travelBack();
+
+    $response = $this->actingAs($user)
+        ->getJson('/report/date-wise-stock?product_id='.$product->id.'&date_from='.$date.'&date_to='.$date)
+        ->assertOk()
+        ->assertJsonPath('mode', 'ledger')
+        ->assertJsonCount(4, 'entries');
+
+    $types = collect($response->json('entries'))->pluck('transaction_type')->all();
+
+    expect($types)->toBe(['Adjustment Out', 'Adjustment In', 'Sale', 'Purchase']);
+    expect($response->json('entries.0.time'))->toBe('16:00');
+    expect($response->json('entries.1.time'))->toBe('15:00');
+    expect($response->json('entries.1.opening_qty'))->toBe(30);
+    expect($response->json('entries.2.opening_qty'))->toBe(50);
+    expect($response->json('entries.2.out_qty'))->toBe(20);
+    expect($response->json('entries.3.in_qty'))->toBe(50);
+    expect($response->json('totals.closing'))->toBe(33);
+});
+
+test('date wise stock sale opening qty includes stock from before filtered period', function () {
+    $this->artisan('permissions:sync');
+
+    $user = reportUser([ReportController::PERMISSION_DATE_WISE_STOCK]);
+    $branch = Branch::factory()->create();
+    $user->update(['branch_id' => $branch->id]);
+
+    $product = Product::factory()->create(['branch_id' => $branch->id, 'purchase_price' => 10]);
+    $batch = Batch::factory()->for($product)->withStock(0)->create(['branch_id' => $branch->id, 'purchase_price' => 10]);
+
+    $this->travelTo('2026-05-01 10:00:00');
+    $batch->inStock(50);
+    $this->travelTo('2026-06-07 11:00:00');
+    $batch->outStock(20);
+    $this->travelBack();
+
+    $this->actingAs($user)
+        ->getJson('/report/date-wise-stock?product_id='.$product->id.'&date_from=2026-06-05&date_to=2026-06-10')
+        ->assertOk()
+        ->assertJsonCount(1, 'entries')
+        ->assertJsonPath('entries.0.transaction_type', 'Sale')
+        ->assertJsonPath('entries.0.opening_qty', 50)
+        ->assertJsonPath('entries.0.balance_qty', 30)
+        ->assertJsonPath('opening_stock', 50);
+});
+
+test('date wise stock overview calculates opening qty per product', function () {
+    $this->artisan('permissions:sync');
+
+    $user = reportUser([ReportController::PERMISSION_DATE_WISE_STOCK]);
+    $branch = Branch::factory()->create();
+    $user->update(['branch_id' => $branch->id]);
+
+    $product = Product::factory()->create(['branch_id' => $branch->id, 'purchase_price' => 10]);
+    $batch = Batch::factory()->for($product)->withStock(0)->create(['branch_id' => $branch->id, 'purchase_price' => 10]);
+
+    $this->travelTo('2026-07-26 10:00:00');
+    $batch->initialStock(12);
+    $this->travelTo('2026-07-27 11:30:00');
+    $batch->adjustmentStock(1);
+    $this->travelTo('2026-07-27 12:09:00');
+    $batch->adjustmentStock(-1);
+    $this->travelTo('2026-07-27 12:31:00');
+    $batch->adjustmentStock(1);
+    $this->travelBack();
+
+    $this->actingAs($user)
+        ->getJson('/report/date-wise-stock?date_from=2026-07-27&date_to=2026-07-27&branch_id='.$branch->id)
+        ->assertOk()
+        ->assertJsonPath('mode', 'overview')
+        ->assertJsonPath('entries.0.transaction_type', 'Adjustment In')
+        ->assertJsonPath('entries.0.opening_qty', 12)
+        ->assertJsonPath('entries.0.balance_qty', 13)
+        ->assertJsonPath('entries.1.transaction_type', 'Adjustment Out')
+        ->assertJsonPath('entries.1.opening_qty', 13);
 });
 
 test('branch user account ledger cannot see another branch account metadata', function () {

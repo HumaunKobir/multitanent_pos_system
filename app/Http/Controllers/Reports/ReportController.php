@@ -171,7 +171,7 @@ class ReportController extends Controller
         ];
 
         $selectedProduct = $this->reports->selectedProductOption($productId, $filterBranchId);
-        $entries = $this->reports->dateWiseStock(
+        $report = $this->reports->dateWiseStock(
             $productId,
             $filters['date_from'] ?? null,
             $filters['date_to'] ?? null,
@@ -180,7 +180,10 @@ class ReportController extends Controller
 
         if ($request->expectsJson() && ! $request->header('X-Inertia')) {
             return response()->json([
-                'entries' => $entries,
+                'mode' => $report['mode'],
+                'opening_stock' => $report['opening_stock'],
+                'totals' => $report['totals'],
+                'entries' => $report['entries'],
                 'filters' => $normalizedFilters,
                 'selected_product' => $selectedProduct,
             ]);
@@ -191,7 +194,10 @@ class ReportController extends Controller
             'isBranchScoped' => ! $canFilterByBranch,
             'selected_product' => $selectedProduct,
             'filters' => $normalizedFilters,
-            'entries' => $entries,
+            'mode' => $report['mode'],
+            'opening_stock' => $report['opening_stock'],
+            'totals' => $report['totals'],
+            'entries' => $report['entries'],
         ]);
     }
 

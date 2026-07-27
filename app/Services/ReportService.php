@@ -520,7 +520,12 @@ class ReportService
     }
 
     /**
-     * @return list<array<string, mixed>>
+     * @return array{
+     *     mode: string,
+     *     opening_stock: float,
+     *     totals: array<string, float>,
+     *     entries: list<array<string, mixed>>
+     * }
      */
     public function dateWiseStock(
         ?int $productId,
@@ -530,28 +535,341 @@ class ReportService
     ): array {
         $effectiveBranchId = $this->resolveReportBranchFilter($filterBranchId);
 
-        return ProductInOutLog::query()
-            ->when($effectiveBranchId !== null, fn (Builder $q) => $this->productBranchStock->scopeLogsForWarehouse($q, $effectiveBranchId))
-            ->when($productId !== null, fn (Builder $q) => $q->where('product_id', $productId))
+        if ($productId === null) {
+            return $this->buildDateWiseStockOverview($dateFrom, $dateTo, $effectiveBranchId);
+        }
+
+        return $this->buildDateWiseStockLedger($productId, $dateFrom, $dateTo, $effectiveBranchId);
+    }
+
+    /**
+     * @return array{mode: string, opening_stock: float, totals: array<string, float>, entries: list<array<string, mixed>>}
+     */
+    private function buildDateWiseStockOverview(?string $dateFrom, ?string $dateTo, ?int $branchId): array
+    {
+        $totalIn = 0.0;
+        $totalOut = 0.0;
+
+        $logs = ProductInOutLog::query()
+            ->when($branchId !== null, fn (Builder $q) => $this->productBranchStock->scopeLogsForWarehouse($q, $branchId))
             ->when($dateFrom, fn (Builder $q, string $d) => $q->whereDate('created_at', '>=', $d))
             ->when($dateTo, fn (Builder $q, string $d) => $q->whereDate('created_at', '<=', $d))
-            ->with(['product:id,name,code'])
-            ->orderByDesc('created_at')
-            ->orderByDesc('id')
+            ->whereIn('type', array_map(fn (ProductLogType $type) => $type->value, $this->allStockMovementTypes()))
+            ->with(['product:id,name,code,purchase_price', 'batch:id,purchase_price'])
+            ->orderBy('created_at')
+            ->orderBy('id')
             ->limit(500)
-            ->get()
-            ->map(fn (ProductInOutLog $log) => [
-                'date' => $log->created_at->format('Y-m-d'),
-                'time' => $log->created_at->format('H:i'),
-                'product' => $log->product?->name ?? '—',
-                'sku' => $log->product?->code ?? '—',
-                'type' => $this->productLogLabel($log->type),
-                'quantity' => (int) $log->quantity,
-                'stock' => (int) $log->stock,
-                'remark' => $log->remark ?? '—',
-            ])
+            ->get();
+
+        $balancesByLogId = $this->calculateOverviewLogBalances($logs, $branchId, $dateFrom);
+
+        $entries = $logs
+            ->sortByDesc(fn (ProductInOutLog $log) => [$log->created_at->timestamp, $log->id])
+            ->values()
+            ->map(function (ProductInOutLog $log) use (&$totalIn, &$totalOut, $balancesByLogId) {
+                $movement = $this->resolveStockLedgerColumns((float) $log->quantity, (int) $log->type);
+                $totalIn += $movement['in'];
+                $totalOut += $movement['out'];
+
+                $balances = $balancesByLogId[$log->id] ?? ['opening_qty' => 0.0, 'balance_qty' => (float) $log->stock];
+
+                return $this->mapDateWiseStockEntry(
+                    $log,
+                    openingQty: $balances['opening_qty'],
+                    balanceQty: $balances['balance_qty'],
+                );
+            })
             ->values()
             ->all();
+
+        return [
+            'mode' => 'overview',
+            'opening_stock' => 0.0,
+            'totals' => [
+                'opening' => 0.0,
+                'in' => round($totalIn, 2),
+                'out' => round($totalOut, 2),
+                'closing' => round($totalIn - $totalOut, 2),
+                'value' => 0.0,
+            ],
+            'entries' => $entries,
+        ];
+    }
+
+    /**
+     * @param  Collection<int, ProductInOutLog>  $logs
+     * @return array<int, array{opening_qty: float, balance_qty: float}>
+     */
+    private function calculateOverviewLogBalances($logs, ?int $branchId, ?string $dateFrom): array
+    {
+        $balancesByLogId = [];
+
+        foreach ($logs->groupBy('product_id') as $productId => $productLogs) {
+            $openingStock = $this->resolveDateWiseLedgerOpeningStock((int) $productId, $branchId, $dateFrom, $productLogs);
+            $balance = $openingStock;
+
+            foreach ($productLogs as $log) {
+                $movement = $this->resolveStockLedgerColumns((float) $log->quantity, (int) $log->type);
+                $balancesByLogId[$log->id] = [
+                    'opening_qty' => round($balance, 2),
+                    'balance_qty' => round($balance + $movement['balance_delta'], 2),
+                ];
+                $balance += $movement['balance_delta'];
+            }
+        }
+
+        return $balancesByLogId;
+    }
+
+    /**
+     * @return array{mode: string, opening_stock: float, totals: array<string, float>, entries: list<array<string, mixed>>}
+     */
+    private function buildDateWiseStockLedger(
+        int $productId,
+        ?string $dateFrom,
+        ?string $dateTo,
+        ?int $branchId,
+    ): array {
+        $product = Product::query()
+            ->ownBranch()
+            ->find($productId);
+
+        if ($product === null) {
+            return [
+                'mode' => 'ledger',
+                'opening_stock' => 0.0,
+                'totals' => [
+                    'opening' => 0.0,
+                    'in' => 0.0,
+                    'out' => 0.0,
+                    'closing' => 0.0,
+                    'value' => 0.0,
+                ],
+                'entries' => [],
+            ];
+        }
+
+        $logs = $this->stockLedgerLogQuery($branchId, $productId, $dateFrom, $dateTo)
+            ->with(['product:id,name,code,purchase_price', 'batch:id,purchase_price'])
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get();
+
+        $openingStock = $this->resolveDateWiseLedgerOpeningStock($productId, $branchId, $dateFrom, $logs);
+
+        $balance = $openingStock;
+        $totalIn = 0.0;
+        $totalOut = 0.0;
+        $entries = [];
+
+        foreach ($logs as $log) {
+            $movement = $this->resolveStockLedgerColumns((float) $log->quantity, (int) $log->type);
+            $openingQty = $balance;
+            $totalIn += $movement['in'];
+            $totalOut += $movement['out'];
+            $balance += $movement['balance_delta'];
+
+            $entries[] = $this->mapDateWiseStockEntry($log, $openingQty, round($balance, 2));
+        }
+
+        $lastUnitCost = $entries !== []
+            ? (float) ($entries[array_key_last($entries)]['unit_cost'] ?? 0)
+            : (float) $product->purchase_price;
+
+        return [
+            'mode' => 'ledger',
+            'opening_stock' => round($openingStock, 2),
+            'totals' => [
+                'opening' => round($openingStock, 2),
+                'in' => round($totalIn, 2),
+                'out' => round($totalOut, 2),
+                'closing' => round($balance, 2),
+                'value' => round($balance * $lastUnitCost, 2),
+            ],
+            'entries' => $this->alignDateWiseOpeningQuantities(array_reverse($entries), $openingStock),
+        ];
+    }
+
+    /**
+     * @param  Collection<int, ProductInOutLog>  $logs
+     */
+    private function resolveDateWiseLedgerOpeningStock(
+        int $productId,
+        ?int $branchId,
+        ?string $dateFrom,
+        $logs,
+    ): float {
+        if ($dateFrom !== null) {
+            return $branchId !== null
+                ? $this->productStockBalanceBefore($productId, $branchId, $dateFrom)
+                : $this->productStockBalanceBeforeAllBranches($productId, $dateFrom);
+        }
+
+        if ($logs->isEmpty()) {
+            return 0.0;
+        }
+
+        return $this->productStockBalanceBeforeLog($productId, $branchId, $logs->first());
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $entries
+     * @return list<array<string, mixed>>
+     */
+    private function alignDateWiseOpeningQuantities(array $entries, float $periodOpening): array
+    {
+        $count = count($entries);
+
+        if ($count === 0) {
+            return $entries;
+        }
+
+        for ($index = 0; $index < $count - 1; $index++) {
+            $entries[$index]['opening_qty'] = $entries[$index + 1]['balance_qty'];
+        }
+
+        $entries[$count - 1]['opening_qty'] = round($periodOpening, 2);
+
+        return $entries;
+    }
+
+    private function productStockBalanceBeforeLog(int $productId, ?int $branchId, ProductInOutLog $beforeLog): float
+    {
+        $balance = 0.0;
+        $allowedTypes = array_map(fn ($t) => $t->value, $this->allStockMovementTypes());
+
+        $query = ProductInOutLog::query()
+            ->where('product_id', $productId)
+            ->whereIn('type', $allowedTypes)
+            ->where(function (Builder $query) use ($beforeLog) {
+                $query->where('created_at', '<', $beforeLog->created_at)
+                    ->orWhere(function (Builder $sameTimestamp) use ($beforeLog) {
+                        $sameTimestamp
+                            ->where('created_at', $beforeLog->created_at)
+                            ->where('id', '<', $beforeLog->id);
+                    });
+            });
+
+        if ($branchId !== null) {
+            $query = $this->productBranchStock->scopeLogsForWarehouse($query, $branchId);
+        }
+
+        $query
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->get(['type', 'quantity'])
+            ->each(function (ProductInOutLog $log) use (&$balance) {
+                $balance += $this->resolveStockLedgerColumns((float) $log->quantity, (int) $log->type)['balance_delta'];
+            });
+
+        return $balance;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function mapDateWiseStockEntry(ProductInOutLog $log, ?float $openingQty, float $balanceQty): array
+    {
+        $movement = $this->resolveStockLedgerColumns((float) $log->quantity, (int) $log->type);
+        $type = ProductLogType::tryFrom((int) $log->type);
+        $unitCost = round((float) ($log->batch?->purchase_price ?? $log->product?->purchase_price ?? 0), 2);
+        $accounts = $type !== null
+            ? $this->stockMovementGlAccounts($type)
+            : ['debit' => '—', 'credit' => '—'];
+
+        return [
+            'date' => $log->created_at->format('Y-m-d'),
+            'time' => $log->created_at->format('H:i'),
+            'transaction_type' => $type !== null
+                ? $this->stockMovementTypeLabel($type, (float) $log->quantity)
+                : $this->productLogLabel((int) $log->type, (float) $log->quantity),
+            'product' => $log->product?->name ?? '—',
+            'product_code' => $log->product?->code,
+            'opening_qty' => $openingQty !== null ? round($openingQty, 2) : null,
+            'in_qty' => round($movement['in'], 2),
+            'out_qty' => round($movement['out'], 2),
+            'balance_qty' => round($balanceQty, 2),
+            'unit_cost' => $unitCost,
+            'value' => round($balanceQty * $unitCost, 2),
+            'debit_account' => $accounts['debit'],
+            'credit_account' => $accounts['credit'],
+            'remark' => $log->remark ?? '—',
+        ];
+    }
+
+    /**
+     * @return array{debit: string, credit: string}
+     */
+    private function stockMovementGlAccounts(ProductLogType $type): array
+    {
+        $inventory = SystemAccountKey::Inventory->defaultName();
+        $payables = SystemAccountKey::AccountsPayable->defaultName();
+        $cogs = 'COGS';
+        $gain = SystemAccountKey::StockAdjustmentGain->defaultName();
+        $loss = SystemAccountKey::StockAdjustmentLoss->defaultName();
+        $damage = SystemAccountKey::InventoryDamage->defaultName();
+        $branchInventory = SystemAccountKey::BranchInventory->defaultName();
+
+        return match ($type) {
+            ProductLogType::Purchase,
+            ProductLogType::InitialStock => [
+                'debit' => $inventory,
+                'credit' => $payables,
+            ],
+            ProductLogType::Sale => [
+                'debit' => $cogs,
+                'credit' => $inventory,
+            ],
+            ProductLogType::Sale_Return => [
+                'debit' => $inventory,
+                'credit' => $cogs,
+            ],
+            ProductLogType::Adjustment_In => [
+                'debit' => $inventory,
+                'credit' => $gain,
+            ],
+            ProductLogType::Adjustment_Out => [
+                'debit' => $loss,
+                'credit' => $inventory,
+            ],
+            ProductLogType::Damage => [
+                'debit' => $damage,
+                'credit' => $inventory,
+            ],
+            ProductLogType::Purchase_Return => [
+                'debit' => $payables,
+                'credit' => $inventory,
+            ],
+            ProductLogType::Exchange => [
+                'debit' => $cogs,
+                'credit' => $inventory,
+            ],
+            ProductLogType::Distribution_Out => [
+                'debit' => $branchInventory,
+                'credit' => $inventory,
+            ],
+            ProductLogType::Distribution_In => [
+                'debit' => $inventory,
+                'credit' => $branchInventory,
+            ],
+        };
+    }
+
+    private function stockMovementTypeLabel(ProductLogType $type, float $quantity): string
+    {
+        return match ($type) {
+            ProductLogType::Purchase => 'Purchase',
+            ProductLogType::Sale => 'Sale',
+            ProductLogType::Sale_Return => 'Sale Return',
+            ProductLogType::Purchase_Return => 'Purchase Return',
+            ProductLogType::InitialStock => $quantity < 0 ? 'Stock Edit' : 'Initial Stock',
+            ProductLogType::Adjustment_In => 'Adjustment In',
+            ProductLogType::Adjustment_Out => 'Adjustment Out',
+            ProductLogType::Damage => 'Damage',
+            ProductLogType::Exchange => 'Exchange',
+            ProductLogType::Distribution_Out => 'Distribution Out',
+            ProductLogType::Distribution_In => 'Distribution In',
+        };
     }
 
     /**

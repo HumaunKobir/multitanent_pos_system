@@ -32,7 +32,8 @@ class ProductBranchStockService
     public function scopeLogsForWarehouse(Builder $query, int $branchId): Builder
     {
         return $query->where(function (Builder $outer) use ($branchId) {
-            $outer->whereHas('batch', fn (Builder $batchQuery) => $batchQuery->atBranchWarehouse($branchId))
+            $outer->where('branch_id', $branchId)
+                ->orWhereHas('batch', fn (Builder $batchQuery) => $batchQuery->atBranchWarehouse($branchId))
                 ->orWhere(function (Builder $variationLogQuery) use ($branchId) {
                     $variationLogQuery
                         ->whereNull('batch_id')

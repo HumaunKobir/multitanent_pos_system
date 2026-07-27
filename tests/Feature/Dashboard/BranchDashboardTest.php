@@ -1,7 +1,10 @@
 <?php
 
+use App\Enums\PurchaseType;
 use App\Enums\VoucherType;
 use App\Models\Branch;
+use App\Models\Purchase;
+use App\Models\Supplier;
 use App\Models\User;
 use App\Models\Voucher;
 use Carbon\Carbon;
@@ -64,6 +67,56 @@ test('branch dashboard includes purchases section with permission', function () 
             ->has('sections.purchases.today')
             ->has('sections.purchases.month'));
 
+    $user->delete();
+    $branch->delete();
+});
+
+test('branch dashboard month purchases include initial stock purchases', function () {
+    $this->artisan('permissions:sync');
+
+    $date = '2099-05-10';
+    $branch = Branch::factory()->create();
+    $supplier = Supplier::factory()->create(['branch_id' => $branch->id]);
+    $user = branchDashboardUser($branch->id, ['dashboard.view', 'inventory.purchase.view']);
+
+    Purchase::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'supplier_id' => $supplier->id,
+        'gross_amount' => 500,
+        'paid_amount' => 200,
+        'due_amount' => 300,
+        'purchase_type' => PurchaseType::Purchase,
+        'date' => $date,
+    ]);
+
+    Purchase::factory()->create([
+        'branch_id' => $branch->id,
+        'user_id' => $user->id,
+        'supplier_id' => $supplier->id,
+        'gross_amount' => 1200,
+        'paid_amount' => 0,
+        'due_amount' => 1200,
+        'purchase_type' => PurchaseType::InitialStock,
+        'date' => $date,
+        'comment' => 'Initial stock — Test Product',
+    ]);
+
+    Carbon::setTestNow($date);
+
+    $this->actingAs($user)
+        ->get('/branch-panel')
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('sections.purchases.month.count', 2)
+            ->where('sections.purchases.month.gross', 1700)
+            ->where('sections.purchases.month.paid', 200)
+            ->where('sections.purchases.month.due', 1500));
+
+    Carbon::setTestNow();
+
+    Purchase::query()->where('branch_id', $branch->id)->delete();
+    $supplier->delete();
     $user->delete();
     $branch->delete();
 });

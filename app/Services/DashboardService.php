@@ -3,7 +3,6 @@
 namespace App\Services;
 
 use App\Enums\DashboardSalesPeriod;
-use App\Enums\PurchaseType;
 use App\Enums\VoucherType;
 use App\Models\Branch;
 use App\Models\ConfigDictionary;
@@ -207,10 +206,10 @@ class DashboardService
         if ($user->can('inventory.purchase.view')) {
             $sections['purchases'] = [
                 'today' => $this->aggregatePurchases(
-                    Purchase::query()->where('purchase_type', PurchaseType::Purchase)->where('branch_id', $branchId)->whereDate('date', $today),
+                    Purchase::query()->purchaseOrInitialStock()->where('branch_id', $branchId)->whereDate('date', $today),
                 ),
                 'month' => $this->aggregatePurchases(
-                    Purchase::query()->where('purchase_type', PurchaseType::Purchase)->where('branch_id', $branchId)->whereBetween('date', [$monthStart->toDateString(), $today->toDateString()]),
+                    Purchase::query()->purchaseOrInitialStock()->where('branch_id', $branchId)->whereBetween('date', [$monthStart->toDateString(), $today->toDateString()]),
                 ),
             ];
         }

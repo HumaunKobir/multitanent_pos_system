@@ -41,16 +41,16 @@ test('purchase index shows all branch purchases like purchase report', function 
             ->has('purchases.data', 7));
 });
 
-test('branch user can view but not edit another users purchase', function () {
+test('branch user with update permission can edit another users purchase in same branch', function () {
     $this->artisan('permissions:sync');
 
     Permission::findOrCreate('inventory.purchase.view', 'web');
     Permission::findOrCreate('inventory.purchase.update', 'web');
 
     $branch = Branch::factory()->create();
-    $viewer = User::factory()->create(['branch_id' => $branch->id]);
+    $editor = User::factory()->create(['branch_id' => $branch->id]);
     $owner = User::factory()->create(['branch_id' => $branch->id]);
-    $viewer->givePermissionTo(['inventory.purchase.view', 'inventory.purchase.update']);
+    $editor->givePermissionTo(['inventory.purchase.view', 'inventory.purchase.update']);
 
     $purchase = Purchase::query()->create([
         'branch_id' => $branch->id,
@@ -59,14 +59,22 @@ test('branch user can view but not edit another users purchase', function () {
         'gross_amount' => 100,
         'paid_amount' => 0,
         'due_amount' => 100,
+        'purchase_type' => PurchaseType::Purchase,
         'serial' => 'INVP00000003',
     ]);
 
-    $this->actingAs($viewer)
+    $this->actingAs($editor)
         ->get(route('inventory.purchase.show', $purchase))
         ->assertOk();
 
-    $this->actingAs($viewer)
+    $this->actingAs($editor)
+        ->get(route('inventory.purchase.index'))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/inventory/purchase/index')
+            ->where('purchases.data.0.can_edit', true));
+
+    $this->actingAs($editor)
         ->get(route('inventory.purchase.edit', $purchase))
-        ->assertNotFound();
+        ->assertOk();
 });

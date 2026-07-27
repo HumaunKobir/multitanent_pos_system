@@ -144,16 +144,6 @@ class Purchase extends Model
 
     public function isMutableByCurrentUser(): bool
     {
-        if (! $this->isAccessibleByCurrentUser()) {
-            return false;
-        }
-
-        $user = Auth::user();
-
-        if ($user?->isSuperAdmin()) {
-            return true;
-        }
-
-        return (int) $this->user_id === (int) $user->id;
+        return $this->isAccessibleByCurrentUser();
     }
 }

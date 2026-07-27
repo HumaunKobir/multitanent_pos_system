@@ -377,7 +377,9 @@ class PurchaseController extends Controller
                 'purchase_products' => $purchase->purchaseProducts,
                 'direct_payment' => $this->allocations->purchaseDirectPaymentForView($purchase, $paymentAccountLabels),
                 'supplier_payment_details' => $this->allocations->supplierAllocationDetailsForPurchase($purchase, $paymentAccountLabels),
-                'can_edit' => $this->canEditPurchase($purchase),
+                'can_edit' => $purchase->purchase_type === PurchaseType::Purchase
+                    && $purchase->isAccessibleByCurrentUser()
+                    && $this->canEditPurchase($purchase),
                 'is_fully_returned' => $isFullyReturned,
                 'created_by_name' => $purchase->user?->name,
             ],

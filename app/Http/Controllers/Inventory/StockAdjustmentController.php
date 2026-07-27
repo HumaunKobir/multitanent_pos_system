@@ -145,6 +145,12 @@ class StockAdjustmentController extends Controller
         $type = StockAdjustmentType::from($data['type']);
         $branchId = Auth::user()?->branch_id;
 
+        if ($branchId === null) {
+            return back()
+                ->withErrors(['items' => 'Stock adjustment is only available for branch users.'])
+                ->withInput();
+        }
+
         try {
             DB::transaction(function () use ($data, $type, $branchId) {
                 $lines = [];
@@ -160,6 +166,29 @@ class StockAdjustmentController extends Controller
                     $variationId = ! empty($item['variation_id']) ? (int) $item['variation_id'] : null;
                     $unitCost = isset($item['unit_cost']) ? (float) $item['unit_cost'] : 0.0;
                     $batchMap = [];
+
+                    $product = Product::query()
+                        ->whereKey($productId)
+                        ->where('branch_id', $branchId)
+                        ->first();
+
+                    if ($product === null) {
+                        throw new \RuntimeException('One or more products are not available in your branch.');
+                    }
+
+                    if ($product->hasVariationsAtBranch($branchId) && $variationId === null) {
+                        throw new \RuntimeException("Select a size or variation for {$product->name}.");
+                    }
+
+                    if ($variationId !== null) {
+                        $variationExists = $product->variationsAtBranch($branchId)
+                            ->whereKey($variationId)
+                            ->exists();
+
+                        if (! $variationExists) {
+                            throw new \RuntimeException("The selected variation is not valid for {$product->name}.");
+                        }
+                    }
 
                     if ($unitCost <= 0) {
                         $unitCost = $this->resolveUnitCost($productId, $variationId);

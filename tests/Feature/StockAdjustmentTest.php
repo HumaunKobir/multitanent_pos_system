@@ -7,6 +7,7 @@ use App\Models\Batch;
 use App\Models\Branch;
 use App\Models\Ledger;
 use App\Models\Product;
+use App\Models\ProductVariation;
 use App\Models\StockAdjustment;
 use App\Models\Supplier;
 use App\Models\Transaction;
@@ -255,4 +256,82 @@ test('stock adjustment decrease debits stock adjustment loss and credits product
     $accountIds = Ledger::query()->where('transaction_id', $transaction->id)->pluck('account_id')->all();
 
     expect($accountIds)->toContain($inventory->id, $loss->id);
+});
+
+test('stock adjustment decrease requires variation for variant products', function () {
+    $this->withoutMiddleware(PreventRequestForgery::class);
+
+    $branch = stockAdjustmentBranch();
+    $user = stockAdjustmentUser($branch);
+    seedAccountingAccounts(branchId: $branch->id);
+
+    $product = Product::factory()->create([
+        'branch_id' => $branch->id,
+        'purchase_price' => 80,
+        'sale_price' => 150,
+        'status' => 1,
+    ]);
+
+    $variation = ProductVariation::query()->create([
+        'branch_id' => $branch->id,
+        'product_id' => $product->id,
+        'sku' => fake()->unique()->numerify('########'),
+        'variation_data' => ['label' => 'M', 'Size' => 'M'],
+        'price' => 150,
+        'purchase_price' => 80,
+        'stock' => 6,
+        'status' => 1,
+    ]);
+
+    $this->actingAs($user)
+        ->from(route('inventory.stock-adjustment.create'))
+        ->post(route('inventory.stock-adjustment.store'), [
+            'date' => now()->format('Y-m-d'),
+            'type' => StockAdjustmentType::Decrease->value,
+            'items' => [
+                ['product_id' => $product->id, 'variation_id' => null, 'quantity' => 1],
+            ],
+        ])
+        ->assertRedirect(route('inventory.stock-adjustment.create'))
+        ->assertSessionHasErrors('items');
+
+    expect((float) $variation->fresh()->stock)->toBe(6.0);
+});
+
+test('stock adjustment decrease updates variation stock when variation is selected', function () {
+    $this->withoutMiddleware(PreventRequestForgery::class);
+
+    $branch = stockAdjustmentBranch();
+    $user = stockAdjustmentUser($branch);
+    seedAccountingAccounts(branchId: $branch->id);
+
+    $product = Product::factory()->create([
+        'branch_id' => $branch->id,
+        'purchase_price' => 80,
+        'sale_price' => 150,
+        'status' => 1,
+    ]);
+
+    $variation = ProductVariation::query()->create([
+        'branch_id' => $branch->id,
+        'product_id' => $product->id,
+        'sku' => fake()->unique()->numerify('########'),
+        'variation_data' => ['label' => 'L', 'Size' => 'L'],
+        'price' => 150,
+        'purchase_price' => 80,
+        'stock' => 6,
+        'status' => 1,
+    ]);
+
+    $this->actingAs($user)
+        ->post(route('inventory.stock-adjustment.store'), [
+            'date' => now()->format('Y-m-d'),
+            'type' => StockAdjustmentType::Decrease->value,
+            'items' => [
+                ['product_id' => $product->id, 'variation_id' => $variation->id, 'quantity' => 2],
+            ],
+        ])
+        ->assertRedirect(route('inventory.stock-adjustment.index'));
+
+    expect((float) $variation->fresh()->stock)->toBe(4.0);
 });

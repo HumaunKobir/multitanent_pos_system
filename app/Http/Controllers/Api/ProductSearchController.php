@@ -286,7 +286,9 @@ class ProductSearchController extends Controller
             'sale_price' => $product->sale_price,
             'image' => $product->image,
             'has_variations' => $product->variations->isNotEmpty(),
-            'stock' => (float) $product->batches->sum('available'),
+            'stock' => $product->variations->isNotEmpty()
+                ? (float) $product->variations->sum(fn ($variation): float => (float) $variation->stock)
+                : (float) $product->batches->sum('available'),
             'barcodes' => $product->barcodes->map(fn ($barcode) => [
                 'code' => $barcode->code,
                 'product_variation_id' => $barcode->product_variation_id,

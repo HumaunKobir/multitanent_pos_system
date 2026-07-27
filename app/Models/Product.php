@@ -218,6 +218,28 @@ class Product extends Model
         return $this->hasMany(ProductVariation::class);
     }
 
+    public function variationsAtBranch(?int $branchId): HasMany
+    {
+        $branchId ??= Auth::user()?->branch_id ?? Branch::resolveMainBranchId();
+        $mainBranchId = Branch::resolveMainBranchId();
+
+        return $this->variations()->where(function (Builder $query) use ($branchId, $mainBranchId): void {
+            if ($branchId === $mainBranchId) {
+                $query->where('branch_id', $branchId)
+                    ->orWhereNull('branch_id');
+
+                return;
+            }
+
+            $query->where('branch_id', $branchId);
+        });
+    }
+
+    public function hasVariationsAtBranch(?int $branchId): bool
+    {
+        return $this->variationsAtBranch($branchId)->exists();
+    }
+
     public function photos(): HasMany
     {
         return $this->hasMany(ProductPhoto::class);

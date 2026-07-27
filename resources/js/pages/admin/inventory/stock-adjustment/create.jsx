@@ -75,7 +75,11 @@ export default function StockAdjustmentCreate({ today }) {
 
         form.transform((data) => ({
             ...data,
-            items: adjustmentItems,
+            items: adjustmentItems.map(({ product_id, variation_id, quantity }) => ({
+                product_id,
+                variation_id: variation_id ?? null,
+                quantity,
+            })),
         }));
         form.post(route('inventory.stock-adjustment.store'), {
             preserveScroll: true,

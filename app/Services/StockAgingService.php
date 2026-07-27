@@ -120,19 +120,6 @@ class StockAgingService
             self::BUCKET_90_PLUS => 0.0,
         ];
 
-        $batches = $product->relationLoaded('batches')
-            ? $product->batches->filter(fn ($batch): bool => (float) $batch->available > 0)
-            : collect();
-
-        if ($batches->isNotEmpty()) {
-            foreach ($batches as $batch) {
-                $ageDate = $batch->created_at ?? $batch->updated_at;
-                $this->addToBucket($buckets, $ageDate, $asOf, (float) $batch->available);
-            }
-
-            return $buckets;
-        }
-
         $variations = $product->relationLoaded('variations')
             ? $product->variations->filter(fn ($variation): bool => (float) $variation->stock > 0)
             : collect();
@@ -147,6 +134,15 @@ class StockAgingService
             }
 
             return $buckets;
+        }
+
+        $batches = $product->relationLoaded('batches')
+            ? $product->batches->filter(fn ($batch): bool => (float) $batch->available > 0)
+            : collect();
+
+        foreach ($batches as $batch) {
+            $ageDate = $batch->created_at ?? $batch->updated_at;
+            $this->addToBucket($buckets, $ageDate, $asOf, (float) $batch->available);
         }
 
         return $buckets;

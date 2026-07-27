@@ -118,6 +118,55 @@ test('stock aging report buckets batch stock by created at age', function () {
             ->where('rows.0.total_qty', 10));
 });
 
+test('stock aging report uses variation stock when product has both variations and batches', function () {
+    stockAgingMainBranch();
+    $admin = stockAgingAdmin();
+    $mainBranchId = Branch::resolveMainBranchId();
+    $category = Category::factory()->create(['status' => 1]);
+    $brand = Brand::factory()->create(['status' => 1]);
+
+    $product = Product::factory()->create([
+        'branch_id' => $mainBranchId,
+        'category_id' => $category->id,
+        'brand_id' => $brand->id,
+        'name' => 'Aging Mixed '.fake()->unique()->numerify('######'),
+        'status' => 1,
+    ]);
+
+    $variation = ProductVariation::query()->create([
+        'branch_id' => $mainBranchId,
+        'product_id' => $product->id,
+        'sku' => fake()->unique()->numerify('########'),
+        'variation_data' => ['label' => 'Blue-L', 'Color' => 'Blue', 'Size' => 'L'],
+        'price' => 300,
+        'purchase_price' => 150,
+        'stock' => 12,
+        'status' => 1,
+    ]);
+    $variation->forceFill([
+        'created_at' => now()->subDays(15),
+        'updated_at' => now()->subDays(15),
+    ])->saveQuietly();
+
+    Batch::factory()->for($product)->create([
+        'branch_id' => $mainBranchId,
+        'available' => 2,
+    ])->forceFill([
+        'created_at' => now()->subDays(100),
+        'updated_at' => now()->subDays(100),
+    ])->saveQuietly();
+
+    $this->actingAs($admin)
+        ->get(route('report.stock-aging', ['search' => $product->name]))
+        ->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->where('summary.total', 12)
+            ->where('rows.0.id', $product->id)
+            ->where('rows.0.total_qty', 12)
+            ->where('rows.0.qty_0_30', 12)
+            ->where('rows.0.qty_90_plus', 0));
+});
+
 test('stock aging report ages variant stock without batches using variation timestamps', function () {
     stockAgingMainBranch();
     $admin = stockAgingAdmin();

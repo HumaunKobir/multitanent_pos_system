@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Enums\CommonStatus;
 use App\Models\Branch;
 use App\Models\User;
+use App\Services\TenantProvisioner;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -20,7 +21,7 @@ class DatabaseSeeder extends Seeder
 
         User::query()->create([
             'name' => 'Super Admin',
-            'email' => 'superadmin@coolness.com',
+            'email' => 'superadmin@gmail.com',
             'phone' => '01700000001',
             'password' => bcrypt('123456789'),
             'branch_id' => $mainBranch->id,
@@ -28,16 +29,21 @@ class DatabaseSeeder extends Seeder
         ]);
 
 
-        Branch::query()->create([
+        $ecommerceBranch = Branch::query()->create([
             'name' => Branch::ECOMMERCE_BRANCH_NAME,
             'phone' => '01700000001',
             'address' => 'ঢাকা, বাংলাদেশ',
             'status' => CommonStatus::Active,
         ]);
 
-        $this->call([
-            ChartOfAccountsSeeder::class,
-            // DemoCatalogSeeder::class,
-        ]);
+        if (config('tenancy.enabled')) {
+            app(TenantProvisioner::class)->provision($mainBranch);
+            app(TenantProvisioner::class)->provision($ecommerceBranch);
+        } else {
+            $this->call([
+                ChartOfAccountsSeeder::class,
+                // DemoCatalogSeeder::class,
+            ]);
+        }
     }
 }

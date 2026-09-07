@@ -12,7 +12,7 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (Schema::hasTable('users')) {
+        if (! config('tenancy.enabled') || Schema::hasTable('users')) {
             return;
         }
 
@@ -27,6 +27,10 @@ return new class extends Migration
 
     public function down(): void
     {
+        if (! config('tenancy.enabled')) {
+            return;
+        }
+
         Schema::dropIfExists('users');
     }
 };

@@ -15,15 +15,21 @@ class TenantMigrator
 
         $connection = config('tenancy.tenant_connection', 'tenant');
 
-        DB::connection($connection)->statement('SET FOREIGN_KEY_CHECKS=0');
+        $migrator = app('migrator');
+        $reflection = new \ReflectionProperty($migrator, 'paths');
+        $reflection->setAccessible(true);
+        $originalPaths = $reflection->getValue($migrator);
 
         try {
+            $reflection->setValue($migrator, []);
+
             Artisan::call('migrate', [
                 '--database' => $connection,
                 '--path' => 'database/migrations/tenant',
                 '--force' => true,
             ]);
         } finally {
+            $reflection->setValue($migrator, $originalPaths);
             DB::connection($connection)->statement('SET FOREIGN_KEY_CHECKS=1');
         }
     }

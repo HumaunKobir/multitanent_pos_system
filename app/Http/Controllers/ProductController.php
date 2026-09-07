@@ -10,6 +10,7 @@ use App\Models\Barcode;
 use App\Models\Branch;
 use App\Models\Brand;
 use App\Models\Category;
+use App\Models\ChartOfAccount;
 use App\Models\Color;
 use App\Models\Product;
 use App\Models\ProductPhoto;
@@ -20,6 +21,7 @@ use App\Models\Tag;
 use App\Models\Unit;
 use App\Models\Warranty;
 use App\Services\BarcodeService;
+use App\Services\BranchCatalogOptionsService;
 use App\Services\EcommerceBranchService;
 use App\Services\ProductBranchReplicationService;
 use App\Services\ProductDeletionService;
@@ -301,14 +303,14 @@ class ProductController extends Controller
         $data = $request->validate([
             'has_variants' => ['nullable', 'boolean'],
             'branch_id' => $this->branchSelectionRules(),
-            'category_id' => ['required', Rule::exists('categories', 'id')],
-            'brand_id' => ['required', Rule::exists('brands', 'id')],
-            'unit_id' => ['required', Rule::exists('units', 'id')],
-            'warranty_id' => ['nullable', Rule::exists('warranties', 'id')],
+            'category_id' => ['required', Rule::exists(Category::class, 'id')],
+            'brand_id' => ['required', Rule::exists(Brand::class, 'id')],
+            'unit_id' => ['required', Rule::exists(Unit::class, 'id')],
+            'warranty_id' => ['nullable', Rule::exists(Warranty::class, 'id')],
             'color_ids' => ['nullable', 'array'],
-            'color_ids.*' => [Rule::exists('colors', 'id')],
+            'color_ids.*' => [Rule::exists(Color::class, 'id')],
             'size_ids' => ['nullable', 'array'],
-            'size_ids.*' => [Rule::exists('sizes', 'id')],
+            'size_ids.*' => [Rule::exists(Size::class, 'id')],
             'name' => ['required', 'string', 'max:255', 'unique:products,name'],
             'code' => [
                 'nullable',
@@ -320,9 +322,9 @@ class ProductController extends Controller
             'sale_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric'],
             'initial_stock' => ['nullable', 'integer', 'min:0'],
-            'initial_stock_supplier_id' => ['nullable', 'integer', Rule::exists('suppliers', 'id')],
+            'initial_stock_supplier_id' => ['nullable', 'integer', Rule::exists(Supplier::class, 'id')],
             'initial_stock_paid_amount' => ['nullable', 'numeric', 'min:0'],
-            'initial_stock_payment_account_id' => ['nullable', 'integer', Rule::exists('chart_of_accounts', 'id')],
+            'initial_stock_payment_account_id' => ['nullable', 'integer', Rule::exists(ChartOfAccount::class, 'id')],
             'tags' => ['nullable', 'array'],
             'visible' => ['nullable', 'in:yes,no'],
             'status' => ['nullable', 'in:0,1'],
@@ -544,14 +546,14 @@ class ProductController extends Controller
         $data = $request->validate([
             'has_variants' => ['nullable', 'boolean'],
             'branch_id' => $this->branchSelectionRules(),
-            'category_id' => ['required', Rule::exists('categories', 'id')],
-            'brand_id' => ['required', Rule::exists('brands', 'id')],
-            'unit_id' => ['required', Rule::exists('units', 'id')],
-            'warranty_id' => ['nullable', Rule::exists('warranties', 'id')],
+            'category_id' => ['required', Rule::exists(Category::class, 'id')],
+            'brand_id' => ['required', Rule::exists(Brand::class, 'id')],
+            'unit_id' => ['required', Rule::exists(Unit::class, 'id')],
+            'warranty_id' => ['nullable', Rule::exists(Warranty::class, 'id')],
             'color_ids' => ['nullable', 'array'],
-            'color_ids.*' => [Rule::exists('colors', 'id')],
+            'color_ids.*' => [Rule::exists(Color::class, 'id')],
             'size_ids' => ['nullable', 'array'],
-            'size_ids.*' => [Rule::exists('sizes', 'id')],
+            'size_ids.*' => [Rule::exists(Size::class, 'id')],
             'name' => ['required', 'string', 'max:255', $this->productNameUniqueRule($product)],
             'code' => [
                 'nullable',
@@ -563,9 +565,9 @@ class ProductController extends Controller
             'sale_price' => $priceRequired ? ['required', 'numeric', 'min:0'] : ['nullable', 'numeric', 'min:0'],
             'discount_price' => ['nullable', 'numeric'],
             'initial_stock' => ['nullable', 'integer', 'min:0'],
-            'initial_stock_supplier_id' => ['nullable', 'integer', Rule::exists('suppliers', 'id')],
+            'initial_stock_supplier_id' => ['nullable', 'integer', Rule::exists(Supplier::class, 'id')],
             'initial_stock_paid_amount' => ['nullable', 'numeric', 'min:0'],
-            'initial_stock_payment_account_id' => ['nullable', 'integer', Rule::exists('chart_of_accounts', 'id')],
+            'initial_stock_payment_account_id' => ['nullable', 'integer', Rule::exists(ChartOfAccount::class, 'id')],
             'tags' => ['nullable', 'array'],
             'visible' => ['nullable', 'in:yes,no'],
             'status' => ['nullable', 'in:0,1'],
@@ -1307,34 +1309,25 @@ class ProductController extends Controller
     {
         $defaultCatalogBranchId = Branch::resolveAdminCatalogBranchId();
         $showBranchField = Auth::user()?->usesAdminPanel() ?? false;
-        $resolvedPaymentBranchId = $paymentBranchId
+        $resolvedCatalogBranchId = $paymentBranchId
             ?? Auth::user()?->branch_id
             ?? $defaultCatalogBranchId;
+        $resolvedPaymentBranchId = $resolvedCatalogBranchId;
+
+        $catalogOptions = app(BranchCatalogOptionsService::class)->forBranch($resolvedCatalogBranchId);
 
         return [
             'defaultCatalogBranchId' => $defaultCatalogBranchId,
             'ecommerceBranchId' => EcommerceBranchService::resolveIdStatic(),
             'actingBranchId' => Auth::user()?->branch_id,
             'showBranchField' => $showBranchField,
-            'categories' => Category::forCatalogPanel()->active()->orderBy('name')->pluck('name', 'id'),
-            'brands' => Brand::forCatalogPanel()->active()->orderBy('name')->pluck('name', 'id'),
-            'units' => Unit::forCatalogPanel()->active()->orderBy('name')->pluck('name', 'id'),
-            'warranties' => Warranty::forCatalogPanel()->active()->orderBy('name')->pluck('name', 'id'),
+            'categories' => $catalogOptions['categories'],
+            'brands' => $catalogOptions['brands'],
+            'units' => $catalogOptions['units'],
+            'warranties' => $catalogOptions['warranties'],
             'branches' => $showBranchField ? Branch::active()->orderBy('name')->pluck('name', 'id') : [],
-            'colorOptions' => Color::forCatalogPanel()->active()->orderBy('name')->get(['id', 'name'])
-                ->map(fn (Color $color): array => [
-                    'value' => $color->name,
-                    'label' => $color->name,
-                    'id' => (string) $color->id,
-                ])
-                ->all(),
-            'sizeOptions' => Size::forCatalogPanel()->active()->orderBy('name')->get(['id', 'name'])
-                ->map(fn (Size $size): array => [
-                    'value' => $size->name,
-                    'label' => $size->name,
-                    'id' => (string) $size->id,
-                ])
-                ->all(),
+            'colorOptions' => $catalogOptions['colorOptions'],
+            'sizeOptions' => $catalogOptions['sizeOptions'],
             'tagOptions' => Tag::query()
                 ->selectableForProduct()
                 ->with('parent:id,name')
@@ -1348,7 +1341,7 @@ class ProductController extends Controller
                         : $tag->name,
                 ])
                 ->all(),
-            'suppliers' => Supplier::query()->ownBranch()->orderBy('name')->get(['id', 'name', 'company_name', 'phone']),
+            'suppliers' => $catalogOptions['suppliers'],
             'paymentAccounts' => $this->paymentAccountsForBranch($resolvedPaymentBranchId),
             'paymentBranchId' => $resolvedPaymentBranchId,
         ];

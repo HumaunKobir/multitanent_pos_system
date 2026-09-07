@@ -7,6 +7,7 @@ use App\Models\Brand;
 use App\Models\Category;
 use App\Models\Color;
 use App\Models\Size;
+use App\Models\Supplier;
 use App\Models\Unit;
 use App\Models\Warranty;
 use Illuminate\Support\Facades\Auth;
@@ -41,6 +42,7 @@ class BranchCatalogOptionsService
             'brands' => $this->pluckCatalogOptions(Brand::class, $branchId),
             'units' => $this->pluckCatalogOptions(Unit::class, $branchId),
             'warranties' => $this->pluckCatalogOptions(Warranty::class, $branchId),
+            'suppliers' => Supplier::query()->accessibleAtBranch($branchId)->orderBy('name')->get(['id', 'name', 'company_name', 'phone']),
             'colorOptions' => $this->getCatalogQuery(Color::class, $branchId)->orderBy('name')->get(['id', 'name'])
                 ->map(fn (Color $color): array => [
                     'value' => $color->name,

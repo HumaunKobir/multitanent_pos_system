@@ -41,6 +41,15 @@ class Supplier extends Model
         return $this->hasMany(Purchase::class);
     }
 
+    public function scopeAccessibleAtBranch(\Illuminate\Database\Eloquent\Builder $query, int $branchId): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->where(function (\Illuminate\Database\Eloquent\Builder $q) use ($branchId) {
+            $q->where('branch_id', $branchId)
+                ->orWhereNull('branch_id')
+                ->orWhere('branch_id', Branch::resolveAdminCatalogBranchId());
+        });
+    }
+
     public function payments(): HasMany
     {
         return $this->hasMany(SupplierPayment::class);

@@ -367,6 +367,25 @@ export function SmartSelect({
         }
     }
 
+    function handleInputKeyDown(event) {
+        if (event.key === 'Enter') {
+            if (open) {
+                event.preventDefault();
+                event.stopPropagation();
+                if (listOptions.length > 0) {
+                    void handleOptionSelect(listOptions[0]);
+                }
+            }
+        } else if (event.key === 'Escape') {
+            if (open) {
+                event.preventDefault();
+                event.stopPropagation();
+                setOpen(false);
+                setQuery('');
+            }
+        }
+    }
+
     return (
         <div ref={containerRef} className={cn('relative w-full max-w-full min-w-0', className)}>
             {label ? (
@@ -386,6 +405,7 @@ export function SmartSelect({
                 data-form-type="other"
                 value={open ? query : (selected?.label ?? '')}
                 onChange={handleInputChange}
+                onKeyDown={handleInputKeyDown}
                 onFocus={() => setAutofillGuard(false)}
                 onPointerDown={() => openDropdown()}
                 placeholder={placeholder}

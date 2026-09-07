@@ -20,6 +20,15 @@ import {
 } from '@/lib/variation-utils';
 import { calculateInitialStockTotal } from '@/lib/initial-stock-settlement';
 
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from '@/components/ui/dialog';
+
 function mapSupplierOptions(suppliers = []) {
     return suppliers.map((supplier) => ({
         value: String(supplier.id),
@@ -38,7 +47,154 @@ function resolveDefaultPaymentAccountId(paymentAccountOptions = [], currentValue
 }
 
 function getXsrf() {
-    return decodeURIComponent(document.cookie.split('; ').find((r) => r.startsWith('XSRF-TOKEN='))?.split('=')[1] ?? '');
+    const cookie = document.cookie.split('; ').find((r) => r.startsWith('XSRF-TOKEN='));
+    if (cookie) {
+        return decodeURIComponent(cookie.split('=')[1] ?? '');
+    }
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+}
+
+function AddSupplierDialog({ open, onOpenChange, initialName = '', onCreated }) {
+    const [formData, setFormData] = useState({
+        company_name: initialName,
+        name: '',
+        phone: '',
+        address: '',
+        opening_balance: '',
+    });
+    const [errors, setErrors] = useState({});
+    const [processing, setProcessing] = useState(false);
+    const toast = useAppToast();
+
+    useEffect(() => {
+        if (open) {
+            setFormData({
+                company_name: initialName,
+                name: '',
+                phone: '',
+                address: '',
+                opening_balance: '',
+            });
+            setErrors({});
+        }
+    }, [open, initialName]);
+
+    function setField(field, val) {
+        setFormData((prev) => ({ ...prev, [field]: val }));
+        setErrors((prev) => ({ ...prev, [field]: undefined }));
+    }
+
+    async function handleSubmit(e) {
+        e.preventDefault();
+        setProcessing(true);
+        setErrors({});
+
+        try {
+            const res = await fetch(route('api.suppliers.store'), {
+                method: 'POST',
+                credentials: 'include',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-XSRF-TOKEN': getXsrf(),
+                },
+                body: JSON.stringify(formData),
+            });
+
+            const json = await res.json();
+            if (!res.ok) {
+                setErrors(json.errors ?? {});
+                toast.error(json.message ?? 'Failed to create supplier.');
+                return;
+            }
+
+            onCreated(json);
+            toast.success(`Supplier "${json.company_name || json.name}" created.`);
+            onOpenChange(false);
+        } catch {
+            toast.error('Network error creating supplier.');
+        } finally {
+            setProcessing(false);
+        }
+    }
+
+    return (
+        <Dialog open={open} onOpenChange={onOpenChange}>
+            <DialogContent className="p-0 sm:max-w-lg">
+                <div className="flex items-center gap-2.5 bg-blue-950 px-5 py-3">
+                    <h2 className="text-sm font-semibold text-white">Add Supplier</h2>
+                </div>
+                <form onSubmit={handleSubmit} className="space-y-3 px-5 py-4">
+                    <div>
+                        <Label className="mb-1 block text-xs font-medium">Company Name <RequiredMark /></Label>
+                        <Input
+                            className="h-8 text-xs"
+                            value={formData.company_name}
+                            onChange={(e) => setField('company_name', e.target.value)}
+                            placeholder="e.g. Acme Corp"
+                            autoFocus
+                        />
+                        {errors.company_name && <p className="mt-0.5 text-xs text-destructive">{errors.company_name[0] ?? errors.company_name}</p>}
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div>
+                            <Label className="mb-1 block text-xs font-medium">Contact Person Name <RequiredMark /></Label>
+                            <Input
+                                className="h-8 text-xs"
+                                value={formData.name}
+                                onChange={(e) => setField('name', e.target.value)}
+                                placeholder="Contact person name"
+                            />
+                            {errors.name && <p className="mt-0.5 text-xs text-destructive">{errors.name[0] ?? errors.name}</p>}
+                        </div>
+                        <div>
+                            <Label className="mb-1 block text-xs font-medium">Phone <RequiredMark /></Label>
+                            <Input
+                                className="h-8 text-xs"
+                                value={formData.phone}
+                                onChange={(e) => setField('phone', e.target.value)}
+                                placeholder="01XXXXXXXXX"
+                            />
+                            {errors.phone && <p className="mt-0.5 text-xs text-destructive">{errors.phone[0] ?? errors.phone}</p>}
+                        </div>
+                    </div>
+                    <div>
+                        <Label className="mb-1 block text-xs font-medium">Address</Label>
+                        <Input
+                            className="h-8 text-xs"
+                            value={formData.address}
+                            onChange={(e) => setField('address', e.target.value)}
+                            placeholder="Supplier address (optional)"
+                        />
+                        {errors.address && <p className="mt-0.5 text-xs text-destructive">{errors.address[0] ?? errors.address}</p>}
+                    </div>
+                    <div>
+                        <Label className="mb-1 block text-xs font-medium">Opening Balance</Label>
+                        <Input
+                            className="h-8 text-xs"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={formData.opening_balance}
+                            onChange={(e) => setField('opening_balance', e.target.value)}
+                            placeholder="0.00"
+                        />
+                        {errors.opening_balance && <p className="mt-0.5 text-xs text-destructive">{errors.opening_balance[0] ?? errors.opening_balance}</p>}
+                    </div>
+                    <div className="flex justify-end gap-2 border-t pt-3">
+                        <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange(false)}>
+                            Cancel
+                        </Button>
+                        <Button type="submit" size="sm" disabled={processing} className="bg-emerald-600 text-white hover:bg-emerald-700">
+                            {processing ? 'Saving...' : 'Create Supplier'}
+                        </Button>
+                    </div>
+                </form>
+            </DialogContent>
+        </Dialog>
+    );
 }
 
 async function quickCreate(routeName, name, branchId = null) {
@@ -910,12 +1066,51 @@ const ProductForm = forwardRef(function ProductForm({
     const [localUnitOptions, setLocalUnitOptions] = useState(() => mapSelectOptionsWithSelected(units, selectedCatalog.unit));
     const [localWarrantyOptions, setLocalWarrantyOptions] = useState(() => mapSelectOptionsWithSelected(warranties, selectedCatalog.warranty));
     const [localTagOptions, setLocalTagOptions] = useState(() => tagOptions);
+    const [localSuppliers, setLocalSuppliers] = useState(() => suppliers);
     const [branchColorOptions, setBranchColorOptions] = useState(() => mergePresetOptions(colorOptions, selectedColors));
     const [branchSizeOptions, setBranchSizeOptions] = useState(() => mergePresetOptions(sizeOptions, selectedSizes));
+    const [supplierModalOpen, setSupplierModalOpen] = useState(false);
+    const [supplierModalInitial, setSupplierModalInitial] = useState('');
 
     const toast = useAppToast();
     const variationBuilderRef = useRef(null);
     const [hasVariations, setHasVariations] = useState(isEditing && initialVariations.length > 0);
+
+    function handleSupplierCreated(createdSupplier) {
+        setLocalSuppliers((prev) => {
+            const exists = prev.some((s) => String(s.id) === String(createdSupplier.id));
+            return exists ? prev : [...prev, createdSupplier];
+        });
+
+        form.setData((data) => ({
+            ...data,
+            initial_stock_supplier_id: String(createdSupplier.id),
+            initial_stock_paid_amount: data.initial_stock_paid_amount,
+            initial_stock_payment_account_id: resolveDefaultPaymentAccountId(
+                paymentAccountOptions,
+                parseFloat(data.initial_stock_paid_amount || 0) > 0
+                    ? data.initial_stock_payment_account_id
+                    : '',
+            ),
+        }));
+
+        if (window.__pendingSupplierResolve) {
+            window.__pendingSupplierResolve({
+                value: String(createdSupplier.id),
+                label: createdSupplier.company_name
+                    ? `${createdSupplier.company_name} · ${createdSupplier.name} · ${createdSupplier.phone ?? ''}`
+                    : `${createdSupplier.name}${createdSupplier.phone ? ` · ${createdSupplier.phone}` : ''}`,
+            });
+            window.__pendingSupplierResolve = null;
+        }
+    }
+
+    function handleSupplierModalOpenChange(open) {
+        setSupplierModalOpen(open);
+        if (!open && window.__pendingSupplierResolve) {
+            window.__pendingSupplierResolve = null;
+        }
+    }
 
     const colorSelectOptions = useMemo(
         () => branchColorOptions.map((opt) => ({ value: String(opt.id), label: opt.label })),
@@ -961,7 +1156,7 @@ const ProductForm = forwardRef(function ProductForm({
     const initialStockPaidAmount = parseFloat(form.data.initial_stock_paid_amount || 0) || 0;
     const initialStockDueAmount = Math.max(0, resolvedInitialStockTotal - initialStockPaidAmount);
 
-    const supplierSelectOptions = useMemo(() => mapSupplierOptions(suppliers), [suppliers]);
+    const supplierSelectOptions = useMemo(() => mapSupplierOptions(localSuppliers), [localSuppliers]);
 
     const paymentAccountOptions = useMemo(
         () => paymentAccounts.map((account) => ({
@@ -1150,6 +1345,9 @@ const ProductForm = forwardRef(function ProductForm({
                 }
                 if (data.sizeOptions) {
                     setBranchSizeOptions(mergePresetOptions(data.sizeOptions, selectedSizes));
+                }
+                if (data.suppliers) {
+                    setLocalSuppliers(data.suppliers);
                 }
             })
             .catch(() => {});
@@ -1384,7 +1582,22 @@ const ProductForm = forwardRef(function ProductForm({
                                     </p>
                                 )}
 
-                                <Field label="Supplier" required error={form.errors.initial_stock_supplier_id} className="sm:col-span-2 lg:col-span-1">
+                                <div className="sm:col-span-2 lg:col-span-1">
+                                    <div className="mb-1 flex items-center justify-between">
+                                        <Label className="block text-xs font-medium">
+                                            Supplier <RequiredMark />
+                                        </Label>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setSupplierModalInitial('');
+                                                setSupplierModalOpen(true);
+                                            }}
+                                            className="text-[11px] font-medium text-blue-600 hover:underline hover:text-blue-800"
+                                        >
+                                            + Add Supplier
+                                        </button>
+                                    </div>
                                     <SmartSelect
                                         options={supplierSelectOptions}
                                         value={form.data.initial_stock_supplier_id ? String(form.data.initial_stock_supplier_id) : null}
@@ -1407,11 +1620,24 @@ const ProductForm = forwardRef(function ProductForm({
                                                 };
                                             });
                                         }}
-                                        placeholder="Select supplier"
+                                        placeholder="Select or search supplier…"
                                         triggerClassName="h-8 text-xs"
                                         optionsClassName="max-h-52"
+                                        creatable
+                                        createMode="instant"
+                                        createRowLabel={(q) => `Add "${q}" as new supplier`}
+                                        onModalCreate={({ label }) => {
+                                            setSupplierModalInitial(label);
+                                            setSupplierModalOpen(true);
+                                            return new Promise((resolve) => {
+                                                window.__pendingSupplierResolve = resolve;
+                                            });
+                                        }}
                                     />
-                                </Field>
+                                    {form.errors.initial_stock_supplier_id && (
+                                        <p className="mt-0.5 text-xs text-destructive">{form.errors.initial_stock_supplier_id}</p>
+                                    )}
+                                </div>
 
                                 <Field label="Stock Value">
                                     <div className="flex h-8 items-center rounded-md border border-input bg-muted/20 px-3 text-xs font-medium tabular-nums">
@@ -1607,6 +1833,13 @@ const ProductForm = forwardRef(function ProductForm({
                     </div>
                 </Card>
             </div>
+
+            <AddSupplierDialog
+                open={supplierModalOpen}
+                onOpenChange={handleSupplierModalOpenChange}
+                initialName={supplierModalInitial}
+                onCreated={handleSupplierCreated}
+            />
         </div>
     );
 });

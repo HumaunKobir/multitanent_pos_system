@@ -1116,6 +1116,49 @@ const ProductForm = forwardRef(function ProductForm({
         }
     }, [showVisibleOnStore]);
 
+    useEffect(() => {
+        const targetBranchId = effectiveBranchId ?? (defaultCatalogBranchId != null ? String(defaultCatalogBranchId) : null);
+        if (!targetBranchId) return;
+
+        let isMounted = true;
+
+        fetch(route('api.products.catalog-options', { branch_id: targetBranchId }), {
+            credentials: 'include',
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            },
+        })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((data) => {
+                if (!isMounted || !data) return;
+
+                if (data.categories) {
+                    setLocalCategoryOptions(mapSelectOptionsWithSelected(data.categories, selectedCatalog.category));
+                }
+                if (data.brands) {
+                    setLocalBrandOptions(mapSelectOptionsWithSelected(data.brands, selectedCatalog.brand));
+                }
+                if (data.units) {
+                    setLocalUnitOptions(mapSelectOptionsWithSelected(data.units, selectedCatalog.unit));
+                }
+                if (data.warranties) {
+                    setLocalWarrantyOptions(mapSelectOptionsWithSelected(data.warranties, selectedCatalog.warranty));
+                }
+                if (data.colorOptions) {
+                    setBranchColorOptions(mergePresetOptions(data.colorOptions, selectedColors));
+                }
+                if (data.sizeOptions) {
+                    setBranchSizeOptions(mergePresetOptions(data.sizeOptions, selectedSizes));
+                }
+            })
+            .catch(() => {});
+
+        return () => {
+            isMounted = false;
+        };
+    }, [effectiveBranchId, defaultCatalogBranchId]);
+
     function handleVariationsToggle(val) {
         setHasVariations(val);
         form.setData('has_variants', val);

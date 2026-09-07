@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ProductInOutLog extends Model
 {
+    use UsesTenantConnection;
+
     protected $fillable = [
         'batch_id',
         'branch_id',

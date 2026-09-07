@@ -8,6 +8,7 @@ use App\Enums\OrderStatus;
 use App\Support\StorageUrl;
 use App\Traits\HasAccount;
 use App\Traits\HasBranch;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -17,7 +18,7 @@ use Illuminate\Notifications\Notifiable;
 
 class Customer extends Authenticatable
 {
-    use HasAccount, HasBranch, HasFactory, Notifiable;
+    use HasAccount, HasBranch, HasFactory, Notifiable, UsesTenantConnection;
 
     protected $fillable = [
         'branch_id',

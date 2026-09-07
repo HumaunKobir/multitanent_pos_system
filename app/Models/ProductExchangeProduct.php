@@ -2,12 +2,15 @@
 
 namespace App\Models;
 
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class ProductExchangeProduct extends Model
 {
+    use UsesTenantConnection;
+
     protected $fillable = [
         'branch_id',
         'product_exchange_id',

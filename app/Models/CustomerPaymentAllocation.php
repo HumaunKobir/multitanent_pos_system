@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CustomerPaymentAllocation extends Model
 {
+    use UsesTenantConnection;
+
     protected $fillable = [
         'customer_payment_id',
         'sell_id',

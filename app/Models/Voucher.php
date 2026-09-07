@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\VoucherType;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Voucher extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, UsesTenantConnection;
 
     protected $fillable = [
         'type',

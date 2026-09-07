@@ -3,11 +3,14 @@
 namespace App\Models;
 
 use App\Enums\CommonStatus;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ProductVariation extends Model
 {
+    use UsesTenantConnection;
+
     protected $fillable = [
         'branch_id', 'product_id', 'sku', 'sku_code', 'variation_data',
         'price', 'purchase_price', 'stock', 'status',

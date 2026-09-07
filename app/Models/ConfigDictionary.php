@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 
 class ConfigDictionary extends Model
 {
+    use UsesTenantConnection;
+
     protected $fillable = ['key', 'value'];
 
     public static function get(string $key, mixed $default = null): mixed

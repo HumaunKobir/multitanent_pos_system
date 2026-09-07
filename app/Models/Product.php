@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Services\BarcodeService;
 use App\Services\EcommerceBranchService;
 use App\Traits\HasBranch;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -16,7 +17,7 @@ use Illuminate\Support\Str;
 
 class Product extends Model
 {
-    use HasBranch, HasFactory;
+    use HasBranch, HasFactory, UsesTenantConnection;
 
     protected $fillable = [
         'branch_id',

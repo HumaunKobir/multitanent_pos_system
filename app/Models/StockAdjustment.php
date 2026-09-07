@@ -5,12 +5,13 @@ namespace App\Models;
 use App\Enums\StockAdjustmentType;
 use App\Traits\HasBranchInvoiceNumber;
 use App\Traits\HasBranchUser;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class StockAdjustment extends Model
 {
-    use HasBranchInvoiceNumber, HasBranchUser;
+    use HasBranchInvoiceNumber, HasBranchUser, UsesTenantConnection;
 
     protected $appends = ['invoice_number'];
 

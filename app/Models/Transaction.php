@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
@@ -9,7 +10,7 @@ use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Transaction extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, UsesTenantConnection;
 
     protected $fillable = ['source_type', 'source_id', 'performed_by_type', 'performed_by_id', 'date', 'amount', 'debit_account_id', 'credit_account_id', 'debit_decrease', 'credit_decrease', 'description', 'approved_at', 'business_session_id'];
 

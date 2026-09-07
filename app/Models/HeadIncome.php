@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class HeadIncome extends Model
 {
+    use UsesTenantConnection;
+
     protected $fillable = ['income_id', 'head_id', 'amount', 'description'];
 
     protected $casts = ['amount' => 'decimal:2'];

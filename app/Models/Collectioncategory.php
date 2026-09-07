@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 
 class Collectioncategory extends Model
 {
+    use UsesTenantConnection;
+
     protected $fillable = ['name', 'image', 'status'];
 
     public function scopeActive($query): Builder

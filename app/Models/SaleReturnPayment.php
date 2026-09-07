@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SaleReturnPayment extends Model
 {
+    use UsesTenantConnection;
+
     protected $fillable = [
         'sale_return_id',
         'branch_id',

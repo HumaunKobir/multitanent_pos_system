@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CommonStatus;
 use App\Services\EcommerceBranchService;
+use App\Traits\UsesTenantConnection;
 use Database\Factories\TagFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -15,7 +16,7 @@ use Illuminate\Support\Facades\Auth;
 class Tag extends Model
 {
     /** @use HasFactory<TagFactory> */
-    use HasFactory;
+    use HasFactory, UsesTenantConnection;
 
     protected $fillable = [
         'branch_id',

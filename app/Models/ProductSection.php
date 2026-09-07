@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\BlockType;
 use App\Enums\LayoutType;
+use App\Traits\UsesTenantConnection;
 use Database\Factories\ProductSectionFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\Storage;
 class ProductSection extends Model
 {
     /** @use HasFactory<ProductSectionFactory> */
-    use HasFactory;
+    use HasFactory, UsesTenantConnection;
 
     protected $fillable = [
         'branch_id',

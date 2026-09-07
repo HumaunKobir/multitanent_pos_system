@@ -4,12 +4,13 @@ namespace App\Models;
 
 use App\Enums\CoinTransactionType;
 use App\Traits\HasBranch;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CustomerCoinTransaction extends Model
 {
-    use HasBranch;
+    use HasBranch, UsesTenantConnection;
 
     protected $fillable = [
         'customer_id',

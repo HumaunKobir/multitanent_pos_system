@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Services\EcommerceBranchService;
 use App\Support\AdminNavigation;
 use App\Traits\HasBranch;
+use App\Traits\UsesCentralConnection;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Attributes\Fillable;
 use Illuminate\Database\Eloquent\Attributes\Hidden;
@@ -30,7 +31,7 @@ class User extends Authenticatable
     public const string OPERATING_BRANCH_ADMIN_EMAIL = 'branchmanager@coolness.com';
 
     /** @use HasFactory<UserFactory> */
-    use HasBranch, HasFactory, HasRoles, Notifiable, TwoFactorAuthenticatable;
+    use HasBranch, HasFactory, HasRoles, Notifiable, TwoFactorAuthenticatable, UsesCentralConnection;
 
     protected function casts(): array
     {

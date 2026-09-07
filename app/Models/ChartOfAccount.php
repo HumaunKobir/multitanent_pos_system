@@ -6,6 +6,7 @@ use App\Enums\AccountType;
 use App\Enums\CommonStatus;
 use App\Enums\SystemAccountKey;
 use App\Services\SystemAccountService;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\Auth;
 
 class ChartOfAccount extends Model
 {
-    use SoftDeletes;
+    use SoftDeletes, UsesTenantConnection;
 
     protected $fillable = [
         'source_type',

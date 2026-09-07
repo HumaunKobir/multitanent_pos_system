@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Traits\HasBranchCatalog;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -10,7 +11,7 @@ use Illuminate\Support\Str;
 
 class Category extends Model
 {
-    use HasBranchCatalog, HasFactory;
+    use HasBranchCatalog, HasFactory, UsesTenantConnection;
 
     protected $fillable = ['branch_id', 'catalog_group_id', 'name', 'slug', 'image', 'status'];
 

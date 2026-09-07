@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\UsesTenantConnection;
 use Database\Factories\ProductReviewFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class ProductReview extends Model
 {
     /** @use HasFactory<ProductReviewFactory> */
-    use HasFactory;
+    use HasFactory, UsesTenantConnection;
 
     protected $fillable = [
         'product_id',

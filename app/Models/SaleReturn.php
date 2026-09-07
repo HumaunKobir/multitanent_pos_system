@@ -5,13 +5,14 @@ namespace App\Models;
 use App\Enums\ReceivedPaymentMethod;
 use App\Traits\HasBranchInvoiceNumber;
 use App\Traits\HasBranchUser;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SaleReturn extends Model
 {
-    use HasBranchInvoiceNumber, HasBranchUser;
+    use HasBranchInvoiceNumber, HasBranchUser, UsesTenantConnection;
 
     protected $appends = ['invoice_number', 'net_amount'];
 

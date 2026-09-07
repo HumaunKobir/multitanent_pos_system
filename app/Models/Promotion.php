@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\PromotionScope;
 use App\Enums\PromotionType;
 use App\Traits\HasBranch;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -13,7 +14,7 @@ use Illuminate\Support\Carbon;
 
 class Promotion extends Model
 {
-    use HasBranch, HasFactory;
+    use HasBranch, HasFactory, UsesTenantConnection;
 
     protected $fillable = [
         'branch_id',

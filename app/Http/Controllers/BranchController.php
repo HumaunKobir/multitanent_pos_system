@@ -4,14 +4,20 @@ namespace App\Http\Controllers;
 
 use App\Enums\CommonStatus;
 use App\Models\Branch;
+use App\Models\Customer;
+use App\Models\Supplier;
 use App\Services\SystemAccountService;
+use App\Services\TenantProvisioner;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
+use Throwable;
 
 class BranchController extends Controller
 {
+    public function __construct(private TenantProvisioner $tenants) {}
+
     public function index(Request $request): Response
     {
         $this->authorize('branch.view');
@@ -43,7 +49,19 @@ class BranchController extends Controller
             'status' => CommonStatus::Active,
         ]);
 
-        SystemAccountService::seed($branch->id);
+        try {
+            if (config('tenancy.enabled')) {
+                $this->tenants->provision($branch);
+            } else {
+                SystemAccountService::seed($branch->id);
+            }
+        } catch (Throwable $e) {
+            report($e);
+            $branch->delete();
+
+            return redirect()->route('branch.index')
+                ->with('error', 'Branch could not be created: '.$e->getMessage());
+        }
 
         return redirect()->route('branch.index')
             ->with('success', 'Branch created successfully.');
@@ -83,17 +101,41 @@ class BranchController extends Controller
                 ->with('error', 'Cannot delete branch with assigned users.');
         }
 
-        if ($branch->customers()->where('is_default', false)->exists()) {
-            return redirect()->route('branch.index')
-                ->with('error', 'Cannot delete branch with customers or suppliers.');
+        if (config('tenancy.enabled') && filled($branch->database_name)) {
+            try {
+                $this->tenants->initialize($branch);
+
+                if (Customer::query()->where('is_default', false)->exists()) {
+                    return redirect()->route('branch.index')
+                        ->with('error', 'Cannot delete branch with customers or suppliers.');
+                }
+
+                if (Supplier::query()->exists()) {
+                    return redirect()->route('branch.index')
+                        ->with('error', 'Cannot delete branch with customers or suppliers.');
+                }
+
+                Customer::query()->delete();
+            } catch (Throwable $e) {
+                report($e);
+
+                return redirect()->route('branch.index')
+                    ->with('error', 'Cannot delete branch: '.$e->getMessage());
+            }
+        } else {
+            if ($branch->customers()->where('is_default', false)->exists()) {
+                return redirect()->route('branch.index')
+                    ->with('error', 'Cannot delete branch with customers or suppliers.');
+            }
+
+            if ($branch->suppliers()->exists()) {
+                return redirect()->route('branch.index')
+                    ->with('error', 'Cannot delete branch with customers or suppliers.');
+            }
+
+            $branch->customers()->delete();
         }
 
-        if ($branch->suppliers()->exists()) {
-            return redirect()->route('branch.index')
-                ->with('error', 'Cannot delete branch with customers or suppliers.');
-        }
-
-        $branch->customers()->delete();
         $branch->delete();
 
         return redirect()->route('branch.index')

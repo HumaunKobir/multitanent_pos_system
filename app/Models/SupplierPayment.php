@@ -3,13 +3,14 @@
 namespace App\Models;
 
 use App\Traits\HasBranch;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class SupplierPayment extends Model
 {
-    use HasBranch;
+    use HasBranch, UsesTenantConnection;
 
     protected $appends = ['invoice_number'];
 

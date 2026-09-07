@@ -9,12 +9,15 @@ use App\Models\Product;
 use App\Models\ProductVariation;
 use App\Models\StockDistribution;
 use App\Models\StockDistributionProduct;
+use App\Models\User;
+use Illuminate\Support\Facades\DB;
 
 class StockDistributionService
 {
     public function __construct(
         private InventoryStockService $stock,
         private ProductBranchReplicationService $replication,
+        private TenantProvisioner $tenants,
     ) {}
 
     /**
@@ -22,22 +25,28 @@ class StockDistributionService
      */
     public function createPendingDistribution(array $data, ?int $branchId, ?int $purchaseId = null): StockDistribution
     {
-        $distribution = StockDistribution::create([
-            'branch_id' => $branchId,
-            'from_branch_id' => Branch::resolveMainBranchId(),
-            'to_branch_id' => (int) $data['to_branch_id'],
-            'date' => $data['date'],
-            'comment' => $data['comment'] ?? null,
-            'purchase_id' => $purchaseId,
-            'status' => StockDistributionStatus::Pending,
-            'serial' => 'INVT'.str_pad((string) (StockDistribution::max('id') + 1), 8, '0', STR_PAD_LEFT),
-        ]);
+        return $this->onMainBranch(function () use ($data, $branchId, $purchaseId): StockDistribution {
+            $toBranchId = (int) $data['to_branch_id'];
+            $this->syncBranchRegistryRow(Branch::query()->findOrFail(Branch::resolveMainBranchId()));
+            $this->syncBranchRegistryRow(Branch::query()->findOrFail($toBranchId));
 
-        foreach ($this->buildPendingProductLines($data, $branchId) as $line) {
-            $distribution->products()->create($line);
-        }
+            $distribution = StockDistribution::create([
+                'branch_id' => $branchId,
+                'from_branch_id' => Branch::resolveMainBranchId(),
+                'to_branch_id' => $toBranchId,
+                'date' => $data['date'],
+                'comment' => $data['comment'] ?? null,
+                'purchase_id' => $purchaseId,
+                'status' => StockDistributionStatus::Pending,
+                'serial' => 'INVT'.str_pad((string) (StockDistribution::max('id') + 1), 8, '0', STR_PAD_LEFT),
+            ]);
 
-        return $distribution->load('products');
+            foreach ($this->buildPendingProductLines($data, $branchId) as $line) {
+                $distribution->products()->create($line);
+            }
+
+            return $distribution->load('products');
+        });
     }
 
     /**
@@ -152,57 +161,62 @@ class StockDistributionService
         $qty = (float) $line->quantity;
         $productId = (int) $line->product_id;
         $variationId = $line->variation_id ? (int) $line->variation_id : null;
-        $destinationProduct = $this->resolveDestinationProduct($productId, $toBranchId);
 
-        if ($variationId) {
-            return [
-                'destination_batches' => $this->receiveVariation(
-                    $toBranchId,
-                    $productId,
-                    $destinationProduct->id,
-                    $variationId,
-                    $qty,
-                ),
-            ];
-        }
+        return $this->onBranchId($toBranchId, function () use ($line, $toBranchId, $qty, $productId, $variationId): array {
+            $destinationProduct = $this->resolveDestinationProduct($productId, $toBranchId);
 
-        $sourceBatches = Batch::query()
-            ->whereIn('id', array_keys($line->source_batches ?? []))
-            ->get()
-            ->keyBy('id');
-
-        $destinationBatchMap = [];
-
-        foreach (($line->source_batches ?? []) as $sourceBatchId => $deductQty) {
-            $sourceBatch = $sourceBatches->get((int) $sourceBatchId);
-
-            if (! $sourceBatch) {
-                throw new \RuntimeException('Source batch not found.');
+            if ($variationId) {
+                return [
+                    'destination_batches' => $this->receiveVariation(
+                        $toBranchId,
+                        $productId,
+                        $destinationProduct->id,
+                        $variationId,
+                        $qty,
+                    ),
+                ];
             }
 
-            $destinationBatch = Batch::firstOrCreate(
-                [
-                    'branch_id' => $toBranchId,
-                    'product_id' => $destinationProduct->id,
-                    'purchase_price' => $sourceBatch->purchase_price,
-                    'expiry_date' => $sourceBatch->expiry_date,
-                    'serial' => $sourceBatch->serial,
-                ],
-                ['available' => 0]
-            );
+            $sourceBatches = $this->onMainBranch(function () use ($line) {
+                return Batch::query()
+                    ->whereIn('id', array_keys($line->source_batches ?? []))
+                    ->get()
+                    ->keyBy('id');
+            });
 
-            $destinationBatch->increment('available', $deductQty);
-            $destinationBatch->refresh();
-            $destinationBatch->distributionInStock($deductQty);
+            $destinationBatchMap = [];
 
-            if (isset($destinationBatchMap[$destinationBatch->id])) {
-                $destinationBatchMap[$destinationBatch->id] += $deductQty;
-            } else {
-                $destinationBatchMap[$destinationBatch->id] = $deductQty;
+            foreach (($line->source_batches ?? []) as $sourceBatchId => $deductQty) {
+                $sourceBatch = $sourceBatches->get((int) $sourceBatchId);
+
+                if (! $sourceBatch) {
+                    throw new \RuntimeException('Source batch not found.');
+                }
+
+                $destinationBatch = Batch::firstOrCreate(
+                    [
+                        'branch_id' => $toBranchId,
+                        'product_id' => $destinationProduct->id,
+                        'purchase_price' => $sourceBatch->purchase_price,
+                        'expiry_date' => $sourceBatch->expiry_date,
+                        'serial' => $sourceBatch->serial,
+                    ],
+                    ['available' => 0]
+                );
+
+                $destinationBatch->increment('available', $deductQty);
+                $destinationBatch->refresh();
+                $destinationBatch->distributionInStock($deductQty);
+
+                if (isset($destinationBatchMap[$destinationBatch->id])) {
+                    $destinationBatchMap[$destinationBatch->id] += $deductQty;
+                } else {
+                    $destinationBatchMap[$destinationBatch->id] = $deductQty;
+                }
             }
-        }
 
-        return ['destination_batches' => $destinationBatchMap];
+            return ['destination_batches' => $destinationBatchMap];
+        });
     }
 
     /**
@@ -211,34 +225,40 @@ class StockDistributionService
      */
     public function receiveLines(StockDistribution $distribution, array $lineIds, int $userId): array
     {
-        $distribution->loadMissing('products');
-        $toBranchId = (int) $distribution->to_branch_id;
+        return $this->onMainBranch(function () use ($distribution, $lineIds, $userId): array {
+            $distribution->loadMissing('products');
+            $toBranchId = (int) $distribution->to_branch_id;
 
-        $lines = $distribution->products
-            ->filter(fn (StockDistributionProduct $line) => in_array((int) $line->id, $lineIds, true) && ! $line->isReceived())
-            ->values();
+            $lines = $distribution->products
+                ->filter(fn (StockDistributionProduct $line) => in_array((int) $line->id, $lineIds, true) && ! $line->isReceived())
+                ->values();
 
-        if ($lines->isEmpty()) {
-            throw new \RuntimeException('No pending lines selected for receipt.');
-        }
+            if ($lines->isEmpty()) {
+                throw new \RuntimeException('No pending lines selected for receipt.');
+            }
 
-        $receivedLines = [];
+            $receivedLines = [];
 
-        foreach ($lines as $line) {
-            $batchMaps = $this->receiveLine($line, $toBranchId);
+            foreach ($lines as $line) {
+                $batchMaps = $this->receiveLine($line, $toBranchId);
 
-            $line->update([
-                'destination_batches' => $batchMaps['destination_batches'],
-                'received_at' => now(),
-                'received_by_user_id' => $userId,
-            ]);
+                $this->onMainBranch(function () use ($line, $batchMaps, $userId): void {
+                    $this->syncUserRegistryRow($userId);
 
-            $receivedLines[] = $line->fresh();
-        }
+                    $line->update([
+                        'destination_batches' => $batchMaps['destination_batches'],
+                        'received_at' => now(),
+                        'received_by_user_id' => $userId,
+                    ]);
+                });
 
-        $distribution->syncStatusFromLines();
+                $receivedLines[] = $line->fresh();
+            }
 
-        return $receivedLines;
+            $distribution->syncStatusFromLines();
+
+            return $receivedLines;
+        });
     }
 
     /**
@@ -410,11 +430,11 @@ class StockDistributionService
         float $qty,
     ): array {
         $fromBranchId = Branch::resolveMainBranchId();
-        $sourceVariation = ProductVariation::query()
+        $sourceVariation = $this->onMainBranch(fn () => ProductVariation::query()
             ->whereKey($variationId)
             ->where('product_id', $sourceProductId)
             ->where('branch_id', $fromBranchId)
-            ->first();
+            ->first());
 
         if (! $sourceVariation) {
             throw new \RuntimeException('Source variation not found.');
@@ -479,19 +499,129 @@ class StockDistributionService
 
     private function resolveDestinationProduct(int $sourceProductId, int $toBranchId): Product
     {
-        $sourceProduct = Product::query()->findOrFail($sourceProductId);
+        $sourceProduct = $this->onMainBranch(
+            fn (): Product => Product::query()->findOrFail($sourceProductId)
+        );
 
         if ((int) $sourceProduct->branch_id === $toBranchId) {
             return $sourceProduct;
         }
 
-        $destinationProduct = $sourceProduct->siblingForBranch($toBranchId);
+        $destinationProduct = Product::query()
+            ->where('branch_id', $toBranchId)
+            ->where(function ($query) use ($sourceProduct): void {
+                $query->where('code', $sourceProduct->code)
+                    ->orWhere('product_group_id', $sourceProduct->product_group_id ?: $sourceProduct->id);
+            })
+            ->first();
 
         if ($destinationProduct !== null) {
             return $destinationProduct;
         }
 
+        if (method_exists($sourceProduct, 'siblingForBranch')) {
+            $sibling = $sourceProduct->siblingForBranch($toBranchId);
+
+            if ($sibling !== null) {
+                return $sibling;
+            }
+        }
+
         return $this->autoReplicateToDestination($sourceProduct, $toBranchId);
+    }
+
+    /**
+     * @template TReturn
+     *
+     * @param  callable(): TReturn  $callback
+     * @return TReturn
+     */
+    private function onMainBranch(callable $callback): mixed
+    {
+        if (! config('tenancy.enabled')) {
+            return $callback();
+        }
+
+        $main = Branch::query()->findOrFail(Branch::resolveMainBranchId());
+
+        return $this->tenants->usingBranch($main, $callback);
+    }
+
+    /**
+     * @template TReturn
+     *
+     * @param  callable(): TReturn  $callback
+     * @return TReturn
+     */
+    private function onBranchId(int $branchId, callable $callback): mixed
+    {
+        if (! config('tenancy.enabled')) {
+            return $callback();
+        }
+
+        $branch = Branch::query()->findOrFail($branchId);
+
+        return $this->tenants->usingBranch($branch, $callback);
+    }
+
+    private function syncBranchRegistryRow(Branch $branch): void
+    {
+        if (! config('tenancy.enabled')) {
+            return;
+        }
+
+        DB::connection(config('tenancy.tenant_connection', 'tenant'))
+            ->table('branches')
+            ->updateOrInsert(
+                ['id' => $branch->id],
+                [
+                    'name' => $branch->name,
+                    'phone' => $branch->phone,
+                    'address' => $branch->address,
+                    'status' => $branch->status?->value ?? $branch->status ?? 1,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ],
+            );
+    }
+
+    private function syncUserRegistryRow(int $userId): void
+    {
+        if (! config('tenancy.enabled')) {
+            return;
+        }
+
+        $user = User::query()->find($userId);
+
+        if ($user === null) {
+            DB::connection(config('tenancy.tenant_connection', 'tenant'))
+                ->table('users')
+                ->updateOrInsert(
+                    ['id' => $userId],
+                    [
+                        'name' => 'User '.$userId,
+                        'email' => 'user'.$userId.'@tenancy.local',
+                        'password' => '',
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ],
+                );
+
+            return;
+        }
+
+        DB::connection(config('tenancy.tenant_connection', 'tenant'))
+            ->table('users')
+            ->updateOrInsert(
+                ['id' => $user->id],
+                [
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'password' => $user->password,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ],
+            );
     }
 
     private function autoReplicateToDestination(Product $sourceProduct, int $toBranchId): Product

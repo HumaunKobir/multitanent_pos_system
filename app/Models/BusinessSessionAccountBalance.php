@@ -3,11 +3,14 @@
 namespace App\Models;
 
 use App\Enums\AccountType;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BusinessSessionAccountBalance extends Model
 {
+    use UsesTenantConnection;
+
     protected $fillable = [
         'business_session_id',
         'account_id',

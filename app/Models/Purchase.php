@@ -6,6 +6,7 @@ use App\Enums\PurchaseReceivedPayment;
 use App\Enums\PurchaseType;
 use App\Traits\HasBranchInvoiceNumber;
 use App\Traits\HasBranchUser;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -16,7 +17,7 @@ use Illuminate\Support\Facades\Auth;
 
 class Purchase extends Model
 {
-    use HasBranchInvoiceNumber, HasBranchUser, HasFactory;
+    use HasBranchInvoiceNumber, HasBranchUser, HasFactory, UsesTenantConnection;
 
     protected $fillable = [
         'branch_id',

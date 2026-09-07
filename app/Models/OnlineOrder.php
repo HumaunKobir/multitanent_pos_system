@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\OrderStatus;
 use App\Exceptions\SteadfastCourierException;
 use App\Support\SteadfastPhone;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,6 +13,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class OnlineOrder extends Model
 {
+    use UsesTenantConnection;
+
     protected $fillable = [
         'customer_id', 'name', 'email', 'phone', 'address',
         'payment_method', 'transaction_id', 'delivery_charge', 'subtotal', 'total',

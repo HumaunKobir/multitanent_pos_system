@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\BusinessSessionOpeningMethod;
 use App\Enums\BusinessSessionStatus;
+use App\Traits\UsesTenantConnection;
 use Database\Factories\BusinessSessionFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -13,7 +14,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class BusinessSession extends Model
 {
     /** @use HasFactory<BusinessSessionFactory> */
-    use HasFactory;
+    use HasFactory, UsesTenantConnection;
 
     protected $fillable = [
         'session_number',

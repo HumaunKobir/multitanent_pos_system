@@ -3,12 +3,15 @@
 namespace App\Models;
 
 use App\Enums\CommonStatus;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Variation extends Model
 {
+    use UsesTenantConnection;
+
     protected $fillable = ['branch_id', 'name', 'status'];
 
     protected $casts = [

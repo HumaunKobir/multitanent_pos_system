@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Traits\UsesTenantConnection;
 use Database\Factories\FaqFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -10,7 +11,7 @@ use Illuminate\Database\Eloquent\Model;
 class Faq extends Model
 {
     /** @use HasFactory<FaqFactory> */
-    use HasFactory;
+    use HasFactory, UsesTenantConnection;
 
     protected $fillable = [
         'question',

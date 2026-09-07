@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\CoinExpiryUnit;
 use App\Traits\HasBranch;
+use App\Traits\UsesTenantConnection;
 use Carbon\CarbonInterface;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -11,7 +12,7 @@ use Illuminate\Support\Carbon;
 
 class CoinSettings extends Model
 {
-    use HasBranch;
+    use HasBranch, UsesTenantConnection;
 
     protected $fillable = [
         'branch_id',

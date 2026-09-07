@@ -20,6 +20,12 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(AdminNavigation::class);
+
+        $this->loadMigrationsFrom(config('tenancy.central_migrations_path'));
+
+        if (! config('tenancy.enabled')) {
+            $this->loadMigrationsFrom(config('tenancy.tenant_migrations_path'));
+        }
     }
 
     /**
@@ -30,6 +36,10 @@ class AppServiceProvider extends ServiceProvider
         Schema::defaultStringLength(191);
         $this->configureDefaults();
         $this->ensurePublicUploadDirectories();
+
+        if (config('tenancy.enabled')) {
+            config(['database.default' => config('tenancy.central_connection')]);
+        }
 
         Gate::before(function (User $user, string $ability): ?bool {
             if ($user->hasUnrestrictedPermissions()) {

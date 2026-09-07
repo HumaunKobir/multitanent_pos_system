@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Traits\HasBranch;
+use App\Traits\UsesTenantConnection;
 use Database\Factories\CustomerCoinLotFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -11,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class CustomerCoinLot extends Model
 {
     /** @use HasFactory<CustomerCoinLotFactory> */
-    use HasBranch, HasFactory;
+    use HasBranch, HasFactory, UsesTenantConnection;
 
     protected $fillable = [
         'customer_id',

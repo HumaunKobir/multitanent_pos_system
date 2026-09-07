@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\CommonStatus;
 use App\Services\DefaultCustomerService;
 use App\Services\EcommerceBranchService;
+use App\Traits\UsesCentralConnection;
 use Database\Factories\BranchFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -14,7 +15,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class Branch extends Model
 {
     /** @use HasFactory<BranchFactory> */
-    use HasFactory;
+    use HasFactory, UsesCentralConnection;
 
     public const int MAIN_BRANCH_ID = 1;
 
@@ -22,7 +23,7 @@ class Branch extends Model
 
     public const string ECOMMERCE_BRANCH_NAME = 'Ecommerce Branch';
 
-    protected $fillable = ['name', 'phone', 'address', 'logo', 'pos_terms_and_conditions', 'status'];
+    protected $fillable = ['name', 'database_name', 'phone', 'address', 'logo', 'pos_terms_and_conditions', 'status'];
 
     public static function hasPosTerms(?string $content): bool
     {
@@ -40,6 +41,10 @@ class Branch extends Model
     protected static function booted(): void
     {
         static::created(function (Branch $branch): void {
+            if (config('tenancy.enabled')) {
+                return;
+            }
+
             DefaultCustomerService::seed($branch);
         });
     }

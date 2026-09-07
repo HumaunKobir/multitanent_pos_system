@@ -4,13 +4,14 @@ namespace App\Models;
 
 use App\Enums\StockDistributionStatus;
 use App\Traits\HasBranch;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class StockDistribution extends Model
 {
-    use HasBranch;
+    use HasBranch, UsesTenantConnection;
 
     protected $appends = [
         'invoice_number',

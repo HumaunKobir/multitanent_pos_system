@@ -3,10 +3,13 @@
 namespace App\Models;
 
 use App\Enums\PasswordResetContext;
+use App\Traits\UsesCentralConnection;
 use Illuminate\Database\Eloquent\Model;
 
 class PasswordResetOtp extends Model
 {
+    use UsesCentralConnection;
+
     public const UPDATED_AT = null;
 
     protected $fillable = [

@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class OnlineOrderProduct extends Model
 {
+    use UsesTenantConnection;
+
     protected $fillable = [
         'online_order_id', 'product_id', 'variation_id', 'name', 'sku',
         'price', 'quantity', 'total_price', 'batches',

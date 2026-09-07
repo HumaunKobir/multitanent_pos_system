@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Enums\PurchaseReceivedPayment;
 use App\Traits\HasBranchInvoiceNumber;
 use App\Traits\HasBranchUser;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -12,7 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class PurchaseReturn extends Model
 {
-    use HasBranchInvoiceNumber, HasBranchUser, HasFactory;
+    use HasBranchInvoiceNumber, HasBranchUser, HasFactory, UsesTenantConnection;
 
     protected $appends = ['invoice_number', 'net_amount', 'vat_percent'];
 

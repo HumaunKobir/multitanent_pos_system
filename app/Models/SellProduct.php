@@ -2,11 +2,14 @@
 
 namespace App\Models;
 
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SellProduct extends Model
 {
+    use UsesTenantConnection;
+
     protected $fillable = [
         'branch_id', 'sell_id', 'product_id', 'variation_id',
         'quantity', 'free_quantity', 'unit_price', 'original_unit_price', 'discount',

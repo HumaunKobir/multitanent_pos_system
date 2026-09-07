@@ -6,6 +6,7 @@ use App\Enums\DiscountType;
 use App\Enums\SaleType;
 use App\Traits\HasBranchInvoiceNumber;
 use App\Traits\HasBranchUser;
+use App\Traits\UsesTenantConnection;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -15,7 +16,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Sell extends Model
 {
-    use HasBranchInvoiceNumber, HasBranchUser, HasFactory;
+    use HasBranchInvoiceNumber, HasBranchUser, HasFactory, UsesTenantConnection;
 
     protected $fillable = [
         'branch_id',

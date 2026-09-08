@@ -87,12 +87,19 @@ export default function RenewSubscriptionDialog({
 
     useEffect(() => {
         if (open && branch) {
-            const initialCycles = 1;
-            setSelectedCycles(initialCycles);
             setPreviewUrl(null);
 
             if (pendingPayment) {
-                const initialAmount = pendingPayment.amount ? String(pendingPayment.amount) : String(initialCycles * feePerCycle);
+                const submittedAmount = parseFloat(pendingPayment.amount) || feePerCycle;
+                let computedCycles = 1;
+                if (feePerCycle > 0 && submittedAmount > 0) {
+                    computedCycles = Math.max(1, Math.round(submittedAmount / feePerCycle));
+                }
+
+                setSelectedCycles(computedCycles);
+
+                const initialAmount = pendingPayment.amount ? String(pendingPayment.amount) : String(computedCycles * feePerCycle);
+                const initialDuration = String(computedCycles * cycleDays);
                 const initialMethod = pendingPayment.payment_method || 'bkash';
                 const initialTrx = pendingPayment.transaction_reference || '';
                 const initialPaidAt = pendingPayment.paid_at || new Date().toISOString().split('T')[0];
@@ -101,7 +108,7 @@ export default function RenewSubscriptionDialog({
 
                 setData({
                     pending_payment_id: pendingPayment.id,
-                    duration_days: String(initialCycles * cycleDays),
+                    duration_days: initialDuration,
                     amount: initialAmount,
                     payment_method: initialMethod,
                     transaction_reference: initialTrx,
@@ -111,6 +118,9 @@ export default function RenewSubscriptionDialog({
                     existing_attachment_path: existingPath,
                 });
             } else {
+                const initialCycles = 1;
+                setSelectedCycles(initialCycles);
+
                 setData({
                     pending_payment_id: null,
                     duration_days: String(initialCycles * cycleDays),
@@ -124,7 +134,7 @@ export default function RenewSubscriptionDialog({
                 });
             }
         }
-    }, [open, branch, cycleDays, feePerCycle, pendingPayment?.id]);
+    }, [open, branch, cycleDays, feePerCycle, pendingPayment?.id, pendingPayment?.amount]);
 
     // Live preview calculation of new extended expiry date
     const extensionPreview = useMemo(() => {
@@ -489,8 +499,14 @@ export default function RenewSubscriptionDialog({
                                 max="3650"
                                 value={data.duration_days}
                                 onChange={(e) => {
-                                    setData('duration_days', e.target.value);
-                                    setSelectedCycles(0);
+                                    const val = e.target.value;
+                                    setData('duration_days', val);
+                                    const numDays = parseInt(val, 10);
+                                    if (numDays > 0 && cycleDays > 0 && numDays % cycleDays === 0) {
+                                        setSelectedCycles(numDays / cycleDays);
+                                    } else {
+                                        setSelectedCycles(0);
+                                    }
                                 }}
                                 className="border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 font-bold"
                                 required

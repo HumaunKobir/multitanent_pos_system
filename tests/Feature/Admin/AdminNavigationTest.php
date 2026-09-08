@@ -14,24 +14,46 @@ test('guests receive empty admin navigation', function () {
     expect($navigation)->toBe([]);
 });
 
-test('authenticated users see the full navigation tree', function () {
+test('authenticated users see the central admin navigation tree', function () {
     $user = User::factory()->create();
 
     $navigation = app(AdminNavigation::class)->build($user);
+    $titles = collect($navigation)->pluck('title');
 
-    expect($navigation)->toHaveCount(10)
-        ->and(collect($navigation)->pluck('title'))->toContain(
-            'Dashboard',
-            'Branch',
-            'User',
-            'Settings',
-            'Accounts',
-            'Reports',
-        );
+    expect($titles)->toContain(
+        'Dashboard',
+        'Parties',
+        'Branch',
+        'User',
+        'Roles',
+        'Website Manage',
+        'Accounts',
+    )->and($titles)->not->toContain(
+        'Sales',
+        'Purchases',
+        'Suppliers',
+        'Customers',
+        'Settings',
+        'Reports',
+    );
 });
 
-test('settings section includes catalog child links only', function () {
-    $user = User::factory()->create();
+test('settings section is available to branch panel users', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    $user->givePermissionTo([
+        'setting.category.view',
+        'setting.tag.view',
+        'setting.brand.view',
+        'setting.unit.view',
+        'setting.color.view',
+        'setting.size.view',
+        'setting.warranty.view',
+        'product.view',
+        'barcode.view',
+    ]);
 
     $navigation = app(AdminNavigation::class)->build($user);
     $settings = collect($navigation)->firstWhere('title', 'Settings');
@@ -65,6 +87,8 @@ test('website section groups all ecommerce frontend links', function () {
     $role->givePermissionTo([
         'online-order.view',
         'online-customer.view',
+        'contact-list.view',
+        'subscriber-list.view',
         'setting.slider.view',
         'setting.productsection.view',
         'setting.website.view',
@@ -91,8 +115,12 @@ test('website section groups all ecommerce frontend links', function () {
 });
 
 test('branch profile appears last for branch users', function () {
+    $this->artisan('permissions:sync');
+
     $branch = Branch::factory()->create();
     $user = User::factory()->create(['branch_id' => $branch->id]);
+    Permission::findOrCreate('setting.branch-profile.view', 'web');
+    $user->givePermissionTo('setting.branch-profile.view');
 
     $titles = collect(app(AdminNavigation::class)->build($user))->pluck('title')->toArray();
 
@@ -136,7 +164,7 @@ test('branch users see pos terms only under sales not settings', function () {
         ->and(collect($settingsChildren)->pluck('title')->all())->not->toContain('POS Terms & Conditions');
 });
 
-test('authenticated admin dashboard shares navigation', function () {
+test('authenticated admin dashboard shares central navigation', function () {
     $user = User::factory()->create();
 
     $this->actingAs($user)
@@ -144,6 +172,9 @@ test('authenticated admin dashboard shares navigation', function () {
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/dashboard')
-            ->has('adminNavigation', 10)
-            ->where('adminNavigation.0.title', 'Dashboard'));
+            ->has('adminNavigation')
+            ->where('adminNavigation.0.title', 'Dashboard')
+            ->where('adminNavigation', fn ($navigation) => collect($navigation)->pluck('title')->doesntContain('Settings')
+                && collect($navigation)->pluck('title')->doesntContain('Reports')
+                && collect($navigation)->pluck('title')->contains('Branch')));
 });

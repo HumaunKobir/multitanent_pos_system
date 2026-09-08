@@ -864,12 +864,11 @@ test('distribute stock menu is visible only for super admin', function () {
     $branchSales = collect(app(AdminNavigation::class)->build($branchUser))
         ->firstWhere('title', 'Sales');
 
-    $adminChildren = collect($adminPurchases['children'] ?? [])->pluck('title');
     $branchChildren = collect($branchSales['children'] ?? [])->pluck('title');
 
-    expect($adminChildren)->toContain('Distribute Stock');
-    expect($branchChildren)->not->toContain('Distribute Stock');
+    expect($adminPurchases)->toBeNull();
     expect($branchChildren)->toContain('Received Stock');
+    expect($branchChildren)->not->toContain('Distribute Stock');
 });
 
 test('distribution maps stock to destination branch product copy', function () {

@@ -21,7 +21,7 @@ class AdminNavigation
         $sections = [];
 
         foreach (config('admin-navigation.sections', []) as $section) {
-            if (! $user->usesBranchPanel() && ($section['ecommerce_only'] ?? false) && ! $user->canAccessEcommercePanel()) {
+            if ($user->usesAdminPanel() && ! ($section['central_admin'] ?? false)) {
                 continue;
             }
 
@@ -30,10 +30,6 @@ class AdminNavigation
             }
 
             if ($user->usesBranchPanel() && ($section['ecommerce_only'] ?? false) && ! $user->canAccessEcommercePanel()) {
-                continue;
-            }
-
-            if ($user->usesAdminPanel() && ($section['branch_only'] ?? false) && ! $this->adminPanelCanSeeBranchSection($user, $section)) {
                 continue;
             }
 
@@ -121,6 +117,10 @@ class AdminNavigation
             return true;
         }
 
+        if ($user->usesAdminPanel()) {
+            return true;
+        }
+
         return $user->canAccessEcommercePanel();
     }
 
@@ -161,13 +161,5 @@ class AdminNavigation
         }
 
         return $section['href'] ?? null;
-    }
-
-    /**
-     * @param  array<string, mixed>  $section
-     */
-    protected function adminPanelCanSeeBranchSection(User $user, array $section): bool
-    {
-        return $user->hasUnrestrictedPermissions() && ($section['unrestricted_admin'] ?? false);
     }
 }

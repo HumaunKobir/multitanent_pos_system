@@ -12,10 +12,10 @@ return [
     | - href: route path
     | - single: true for top-level links without children
     | - icon: icon key used by admin-sidebar.jsx
+    | - central_admin: visible on the admin panel (superadmin / main branch)
     | - admin_only: visible only in the admin panel (superadmin)
     | - primary_admin_only: visible only for user id 1 on the main branch
     | - branch_only: visible only in the branch panel
-    | - unrestricted_admin: branch panel section also visible to unrestricted admins on the admin panel
     | - permission: required permission to see this item (null = always visible)
     |
     */
@@ -26,13 +26,13 @@ return [
             'icon' => 'layout-dashboard',
             'href' => '/dashboard',
             'single' => true,
+            'central_admin' => true,
             'permission' => 'dashboard.view',
         ],
         [
             'title' => 'Sales',
             'icon' => 'circle-dollar-sign',
             'branch_only' => true,
-            'unrestricted_admin' => true,
             'children' => [
                 ['title' => 'Sale', 'href' => '/inventory/sell', 'permission' => 'inventory.sell.view'],
                 ['title' => 'Sale Return', 'href' => '/inventory/sale-return', 'permission' => 'inventory.sale-return.view'],
@@ -47,6 +47,7 @@ return [
         [
             'title' => 'Purchases',
             'icon' => 'hand-coins',
+            'branch_only' => true,
             'children' => [
                 ['title' => 'Purchase', 'href' => '/inventory/purchase', 'permission' => 'inventory.purchase.view'],
                 ['title' => 'Purchase Return', 'href' => '/inventory/purchase-return', 'permission' => 'inventory.purchase-return.view'],
@@ -60,11 +61,13 @@ return [
             'icon' => 'contact',
             'href' => '/party/parties',
             'single' => true,
+            'central_admin' => true,
             'permission' => 'party.parties.view',
         ],
         [
             'title' => 'Suppliers',
             'icon' => 'user',
+            'branch_only' => true,
             'children' => [
                 ['title' => 'Supplier', 'href' => '/party/supplier', 'permission' => 'party.supplier.view'],
                 ['title' => 'Supplier Payment', 'href' => '/party/supplier-payment', 'permission' => 'party.supplier-payment.view'],
@@ -85,6 +88,7 @@ return [
             'icon' => 'building-2',
             'href' => '/branch',
             'single' => true,
+            'central_admin' => true,
             'admin_only' => true,
             'permission' => 'branch.view',
         ],
@@ -93,6 +97,7 @@ return [
             'icon' => 'user-cog',
             'href' => '/user',
             'single' => true,
+            'central_admin' => true,
             'admin_only' => true,
             'permission' => 'user.view',
         ],
@@ -101,12 +106,14 @@ return [
             'icon' => 'shield',
             'href' => '/role',
             'single' => true,
+            'central_admin' => true,
             'admin_only' => true,
             'permission' => 'role.view',
         ],
         [
             'title' => 'Website Manage',
             'icon' => 'globe',
+            'central_admin' => true,
             'ecommerce_only' => true,
             'children' => [
                 ['title' => 'Online Orders', 'href' => '/online-order', 'permission' => 'online-order.view'],
@@ -127,6 +134,7 @@ return [
         [
             'title' => 'Settings',
             'icon' => 'settings',
+            'branch_only' => true,
             'children' => [
                 ['title' => 'Category', 'href' => '/setting/category', 'permission' => 'setting.category.view'],
                 ['title' => 'Tag', 'href' => '/setting/tag', 'permission' => 'setting.tag.view'],
@@ -142,6 +150,7 @@ return [
         [
             'title' => 'Accounts',
             'icon' => 'wallet',
+            'central_admin' => true,
             'children' => [
                 ['title' => 'Accounts', 'href' => '/accounts', 'permission' => 'accounts.view'],
                 ['title' => 'Journal Voucher', 'href' => '/accounts/vouchers?type=journal', 'permission' => 'accounts.view'],
@@ -154,6 +163,7 @@ return [
         [
             'title' => 'Reports',
             'icon' => 'bar-chart-2',
+            'branch_only' => true,
             'children' => [
                 ['title' => 'Account Ledger', 'href' => '/report/account-ledger', 'permission' => 'report.account-ledger.view'],
                 ['title' => 'A/C Transactions', 'href' => '/report/account-transactions', 'permission' => 'report.account-transactions.view'],
@@ -182,6 +192,7 @@ return [
             'icon' => 'shield',
             'href' => '/setting/admin-profile',
             'single' => true,
+            'central_admin' => true,
             'admin_only' => true,
             'primary_admin_only' => true,
             'permission' => null,

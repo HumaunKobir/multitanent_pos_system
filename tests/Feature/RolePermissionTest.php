@@ -274,7 +274,7 @@ test('superadmin can clear all permissions from a role', function () {
 
 // ── Navigation filtering ──────────────────────────────────────────────────────
 
-test('superadmin sees full navigation', function () {
+test('superadmin sees central admin navigation only', function () {
     $this->artisan('permissions:sync');
 
     $titles = collect(app(AdminNavigation::class)->build(primaryAdmin()))->pluck('title')->toArray();
@@ -282,8 +282,13 @@ test('superadmin sees full navigation', function () {
     expect($titles)->toContain('User');
     expect($titles)->toContain('Roles');
     expect($titles)->toContain('Website Manage');
-    expect($titles)->toContain('Sales');
+    expect($titles)->toContain('Parties');
+    expect($titles)->toContain('Accounts');
     expect($titles)->toContain('Dashboard');
+    expect($titles)->not->toContain('Sales');
+    expect($titles)->not->toContain('Purchases');
+    expect($titles)->not->toContain('Settings');
+    expect($titles)->not->toContain('Reports');
 });
 
 test('branch user with no role sees no permission-gated menu items', function () {
@@ -385,23 +390,26 @@ test('superadmin receives wildcard permissions in shared inertia props', functio
         ->assertInertia(fn ($page) => $page->where('auth.permissions', ['*']));
 });
 
-test('main branch admin panel user sees only permitted navigation items', function () {
+test('main branch admin panel user sees only permitted central navigation items', function () {
     $this->artisan('permissions:sync');
 
     $user = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
-    $role = Role::create(['name' => testRoleName('Catalog Viewer'), 'guard_name' => 'web']);
-    $role->givePermissionTo('setting.category.view');
+    $role = Role::create(['name' => testRoleName('Accounts Viewer'), 'guard_name' => 'web']);
+    $role->givePermissionTo('accounts.view');
     $user->assignRole($role);
 
     $titles = collect(app(AdminNavigation::class)->build($user))->pluck('title')->toArray();
 
-    expect($titles)->toContain('Settings');
+    expect($titles)->toContain('Accounts');
+    expect($titles)->not->toContain('Settings');
     expect($titles)->not->toContain('Dashboard');
     expect($titles)->not->toContain('Branch');
     expect($titles)->not->toContain('User');
     expect($titles)->not->toContain('Roles');
     expect($titles)->not->toContain('Admin Profile');
     expect($titles)->not->toContain('Sales');
+    expect($titles)->not->toContain('Purchases');
+    expect($titles)->not->toContain('Reports');
 });
 
 test('main branch admin panel user is denied pages without permission', function () {

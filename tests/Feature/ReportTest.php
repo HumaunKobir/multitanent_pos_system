@@ -424,7 +424,7 @@ test('reports navigation only shows items the user may view', function () {
         ->and(collect($reports['children'])->pluck('title')->all())->not->toContain('Cash Flow', 'Customer Ledger');
 });
 
-test('reports navigation includes all report links for superadmin', function () {
+test('reports navigation is hidden on the central admin panel', function () {
     $this->artisan('permissions:sync');
 
     $admin = User::factory()->create(['branch_id' => null]);
@@ -433,21 +433,8 @@ test('reports navigation includes all report links for superadmin', function () 
     $navigation = app(AdminNavigation::class)->build($admin);
     $reports = collect($navigation)->firstWhere('title', 'Reports');
 
-    expect(collect($reports['children'])->pluck('title')->all())->toContain(
-        'Customer Ledger',
-        'Cash Flow',
-        'Cash Flow Summary',
-        'Daily Transactions',
-        'Date Wise Stock',
-        'Stock Ledger',
-        'Daily Summary',
-        'Sales Summary',
-        'Account Ledger',
-        'A/C Transactions',
-        'Balance Sheet',
-        'Trial Balance',
-        'Profit & Loss',
-    );
+    expect($reports)->toBeNull()
+        ->and(collect($navigation)->pluck('title'))->toContain('Dashboard', 'Branch', 'Accounts');
 });
 
 test('trial balance and profit loss are branch wise and keep debit credit totals balanced', function () {

@@ -145,14 +145,14 @@ class BranchClientController extends Controller
                 ['value' => 'read_only', 'label' => 'Read-Only Mode (Disable all create/edit/delete operations)'],
                 ['value' => 'suspend_branch', 'label' => 'Full Account Suspension (Lock branch panel completely)'],
             ],
-            'paymentMethods' => [
-                ['value' => 'cash', 'label' => 'Cash'],
-                ['value' => 'bank', 'label' => 'Bank Transfer'],
-                ['value' => 'bkash', 'label' => 'bKash'],
-                ['value' => 'nagad', 'label' => 'Nagad'],
-                ['value' => 'rocket', 'label' => 'Rocket'],
-                ['value' => 'other', 'label' => 'Other / Online'],
-            ],
+            'paymentMethods' => \App\Services\BranchPaymentAccountService::listForBranch(null)
+                ->map(fn ($acc) => [
+                    'id' => $acc->id,
+                    'code' => $acc->code,
+                    'value' => $acc->name,
+                    'label' => $acc->name,
+                ])
+                ->values(),
         ]);
     }
 

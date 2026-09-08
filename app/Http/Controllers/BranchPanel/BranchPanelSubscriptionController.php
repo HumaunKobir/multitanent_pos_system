@@ -49,6 +49,24 @@ class BranchPanelSubscriptionController extends Controller
                 'created_at' => $p->created_at?->format('Y-m-d H:i'),
             ]);
 
+        $paymentMethods = \App\Services\BranchPaymentAccountService::listForBranch($branchId)
+            ->map(fn ($acc) => [
+                'id' => $acc->id,
+                'code' => $acc->code,
+                'value' => $acc->name,
+                'label' => $acc->name,
+            ])
+            ->values();
+
+        if ($paymentMethods->isEmpty()) {
+            $paymentMethods = collect([
+                ['value' => 'Cash in Hand', 'label' => 'Cash in Hand'],
+                ['value' => 'bKash', 'label' => 'bKash'],
+                ['value' => 'Nagad', 'label' => 'Nagad'],
+                ['value' => 'SSLCommerz', 'label' => 'SSLCommerz'],
+            ]);
+        }
+
         return Inertia::render('branch-panel/subscription/index', [
             'branch' => [
                 'id' => $branch->id,
@@ -58,14 +76,7 @@ class BranchPanelSubscriptionController extends Controller
             ],
             'subscription' => $subscription,
             'payments' => $payments,
-            'paymentMethods' => [
-                ['value' => 'bkash', 'label' => 'bKash'],
-                ['value' => 'nagad', 'label' => 'Nagad'],
-                ['value' => 'rocket', 'label' => 'Rocket'],
-                ['value' => 'bank', 'label' => 'Bank Transfer'],
-                ['value' => 'cash', 'label' => 'Cash Handover'],
-                ['value' => 'other', 'label' => 'Other Online Channel'],
-            ],
+            'paymentMethods' => $paymentMethods,
         ]);
     }
 

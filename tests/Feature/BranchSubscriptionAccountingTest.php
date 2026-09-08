@@ -139,8 +139,14 @@ test('superadmin approving payment settles branch payable and records superadmin
         'existing_attachment_path' => $pendingPayment->attachment_path,
     ])->assertRedirect();
 
-    // 4. Verify Branch Ledger: Subscription Payable decreased by 1500 to 0
+    // 4. Verify Branch Ledger:
+    // Expense: Subscription Expense increased by 1500
+    // Liability: Subscription Payable decreased by 1500 to 0 (cleared)
+    // Asset: Branch bKash decreased by 1500
+    $branchExpense = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
+    expect((float) $branchExpense->fresh()->current_balance)->toBe(1500.0);
     expect((float) $branchPayable->fresh()->current_balance)->toBe(0.0);
+    expect((float) $branchBkash->fresh()->current_balance)->toBe(-1500.0);
 
     // 5. Verify SuperAdmin Ledger: Subscription Income increased by 1500 & bKash asset increased by 1500
     expect((float) $superadminIncome->fresh()->current_balance)->toBe($initialSuperadminIncome + 1500.0);
@@ -164,4 +170,53 @@ test('superadmin approving payment settles branch payable and records superadmin
 
     expect($superadminSettlementTx)->not->toBeNull();
     expect((float) $superadminSettlementTx->amount)->toBe(1500.0);
+});
+
+test('superadmin direct renewal posts expense, decreases asset, clears payable, and increases superadmin income', function () {
+    $branch = Branch::factory()->create([
+        'name' => 'Branch Sylhet',
+        'subscription_fee' => 2500,
+        'subscription_starts_at' => '2026-09-01',
+        'subscription_expires_at' => '2026-10-01',
+    ]);
+
+    SystemAccountService::seed(null);
+    SystemAccountService::seed($branch->id);
+
+    $admin = User::factory()->create(['branch_id' => null]);
+    $admin->givePermissionTo(['branch.view', 'branch.update']);
+
+    $initialSuperadminIncome = (float) SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null)->fresh()->current_balance;
+    $initialSuperadminNagad = (float) SystemAccountService::resolve(SystemAccountKey::Nagad, null)->fresh()->current_balance;
+
+    // Direct renewal by SuperAdmin
+    $this->actingAs($admin)->post(route('branch-clients.renew', $branch->id), [
+        'duration_days' => 30,
+        'amount' => 2500,
+        'payment_method' => 'Nagad',
+        'transaction_reference' => 'NAGAD-TRX-DIRECT-999',
+        'paid_at' => '2026-09-09',
+        'notes' => 'Direct counter renewal by SuperAdmin',
+    ])->assertRedirect();
+
+    $branchExpense = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
+    $branchPayable = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
+    $branchNagad = SystemAccountService::resolve(SystemAccountKey::Nagad, $branch->id);
+    $superadminIncome = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+    $superadminNagad = SystemAccountService::resolve(SystemAccountKey::Nagad, null);
+
+    // 1. Client Branch Expense increased by 2500
+    expect((float) $branchExpense->fresh()->current_balance)->toBe(2500.0);
+
+    // 2. Client Branch Payable liability settled (net 0)
+    expect((float) $branchPayable->fresh()->current_balance)->toBe(0.0);
+
+    // 3. Client Branch Asset decreased by 2500
+    expect((float) $branchNagad->fresh()->current_balance)->toBe(-2500.0);
+
+    // 4. SuperAdmin Income increased by 2500
+    expect((float) $superadminIncome->fresh()->current_balance)->toBe($initialSuperadminIncome + 2500.0);
+
+    // 5. SuperAdmin Asset increased by 2500
+    expect((float) $superadminNagad->fresh()->current_balance)->toBe($initialSuperadminNagad + 2500.0);
 });

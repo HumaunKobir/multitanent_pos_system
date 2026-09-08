@@ -73,11 +73,13 @@ export default function RenewSubscriptionDialog({
     const [copiedTrx, setCopiedTrx] = useState(false);
     const fileInputRef = useRef(null);
 
+    const defaultMethod = paymentMethods[0]?.value || 'Cash in Hand';
+
     const { data, setData, post, processing, errors, reset } = useForm({
         pending_payment_id: pendingPayment?.id || null,
         duration_days: String(cycleDays),
         amount: String(feePerCycle),
-        payment_method: 'cash',
+        payment_method: defaultMethod,
         transaction_reference: '',
         paid_at: new Date().toISOString().split('T')[0],
         notes: '',
@@ -100,7 +102,7 @@ export default function RenewSubscriptionDialog({
 
                 const initialAmount = pendingPayment.amount ? String(pendingPayment.amount) : String(computedCycles * feePerCycle);
                 const initialDuration = String(computedCycles * cycleDays);
-                const initialMethod = pendingPayment.payment_method || 'bkash';
+                const initialMethod = pendingPayment.payment_method || defaultMethod;
                 const initialTrx = pendingPayment.transaction_reference || '';
                 const initialPaidAt = pendingPayment.paid_at || new Date().toISOString().split('T')[0];
                 const initialNotes = pendingPayment.notes || '';
@@ -125,7 +127,7 @@ export default function RenewSubscriptionDialog({
                     pending_payment_id: null,
                     duration_days: String(initialCycles * cycleDays),
                     amount: String(initialCycles * feePerCycle),
-                    payment_method: 'cash',
+                    payment_method: defaultMethod,
                     transaction_reference: '',
                     paid_at: new Date().toISOString().split('T')[0],
                     notes: '',
@@ -134,7 +136,7 @@ export default function RenewSubscriptionDialog({
                 });
             }
         }
-    }, [open, branch, cycleDays, feePerCycle, pendingPayment?.id, pendingPayment?.amount]);
+    }, [open, branch, cycleDays, feePerCycle, pendingPayment?.id, pendingPayment?.amount, defaultMethod]);
 
     // Live preview calculation of new extended expiry date
     const extensionPreview = useMemo(() => {

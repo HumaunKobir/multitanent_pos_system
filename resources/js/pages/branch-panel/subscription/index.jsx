@@ -93,6 +93,57 @@ const PAYMENT_METHOD_CONFIG = {
     },
 };
 
+export function getChannelStyle(channelName = '') {
+    const lower = String(channelName).toLowerCase();
+    if (lower.includes('bkash')) {
+        return {
+            dotColor: 'bg-[#e2136e]',
+            initial: 'bK',
+            badgeBg: 'bg-[#e2136e]/10 text-[#e2136e] border-[#e2136e]/30',
+        };
+    }
+    if (lower.includes('nagad')) {
+        return {
+            dotColor: 'bg-[#f7941d]',
+            initial: 'Ng',
+            badgeBg: 'bg-[#f7941d]/10 text-[#f7941d] border-[#f7941d]/30',
+        };
+    }
+    if (lower.includes('ssl') || lower.includes('card')) {
+        return {
+            dotColor: 'bg-[#0284c7]',
+            initial: 'SSL',
+            badgeBg: 'bg-[#0284c7]/10 text-[#0284c7] border-[#0284c7]/30',
+        };
+    }
+    if (lower.includes('rocket')) {
+        return {
+            dotColor: 'bg-[#8c3494]',
+            initial: 'Rk',
+            badgeBg: 'bg-[#8c3494]/10 text-[#8c3494] border-[#8c3494]/30',
+        };
+    }
+    if (lower.includes('bank')) {
+        return {
+            dotColor: 'bg-[#4f46e5]',
+            initial: 'Bk',
+            badgeBg: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border-indigo-500/30',
+        };
+    }
+    if (lower.includes('cash')) {
+        return {
+            dotColor: 'bg-[#059669]',
+            initial: '৳',
+            badgeBg: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/30',
+        };
+    }
+    return {
+        dotColor: 'bg-slate-700 dark:bg-slate-600',
+        initial: channelName ? channelName.charAt(0).toUpperCase() : '•',
+        badgeBg: 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/30',
+    };
+}
+
 /**
  * Intelligent parser that extracts structured payment accounts (bKash, Nagad, Rocket, Bank, numbers)
  * from raw instruction text so users can copy individual numbers directly.
@@ -284,15 +335,23 @@ export default function BranchSubscriptionIndex({
         return parsePaymentInstructions(subscription.payment_instructions);
     }, [subscription.payment_instructions]);
 
+    const defaultPaymentMethod = paymentMethods[0]?.value || 'Cash in Hand';
+
     const { data, setData, post, processing, errors, reset } = useForm({
         duration_days: String((isOverdue && pendingBillsCount > 0 ? pendingBillsCount : 1) * cycleDays),
         amount: String((isOverdue && pendingBillsCount > 0 ? pendingBillsCount : 1) * feePerCycle),
-        payment_method: 'bkash',
+        payment_method: defaultPaymentMethod,
         transaction_reference: '',
         paid_at: new Date().toISOString().split('T')[0],
         notes: '',
         attachment: null,
     });
+
+    useEffect(() => {
+        if (!data.payment_method && paymentMethods.length > 0) {
+            setData('payment_method', paymentMethods[0].value);
+        }
+    }, [paymentMethods]);
 
     const extensionPreview = useMemo(() => {
         const today = new Date();
@@ -1074,25 +1133,50 @@ export default function BranchSubscriptionIndex({
                         </div>
 
                         {/* Payment Method Selector Grid */}
-                        <div className="space-y-1.5">
-                            <label className="text-xs font-bold text-foreground">
-                                Payment Channel
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold text-foreground flex items-center justify-between">
+                                <span className="flex items-center gap-1.5">
+                                    <CreditCard className="size-3.5 text-primary" />
+                                    Payment Channel (Asset Account)
+                                </span>
+                                <span className="text-[10px] text-muted-foreground font-normal">
+                                    Choose channel to record payment
+                                </span>
                             </label>
-                            <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                 {paymentMethods.map((pm) => {
-                                    const isSelected = data.payment_method === pm.value;
+                                    const isSelected = data.payment_method === pm.value || data.payment_method === pm.label;
+                                    const style = getChannelStyle(pm.value || pm.label);
+
                                     return (
                                         <button
-                                            key={pm.value}
+                                            key={pm.value || pm.id}
                                             type="button"
                                             onClick={() => setData('payment_method', pm.value)}
-                                            className={`rounded-xl py-2 px-2 text-center text-xs font-bold transition-all border ${
+                                            className={`relative flex items-center gap-2 rounded-xl p-2 text-left transition-all border ${
                                                 isSelected
-                                                    ? 'border-primary bg-primary text-primary-foreground shadow-xs ring-2 ring-primary/20'
-                                                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-foreground hover:bg-slate-100 dark:hover:bg-slate-900'
+                                                    ? 'border-primary bg-primary/10 ring-2 ring-primary/20 shadow-xs dark:bg-primary/15'
+                                                    : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 text-foreground hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-900/50'
                                             }`}
                                         >
-                                            {pm.label}
+                                            <div className={`flex size-6.5 shrink-0 items-center justify-center rounded-lg text-white font-extrabold text-[10px] shadow-2xs ${style.dotColor}`}>
+                                                {style.initial}
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <p className="text-[11px] font-bold text-foreground truncate leading-tight">
+                                                    {pm.label}
+                                                </p>
+                                                {pm.code && (
+                                                    <span className="text-[8.5px] font-mono text-muted-foreground block truncate">
+                                                        {pm.code}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {isSelected && (
+                                                <div className="flex size-3.5 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground">
+                                                    <Check className="size-2 stroke-[3]" />
+                                                </div>
+                                            )}
                                         </button>
                                     );
                                 })}

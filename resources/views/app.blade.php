@@ -63,7 +63,8 @@
         <script>window.CKEDITOR_SUPPRESS_VERSION_NOTIFICATION = true;</script>
         @viteReactRefresh
         @vite(['resources/css/app.css', 'resources/js/app.jsx', "resources/js/pages/{$page['component']}.jsx"])
-        {{-- Facebook Pixel --}}
+        {{-- Facebook Pixel (Production Only) --}}
+        @if(app()->isProduction())
         <script>
             !function(f,b,e,v,n,t,s){if(f.fbq)return;n=f.fbq=function(){n.callMethod?
             n.callMethod.apply(n,arguments):n.queue.push(arguments)};if(!f._fbq)f._fbq=n;
@@ -72,6 +73,7 @@
             document,'script','https://connect.facebook.net/en_US/fbevents.js');
             fbq('init', '1095838389187368'); fbq('track', 'PageView');
         </script>
+        @endif
         <x-inertia::head>
             <title>{{ config('app.name', 'Laravel') }}</title>
         </x-inertia::head>

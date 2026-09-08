@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\SystemAccountKey;
 use App\Models\Branch;
 use App\Models\BranchSubscriptionPayment;
+use App\Models\ChartOfAccount;
 use App\Models\Transaction;
 use App\Models\User;
 
@@ -78,9 +79,28 @@ class BranchSubscriptionAccountingService
 
         $branchTransaction = $existingBranchTx;
 
-        if ($branchTransaction === null && ! Branch::isMainBranch($payment->branch_id)) {
+        if ($branchTransaction === null && ! Branch::isMainBranch($payment->branch_id) && $branch) {
             $payableAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $payment->branch_id);
-            $branchPaymentAccount = SystemAccountService::resolve($paymentAccountKey, $payment->branch_id);
+            $payableBalance = max(0.0, (float) $payableAccount->fresh()->current_balance);
+            $unaccruedAmount = round($amount - $payableBalance, 2);
+
+            // 1a. If this payment exceeds existing accrued payable liability, accrue the difference as Subscription Expense
+            if ($unaccruedAmount > 0.005) {
+                $startsAt = $payment->billing_period_starts_at ? $payment->billing_period_starts_at->format('Y-m-d') : $paymentDate;
+                $endsAt = $payment->billing_period_ends_at ? $payment->billing_period_ends_at->format('Y-m-d') : $paymentDate;
+                $this->recordCycleAccrual($branch, $startsAt, $endsAt, $unaccruedAmount);
+            }
+
+            // 1b. Settle payment on branch: Debit Subscription Payable (decreases liability), Credit Asset (decreases asset)
+            $branchPaymentAccount = ChartOfAccount::query()
+                ->where('source_type', Branch::class)
+                ->where('source_id', $payment->branch_id)
+                ->where('type', \App\Enums\AccountType::Asset)
+                ->where(function ($q) use ($payment) {
+                    $q->where('name', $payment->payment_method)
+                        ->orWhere('code', $payment->payment_method);
+                })
+                ->first() ?? SystemAccountService::resolve($paymentAccountKey, $payment->branch_id);
 
             $branchTransaction = TransactionService::recordTransaction([
                 'source_type' => BranchSubscriptionPayment::class,
@@ -108,7 +128,16 @@ class BranchSubscriptionAccountingService
         $superadminTransaction = $existingSuperadminTx;
 
         if ($superadminTransaction === null) {
-            $superadminPaymentAccount = SystemAccountService::resolve($paymentAccountKey, null);
+            $superadminPaymentAccount = ChartOfAccount::query()
+                ->whereNull('source_type')
+                ->whereNull('source_id')
+                ->where('type', \App\Enums\AccountType::Asset)
+                ->where(function ($q) use ($payment) {
+                    $q->where('name', $payment->payment_method)
+                        ->orWhere('code', $payment->payment_method);
+                })
+                ->first() ?? SystemAccountService::resolve($paymentAccountKey, null);
+
             $subscriptionIncome = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
 
             $superadminTransaction = TransactionService::recordTransaction([
@@ -134,12 +163,21 @@ class BranchSubscriptionAccountingService
 
     public function resolvePaymentAccountKey(?string $method): SystemAccountKey
     {
-        return match (strtolower(trim((string) $method))) {
-            'bkash' => SystemAccountKey::Bkash,
-            'nagad' => SystemAccountKey::Nagad,
-            'sslcommerz', 'card' => SystemAccountKey::SslCommerz,
-            'cash', 'cash_in_hand' => SystemAccountKey::CashInHand,
-            default => SystemAccountKey::CashAndBank,
-        };
+        $normalized = strtolower(trim((string) $method));
+
+        if (str_contains($normalized, 'bkash')) {
+            return SystemAccountKey::Bkash;
+        }
+        if (str_contains($normalized, 'nagad')) {
+            return SystemAccountKey::Nagad;
+        }
+        if (str_contains($normalized, 'ssl') || str_contains($normalized, 'card')) {
+            return SystemAccountKey::SslCommerz;
+        }
+        if (str_contains($normalized, 'cash')) {
+            return SystemAccountKey::CashInHand;
+        }
+
+        return SystemAccountKey::CashAndBank;
     }
 }

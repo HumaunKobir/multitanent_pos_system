@@ -428,6 +428,44 @@ export default function BranchSubscriptionIndex({
                 </div>
             </div>
 
+            {/* Pending Payment Approval Notice Banner */}
+            {subscription.has_pending_payment && subscription.pending_payment && (
+                <div className="relative overflow-hidden rounded-2xl border border-amber-500/50 bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent p-5 text-foreground shadow-md backdrop-blur-xs">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-start gap-3.5">
+                            <div className="flex size-11 items-center justify-center rounded-xl bg-amber-500 text-white shadow-md shrink-0">
+                                <Clock className="size-6 animate-pulse" />
+                            </div>
+                            <div className="space-y-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                    <h3 className="text-base font-bold text-amber-600 dark:text-amber-400">
+                                        Payment Submitted — Awaiting SuperAdmin Approval
+                                    </h3>
+                                    <Badge className="bg-amber-500 text-white text-[11px] font-bold px-2.5 py-0.5">
+                                        Pending Verification
+                                    </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground leading-relaxed">
+                                    You submitted a deposit of <strong className="text-foreground">৳{Number(subscription.pending_payment.amount).toFixed(2)}</strong> via <strong className="text-foreground uppercase">{subscription.pending_payment.payment_method}</strong> (TrxID: <span className="font-mono font-bold text-foreground">{subscription.pending_payment.transaction_reference || 'N/A'}</span>). The SuperAdmin will verify your receipt and extend your subscription validity.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col sm:items-end justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 shrink-0">
+                            <span className="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400 tracking-wider">
+                                Submitted Deposit
+                            </span>
+                            <span className="text-xl font-extrabold text-amber-600 dark:text-amber-400 tabular-nums">
+                                ৳{Number(subscription.pending_payment.amount).toFixed(2)}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                                {subscription.pending_payment.created_at || 'Recently submitted'}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {/* Overdue Warning Alert - High Polish */}
             {isOverdue && (
                 <div className="relative overflow-hidden rounded-2xl border border-rose-500/40 bg-gradient-to-r from-rose-500/15 via-rose-500/10 to-rose-500/5 p-5 text-foreground shadow-lg backdrop-blur-xs">
@@ -579,12 +617,12 @@ export default function BranchSubscriptionIndex({
                             <div>
                                 <h2 className="text-sm font-bold text-foreground">Submit Subscription Payment</h2>
                                 <p className="text-[11px] text-muted-foreground">
-                                    Instant validity extension upon recording transaction
+                                    Submit deposit details & receipt for SuperAdmin verification and renewal
                                 </p>
                             </div>
                         </div>
-                        <Badge variant="outline" className="border-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-[11px] font-semibold">
-                            Auto-Extending
+                        <Badge variant="outline" className="border-amber-500/30 text-amber-600 dark:text-amber-400 text-[11px] font-semibold">
+                            Admin Approval Required
                         </Badge>
                     </div>
 
@@ -860,7 +898,7 @@ export default function BranchSubscriptionIndex({
                             className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition-all rounded-xl"
                         >
                             <RefreshCw className={`size-4 mr-2 ${processing ? 'animate-spin' : ''}`} />
-                            {processing ? 'Submitting Payment...' : 'Submit Payment & Renew Subscription'}
+                            {processing ? 'Submitting Payment...' : 'Submit Payment for Admin Approval'}
                         </Button>
                     </form>
                 </div>
@@ -1139,6 +1177,7 @@ export default function BranchSubscriptionIndex({
                                 <tr>
                                     <th className="px-5 py-3">Date Paid</th>
                                     <th className="px-5 py-3">Amount</th>
+                                    <th className="px-5 py-3">Status</th>
                                     <th className="px-5 py-3">Method</th>
                                     <th className="px-5 py-3">Validity Period</th>
                                     <th className="px-5 py-3">Trx / Reference ID</th>
@@ -1148,47 +1187,66 @@ export default function BranchSubscriptionIndex({
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-200 dark:divide-slate-800 bg-card">
-                                {payments.map((p) => (
-                                    <tr key={p.id} className="hover:bg-muted/30 transition-colors">
-                                        <td className="px-5 py-3.5 font-medium text-foreground whitespace-nowrap">
-                                            {p.paid_at}
-                                        </td>
-                                        <td className="px-5 py-3.5 font-extrabold text-emerald-600 dark:text-emerald-400 whitespace-nowrap tabular-nums">
-                                            ৳{Number(p.amount).toFixed(2)}
-                                        </td>
-                                        <td className="px-5 py-3.5 uppercase whitespace-nowrap">
-                                            <Badge variant="outline" className="text-[0.65rem] px-2 py-0.5 border-slate-300 dark:border-slate-700 font-bold">
-                                                {p.payment_method}
-                                            </Badge>
-                                        </td>
-                                        <td className="px-5 py-3.5 text-muted-foreground whitespace-nowrap">
-                                            {p.billing_period_starts_at} → {p.billing_period_ends_at}
-                                        </td>
-                                        <td className="px-5 py-3.5 text-muted-foreground font-mono text-[0.75rem] max-w-[140px] truncate" title={p.transaction_reference}>
-                                            {p.transaction_reference || '—'}
-                                        </td>
-                                        <td className="px-5 py-3.5 whitespace-nowrap">
-                                            {p.attachment_url ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setPreviewAttachment(p)}
-                                                    className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-200 dark:border-blue-900 text-xs font-semibold hover:bg-blue-100 transition-colors shadow-2xs"
-                                                >
-                                                    <Eye className="size-3.5" />
-                                                    <span>View Receipt</span>
-                                                </button>
-                                            ) : (
-                                                <span className="text-muted-foreground text-[11px]">No Receipt</span>
-                                            )}
-                                        </td>
-                                        <td className="px-5 py-3.5 text-muted-foreground whitespace-nowrap">
-                                            {p.recorded_by}
-                                        </td>
-                                        <td className="px-5 py-3.5 text-muted-foreground text-[11px] max-w-[180px] truncate" title={p.notes}>
-                                            {p.notes || '—'}
-                                        </td>
-                                    </tr>
-                                ))}
+                                {payments.map((p) => {
+                                    const isApproved = p.status === 'approved';
+                                    const isPending = p.status === 'pending';
+                                    return (
+                                        <tr key={p.id} className="hover:bg-muted/30 transition-colors">
+                                            <td className="px-5 py-3.5 font-medium text-foreground whitespace-nowrap">
+                                                {p.paid_at}
+                                            </td>
+                                            <td className="px-5 py-3.5 font-extrabold text-emerald-600 dark:text-emerald-400 whitespace-nowrap tabular-nums">
+                                                ৳{Number(p.amount).toFixed(2)}
+                                            </td>
+                                            <td className="px-5 py-3.5 whitespace-nowrap">
+                                                {isApproved ? (
+                                                    <Badge className="bg-emerald-600 text-white font-bold text-[0.65rem] px-2 py-0.5 border-none">
+                                                        Approved
+                                                    </Badge>
+                                                ) : isPending ? (
+                                                    <Badge className="bg-amber-500 text-white font-bold text-[0.65rem] px-2 py-0.5 border-none animate-pulse">
+                                                        Pending Admin Approval
+                                                    </Badge>
+                                                ) : (
+                                                    <Badge className="bg-rose-600 text-white font-bold text-[0.65rem] px-2 py-0.5 border-none capitalize">
+                                                        {p.status}
+                                                    </Badge>
+                                                )}
+                                            </td>
+                                            <td className="px-5 py-3.5 uppercase whitespace-nowrap">
+                                                <Badge variant="outline" className="text-[0.65rem] px-2 py-0.5 border-slate-300 dark:border-slate-700 font-bold">
+                                                    {p.payment_method}
+                                                </Badge>
+                                            </td>
+                                            <td className="px-5 py-3.5 text-muted-foreground whitespace-nowrap">
+                                                {p.billing_period_starts_at} → {p.billing_period_ends_at}
+                                            </td>
+                                            <td className="px-5 py-3.5 text-muted-foreground font-mono text-[0.75rem] max-w-[140px] truncate" title={p.transaction_reference}>
+                                                {p.transaction_reference || '—'}
+                                            </td>
+                                            <td className="px-5 py-3.5 whitespace-nowrap">
+                                                {p.attachment_url ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setPreviewAttachment(p)}
+                                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-blue-50 text-blue-700 dark:bg-blue-950/70 dark:text-blue-300 border border-blue-200 dark:border-blue-900 text-xs font-semibold hover:bg-blue-100 transition-colors shadow-2xs"
+                                                    >
+                                                        <Eye className="size-3.5" />
+                                                        <span>View Receipt</span>
+                                                    </button>
+                                                ) : (
+                                                    <span className="text-muted-foreground text-[11px]">No Receipt</span>
+                                                )}
+                                            </td>
+                                            <td className="px-5 py-3.5 text-muted-foreground whitespace-nowrap">
+                                                {p.recorded_by}
+                                            </td>
+                                            <td className="px-5 py-3.5 text-muted-foreground text-[11px] max-w-[180px] truncate" title={p.notes}>
+                                                {p.notes || '—'}
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>

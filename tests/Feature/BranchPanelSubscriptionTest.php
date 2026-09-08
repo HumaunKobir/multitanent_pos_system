@@ -66,12 +66,68 @@ test('branch panel user can submit payment with receipt screenshot', function ()
         ->assertSessionHas('success');
 
     $branch->refresh();
-    expect($branch->subscription_expires_at?->format('Y-m-d'))->toBe('2026-10-10');
+    // Expiration date remains unchanged until SuperAdmin verifies and confirms
+    expect($branch->subscription_expires_at?->format('Y-m-d'))->toBe('2026-09-10');
 
     $payment = BranchSubscriptionPayment::where('branch_id', $branch->id)->latest('id')->first();
     expect($payment)->not->toBeNull();
+    expect($payment->status)->toBe('pending');
     expect($payment->transaction_reference)->toBe('BKASH-USER-TRX-9876');
     expect($payment->recorded_by_user_id)->toBe($user->id);
     expect($payment->attachment_path)->not->toBeNull();
     Storage::disk('public')->assertExists($payment->attachment_path);
+});
+
+test('superadmin can approve and confirm branch client pending payment to renew subscription', function () {
+    Storage::fake('public');
+
+    $branch = Branch::factory()->create([
+        'name' => 'Branch Sylhet',
+        'subscription_fee' => 1500,
+        'subscription_expires_at' => '2026-09-10',
+    ]);
+
+    $clientUser = User::factory()->create(['branch_id' => $branch->id]);
+    $receipt = UploadedFile::fake()->image('payment_screenshot.jpg');
+
+    // Client submits payment
+    $this->actingAs($clientUser)
+        ->post(route('branch-panel.subscription.pay'), [
+            'duration_days' => 30,
+            'amount' => 1500,
+            'payment_method' => 'bkash',
+            'transaction_reference' => 'BKASH-USER-TRX-9876',
+            'paid_at' => '2026-09-08',
+            'notes' => 'Branch manager self-renewal payment',
+            'attachment' => $receipt,
+        ]);
+
+    $pendingPayment = BranchSubscriptionPayment::where('branch_id', $branch->id)->latest('id')->first();
+    expect($pendingPayment->status)->toBe('pending');
+
+    $admin = User::factory()->create(['branch_id' => null]);
+    $admin->givePermissionTo(['branch.view', 'branch.update']);
+
+    // Admin verifies screenshot & confirms renewal
+    $response = $this->actingAs($admin)
+        ->post(route('branch-clients.renew', $branch->id), [
+            'pending_payment_id' => $pendingPayment->id,
+            'duration_days' => 30,
+            'amount' => 1500,
+            'payment_method' => 'bkash',
+            'transaction_reference' => 'BKASH-USER-TRX-9876',
+            'paid_at' => '2026-09-08',
+            'notes' => 'Admin verified deposit screenshot and approved',
+            'existing_attachment_path' => $pendingPayment->attachment_path,
+        ]);
+
+    $response->assertRedirect();
+
+    $branch->refresh();
+    expect($branch->subscription_expires_at?->format('Y-m-d'))->toBe('2026-10-10');
+    expect($branch->subscription_status)->toBe('active');
+
+    $pendingPayment->refresh();
+    expect($pendingPayment->status)->toBe('approved');
+    expect($pendingPayment->notes)->toBe('Admin verified deposit screenshot and approved');
 });

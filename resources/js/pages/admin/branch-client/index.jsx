@@ -10,6 +10,7 @@ import {
     CreditCard,
     DollarSign,
     ExternalLink,
+    Eye,
     Filter,
     History,
     Layers,
@@ -142,7 +143,7 @@ export default function BranchClientIndex({
             </div>
 
             {/* KPI Stat Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4">
                 <div className="group relative overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-card p-4 sm:p-5 shadow-xs transition-all hover:shadow-md hover:border-blue-500/40">
                     <div className="flex items-center justify-between">
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Clients</p>
@@ -156,9 +157,26 @@ export default function BranchClientIndex({
                     </div>
                 </div>
 
+                <div className={`group relative overflow-hidden rounded-2xl border p-4 sm:p-5 shadow-xs transition-all hover:shadow-md ${
+                    (stats.pending_approvals ?? 0) > 0
+                        ? 'border-amber-400/70 bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-transparent hover:border-amber-500'
+                        : 'border-slate-200 dark:border-slate-800 bg-card hover:border-amber-500/40'
+                }`}>
+                    <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wider font-bold">Pending Review</p>
+                        <div className="flex size-9 items-center justify-center rounded-xl bg-amber-500 text-white shadow-xs">
+                            <CreditCard className="size-4" />
+                        </div>
+                    </div>
+                    <div className="mt-2.5">
+                        <span className="text-2xl font-extrabold text-amber-600 dark:text-amber-400 tabular-nums">{stats.pending_approvals ?? 0}</span>
+                        <p className="text-[11px] text-amber-600/80 dark:text-amber-400/80 mt-0.5">Awaiting admin confirm</p>
+                    </div>
+                </div>
+
                 <div className="group relative overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-card p-4 sm:p-5 shadow-xs transition-all hover:shadow-md hover:border-emerald-500/40">
                     <div className="flex items-center justify-between">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active Subscriptions</p>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Active</p>
                         <div className="flex size-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600 dark:bg-emerald-950/70 dark:text-emerald-400">
                             <CheckCircle2 className="size-4" />
                         </div>
@@ -182,9 +200,9 @@ export default function BranchClientIndex({
                     </div>
                 </div>
 
-                <div className="group relative overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-card p-4 sm:p-5 shadow-xs transition-all hover:shadow-md hover:border-rose-500/40">
+                <div className="group relative overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-800 bg-card p-4 sm:p-5 shadow-xs transition-all hover:shadow-md hover:border-rose-500/40 col-span-2 md:col-span-1">
                     <div className="flex items-center justify-between">
-                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Overdue / Unpaid</p>
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Overdue</p>
                         <div className="flex size-9 items-center justify-center rounded-xl bg-rose-50 text-rose-600 dark:bg-rose-950/70 dark:text-rose-400">
                             <AlertTriangle className="size-4" />
                         </div>
@@ -196,7 +214,7 @@ export default function BranchClientIndex({
                                 (৳{Number(stats.total_overdue_due || 0).toFixed(0)})
                             </span>
                         </div>
-                        <p className="text-[11px] text-rose-600/80 dark:text-rose-400/80 mt-0.5">Overdue pending bills</p>
+                        <p className="text-[11px] text-rose-600/80 dark:text-rose-400/80 mt-0.5">Pending bills</p>
                     </div>
                 </div>
             </div>
@@ -209,9 +227,10 @@ export default function BranchClientIndex({
                     <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
                         {[
                             { key: 'all', label: 'All Branches' },
+                            { key: 'pending_approval', label: (stats.pending_approvals ?? 0) > 0 ? `Pending Review (${stats.pending_approvals})` : 'Pending Review' },
                             { key: 'active', label: 'Active' },
                             { key: 'expiring_soon', label: 'Expiring Soon' },
-                            { key: 'overdue', label: 'Overdue / Pending' },
+                            { key: 'overdue', label: 'Overdue' },
                             { key: 'suspended', label: 'Suspended' },
                             { key: 'lifetime', label: 'Lifetime' },
                         ].map((tab) => {
@@ -356,6 +375,15 @@ export default function BranchClientIndex({
                                                     <Badge className="bg-purple-600 text-white border-none font-bold">
                                                         Lifetime Active
                                                     </Badge>
+                                                ) : sub.has_pending_payment || branch.latest_payment?.status === 'pending' ? (
+                                                    <div className="space-y-0.5">
+                                                        <Badge className="bg-amber-500 text-white font-bold border-none animate-pulse">
+                                                            Pending Review
+                                                        </Badge>
+                                                        <p className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">
+                                                            Receipt submitted
+                                                        </p>
+                                                    </div>
                                                 ) : sub.is_suspended ? (
                                                     <Badge className="bg-rose-600 text-white font-bold border-none">
                                                         Suspended
@@ -405,14 +433,25 @@ export default function BranchClientIndex({
                                             <td className="px-4 py-3.5 text-right whitespace-nowrap">
                                                 {!isMain ? (
                                                     <div className="flex items-center justify-end gap-1.5">
-                                                        <Button
-                                                            type="button"
-                                                            size="sm"
-                                                            className="h-7 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-xs"
-                                                            onClick={() => openRenew(branch)}
-                                                        >
-                                                            <RefreshCw className="size-3 mr-1" /> Renew
-                                                        </Button>
+                                                        {sub.has_pending_payment || branch.latest_payment?.status === 'pending' ? (
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                className="h-7 px-2.5 text-xs bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg shadow-xs ring-2 ring-amber-400/40"
+                                                                onClick={() => openRenew(branch)}
+                                                            >
+                                                                <Eye className="size-3 mr-1" /> Review & Approve
+                                                            </Button>
+                                                        ) : (
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                className="h-7 px-2.5 text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg shadow-xs"
+                                                                onClick={() => openRenew(branch)}
+                                                            >
+                                                                <RefreshCw className="size-3 mr-1" /> Renew
+                                                            </Button>
+                                                        )}
 
                                                         <Button
                                                             type="button"

@@ -68,11 +68,13 @@ export default function EditBranchSubscriptionDialog({
             const startsAt = sub.starts_at || new Date().toISOString().split('T')[0];
             const expiresAt = sub.expires_at || '';
 
-            let calculatedDays = '30';
-            if (startsAt && expiresAt) {
-                const diffTime = Math.abs(new Date(expiresAt) - new Date(startsAt));
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                if (diffDays > 0) calculatedDays = String(diffDays);
+            let initialCustomDays = '30';
+            if (branch.custom_cycle_days !== null && branch.custom_cycle_days !== undefined) {
+                initialCustomDays = String(branch.custom_cycle_days);
+            } else if (sub.custom_cycle_days !== null && sub.custom_cycle_days !== undefined) {
+                initialCustomDays = String(sub.custom_cycle_days);
+            } else if (sub.cycle_days && sub.plan === 'custom_days') {
+                initialCustomDays = String(sub.cycle_days);
             }
 
             const customGrace = branch.custom_grace_period_days ?? sub.custom_grace_period_days;
@@ -86,7 +88,7 @@ export default function EditBranchSubscriptionDialog({
                 subscription_status: sub.status || 'active',
                 subscription_fee: fee !== null && fee !== undefined ? String(fee) : '',
                 subscription_starts_at: startsAt,
-                custom_cycle_days: calculatedDays,
+                custom_cycle_days: initialCustomDays,
                 custom_grace_period_days: customGrace !== null && customGrace !== undefined ? String(customGrace) : '',
                 custom_warning_days: customWarning !== null && customWarning !== undefined ? String(customWarning) : '',
                 custom_overdue_action: customOverdue || 'default',

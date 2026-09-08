@@ -38,6 +38,7 @@ test('superadmin can access branch clients hub with stats and filters', function
             ->has('branches')
             ->has('stats', fn (Assert $stats) => $stats
                 ->has('total_clients')
+                ->has('pending_approvals')
                 ->has('active_clients')
                 ->has('expiring_soon')
                 ->has('overdue_clients')
@@ -127,4 +128,72 @@ test('superadmin can fetch branch payment history json with attachment url', fun
                 ],
             ],
         ]);
+});
+
+test('branch client list includes latest_payment with attachment url for admin review', function () {
+    $admin = branchClientSuperAdmin();
+    $branch = Branch::factory()->create(['name' => 'Outlet Beta']);
+
+    BranchSubscriptionPayment::create([
+        'branch_id' => $branch->id,
+        'amount' => 3000,
+        'payment_method' => 'bkash',
+        'transaction_reference' => 'BKASH-BETA-7788',
+        'billing_period_starts_at' => '2026-09-01',
+        'billing_period_ends_at' => '2026-10-01',
+        'paid_at' => '2026-09-08',
+        'notes' => 'Submitted from branch panel',
+        'attachment_path' => 'subscription-receipts/beta_receipt.png',
+    ]);
+
+    $response = $this->actingAs($admin)
+        ->get(route('branch-clients.index', ['search' => 'Outlet Beta']));
+
+    $response->assertOk()
+        ->assertInertia(fn (Assert $page) => $page
+            ->component('admin/branch-client/index')
+            ->has('branches.0.latest_payment', fn (Assert $lp) => $lp
+                ->where('transaction_reference', 'BKASH-BETA-7788')
+                ->where('payment_method', 'bkash')
+                ->where('amount', 3000)
+                ->where('notes', 'Submitted from branch panel')
+                ->has('attachment_url')
+                ->etc()
+            )
+        );
+});
+
+test('custom days cycle duration remains strictly unchanged when renewing multiple overdue bills', function () {
+    $admin = branchClientSuperAdmin();
+    $branch = Branch::factory()->create([
+        'name' => 'Outlet Custom Cycle',
+        'subscription_plan' => 'custom_days',
+        'custom_cycle_days' => 2,
+        'subscription_fee' => 500,
+        'subscription_starts_at' => '2026-09-01',
+        'subscription_expires_at' => '2026-09-03',
+        'subscription_status' => 'active',
+    ]);
+
+    // Check summary before renewal - cycle is 2 days
+    $summaryBefore = app(\App\Services\BranchSubscriptionService::class)->getSubscriptionSummary($branch);
+    expect($summaryBefore['cycle_days'])->toBe(2);
+
+    // Admin renews for 3 bill cycles (6 days) or 4 cycles (8 days)
+    $this->actingAs($admin)
+        ->post(route('branch-clients.renew', $branch->id), [
+            'duration_days' => 8,
+            'amount' => 2000,
+            'payment_method' => 'cash',
+            'paid_at' => '2026-09-08',
+        ]);
+
+    $branch->refresh();
+    expect($branch->subscription_expires_at?->format('Y-m-d'))->toBe('2026-09-11');
+    expect($branch->custom_cycle_days)->toBe(2);
+
+    // Summary must still have cycle_days = 2, NEVER 8 days
+    $summaryAfter = app(\App\Services\BranchSubscriptionService::class)->getSubscriptionSummary($branch);
+    expect($summaryAfter['cycle_days'])->toBe(2);
+    expect($summaryAfter['plan_label'])->toBe('Custom (2 Days)');
 });

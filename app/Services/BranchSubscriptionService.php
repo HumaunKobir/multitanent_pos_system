@@ -220,15 +220,9 @@ class BranchSubscriptionService
             'yearly' => 365,
             'trial' => 14,
             'lifetime' => null,
+            'custom_days' => $branch->custom_cycle_days !== null && $branch->custom_cycle_days > 0 ? (int) $branch->custom_cycle_days : 30,
             default => BusinessSettings::getInt('subscription_billing_cycle_days', 30),
         };
-
-        if ($cycle === 'custom_days' && $startsAt && $expiresAt) {
-            $diff = (int) Carbon::parse($startsAt)->diffInDays(Carbon::parse($expiresAt));
-            if ($diff > 0) {
-                $cycleDays = $diff;
-            }
-        }
 
         $isSalesRestricted = $isSuspended || (! $isInGracePeriod && $isOverdue && in_array($overdueAction, ['restrict_sales', 'read_only', 'suspend_branch'], true));
         $isReadOnly = $isSuspended || (! $isInGracePeriod && $isOverdue && in_array($overdueAction, ['read_only', 'suspend_branch'], true));
@@ -246,6 +240,11 @@ class BranchSubscriptionService
             'lifetime' => 'Lifetime',
             default => $cycleDays ? ucfirst($plan)." ({$cycleDays} Days)" : ucfirst($plan),
         };
+
+        $pendingPayment = BranchSubscriptionPayment::where('branch_id', $branch->id)
+            ->where('status', 'pending')
+            ->latest('id')
+            ->first();
 
         return [
             'branch_id' => $branch->id,
@@ -273,8 +272,21 @@ class BranchSubscriptionService
             'is_suspended' => $isSuspended,
             'is_sales_restricted' => $isSalesRestricted,
             'is_read_only' => $isReadOnly,
+            'has_pending_payment' => $pendingPayment !== null,
+            'pending_payment' => $pendingPayment ? [
+                'id' => $pendingPayment->id,
+                'amount' => (float) $pendingPayment->amount,
+                'payment_method' => $pendingPayment->payment_method,
+                'transaction_reference' => $pendingPayment->transaction_reference,
+                'paid_at' => $pendingPayment->paid_at ? Carbon::parse($pendingPayment->paid_at)->format('Y-m-d') : null,
+                'attachment_path' => $pendingPayment->attachment_path,
+                'attachment_url' => $pendingPayment->attachment_url,
+                'notes' => $pendingPayment->notes,
+                'created_at' => $pendingPayment->created_at?->diffForHumans(),
+            ] : null,
             'warning_days' => $warningDays,
             'grace_period_days' => $gracePeriodDays,
+            'custom_cycle_days' => $branch->custom_cycle_days,
             'custom_warning_days' => $branch->custom_warning_days,
             'custom_grace_period_days' => $branch->custom_grace_period_days,
             'custom_overdue_action' => $branch->custom_overdue_action,
@@ -321,6 +333,52 @@ class BranchSubscriptionService
     }
 
     /**
+     * Client branch submits payment details and screenshot receipt for review.
+     * Does NOT renew or extend subscription until SuperAdmin approves and confirms.
+     *
+     * @param  array<string, mixed>  $data
+     */
+    public function submitPayment(Branch $branch, array $data, ?User $submittedBy = null): BranchSubscriptionPayment
+    {
+        $durationDays = (int) ($data['duration_days'] ?? 30);
+        $amount = (float) ($data['amount'] ?? ($branch->subscription_fee ?? BusinessSettings::getFloat('subscription_default_fee', 1500)));
+        $paymentMethod = $data['payment_method'] ?? 'bkash';
+        $transactionReference = $data['transaction_reference'] ?? null;
+        $notes = $data['notes'] ?? null;
+        $paidAt = $data['paid_at'] ?? now()->toDateString();
+        $attachmentPath = null;
+
+        if (isset($data['attachment']) && $data['attachment'] instanceof \Illuminate\Http\UploadedFile) {
+            $attachmentPath = $data['attachment']->store('subscription-receipts', 'public');
+        } elseif (isset($data['attachment_path']) && is_string($data['attachment_path'])) {
+            $attachmentPath = $data['attachment_path'];
+        }
+
+        $baseDate = $branch->subscription_expires_at
+            ? Carbon::parse($branch->subscription_expires_at)->startOfDay()
+            : ($branch->subscription_starts_at ? Carbon::parse($branch->subscription_starts_at)->startOfDay() : Carbon::today());
+
+        $periodStartsAt = $baseDate->copy()->toDateString();
+        $newExpiryDate = $baseDate->copy()->addDays($durationDays)->toDateString();
+
+        return BranchSubscriptionPayment::create([
+            'branch_id' => $branch->id,
+            'amount' => $amount,
+            'payment_method' => $paymentMethod,
+            'status' => 'pending',
+            'transaction_reference' => $transactionReference,
+            'billing_period_starts_at' => $periodStartsAt,
+            'billing_period_ends_at' => $newExpiryDate,
+            'paid_at' => $paidAt,
+            'recorded_by_user_id' => $submittedBy?->id,
+            'notes' => $notes,
+            'attachment_path' => $attachmentPath,
+        ]);
+    }
+
+    /**
+     * SuperAdmin confirms payment and renews the branch subscription.
+     *
      * @param  array<string, mixed>  $data
      */
     public function renew(Branch $branch, array $data, ?User $recordedBy = null): BranchSubscriptionPayment
@@ -335,8 +393,23 @@ class BranchSubscriptionService
 
         if (isset($data['attachment']) && $data['attachment'] instanceof \Illuminate\Http\UploadedFile) {
             $attachmentPath = $data['attachment']->store('subscription-receipts', 'public');
+        } elseif (! empty($data['existing_attachment_path']) && is_string($data['existing_attachment_path'])) {
+            $attachmentPath = $data['existing_attachment_path'];
         } elseif (isset($data['attachment_path']) && is_string($data['attachment_path'])) {
             $attachmentPath = $data['attachment_path'];
+        }
+
+        $pendingPaymentId = $data['pending_payment_id'] ?? null;
+        $pendingPayment = null;
+        if ($pendingPaymentId) {
+            $pendingPayment = BranchSubscriptionPayment::where('branch_id', $branch->id)
+                ->where('id', $pendingPaymentId)
+                ->first();
+        } else {
+            $pendingPayment = BranchSubscriptionPayment::where('branch_id', $branch->id)
+                ->where('status', 'pending')
+                ->latest('id')
+                ->first();
         }
 
         // Continuous extension from current expiration date so unpaid overdue cycles are strictly preserved
@@ -353,10 +426,28 @@ class BranchSubscriptionService
             'subscription_last_paid_at' => $paidAt,
         ]);
 
+        if ($pendingPayment) {
+            $pendingPayment->update([
+                'amount' => $amount,
+                'payment_method' => $paymentMethod,
+                'status' => 'approved',
+                'transaction_reference' => $transactionReference ?: $pendingPayment->transaction_reference,
+                'billing_period_starts_at' => $periodStartsAt,
+                'billing_period_ends_at' => $newExpiryDate,
+                'paid_at' => $paidAt,
+                'recorded_by_user_id' => $recordedBy?->id ?? $pendingPayment->recorded_by_user_id,
+                'notes' => $notes ?: $pendingPayment->notes,
+                'attachment_path' => $attachmentPath ?: $pendingPayment->attachment_path,
+            ]);
+
+            return $pendingPayment;
+        }
+
         return BranchSubscriptionPayment::create([
             'branch_id' => $branch->id,
             'amount' => $amount,
             'payment_method' => $paymentMethod,
+            'status' => 'approved',
             'transaction_reference' => $transactionReference,
             'billing_period_starts_at' => $periodStartsAt,
             'billing_period_ends_at' => $newExpiryDate,

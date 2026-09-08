@@ -28,7 +28,6 @@ test('superadmin can access business setup page', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/setting/business-setup/index')
             ->has('settings')
-            ->has('branches')
             ->has('billingCycles')
             ->has('overdueActions')
         );

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Setting;
 
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
+use App\Models\BranchSubscriptionPayment;
 use App\Services\BranchSubscriptionService;
 use App\Support\BusinessSettings;
 use Carbon\Carbon;
@@ -30,7 +31,6 @@ class BranchClientController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', "%{$search}%")
                     ->orWhere('phone', 'like', "%{$search}%")
-                    ->orWhere('email', 'like', "%{$search}%")
                     ->orWhere('address', 'like', "%{$search}%");
             });
         }
@@ -39,26 +39,47 @@ class BranchClientController extends Controller
             $isMain = Branch::isMainBranch($branch->id);
             $sub = $this->subscriptionService->getSubscriptionSummary($branch);
 
+            $latestPayment = BranchSubscriptionPayment::with('recordedBy:id,name')
+                ->where('branch_id', $branch->id)
+                ->latest('id')
+                ->first();
+
             return [
                 'id' => $branch->id,
                 'name' => $branch->name,
                 'phone' => $branch->phone,
-                'email' => $branch->email,
                 'address' => $branch->address,
                 'status' => $branch->status?->value ?? (int) $branch->status,
                 'is_main_branch' => $isMain,
+                'custom_cycle_days' => $branch->custom_cycle_days,
                 'custom_overdue_action' => $branch->custom_overdue_action,
                 'subscription_notes' => $branch->subscription_notes,
                 'custom_grace_period_days' => $branch->custom_grace_period_days,
                 'custom_warning_days' => $branch->custom_warning_days,
                 'subscription_fee' => $branch->subscription_fee,
                 'subscription' => $sub,
+                'latest_payment' => $latestPayment ? [
+                    'id' => $latestPayment->id,
+                    'amount' => (float) $latestPayment->amount,
+                    'payment_method' => $latestPayment->payment_method,
+                    'status' => $latestPayment->status ?? 'approved',
+                    'transaction_reference' => $latestPayment->transaction_reference,
+                    'billing_period_starts_at' => $latestPayment->billing_period_starts_at ? Carbon::parse($latestPayment->billing_period_starts_at)->format('Y-m-d') : null,
+                    'billing_period_ends_at' => $latestPayment->billing_period_ends_at ? Carbon::parse($latestPayment->billing_period_ends_at)->format('Y-m-d') : null,
+                    'paid_at' => $latestPayment->paid_at ? Carbon::parse($latestPayment->paid_at)->format('Y-m-d') : null,
+                    'attachment_path' => $latestPayment->attachment_path,
+                    'attachment_url' => $latestPayment->attachment_url,
+                    'recorded_by' => $latestPayment->recordedBy?->name ?? 'Client / System',
+                    'notes' => $latestPayment->notes,
+                    'created_at' => $latestPayment->created_at?->diffForHumans(),
+                ] : null,
             ];
         });
 
         // Calculate summary statistics across non-main branches
         $clientBranches = $allBranches->filter(fn ($b) => ! $b['is_main_branch']);
         $totalClients = $clientBranches->count();
+        $pendingApprovals = $clientBranches->filter(fn ($b) => ($b['subscription']['has_pending_payment'] ?? false) || ($b['latest_payment']['status'] ?? '') === 'pending')->count();
         $activeClients = $clientBranches->filter(fn ($b) => $b['subscription']['computed_status'] === 'active')->count();
         $expiringSoon = $clientBranches->filter(fn ($b) => $b['subscription']['computed_status'] === 'expiring_soon')->count();
         $overdueClients = $clientBranches->filter(fn ($b) => $b['subscription']['is_overdue'])->count();
@@ -70,6 +91,9 @@ class BranchClientController extends Controller
         $filteredBranches = $allBranches->filter(function ($b) use ($statusFilter) {
             if ($statusFilter === 'all') {
                 return true;
+            }
+            if ($statusFilter === 'pending_approval') {
+                return ($b['subscription']['has_pending_payment'] ?? false) || ($b['latest_payment']['status'] ?? '') === 'pending';
             }
             if ($statusFilter === 'active') {
                 return $b['subscription']['computed_status'] === 'active';
@@ -94,6 +118,7 @@ class BranchClientController extends Controller
             'branches' => $filteredBranches,
             'stats' => [
                 'total_clients' => $totalClients,
+                'pending_approvals' => $pendingApprovals,
                 'active_clients' => $activeClients,
                 'expiring_soon' => $expiringSoon,
                 'overdue_clients' => $overdueClients,
@@ -149,6 +174,7 @@ class BranchClientController extends Controller
         ]);
 
         $cycle = $validated['subscription_plan'] ?? 'monthly';
+        $customCycleDays = ! empty($validated['custom_cycle_days']) ? (int) $validated['custom_cycle_days'] : null;
         $cycleDays = match ($cycle) {
             'monthly' => 30,
             'quarterly' => 90,
@@ -156,19 +182,19 @@ class BranchClientController extends Controller
             'yearly' => 365,
             'trial' => 14,
             'lifetime' => null,
-            'custom_days' => ! empty($validated['custom_cycle_days']) ? (int) $validated['custom_cycle_days'] : null,
+            'custom_days' => $customCycleDays ?: 30,
             default => BusinessSettings::getInt('subscription_billing_cycle_days', 30),
         };
 
+        if ($cycle === 'custom_days') {
+            $validated['custom_cycle_days'] = $customCycleDays ?: 30;
+        }
+
         if ($cycle === 'lifetime' || $validated['subscription_status'] === 'lifetime') {
             $validated['subscription_expires_at'] = null;
-        } elseif ($cycle === 'custom_days' && ! empty($validated['subscription_expires_at'])) {
-            $validated['subscription_expires_at'] = Carbon::parse($validated['subscription_expires_at'])->toDateString();
         } elseif (! empty($validated['subscription_starts_at']) && $cycleDays !== null) {
             $validated['subscription_expires_at'] = Carbon::parse($validated['subscription_starts_at'])->addDays($cycleDays)->toDateString();
         }
-
-        unset($validated['custom_cycle_days']);
 
         $branch->update($validated);
 
@@ -188,6 +214,7 @@ class BranchClientController extends Controller
             'paid_at' => ['required', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'attachment' => ['nullable', 'file', 'mimes:jpeg,png,jpg,webp,pdf', 'max:10240'],
+            'existing_attachment_path' => ['nullable', 'string', 'max:500'],
         ]);
 
         $this->subscriptionService->renew($branch, $validated, $request->user());

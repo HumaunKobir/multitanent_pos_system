@@ -14,6 +14,7 @@ class BranchSubscriptionPayment extends Model
         'branch_id',
         'amount',
         'payment_method',
+        'status',
         'transaction_reference',
         'billing_period_starts_at',
         'billing_period_ends_at',

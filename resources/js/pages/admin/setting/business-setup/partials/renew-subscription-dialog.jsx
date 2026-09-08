@@ -4,13 +4,20 @@ import {
     AlertCircle,
     AlertTriangle,
     ArrowRight,
+    Building2,
     Calendar,
+    Check,
     CheckCircle2,
+    Copy,
     CreditCard,
     DollarSign,
+    ExternalLink,
+    Eye,
     FileText,
     Image as ImageIcon,
+    Info,
     Layers,
+    Receipt,
     RefreshCw,
     ShieldCheck,
     Sparkles,
@@ -21,6 +28,7 @@ import { route } from '@/lib/route';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import { FormField } from '@/components/form-field';
 import {
     Dialog,
@@ -55,11 +63,16 @@ export default function RenewSubscriptionDialog({
     const pendingBillsCount = isOverdue && cycleDays > 0 ? Math.max(1, Math.ceil(overdueDays / cycleDays)) : 0;
     const totalOverdueAmount = pendingBillsCount * feePerCycle;
 
+    const latestPayment = branch.latest_payment || null;
+
     const [selectedCycles, setSelectedCycles] = useState(1);
     const [previewUrl, setPreviewUrl] = useState(null);
+    const [showReceiptViewer, setShowReceiptViewer] = useState(false);
+    const [copiedTrx, setCopiedTrx] = useState(false);
     const fileInputRef = useRef(null);
 
     const { data, setData, post, processing, errors, reset } = useForm({
+        pending_payment_id: latestPayment?.id || null,
         duration_days: String(cycleDays),
         amount: String(feePerCycle),
         payment_method: 'cash',
@@ -67,6 +80,7 @@ export default function RenewSubscriptionDialog({
         paid_at: new Date().toISOString().split('T')[0],
         notes: '',
         attachment: null,
+        existing_attachment_path: '',
     });
 
     useEffect(() => {
@@ -74,17 +88,27 @@ export default function RenewSubscriptionDialog({
             const initialCycles = 1;
             setSelectedCycles(initialCycles);
             setPreviewUrl(null);
+
+            const initialAmount = latestPayment?.amount ? String(latestPayment.amount) : String(initialCycles * feePerCycle);
+            const initialMethod = latestPayment?.payment_method || 'cash';
+            const initialTrx = latestPayment?.transaction_reference || '';
+            const initialPaidAt = latestPayment?.paid_at || new Date().toISOString().split('T')[0];
+            const initialNotes = latestPayment?.notes || '';
+            const existingPath = latestPayment?.attachment_path || '';
+
             setData({
+                pending_payment_id: latestPayment?.id || null,
                 duration_days: String(initialCycles * cycleDays),
-                amount: String(initialCycles * feePerCycle),
-                payment_method: 'cash',
-                transaction_reference: '',
-                paid_at: new Date().toISOString().split('T')[0],
-                notes: '',
+                amount: initialAmount,
+                payment_method: initialMethod,
+                transaction_reference: initialTrx,
+                paid_at: initialPaidAt,
+                notes: initialNotes,
                 attachment: null,
+                existing_attachment_path: existingPath,
             });
         }
-    }, [open, branch, cycleDays, feePerCycle]);
+    }, [open, branch, cycleDays, feePerCycle, latestPayment]);
 
     // Live preview calculation of new extended expiry date
     const extensionPreview = useMemo(() => {
@@ -174,7 +198,8 @@ export default function RenewSubscriptionDialog({
     };
 
     return (
-        <Dialog open={open} onOpenChange={onOpenChange}>
+        <>
+            <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-lg p-6 border-slate-300 dark:border-slate-700 shadow-2xl max-h-[92vh] overflow-y-auto">
                 <DialogHeader className="pb-3 border-b border-slate-200 dark:border-slate-800">
                     <DialogTitle className="flex items-center gap-2.5 text-base font-bold text-foreground">
@@ -189,6 +214,112 @@ export default function RenewSubscriptionDialog({
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+                    {/* Client Submitted Payment Details & Screenshot (If available) */}
+                    {latestPayment && (latestPayment.attachment_url || latestPayment.transaction_reference || latestPayment.notes || latestPayment.status === 'pending') && (
+                        <div className={`rounded-xl border p-3.5 space-y-3 shadow-2xs ${
+                            latestPayment.status === 'pending'
+                                ? 'border-amber-300 dark:border-amber-700/60 bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent'
+                                : 'border-blue-200 dark:border-blue-900/60 bg-blue-50/70 dark:bg-blue-950/30'
+                        }`}>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5 font-bold text-xs text-foreground">
+                                    <Receipt className="size-4 text-primary" />
+                                    <span>Client Submitted Payment Receipt</span>
+                                    {latestPayment.status === 'pending' && (
+                                        <Badge className="bg-amber-500 text-white font-bold text-[10px] px-2 py-0 animate-pulse">
+                                            Needs Approval
+                                        </Badge>
+                                    )}
+                                </div>
+                                <Badge className="bg-primary text-primary-foreground text-[10px] px-2 py-0 font-bold uppercase">
+                                    {latestPayment.payment_method}
+                                </Badge>
+                            </div>
+
+                            <div className="flex items-start gap-3">
+                                {latestPayment.attachment_url ? (
+                                    <div className="relative group shrink-0">
+                                        <img
+                                            src={latestPayment.attachment_url}
+                                            alt="Submitted Receipt"
+                                            className="size-16 rounded-lg object-cover border border-blue-200 dark:border-blue-800 shadow-xs cursor-pointer hover:opacity-90 transition-opacity"
+                                            onClick={() => setShowReceiptViewer(true)}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowReceiptViewer(true)}
+                                            className="absolute inset-0 flex items-center justify-center bg-black/40 text-white opacity-0 group-hover:opacity-100 rounded-lg transition-opacity text-[10px] font-bold gap-1"
+                                        >
+                                            <Eye className="size-3.5" /> View
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="size-16 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 flex items-center justify-center shrink-0">
+                                        <FileText className="size-7" />
+                                    </div>
+                                )}
+
+                                <div className="flex-1 min-w-0 space-y-1 text-xs">
+                                    {latestPayment.transaction_reference && (
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-muted-foreground text-[11px]">Trx / Ref ID:</span>
+                                            <div className="flex items-center gap-1">
+                                                <span className="font-mono font-extrabold text-foreground text-xs">{latestPayment.transaction_reference}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        navigator.clipboard.writeText(latestPayment.transaction_reference);
+                                                        setCopiedTrx(true);
+                                                        setTimeout(() => setCopiedTrx(false), 2000);
+                                                    }}
+                                                    className="text-muted-foreground hover:text-primary"
+                                                    title="Copy TrxID"
+                                                >
+                                                    {copiedTrx ? <Check className="size-3 text-emerald-500" /> : <Copy className="size-3" />}
+                                                </button>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div className="flex items-center justify-between text-[11px]">
+                                        <span className="text-muted-foreground">Submitted Amount:</span>
+                                        <span className="font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums">
+                                            ৳{Number(latestPayment.amount).toFixed(2)}
+                                        </span>
+                                    </div>
+
+                                    {latestPayment.paid_at && (
+                                        <div className="flex items-center justify-between text-[11px]">
+                                            <span className="text-muted-foreground">Paid Date:</span>
+                                            <span className="font-medium text-foreground">{latestPayment.paid_at}</span>
+                                        </div>
+                                    )}
+
+                                    {latestPayment.notes && (
+                                        <div className="text-[11px] text-muted-foreground pt-0.5 border-t border-blue-200/50 dark:border-blue-900/40">
+                                            <span className="font-semibold text-foreground">Memo:</span> {latestPayment.notes}
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            {latestPayment.attachment_url && (
+                                <div className="flex items-center justify-between pt-1 border-t border-blue-200/50 dark:border-blue-900/40 text-[11px]">
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowReceiptViewer(true)}
+                                        className="inline-flex items-center gap-1 font-bold text-primary hover:underline text-xs"
+                                    >
+                                        <Eye className="size-3.5" /> Open / Inspect Receipt Screenshot
+                                    </button>
+                                    <span className="text-[10px] text-muted-foreground">
+                                        Recorded by: {latestPayment.recorded_by} ({latestPayment.created_at || 'Recent'})
+                                    </span>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
                     {/* Branch Billing Status Summary Card */}
                     <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40 p-3 text-xs space-y-2">
                         <div className="flex items-center justify-between">
@@ -500,12 +631,66 @@ export default function RenewSubscriptionDialog({
                             disabled={processing}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 shadow-xs"
                         >
-                            {processing ? 'Processing...' : 'Confirm & Renew'}
+                            {processing ? 'Processing...' : latestPayment?.status === 'pending' ? 'Approve & Confirm Renewal' : 'Confirm & Renew'}
                         </Button>
                     </DialogFooter>
                 </form>
             </DialogContent>
         </Dialog>
+
+        {/* Full Resolution Receipt Viewer Modal */}
+        {latestPayment?.attachment_url && (
+            <Dialog open={showReceiptViewer} onOpenChange={setShowReceiptViewer}>
+                <DialogContent className="max-w-2xl p-4 border-slate-300 dark:border-slate-700 shadow-2xl">
+                    <DialogHeader className="pb-2 border-b">
+                        <DialogTitle className="flex items-center gap-2 text-sm font-bold">
+                            <ImageIcon className="size-4 text-primary" />
+                            Submitted Receipt / Deposit Slip — {branch.name}
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-muted-foreground">
+                            TrxID: <span className="font-mono font-bold text-foreground">{latestPayment.transaction_reference || 'N/A'}</span> • Method: <span className="font-bold uppercase text-foreground">{latestPayment.payment_method}</span> • Amount: <span className="font-extrabold text-emerald-600">৳{Number(latestPayment.amount).toFixed(2)}</span>
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="py-2 max-h-[70vh] overflow-auto flex items-center justify-center bg-slate-950/5 rounded-lg p-2">
+                        {latestPayment.attachment_url.toLowerCase().endsWith('.pdf') ? (
+                            <div className="text-center p-8 space-y-3">
+                                <FileText className="size-16 text-rose-500 mx-auto" />
+                                <p className="text-xs font-semibold">PDF Receipt Document Attached</p>
+                                <Button asChild size="sm">
+                                    <a href={latestPayment.attachment_url} target="_blank" rel="noreferrer">
+                                        Open PDF in New Window <ExternalLink className="size-3.5 ml-1" />
+                                    </a>
+                                </Button>
+                            </div>
+                        ) : (
+                            <img
+                                src={latestPayment.attachment_url}
+                                alt="Payment Receipt"
+                                className="max-h-[65vh] w-auto rounded-md object-contain border shadow-sm"
+                            />
+                        )}
+                    </div>
+
+                    <DialogFooter className="pt-2">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setShowReceiptViewer(false)}
+                        >
+                            Close Viewer
+                        </Button>
+                        <Button asChild size="sm" variant="secondary">
+                            <a href={latestPayment.attachment_url} target="_blank" rel="noreferrer">
+                                Open Original <ExternalLink className="size-3.5 ml-1" />
+                            </a>
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+        )}
+        </>
     );
 }
 

@@ -37,11 +37,12 @@ class BranchPanelSubscriptionController extends Controller
                 'id' => $p->id,
                 'amount' => (float) $p->amount,
                 'payment_method' => $p->payment_method,
+                'status' => $p->status ?? 'approved',
                 'transaction_reference' => $p->transaction_reference,
                 'billing_period_starts_at' => $p->billing_period_starts_at?->format('Y-m-d'),
                 'billing_period_ends_at' => $p->billing_period_ends_at?->format('Y-m-d'),
                 'paid_at' => $p->paid_at?->format('Y-m-d'),
-                'recorded_by' => $p->recordedBy?->name ?? 'Online / System',
+                'recorded_by' => $p->recordedBy?->name ?? 'Online / Client',
                 'notes' => $p->notes,
                 'attachment_path' => $p->attachment_path,
                 'attachment_url' => $p->attachment_url,
@@ -90,9 +91,9 @@ class BranchPanelSubscriptionController extends Controller
             'attachment' => ['nullable', 'file', 'mimes:jpeg,png,jpg,webp,pdf', 'max:10240'],
         ]);
 
-        $this->subscriptionService->renew($branch, $validated, $user);
+        $this->subscriptionService->submitPayment($branch, $validated, $user);
 
         return redirect()->route('branch-panel.subscription.index')
-            ->with('success', 'Your subscription payment has been submitted and recorded successfully.');
+            ->with('success', 'Your subscription payment has been submitted for approval. SuperAdmin will verify the deposit and activate your renewal.');
     }
 }

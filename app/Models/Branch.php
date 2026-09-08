@@ -38,6 +38,7 @@ class Branch extends Model
         'subscription_starts_at',
         'subscription_expires_at',
         'subscription_last_paid_at',
+        'custom_cycle_days',
         'custom_grace_period_days',
         'custom_warning_days',
         'custom_overdue_action',
@@ -59,6 +60,7 @@ class Branch extends Model
         'subscription_starts_at' => 'date',
         'subscription_expires_at' => 'date',
         'subscription_last_paid_at' => 'date',
+        'custom_cycle_days' => 'integer',
         'custom_grace_period_days' => 'integer',
         'custom_warning_days' => 'integer',
     ];

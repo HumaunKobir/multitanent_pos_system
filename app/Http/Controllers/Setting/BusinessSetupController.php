@@ -23,29 +23,8 @@ class BusinessSetupController extends Controller
 
         $settings = BusinessSettings::all();
 
-        $branches = Branch::query()
-            ->orderBy('id')
-            ->get()
-            ->map(function (Branch $branch) {
-                return [
-                    'id' => $branch->id,
-                    'name' => $branch->name,
-                    'phone' => $branch->phone,
-                    'address' => $branch->address,
-                    'status' => $branch->status?->value ?? (int) $branch->status,
-                    'is_main_branch' => Branch::isMainBranch($branch->id),
-                    'custom_overdue_action' => $branch->custom_overdue_action,
-                    'subscription_notes' => $branch->subscription_notes,
-                    'custom_grace_period_days' => $branch->custom_grace_period_days,
-                    'custom_warning_days' => $branch->custom_warning_days,
-                    'subscription_fee' => $branch->subscription_fee,
-                    'subscription' => $this->subscriptionService->getSubscriptionSummary($branch),
-                ];
-            });
-
         return Inertia::render('admin/setting/business-setup/index', [
             'settings' => $settings,
-            'branches' => $branches,
             'billingCycles' => [
                 ['value' => 'monthly', 'label' => 'Monthly (30 Days)', 'days' => 30],
                 ['value' => 'quarterly', 'label' => 'Quarterly (90 Days)', 'days' => 90],
@@ -124,6 +103,7 @@ class BusinessSetupController extends Controller
         ]);
 
         $cycle = $validated['subscription_plan'] ?? 'monthly';
+        $customCycleDays = ! empty($validated['custom_cycle_days']) ? (int) $validated['custom_cycle_days'] : null;
         $cycleDays = match ($cycle) {
             'monthly' => 30,
             'quarterly' => 90,
@@ -131,19 +111,19 @@ class BusinessSetupController extends Controller
             'yearly' => 365,
             'trial' => 14,
             'lifetime' => null,
-            'custom_days' => ! empty($validated['custom_cycle_days']) ? (int) $validated['custom_cycle_days'] : null,
+            'custom_days' => $customCycleDays ?: 30,
             default => BusinessSettings::getInt('subscription_billing_cycle_days', 30),
         };
 
+        if ($cycle === 'custom_days') {
+            $validated['custom_cycle_days'] = $customCycleDays ?: 30;
+        }
+
         if ($cycle === 'lifetime' || $validated['subscription_status'] === 'lifetime') {
             $validated['subscription_expires_at'] = null;
-        } elseif ($cycle === 'custom_days' && ! empty($validated['subscription_expires_at'])) {
-            $validated['subscription_expires_at'] = \Carbon\Carbon::parse($validated['subscription_expires_at'])->toDateString();
         } elseif (! empty($validated['subscription_starts_at']) && $cycleDays !== null) {
             $validated['subscription_expires_at'] = \Carbon\Carbon::parse($validated['subscription_starts_at'])->addDays($cycleDays)->toDateString();
         }
-
-        unset($validated['custom_cycle_days']);
 
         $branch->update($validated);
 
@@ -163,6 +143,7 @@ class BusinessSetupController extends Controller
             'paid_at' => ['required', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'attachment' => ['nullable', 'file', 'mimes:jpeg,png,jpg,webp,pdf', 'max:10240'],
+            'existing_attachment_path' => ['nullable', 'string', 'max:500'],
         ]);
 
         $this->subscriptionService->renew($branch, $validated, $request->user());

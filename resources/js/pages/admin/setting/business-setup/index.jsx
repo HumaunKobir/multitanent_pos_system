@@ -408,7 +408,9 @@ export default function BusinessSetupIndex({ settings = {}, branches = [], billi
                                                     premium: 'Quarterly (90d)',
                                                     enterprise: 'Yearly (365d)',
                                                 };
-                                                const cycleLabel = cycleNameMap[planKey] || planKey;
+                                                const cycleLabel = planKey === 'custom_days' && sub.cycle_days
+                                                    ? `Custom (${sub.cycle_days}d)`
+                                                    : (cycleNameMap[planKey] || planKey);
 
                                                 return (
                                                     <tr key={branch.id} className="hover:bg-muted/20 transition-colors">
@@ -425,7 +427,7 @@ export default function BusinessSetupIndex({ settings = {}, branches = [], billi
                                                         <td className="px-3 py-3">
                                                             <span className="font-medium text-foreground">{cycleLabel}</span>
                                                             <div className="text-[0.7rem] text-emerald-600 dark:text-emerald-400 font-semibold">
-                                                                {sub.fee ? Number(sub.fee).toFixed(2) : '0.00'}
+                                                                ৳{sub.fee ? Number(sub.fee).toFixed(2) : '0.00'}
                                                             </div>
                                                         </td>
                                                         <td className="px-3 py-3">
@@ -442,7 +444,7 @@ export default function BusinessSetupIndex({ settings = {}, branches = [], billi
                                                                             : 'text-muted-foreground'
                                                                     }`}>
                                                                         {sub.is_overdue
-                                                                            ? `${sub.overdue_days}d overdue`
+                                                                            ? `${sub.overdue_days}d overdue${sub.pending_bills_count > 0 ? ` (${sub.pending_bills_count} bill${sub.pending_bills_count > 1 ? 's' : ''})` : ''}`
                                                                             : `${sub.days_remaining}d remaining`}
                                                                     </div>
                                                                 </div>

@@ -233,15 +233,32 @@ class BranchSubscriptionService
         $isSalesRestricted = $isSuspended || (! $isInGracePeriod && $isOverdue && in_array($overdueAction, ['restrict_sales', 'read_only', 'suspend_branch'], true));
         $isReadOnly = $isSuspended || (! $isInGracePeriod && $isOverdue && in_array($overdueAction, ['read_only', 'suspend_branch'], true));
 
+        $pendingBillsCount = ($isOverdue && $cycleDays > 0) ? (int) max(1, (int) ceil($overdueDays / $cycleDays)) : 0;
+        $totalOverdueFee = $isOverdue ? ($pendingBillsCount * $fee) : 0.0;
+
+        $planLabel = match ($plan) {
+            'custom_days' => $cycleDays ? "Custom ({$cycleDays} Days)" : 'Custom Days',
+            'monthly' => 'Monthly (30 Days)',
+            'quarterly' => 'Quarterly (90 Days)',
+            'half_yearly' => 'Half-Yearly (180 Days)',
+            'yearly' => 'Yearly (365 Days)',
+            'trial' => 'Trial (14 Days)',
+            'lifetime' => 'Lifetime',
+            default => $cycleDays ? ucfirst($plan)." ({$cycleDays} Days)" : ucfirst($plan),
+        };
+
         return [
             'branch_id' => $branch->id,
             'branch_name' => $branch->name,
             'is_main_branch' => false,
             'plan' => $plan,
+            'plan_label' => $planLabel,
             'cycle_days' => $cycleDays,
             'status' => $rawStatus,
             'computed_status' => $computedStatus,
             'fee' => $fee,
+            'total_overdue_fee' => $totalOverdueFee,
+            'pending_bills_count' => $pendingBillsCount,
             'custom_fee' => $branch->subscription_fee,
             'starts_at' => $startsAt,
             'expires_at' => $expiresAt,

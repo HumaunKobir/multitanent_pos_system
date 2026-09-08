@@ -79,9 +79,18 @@ class SystemAccountService
     {
         self::seed(null);
 
+        $mainBranch = Branch::query()->where('name', Branch::MAIN_BRANCH_NAME)->first();
+        if ($mainBranch) {
+            ChartOfAccount::query()
+                ->where('source_type', Branch::class)
+                ->where('source_id', $mainBranch->id)
+                ->delete();
+        }
+
         $branchIds = ChartOfAccount::query()
             ->where('source_type', Branch::class)
             ->whereNotNull('source_id')
+            ->when($mainBranch, fn ($q) => $q->where('source_id', '!=', $mainBranch->id))
             ->distinct()
             ->orderBy('source_id')
             ->pluck('source_id');
@@ -138,8 +147,9 @@ class SystemAccountService
     private static function orderedKeys(): array
     {
         $branchId = self::branchId();
+        $isSuperAdmin = $branchId === null || Branch::isMainBranch($branchId);
 
-        if ($branchId === null) {
+        if ($isSuperAdmin) {
             // SuperAdmin global panel: only SaaS platform & billing accounts
             return [
                 SystemAccountKey::CashAndBank,
@@ -147,6 +157,8 @@ class SystemAccountService
                 SystemAccountKey::SslCommerz,
                 SystemAccountKey::Bkash,
                 SystemAccountKey::Nagad,
+                SystemAccountKey::AccountsReceivable,
+                SystemAccountKey::SubscriptionReceivable,
                 SystemAccountKey::LoansPayable,
                 SystemAccountKey::TaxesPayable,
                 SystemAccountKey::OutputVat,
@@ -215,7 +227,7 @@ class SystemAccountService
 
     private static function applyPanelSource($query, ?int $branchId): void
     {
-        if ($branchId === null) {
+        if ($branchId === null || Branch::isMainBranch($branchId)) {
             $query->whereNull('source_type')->whereNull('source_id');
 
             return;
@@ -260,7 +272,8 @@ class SystemAccountService
 
     private static function migrateRenamedAccountNumbers(): void
     {
-        if (self::branchId() !== null) {
+        $branchId = self::branchId();
+        if ($branchId !== null && ! Branch::isMainBranch($branchId)) {
             return;
         }
 
@@ -351,7 +364,8 @@ class SystemAccountService
             ]);
         }
 
-        if (self::branchId() !== null) {
+        $branchId = self::branchId();
+        if ($branchId !== null && ! Branch::isMainBranch($branchId)) {
             return;
         }
 
@@ -384,12 +398,14 @@ class SystemAccountService
             'SYS:income',
         ];
 
+        $branchId = self::branchId();
+        $isSuperAdmin = $branchId === null || Branch::isMainBranch($branchId);
+
         // SuperAdmin global panel does not use retail POS inventory, purchases, supplier/customer payables/receivables
-        if (self::branchId() === null) {
+        if ($isSuperAdmin) {
             $retiredAccountNumbers = array_merge($retiredAccountNumbers, [
                 SystemAccountKey::Inventory->accountNumber(),
                 SystemAccountKey::ProductInventory->accountNumber(),
-                SystemAccountKey::AccountsReceivable->accountNumber(),
                 SystemAccountKey::CustomerReceivables->accountNumber(),
                 SystemAccountKey::IntercompanyReceivable->accountNumber(),
                 SystemAccountKey::AccountsPayable->accountNumber(),
@@ -409,9 +425,10 @@ class SystemAccountService
                 SystemAccountKey::SubscriptionExpense->accountNumber(),
             ]);
         } else {
-            // Branch panel does not use SuperAdmin subscription income
+            // Branch panel does not use SuperAdmin subscription income and subscription receivable
             $retiredAccountNumbers = array_merge($retiredAccountNumbers, [
                 SystemAccountKey::SubscriptionIncome->accountNumber(),
+                SystemAccountKey::SubscriptionReceivable->accountNumber(),
             ]);
         }
 
@@ -435,6 +452,7 @@ class SystemAccountService
             SystemAccountKey::AccountsReceivable => 'A003',
             SystemAccountKey::CustomerReceivables => 'A003-01',
             SystemAccountKey::IntercompanyReceivable => 'A003-02',
+            SystemAccountKey::SubscriptionReceivable => 'A003-03',
             SystemAccountKey::AccountsPayable => 'L001',
             SystemAccountKey::SupplierPayables => 'L001-01',
             SystemAccountKey::IntercompanyPayable => 'L001-02',

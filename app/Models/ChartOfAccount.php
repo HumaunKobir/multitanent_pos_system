@@ -88,7 +88,7 @@ class ChartOfAccount extends Model
     {
         $branchId = Auth::user()?->branch_id;
 
-        if ($branchId === null) {
+        if ($branchId === null || Branch::isMainBranch($branchId)) {
             return $query->whereNull('source_type')->whereNull('source_id');
         }
 
@@ -100,7 +100,7 @@ class ChartOfAccount extends Model
      */
     public static function panelSourceAttributes(?int $branchId = null): array
     {
-        if ($branchId === null) {
+        if ($branchId === null || Branch::isMainBranch($branchId)) {
             return [
                 'source_type' => null,
                 'source_id' => null,

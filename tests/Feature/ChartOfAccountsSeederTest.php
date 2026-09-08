@@ -13,6 +13,7 @@ test('superadmin chart of accounts seeder creates only platform billing and SaaS
     $parentsByType = [
         AccountType::Asset->value => [
             SystemAccountKey::CashAndBank,
+            SystemAccountKey::AccountsReceivable,
         ],
         AccountType::Liability->value => [
             SystemAccountKey::LoansPayable,
@@ -50,6 +51,9 @@ test('superadmin chart of accounts seeder creates only platform billing and SaaS
             SystemAccountKey::SslCommerz,
             SystemAccountKey::Bkash,
             SystemAccountKey::Nagad,
+        ]],
+        [SystemAccountKey::AccountsReceivable, [
+            SystemAccountKey::SubscriptionReceivable,
         ]],
         [SystemAccountKey::TaxesPayable, [
             SystemAccountKey::OutputVat,
@@ -146,12 +150,12 @@ test('superadmin chart of accounts does not contain retail inventory or retail s
     $retailAccountNumbers = [
         SystemAccountKey::Inventory->accountNumber(),
         SystemAccountKey::ProductInventory->accountNumber(),
-        SystemAccountKey::AccountsReceivable->accountNumber(),
         SystemAccountKey::CustomerReceivables->accountNumber(),
         SystemAccountKey::AccountsPayable->accountNumber(),
         SystemAccountKey::SupplierPayables->accountNumber(),
         SystemAccountKey::CostOfGoodsSold->accountNumber(),
         SystemAccountKey::ProductSales->accountNumber(),
+        SystemAccountKey::InventoryDamage->accountNumber(),
     ];
 
     foreach ($retailAccountNumbers as $accountNumber) {

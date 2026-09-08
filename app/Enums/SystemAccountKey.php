@@ -49,6 +49,7 @@ enum SystemAccountKey: string
     case SubscriptionPayable = 'subscription_payable';
     case SubscriptionExpense = 'subscription_expense';
     case SubscriptionIncome = 'subscription_income';
+    case SubscriptionReceivable = 'subscription_receivable';
 
     public function accountNumber(): string
     {
@@ -70,6 +71,7 @@ enum SystemAccountKey: string
             self::AccountsReceivable => 'Accounts Receivable',
             self::CustomerReceivables => 'Customer Receivables',
             self::IntercompanyReceivable => 'Intercompany Receivable',
+            self::SubscriptionReceivable => 'Client Subscription Receivables',
             self::AccountsPayable => 'Accounts Payable',
             self::SupplierPayables => 'Supplier Payables',
             self::IntercompanyPayable => 'Intercompany Payable',
@@ -111,7 +113,8 @@ enum SystemAccountKey: string
         return match ($this) {
             self::CashAndBank, self::CashInHand, self::BankAccount, self::SslCommerz, self::Bkash, self::Nagad,
             self::Inventory, self::ProductInventory, self::BranchInventory,
-            self::AccountsReceivable, self::CustomerReceivables, self::IntercompanyReceivable => AccountType::Asset,
+            self::AccountsReceivable, self::CustomerReceivables, self::IntercompanyReceivable,
+            self::SubscriptionReceivable => AccountType::Asset,
             self::AccountsPayable, self::SupplierPayables, self::IntercompanyPayable, self::SubscriptionPayable,
             self::LoansPayable, self::AdvanceFromCustomer, self::CustomerCoinPayable, self::TaxesPayable,
             self::OutputVat, self::TaxesPaid => AccountType::Liability,
@@ -141,7 +144,7 @@ enum SystemAccountKey: string
             self::BankAccount => self::CashAndBank,
             self::ProductInventory => self::Inventory,
             self::BranchInventory => self::Inventory,
-            self::CustomerReceivables, self::IntercompanyReceivable => self::AccountsReceivable,
+            self::CustomerReceivables, self::IntercompanyReceivable, self::SubscriptionReceivable => self::AccountsReceivable,
             self::SupplierPayables, self::IntercompanyPayable, self::SubscriptionPayable => self::AccountsPayable,
             self::OutputVat, self::TaxesPaid => self::TaxesPayable,
             self::OpeningBalanceClearing => self::OpeningBalanceEquity,
@@ -159,11 +162,13 @@ enum SystemAccountKey: string
             return false;
         }
 
-        // SuperAdmin global panel (branchId === null): only platform & billing accounts
-        if ($branchId === null) {
+        $isSuperAdminPanel = $branchId === null || \App\Models\Branch::isMainBranch($branchId);
+
+        // SuperAdmin global panel & Main Branch: only platform & billing accounts
+        if ($isSuperAdminPanel) {
             return match ($this) {
                 self::Inventory, self::ProductInventory, self::BranchInventory,
-                self::AccountsReceivable, self::CustomerReceivables, self::IntercompanyReceivable,
+                self::CustomerReceivables, self::IntercompanyReceivable,
                 self::AccountsPayable, self::SupplierPayables, self::IntercompanyPayable, self::SubscriptionPayable,
                 self::AdvanceFromCustomer, self::CustomerCoinPayable,
                 self::ProductSales, self::SalesReturns, self::DiscountApplied, self::CoinDiscountApplied,
@@ -173,9 +178,9 @@ enum SystemAccountKey: string
             };
         }
 
-        // Branch retail POS panel (branchId !== null): full retail store tree + subscription payable/expense
+        // Branch retail POS panel (regular branches): full retail store tree + subscription payable/expense
         return match ($this) {
-            self::SubscriptionIncome => false, // only SuperAdmin receives subscription income
+            self::SubscriptionIncome, self::SubscriptionReceivable => false, // only SuperAdmin handles client subscription income/receivables
             default => true,
         };
     }

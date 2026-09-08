@@ -41,6 +41,7 @@ use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Setting\AdminProfileController;
 use App\Http\Controllers\Setting\BranchProfileController;
 use App\Http\Controllers\Setting\BrandController;
+use App\Http\Controllers\Setting\BusinessSetupController;
 use App\Http\Controllers\Setting\CategoryController;
 use App\Http\Controllers\Setting\CoinSettingsController;
 use App\Http\Controllers\Setting\ColorController;
@@ -304,4 +305,9 @@ Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->gr
     Route::post('coin-settings', [CoinSettingsController::class, 'store'])->name('coin-settings.store');
     Route::get('coin-settings/edit', [CoinSettingsController::class, 'edit'])->name('coin-settings.edit');
     Route::put('coin-settings', [CoinSettingsController::class, 'update'])->name('coin-settings.update');
+    Route::get('business-setup', [BusinessSetupController::class, 'edit'])->name('business-setup.edit');
+    Route::put('business-setup', [BusinessSetupController::class, 'updateSettings'])->name('business-setup.update');
+    Route::put('business-setup/branch/{branch}', [BusinessSetupController::class, 'updateBranchSubscription'])->name('business-setup.branch.update');
+    Route::post('business-setup/branch/{branch}/renew', [BusinessSetupController::class, 'renewBranchSubscription'])->name('business-setup.branch.renew');
+    Route::get('business-setup/branch/{branch}/payments', [BusinessSetupController::class, 'branchPaymentHistory'])->name('business-setup.branch.payments');
 });

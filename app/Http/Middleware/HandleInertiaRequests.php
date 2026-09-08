@@ -8,8 +8,10 @@ use App\Models\Category;
 use App\Models\ConfigDictionary;
 use App\Models\Tag;
 use App\Models\User;
+use App\Services\BranchSubscriptionService;
 use App\Services\BusinessSessionService;
 use App\Support\AdminNavigation;
+use App\Support\BusinessSettings;
 use App\Support\StorageUrl;
 use App\Support\WebsiteSettings;
 use Illuminate\Http\Request;
@@ -69,6 +71,26 @@ class HandleInertiaRequests extends Middleware
             'businessSession' => $user instanceof User
                 ? app(BusinessSessionService::class)->sharedPanelState($user)
                 : ['active' => false, 'can_start' => false, 'can_close' => false, 'can_resume_close' => false],
+            'branchSubscription' => $user instanceof User && $user->branch !== null
+                ? app(BranchSubscriptionService::class)->getSubscriptionSummary($user->branch)
+                : null,
+            'businessPolicies' => [
+                'allow_negative_stock' => BusinessSettings::getBool('policy_allow_negative_stock', false),
+                'max_discount_percent' => BusinessSettings::getFloat('policy_max_discount_percent', 50),
+                'require_daily_business_session' => BusinessSettings::getBool('policy_require_daily_business_session', true),
+                'require_customer_phone' => BusinessSettings::getBool('policy_require_customer_phone', false),
+                'feature_ecommerce_enabled' => BusinessSettings::getBool('feature_ecommerce_enabled', true),
+                'feature_loyalty_coins_enabled' => BusinessSettings::getBool('feature_loyalty_coins_enabled', true),
+                'feature_accounts_vouchers_enabled' => BusinessSettings::getBool('feature_accounts_vouchers_enabled', true),
+                'feature_stock_distribution_enabled' => BusinessSettings::getBool('feature_stock_distribution_enabled', true),
+                'feature_damage_tracking_enabled' => BusinessSettings::getBool('feature_damage_tracking_enabled', true),
+                'feature_special_discounts_enabled' => BusinessSettings::getBool('feature_special_discounts_enabled', true),
+                'superadmin_contact' => [
+                    'name' => BusinessSettings::get('superadmin_contact_name'),
+                    'phone' => BusinessSettings::get('superadmin_contact_phone'),
+                    'email' => BusinessSettings::get('superadmin_contact_email'),
+                ],
+            ],
             'hasPanelGuide' => $user instanceof User
                 && count(app(AdminNavigation::class)->build($user)) > 0,
             'showPanelGuideButton' => $user instanceof User

@@ -3,30 +3,77 @@ import { Can } from '@/components/can';
 import { DataTable } from '@/components/ui/data-table';
 import { useAppToast } from '@/contexts/app-toast-context';
 import { useCan } from '@/hooks/use-can';
+import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
 import { Head, Link, router, usePage } from '@inertiajs/react';
-import { Pencil, Plus, Trash2, Users } from 'lucide-react';
+import { Filter, Pencil, Plus, RotateCcw, Search, Trash2, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select';
 import { Dialog, DialogClose, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { resourceRoutes } from '@/lib/route';
 import UserFormDialog from './form-dialog';
 
 const routes = resourceRoutes('user');
 
-export default function UserIndex({ users, branches, roles }) {
+export default function UserIndex({ users, branches = {}, roles = {}, filters = {} }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
     const { can } = useCan();
+
+    const [search, setSearch] = useState(filters.search ?? '');
+    const [branchId, setBranchId] = useState(filters.branch_id || 'all');
+    const [roleId, setRoleId] = useState(filters.role_id || 'all');
+    const [status, setStatus] = useState(filters.status || 'all');
+
     const [deleting, setDeleting] = useState(null);
     const [editing, setEditing] = useState(null);
     const [formOpen, setFormOpen] = useState(false);
+
+    const hasActiveFilters = Boolean(
+        search ||
+        (branchId && branchId !== 'all') ||
+        (roleId && roleId !== 'all') ||
+        (status && status !== 'all')
+    );
 
     useEffect(() => {
         if (flash.success) toast.success(flash.success);
         if (flash.error) toast.error(flash.error);
     }, [flash.success, flash.error]);
+
+    useDebouncedEffect(
+        () => {
+            router.get(
+                routes.index(),
+                {
+                    search: search || undefined,
+                    branch_id: branchId && branchId !== 'all' ? branchId : undefined,
+                    role_id: roleId && roleId !== 'all' ? roleId : undefined,
+                    status: status && status !== 'all' ? status : undefined,
+                },
+                { preserveState: true, replace: true }
+            );
+        },
+        [search, branchId, roleId, status],
+        350,
+        { skipFirstRun: true }
+    );
+
+    function handleReset() {
+        setSearch('');
+        setBranchId('all');
+        setRoleId('all');
+        setStatus('all');
+    }
 
     function handleDelete() {
         if (!deleting) return;
@@ -64,7 +111,7 @@ export default function UserIndex({ users, branches, roles }) {
             header: 'Role',
             render: (row) =>
                 row.role_name ? (
-                    <Badge variant="outline" className="text-xs">
+                    <Badge variant="outline" className="text-xs border-slate-300 dark:border-slate-700">
                         {row.role_name}
                     </Badge>
                 ) : (
@@ -100,15 +147,16 @@ export default function UserIndex({ users, branches, roles }) {
         <>
             <Head title="Users" />
 
-            <div className="px-2 py-1">
-                <div className="mb-3 flex items-center justify-between rounded-lg bg-blue-950 px-5 py-3">
+            <div className="px-2 py-1 space-y-3">
+                {/* Header */}
+                <div className="flex items-center justify-between rounded-lg bg-blue-950 px-5 py-3 shadow-md">
                     <div className="flex items-center gap-3">
-                        <div className="flex size-8 items-center justify-center rounded-md bg-white/15">
+                        <div className="flex size-8 items-center justify-center rounded-md bg-white/15 shadow-xs">
                             <Users className="size-4 text-white" />
                         </div>
                         <div>
                             <h1 className="text-base font-semibold text-white">Users</h1>
-                            <p className="text-xs text-white/60">Manage your admin users.</p>
+                            <p className="text-xs text-white/60">Manage system users, branch assignments, and roles.</p>
                         </div>
                     </div>
                     <AdminCreateButton
@@ -120,8 +168,88 @@ export default function UserIndex({ users, branches, roles }) {
                     />
                 </div>
 
-                <DataTable columns={columns} rows={users.data} rowKey="id" emptyMessage="No users found." />
+                {/* Filter Toolbar */}
+                <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-card p-3.5 shadow-xs">
+                    <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5">
+                        {/* Search Input */}
+                        <div className="relative lg:col-span-2">
+                            <Search className="absolute left-2.5 top-2.5 size-4 text-muted-foreground" />
+                            <Input
+                                placeholder="Search by name, email, or phone..."
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="h-9 pl-9 text-xs border-slate-300 dark:border-slate-700 bg-background"
+                            />
+                        </div>
 
+                        {/* Branch Filter */}
+                        <div>
+                            <Select value={branchId} onValueChange={setBranchId}>
+                                <SelectTrigger className="h-9 text-xs border-slate-300 dark:border-slate-700 bg-background">
+                                    <SelectValue placeholder="All Branches" />
+                                </SelectTrigger>
+                                <SelectContent className="border-slate-300 dark:border-slate-700">
+                                    <SelectItem value="all">All Branches</SelectItem>
+                                    {Object.entries(branches).map(([id, name]) => (
+                                        <SelectItem key={id} value={String(id)}>
+                                            {name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Role Filter */}
+                        <div>
+                            <Select value={roleId} onValueChange={setRoleId}>
+                                <SelectTrigger className="h-9 text-xs border-slate-300 dark:border-slate-700 bg-background">
+                                    <SelectValue placeholder="All Roles" />
+                                </SelectTrigger>
+                                <SelectContent className="border-slate-300 dark:border-slate-700">
+                                    <SelectItem value="all">All Roles</SelectItem>
+                                    {Object.entries(roles).map(([id, name]) => (
+                                        <SelectItem key={id} value={String(id)}>
+                                            {name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Status Filter & Reset */}
+                        <div className="flex items-center gap-2">
+                            <Select value={status} onValueChange={setStatus}>
+                                <SelectTrigger className="h-9 text-xs border-slate-300 dark:border-slate-700 bg-background flex-1">
+                                    <SelectValue placeholder="All Status" />
+                                </SelectTrigger>
+                                <SelectContent className="border-slate-300 dark:border-slate-700">
+                                    <SelectItem value="all">All Status</SelectItem>
+                                    <SelectItem value="1">Active</SelectItem>
+                                    <SelectItem value="0">InActive</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            {hasActiveFilters && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={handleReset}
+                                    className="h-9 px-2.5 text-xs text-muted-foreground hover:text-foreground border-slate-300 dark:border-slate-700"
+                                    title="Reset filters"
+                                >
+                                    <RotateCcw className="size-3.5 mr-1" />
+                                    Reset
+                                </Button>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Table */}
+                <DataTable columns={columns} rows={users.data} rowKey="id" emptyMessage="No users found matching your filters." />
+
+                {/* Pagination */}
                 {users.links?.length > 3 && (
                     <div className="mt-4 flex flex-wrap gap-1">
                         {users.links.map((link, i) => (
@@ -129,8 +257,8 @@ export default function UserIndex({ users, branches, roles }) {
                                 key={i}
                                 href={link.url ?? '#'}
                                 className={[
-                                    'border px-3 py-1 text-sm transition-colors',
-                                    link.active ? 'border-primary bg-primary text-primary-foreground' : 'border-border hover:bg-accent',
+                                    'border rounded-md px-3 py-1 text-xs transition-colors border-slate-300 dark:border-slate-700',
+                                    link.active ? 'border-primary bg-primary text-primary-foreground font-semibold' : 'bg-card text-foreground hover:bg-muted',
                                     !link.url ? 'pointer-events-none opacity-50' : '',
                                 ].join(' ')}
                                 dangerouslySetInnerHTML={{ __html: link.label }}
@@ -140,37 +268,39 @@ export default function UserIndex({ users, branches, roles }) {
                     </div>
                 )}
 
+                {/* Delete Confirmation Dialog */}
                 {can('user.delete') && (
-                <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Delete User</DialogTitle>
-                        </DialogHeader>
-                        <p className="text-sm text-muted-foreground">
-                            Are you sure you want to delete <strong>{deleting?.name}</strong>? This action cannot be undone.
-                        </p>
-                        <DialogFooter>
-                            <DialogClose asChild>
+                    <Dialog open={!!deleting} onOpenChange={(open) => !open && setDeleting(null)}>
+                        <DialogContent className="border-slate-300 dark:border-slate-700">
+                            <DialogHeader>
+                                <DialogTitle>Delete User</DialogTitle>
+                            </DialogHeader>
+                            <p className="text-sm text-muted-foreground">
+                                Are you sure you want to delete <strong>{deleting?.name}</strong>? This action cannot be undone.
+                            </p>
+                            <DialogFooter className="gap-2">
+                                <DialogClose asChild>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="border-slate-300 dark:border-slate-700"
+                                    >
+                                        Cancel
+                                    </Button>
+                                </DialogClose>
                                 <Button
-                                    variant="outline"
                                     size="sm"
-                                    className="border-red-500 text-red-500 shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:bg-red-500 hover:text-white hover:shadow-md hover:shadow-red-500/30"
+                                    className="bg-red-600 text-white hover:bg-red-700 shadow-xs"
+                                    onClick={handleDelete}
                                 >
-                                    Cancel
+                                    Delete
                                 </Button>
-                            </DialogClose>
-                            <Button
-                                size="sm"
-                                className="bg-red-600 text-white shadow-sm shadow-red-500/30 transition-all duration-150 hover:bg-red-600 hover:-translate-y-0.5 hover:shadow-md hover:shadow-red-500/50"
-                                onClick={handleDelete}
-                            >
-                                Delete
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                 )}
 
+                {/* Create / Edit Form Modal */}
                 <Can permission={['user.create', 'user.update']}>
                     <UserFormDialog
                         open={formOpen}

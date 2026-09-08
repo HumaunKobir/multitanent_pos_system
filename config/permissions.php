@@ -487,6 +487,15 @@ return [
             ],
         ],
 
+        'business-setup' => [
+            'label' => 'Business Setup & Subscriptions',
+            'group' => 'Administration',
+            'permissions' => [
+                'business-setup.view' => 'View Business Setup',
+                'business-setup.update' => 'Update Business Setup',
+            ],
+        ],
+
         'role' => [
             'label' => 'Roles & Permissions',
             'group' => 'Administration',

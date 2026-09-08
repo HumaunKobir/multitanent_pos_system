@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Enums\CommonStatus;
+use App\Services\BranchSubscriptionService;
 use App\Services\DefaultCustomerService;
 use App\Services\EcommerceBranchService;
 use App\Traits\UsesCentralConnection;
@@ -23,7 +24,25 @@ class Branch extends Model
 
     public const string ECOMMERCE_BRANCH_NAME = 'Ecommerce Branch';
 
-    protected $fillable = ['name', 'database_name', 'phone', 'address', 'logo', 'pos_terms_and_conditions', 'status'];
+    protected $fillable = [
+        'name',
+        'database_name',
+        'phone',
+        'address',
+        'logo',
+        'pos_terms_and_conditions',
+        'status',
+        'subscription_plan',
+        'subscription_status',
+        'subscription_fee',
+        'subscription_starts_at',
+        'subscription_expires_at',
+        'subscription_last_paid_at',
+        'custom_grace_period_days',
+        'custom_warning_days',
+        'custom_overdue_action',
+        'subscription_notes',
+    ];
 
     public static function hasPosTerms(?string $content): bool
     {
@@ -36,11 +55,19 @@ class Branch extends Model
 
     protected $casts = [
         'status' => CommonStatus::class,
+        'subscription_fee' => 'decimal:2',
+        'subscription_starts_at' => 'date',
+        'subscription_expires_at' => 'date',
+        'subscription_last_paid_at' => 'date',
+        'custom_grace_period_days' => 'integer',
+        'custom_warning_days' => 'integer',
     ];
 
     protected static function booted(): void
     {
         static::created(function (Branch $branch): void {
+            app(BranchSubscriptionService::class)->provisionDefaultSubscription($branch);
+
             if (config('tenancy.enabled')) {
                 return;
             }
@@ -138,5 +165,18 @@ class Branch extends Model
     public function suppliers(): HasMany
     {
         return $this->hasMany(Supplier::class);
+    }
+
+    public function subscriptionPayments(): HasMany
+    {
+        return $this->hasMany(BranchSubscriptionPayment::class)->latest('paid_at');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    public function subscriptionSummary(): array
+    {
+        return app(BranchSubscriptionService::class)->getSubscriptionSummary($this);
     }
 }

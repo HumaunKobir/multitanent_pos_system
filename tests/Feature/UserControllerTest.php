@@ -127,7 +127,7 @@ test('user index hides system ecommerce admin and exposes assignable branches', 
         User::factory()->make([
             'branch_id' => $ecommerceBranch->id,
             'email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL,
-        ])->toArray(),
+        ])->makeVisible('password')->toArray(),
     );
 
     $mainBranch = Branch::query()->find(Branch::MAIN_BRANCH_ID);
@@ -168,7 +168,7 @@ test('ecommerce branch is available in user form when only the system admin exis
         User::factory()->make([
             'branch_id' => $ecommerceBranch->id,
             'email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL,
-        ])->toArray(),
+        ])->makeVisible('password')->toArray(),
     );
 
     $this->actingAs($actor)
@@ -200,7 +200,7 @@ test('ecommerce branch can receive multiple managed users from user form', funct
         User::factory()->make([
             'branch_id' => $ecommerceBranch->id,
             'email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL,
-        ])->toArray(),
+        ])->makeVisible('password')->toArray(),
     );
 
     User::factory()->create(['branch_id' => $ecommerceBranch->id]);
@@ -233,7 +233,7 @@ test('system ecommerce admin cannot be updated or deleted from user list', funct
         User::factory()->make([
             'branch_id' => $ecommerceBranch->id,
             'email' => User::ECOMMERCE_BRANCH_ADMIN_EMAIL,
-        ])->toArray(),
+        ])->makeVisible('password')->toArray(),
     );
 
     $this->actingAs($actor)
@@ -316,7 +316,9 @@ test('main branch user logs into admin panel with role permissions', function ()
     $mainBranchId = ensureMainBranch();
 
     $user = User::factory()->create(['branch_id' => $mainBranchId]);
+    Permission::findOrCreate('dashboard.view', 'web');
     Permission::findOrCreate('product.view', 'web');
+    $user->givePermissionTo('dashboard.view');
     $user->givePermissionTo('product.view');
 
     expect($user->usesAdminPanel())->toBeTrue();
@@ -336,6 +338,63 @@ test('main branch user logs into admin panel with role permissions', function ()
     $this->actingAs($user)
         ->get('/product')
         ->assertOk();
+});
+
+test('user index filters users by search, branch, and status', function () {
+    $this->artisan('permissions:sync');
+
+    $actor = userManagementActor(['user.view']);
+
+    $suffix = fake()->unique()->lexify('??????');
+    $branchA = Branch::factory()->create(['name' => 'Branch Alpha '.$suffix]);
+    $branchB = Branch::factory()->create(['name' => 'Branch Beta '.$suffix]);
+
+    $userA = User::factory()->create([
+        'name' => 'John Filter Doe '.$suffix,
+        'email' => "john.filter.{$suffix}@example.com",
+        'branch_id' => $branchA->id,
+        'status' => 1,
+    ]);
+
+    $userB = User::factory()->create([
+        'name' => 'Jane Filter Smith '.$suffix,
+        'email' => "jane.filter.{$suffix}@example.com",
+        'branch_id' => $branchB->id,
+        'status' => 0,
+    ]);
+
+    // Test Search
+    $res1 = $this->actingAs($actor)->get('/user?search=John+Filter+Doe+'.$suffix);
+    $res1->assertOk()->assertInertia(fn ($page) => $page
+        ->component('admin/user/index')
+        ->where('users.data', function ($users) use ($userA, $userB) {
+            $ids = collect($users)->pluck('id');
+            expect($ids)->toContain($userA->id);
+            expect($ids)->not->toContain($userB->id);
+            return true;
+        }));
+
+    // Test Branch Filter
+    $res2 = $this->actingAs($actor)->get('/user?search='.$suffix.'&branch_id='.$branchB->id);
+    $res2->assertOk()->assertInertia(fn ($page) => $page
+        ->component('admin/user/index')
+        ->where('users.data', function ($users) use ($userA, $userB) {
+            $ids = collect($users)->pluck('id');
+            expect($ids)->toContain($userB->id);
+            expect($ids)->not->toContain($userA->id);
+            return true;
+        }));
+
+    // Test Status Filter
+    $res3 = $this->actingAs($actor)->get('/user?search='.$suffix.'&status=0');
+    $res3->assertOk()->assertInertia(fn ($page) => $page
+        ->component('admin/user/index')
+        ->where('users.data', function ($users) use ($userA, $userB) {
+            $ids = collect($users)->pluck('id');
+            expect($ids)->toContain($userB->id);
+            expect($ids)->not->toContain($userA->id);
+            return true;
+        }));
 });
 
 test('branch id 1 users use admin panel even when another branch is named main branch', function () {

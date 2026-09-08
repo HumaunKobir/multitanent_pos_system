@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\EnsureBranchSubscription;
 use App\Http\Middleware\EnsureBranchUser;
 use App\Http\Middleware\EnsureEcommercePanel;
 use App\Http\Middleware\EnsureSuperAdmin;
@@ -38,6 +39,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'superadmin' => EnsureSuperAdmin::class,
             'ecommerce.panel' => EnsureEcommercePanel::class,
             'branch.user' => EnsureBranchUser::class,
+            'branch.subscription' => EnsureBranchSubscription::class,
             'role' => RoleMiddleware::class,
             'permission' => PermissionMiddleware::class,
             'role_or_permission' => RoleOrPermissionMiddleware::class,
@@ -49,6 +51,7 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleAppearance::class,
             InitializeTenant::class,
             HandleInertiaRequests::class,
+            EnsureBranchSubscription::class,
             AddLinkHeadersForPreloadedAssets::class,
         ]);
 

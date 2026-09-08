@@ -1,1 +1,0 @@
-function e(e){let t=parseFloat(e??0);return!Number.isFinite(t)||t===0?``:String(e)}function t(e){return e===``||e==null?`0`:String(e)}export{t as n,e as t};

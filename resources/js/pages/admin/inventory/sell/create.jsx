@@ -31,6 +31,7 @@ import { hasRichTextContent } from '@/lib/pos-print';
 import { cn } from '@/lib/utils';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
 import {
+    AlertTriangle,
     ArrowLeft,
     Barcode,
     CalendarDays,
@@ -975,7 +976,8 @@ export default function SellCreate({
     coinSettings = null,
     cashInHandAccountId = null,
 }) {
-    const { flash } = usePage().props;
+    const { flash, branchSubscription } = usePage().props;
+    const isSalesRestricted = Boolean(branchSubscription?.is_sales_restricted || branchSubscription?.is_suspended);
     const toast = useAppToast();
     const initialCustomer = resumedSell?.customer ?? serverInitialCustomer;
 
@@ -1162,6 +1164,11 @@ export default function SellCreate({
     function handleSubmit(e) {
         e.preventDefault();
 
+        if (isSalesRestricted) {
+            toast.error('Sales & POS transactions are currently disabled due to an overdue subscription.');
+            return;
+        }
+
         if (customerRequiredError) {
             toast.error(customerRequiredError);
             return;
@@ -1202,6 +1209,11 @@ export default function SellCreate({
 
     function handlePause(e) {
         e.preventDefault();
+
+        if (isSalesRestricted) {
+            toast.error('Sales & POS transactions are currently disabled due to an overdue subscription.');
+            return;
+        }
 
         if (customerRequiredError) {
             toast.error(customerRequiredError);
@@ -1658,6 +1670,18 @@ export default function SellCreate({
                         </div>
 
                         <div className="shrink-0 border-t border-blue-200 bg-slate-50 p-1.5 lg:p-2 2xl:p-2.5">
+                            {isSalesRestricted && (
+                                <div className="mb-2 rounded border border-rose-500/50 bg-rose-50 p-2 text-rose-900 dark:bg-rose-950/60 dark:text-rose-100">
+                                    <div className="flex items-center gap-1.5 font-bold text-[11px] text-rose-700 dark:text-rose-300 lg:text-xs">
+                                        <AlertTriangle className="size-3.5 shrink-0 text-rose-600" />
+                                        Sales Checkout Disabled
+                                    </div>
+                                    <p className="mt-0.5 text-[10px] leading-tight text-rose-800 dark:text-rose-200">
+                                        Subscription overdue grace period has expired. Settle renewal fee to resume sales.
+                                    </p>
+                                </div>
+                            )}
+
                             {hasOverStock && (
                                 <p className="mb-1 border border-destructive/30 bg-destructive/5 px-1.5 py-0.5 text-[9px] text-destructive lg:mb-2 lg:px-2 lg:py-1 lg:text-[10px]">
                                     Stock exceeded — adjust quantities.
@@ -1672,7 +1696,7 @@ export default function SellCreate({
                                     type="button"
                                     size="sm"
                                     variant="outline"
-                                    disabled={form.processing || items.length === 0 || hasOverStock}
+                                    disabled={form.processing || items.length === 0 || hasOverStock || isSalesRestricted}
                                     onClick={handlePause}
                                     className="h-7 border-amber-400 text-[11px] text-amber-700 hover:bg-amber-50 hover:text-amber-700 dark:bg-white dark:hover:bg-amber-50 dark:hover:text-amber-700 lg:h-8 lg:text-xs"
                                 >
@@ -1681,7 +1705,7 @@ export default function SellCreate({
                                 <Button
                                     type="submit"
                                     size="sm"
-                                    disabled={form.processing || items.length === 0 || hasOverStock}
+                                    disabled={form.processing || items.length === 0 || hasOverStock || isSalesRestricted}
                                     className="h-7 bg-emerald-600 text-[11px] text-white hover:bg-emerald-600/90 lg:h-8 lg:text-xs"
                                 >
                                     {form.processing ? 'Saving…' : 'Complete Sale'}

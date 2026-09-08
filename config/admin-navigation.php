@@ -93,6 +93,15 @@ return [
             'permission' => 'branch.view',
         ],
         [
+            'title' => 'Business Setup',
+            'icon' => 'settings',
+            'href' => '/setting/business-setup',
+            'single' => true,
+            'central_admin' => true,
+            'admin_only' => true,
+            'permission' => 'business-setup.view',
+        ],
+        [
             'title' => 'User',
             'icon' => 'user-cog',
             'href' => '/user',

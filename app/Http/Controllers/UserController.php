@@ -17,13 +17,36 @@ use Spatie\Permission\Models\Role;
 
 class UserController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request): Response
     {
         $this->authorize('user.view');
+
+        $search = $request->input('search');
+        $branchId = $request->input('branch_id');
+        $roleId = $request->input('role_id');
+        $status = $request->input('status');
 
         $users = User::query()
             ->with('branch', 'roles')
             ->listedInUserManagement()
+            ->when($search, function ($query, $search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%")
+                        ->orWhere('phone', 'like', "%{$search}%");
+                });
+            })
+            ->when(filled($branchId), function ($query) use ($branchId) {
+                $query->where('branch_id', $branchId);
+            })
+            ->when(filled($roleId), function ($query) use ($roleId) {
+                $query->whereHas('roles', function ($q) use ($roleId) {
+                    $q->where('roles.id', $roleId);
+                });
+            })
+            ->when(filled($status) && in_array((string) $status, ['0', '1'], true), function ($query) use ($status) {
+                $query->where('status', (int) $status);
+            })
             ->latest()
             ->paginate(20)
             ->withQueryString()
@@ -41,6 +64,12 @@ class UserController extends Controller
 
         return Inertia::render('admin/user/index', [
             'users' => $users,
+            'filters' => [
+                'search' => $search ?? '',
+                'branch_id' => $branchId ? (string) $branchId : '',
+                'role_id' => $roleId ? (string) $roleId : '',
+                'status' => $status !== null ? (string) $status : '',
+            ],
             'branches' => Branch::query()
                 ->availableForUserAssignment()
                 ->orderBy('name')

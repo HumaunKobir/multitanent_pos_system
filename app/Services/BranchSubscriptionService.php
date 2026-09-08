@@ -315,9 +315,10 @@ class BranchSubscriptionService
         $notes = $data['notes'] ?? null;
         $paidAt = $data['paid_at'] ?? now()->toDateString();
 
-        // Calculate new period
-        $currentExpiry = $branch->subscription_expires_at ? Carbon::parse($branch->subscription_expires_at) : Carbon::today();
-        $baseDate = $currentExpiry->isFuture() ? $currentExpiry : Carbon::today();
+        // Continuous extension from current expiration date so unpaid overdue cycles are strictly preserved
+        $baseDate = $branch->subscription_expires_at
+            ? Carbon::parse($branch->subscription_expires_at)->startOfDay()
+            : ($branch->subscription_starts_at ? Carbon::parse($branch->subscription_starts_at)->startOfDay() : Carbon::today());
 
         $periodStartsAt = $baseDate->copy()->toDateString();
         $newExpiryDate = $baseDate->copy()->addDays($durationDays)->toDateString();

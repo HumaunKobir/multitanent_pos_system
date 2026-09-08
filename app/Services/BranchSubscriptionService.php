@@ -10,6 +10,10 @@ use Illuminate\Support\Carbon;
 
 class BranchSubscriptionService
 {
+    public function __construct(
+        protected BranchSubscriptionAccountingService $accounting = new BranchSubscriptionAccountingService(),
+    ) {}
+
     /**
      * @return array<string, mixed>
      */
@@ -330,6 +334,8 @@ class BranchSubscriptionService
             'subscription_expires_at' => now()->addDays($cycleDays)->toDateString(),
             'subscription_last_paid_at' => $branch->subscription_last_paid_at ?? now()->toDateString(),
         ]);
+
+        $this->syncCycleAccrual($branch);
     }
 
     /**
@@ -440,10 +446,12 @@ class BranchSubscriptionService
                 'attachment_path' => $attachmentPath ?: $pendingPayment->attachment_path,
             ]);
 
+            $this->accounting->recordPaymentSettlement($pendingPayment, $recordedBy);
+
             return $pendingPayment;
         }
 
-        return BranchSubscriptionPayment::create([
+        $payment = BranchSubscriptionPayment::create([
             'branch_id' => $branch->id,
             'amount' => $amount,
             'payment_method' => $paymentMethod,
@@ -456,6 +464,27 @@ class BranchSubscriptionService
             'notes' => $notes,
             'attachment_path' => $attachmentPath,
         ]);
+
+        $this->accounting->recordPaymentSettlement($payment, $recordedBy);
+
+        return $payment;
+    }
+
+    public function syncCycleAccrual(Branch $branch): void
+    {
+        if (Branch::isMainBranch($branch->id)) {
+            return;
+        }
+
+        $fee = (float) ($branch->subscription_fee ?? BusinessSettings::getFloat('subscription_default_fee', 1500));
+        if ($fee <= 0) {
+            return;
+        }
+
+        $startsAt = $branch->subscription_starts_at ? Carbon::parse($branch->subscription_starts_at)->toDateString() : now()->toDateString();
+        $expiresAt = $branch->subscription_expires_at ? Carbon::parse($branch->subscription_expires_at)->toDateString() : now()->toDateString();
+
+        $this->accounting->recordCycleAccrual($branch, $startsAt, $expiresAt, $fee);
     }
 
     protected function formatWarningTemplate(

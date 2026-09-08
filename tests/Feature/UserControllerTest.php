@@ -52,7 +52,7 @@ test('creating a branch user seeds default accounts for that branch', function (
         ->assertRedirect(route('user.index'))
         ->assertSessionHas('success');
 
-    foreach (SystemAccountKey::defaultSeededCases() as $key) {
+    foreach (SystemAccountKey::defaultSeededCases($branch->id) as $key) {
         expect(ChartOfAccount::query()
             ->where('account_number', $key->accountNumber())
             ->where('source_type', Branch::class)

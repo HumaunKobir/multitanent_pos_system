@@ -2,24 +2,20 @@
 
 use App\Enums\AccountType;
 use App\Enums\SystemAccountKey;
+use App\Models\Branch;
 use App\Models\ChartOfAccount;
 use App\Services\SystemAccountService;
 use Database\Seeders\ChartOfAccountsSeeder;
 
-test('chart of accounts seeder creates parent accounts for each type', function () {
+test('superadmin chart of accounts seeder creates only platform billing and SaaS accounts', function () {
     $this->seed(ChartOfAccountsSeeder::class);
 
     $parentsByType = [
         AccountType::Asset->value => [
             SystemAccountKey::CashAndBank,
-            SystemAccountKey::Inventory,
-            SystemAccountKey::AccountsReceivable,
         ],
         AccountType::Liability->value => [
-            SystemAccountKey::AccountsPayable,
             SystemAccountKey::LoansPayable,
-            SystemAccountKey::AdvanceFromCustomer,
-            SystemAccountKey::CustomerCoinPayable,
             SystemAccountKey::TaxesPayable,
         ],
         AccountType::Equity->value => [
@@ -38,7 +34,7 @@ test('chart of accounts seeder creates parent accounts for each type', function 
 
     foreach ($parentsByType as $type => $parentKeys) {
         foreach ($parentKeys as $parentKey) {
-            $account = SystemAccountService::resolve($parentKey);
+            $account = SystemAccountService::resolve($parentKey, null);
 
             expect($account->type->value)->toBe($type);
             expect($account->parent_id)->toBeNull();
@@ -46,10 +42,46 @@ test('chart of accounts seeder creates parent accounts for each type', function 
             expect($account->name)->toBe($parentKey->defaultName());
         }
     }
+
+    // SuperAdmin child accounts
+    $childrenByParent = [
+        [SystemAccountKey::CashAndBank, [
+            SystemAccountKey::CashInHand,
+            SystemAccountKey::SslCommerz,
+            SystemAccountKey::Bkash,
+            SystemAccountKey::Nagad,
+        ]],
+        [SystemAccountKey::TaxesPayable, [
+            SystemAccountKey::OutputVat,
+            SystemAccountKey::TaxesPaid,
+        ]],
+        [SystemAccountKey::OpeningBalanceEquity, [SystemAccountKey::OpeningBalanceClearing]],
+        [SystemAccountKey::SalesRevenue, [
+            SystemAccountKey::SubscriptionIncome,
+        ]],
+        [SystemAccountKey::Expenses, [
+            SystemAccountKey::RentExpense,
+            SystemAccountKey::SalaryExpense,
+            SystemAccountKey::UtilitiesExpense,
+        ]],
+    ];
+
+    foreach ($childrenByParent as [$parentKey, $childKeys]) {
+        $parentId = SystemAccountService::id($parentKey, null);
+
+        foreach ($childKeys as $childKey) {
+            $child = SystemAccountService::resolve($childKey, null);
+
+            expect($child->parent_id)->toBe($parentId);
+            expect($child->type)->toBe($childKey->accountType());
+            expect($child->is_system)->toBeTrue();
+        }
+    }
 });
 
-test('chart of accounts seeder creates child accounts under parent heads', function () {
-    $this->seed(ChartOfAccountsSeeder::class);
+test('branch chart of accounts seeder creates complete retail store and subscription accounts', function () {
+    $branch = Branch::factory()->create();
+    SystemAccountService::seed($branch->id);
 
     $childrenByParent = [
         [SystemAccountKey::CashAndBank, [
@@ -68,6 +100,7 @@ test('chart of accounts seeder creates child accounts under parent heads', funct
         [SystemAccountKey::AccountsPayable, [
             SystemAccountKey::SupplierPayables,
             SystemAccountKey::IntercompanyPayable,
+            SystemAccountKey::SubscriptionPayable,
         ]],
         [SystemAccountKey::TaxesPayable, [
             SystemAccountKey::OutputVat,
@@ -90,14 +123,15 @@ test('chart of accounts seeder creates child accounts under parent heads', funct
             SystemAccountKey::RentExpense,
             SystemAccountKey::SalaryExpense,
             SystemAccountKey::UtilitiesExpense,
+            SystemAccountKey::SubscriptionExpense,
         ]],
     ];
 
     foreach ($childrenByParent as [$parentKey, $childKeys]) {
-        $parentId = SystemAccountService::id($parentKey);
+        $parentId = SystemAccountService::id($parentKey, $branch->id);
 
         foreach ($childKeys as $childKey) {
-            $child = SystemAccountService::resolve($childKey);
+            $child = SystemAccountService::resolve($childKey, $branch->id);
 
             expect($child->parent_id)->toBe($parentId);
             expect($child->type)->toBe($childKey->accountType());
@@ -106,42 +140,26 @@ test('chart of accounts seeder creates child accounts under parent heads', funct
     }
 });
 
-test('chart of accounts seeder does not create input vat or wrapper categories', function () {
+test('superadmin chart of accounts does not contain retail inventory or retail store accounts', function () {
     $this->seed(ChartOfAccountsSeeder::class);
 
-    expect(ChartOfAccount::query()->where('account_number', 'SYS:input_vat')->exists())->toBeFalse();
-    expect(ChartOfAccount::query()->where('account_number', SystemAccountKey::PurchaseReturns->accountNumber())->exists())->toBeFalse();
-    expect(ChartOfAccount::query()->where('account_number', 'SYS:current_assets')->exists())->toBeFalse();
-    expect(ChartOfAccount::query()->where('account_number', 'SYS:current_liabilities')->exists())->toBeFalse();
-    expect(ChartOfAccount::query()->where('account_number', 'SYS:income')->exists())->toBeFalse();
-    expect(ChartOfAccount::query()->where('account_number', 'SYS:equity')->exists())->toBeFalse();
+    $retailAccountNumbers = [
+        SystemAccountKey::Inventory->accountNumber(),
+        SystemAccountKey::ProductInventory->accountNumber(),
+        SystemAccountKey::AccountsReceivable->accountNumber(),
+        SystemAccountKey::CustomerReceivables->accountNumber(),
+        SystemAccountKey::AccountsPayable->accountNumber(),
+        SystemAccountKey::SupplierPayables->accountNumber(),
+        SystemAccountKey::CostOfGoodsSold->accountNumber(),
+        SystemAccountKey::ProductSales->accountNumber(),
+    ];
 
-    $cashAndBank = SystemAccountService::resolve(SystemAccountKey::CashAndBank);
-    $inventory = SystemAccountService::resolve(SystemAccountKey::Inventory);
-    $productInventory = SystemAccountService::resolve(SystemAccountKey::ProductInventory);
-    $customerReceivables = SystemAccountService::resolve(SystemAccountKey::CustomerReceivables);
-
-    expect($cashAndBank->code)->toBe('A001');
-    expect($inventory->code)->toBe('A002');
-    expect($productInventory->code)->toBe('A002-01');
-    expect($productInventory->parent_id)->toBe($inventory->id);
-    expect($customerReceivables->code)->toBe('A003-01');
-});
-
-test('chart of accounts seeder creates every system account key', function () {
-    $this->seed(ChartOfAccountsSeeder::class);
-
-    foreach (SystemAccountKey::defaultSeededCases() as $key) {
-        $account = ChartOfAccount::query()
-            ->where('account_number', $key->accountNumber())
-            ->where('is_system', true)
+    foreach ($retailAccountNumbers as $accountNumber) {
+        expect(ChartOfAccount::query()
+            ->where('account_number', $accountNumber)
             ->whereNull('source_type')
             ->whereNull('source_id')
-            ->first();
-
-        expect($account)->not->toBeNull();
-        expect($account->name)->toBe($key->defaultName());
-        expect($account->type)->toBe($key->accountType());
+            ->exists())->toBeFalse("Account {$accountNumber} should not exist on SuperAdmin global panel");
     }
 });
 
@@ -149,7 +167,7 @@ test('system account seed does not create duplicate accounts', function () {
     SystemAccountService::seed(null);
     SystemAccountService::seed(null);
 
-    foreach (SystemAccountKey::defaultSeededCases() as $key) {
+    foreach (SystemAccountKey::defaultSeededCases(null) as $key) {
         $count = ChartOfAccount::query()
             ->where('account_number', $key->accountNumber())
             ->where('is_system', true)
@@ -165,7 +183,7 @@ test('system account seed does not create duplicate accounts', function () {
         ->whereNull('source_type')
         ->whereNull('source_id')
         ->count())
-        ->toBe(count(SystemAccountKey::defaultSeededCases()));
+        ->toBe(count(SystemAccountKey::defaultSeededCases(null)));
 });
 
 test('retired system accounts are not seeded by default', function () {
@@ -183,3 +201,4 @@ test('retired system accounts are not seeded by default', function () {
         ->whereNull('source_id')
         ->exists())->toBeFalse();
 });
+

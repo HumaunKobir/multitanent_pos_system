@@ -137,6 +137,37 @@ class SystemAccountService
 
     private static function orderedKeys(): array
     {
+        $branchId = self::branchId();
+
+        if ($branchId === null) {
+            // SuperAdmin global panel: only SaaS platform & billing accounts
+            return [
+                SystemAccountKey::CashAndBank,
+                SystemAccountKey::CashInHand,
+                SystemAccountKey::SslCommerz,
+                SystemAccountKey::Bkash,
+                SystemAccountKey::Nagad,
+                SystemAccountKey::LoansPayable,
+                SystemAccountKey::TaxesPayable,
+                SystemAccountKey::OutputVat,
+                SystemAccountKey::TaxesPaid,
+                SystemAccountKey::OwnersCapital,
+                SystemAccountKey::RetainedEarnings,
+                SystemAccountKey::CurrentYearEarnings,
+                SystemAccountKey::OwnersDrawings,
+                SystemAccountKey::OpeningBalanceEquity,
+                SystemAccountKey::OpeningBalanceClearing,
+                SystemAccountKey::SalesRevenue,
+                SystemAccountKey::SubscriptionIncome,
+                SystemAccountKey::OtherIncome,
+                SystemAccountKey::Expenses,
+                SystemAccountKey::RentExpense,
+                SystemAccountKey::SalaryExpense,
+                SystemAccountKey::UtilitiesExpense,
+            ];
+        }
+
+        // Branch retail POS panel: full retail store tree + subscription payable & expense
         return [
             SystemAccountKey::CashAndBank,
             SystemAccountKey::CashInHand,
@@ -151,6 +182,7 @@ class SystemAccountService
             SystemAccountKey::AccountsPayable,
             SystemAccountKey::SupplierPayables,
             SystemAccountKey::IntercompanyPayable,
+            SystemAccountKey::SubscriptionPayable,
             SystemAccountKey::LoansPayable,
             SystemAccountKey::AdvanceFromCustomer,
             SystemAccountKey::CustomerCoinPayable,
@@ -177,6 +209,7 @@ class SystemAccountService
             SystemAccountKey::RentExpense,
             SystemAccountKey::SalaryExpense,
             SystemAccountKey::UtilitiesExpense,
+            SystemAccountKey::SubscriptionExpense,
         ];
     }
 
@@ -351,12 +384,40 @@ class SystemAccountService
             'SYS:income',
         ];
 
+        // SuperAdmin global panel does not use retail POS inventory, purchases, supplier/customer payables/receivables
+        if (self::branchId() === null) {
+            $retiredAccountNumbers = array_merge($retiredAccountNumbers, [
+                SystemAccountKey::Inventory->accountNumber(),
+                SystemAccountKey::ProductInventory->accountNumber(),
+                SystemAccountKey::AccountsReceivable->accountNumber(),
+                SystemAccountKey::CustomerReceivables->accountNumber(),
+                SystemAccountKey::IntercompanyReceivable->accountNumber(),
+                SystemAccountKey::AccountsPayable->accountNumber(),
+                SystemAccountKey::SupplierPayables->accountNumber(),
+                SystemAccountKey::IntercompanyPayable->accountNumber(),
+                SystemAccountKey::SubscriptionPayable->accountNumber(),
+                SystemAccountKey::AdvanceFromCustomer->accountNumber(),
+                SystemAccountKey::CustomerCoinPayable->accountNumber(),
+                SystemAccountKey::ProductSales->accountNumber(),
+                SystemAccountKey::SalesReturns->accountNumber(),
+                SystemAccountKey::DiscountApplied->accountNumber(),
+                SystemAccountKey::CoinDiscountApplied->accountNumber(),
+                SystemAccountKey::CostOfGoodsSold->accountNumber(),
+                SystemAccountKey::InventoryDamage->accountNumber(),
+                SystemAccountKey::StockAdjustmentGain->accountNumber(),
+                SystemAccountKey::StockAdjustmentLoss->accountNumber(),
+                SystemAccountKey::SubscriptionExpense->accountNumber(),
+            ]);
+        } else {
+            // Branch panel does not use SuperAdmin subscription income
+            $retiredAccountNumbers = array_merge($retiredAccountNumbers, [
+                SystemAccountKey::SubscriptionIncome->accountNumber(),
+            ]);
+        }
+
         $query = ChartOfAccount::query()->whereIn('account_number', $retiredAccountNumbers);
 
-        // Branch panel seed: retire only that panel. Global seed: retire across every panel.
-        if (self::branchId() !== null) {
-            self::applyPanelSource($query, self::branchId());
-        }
+        self::applyPanelSource($query, self::branchId());
 
         $query->delete();
     }
@@ -377,6 +438,7 @@ class SystemAccountService
             SystemAccountKey::AccountsPayable => 'L001',
             SystemAccountKey::SupplierPayables => 'L001-01',
             SystemAccountKey::IntercompanyPayable => 'L001-02',
+            SystemAccountKey::SubscriptionPayable => 'L001-03',
             SystemAccountKey::LoansPayable => 'L002',
             SystemAccountKey::AdvanceFromCustomer => 'L003',
             SystemAccountKey::CustomerCoinPayable => 'L005',
@@ -394,6 +456,7 @@ class SystemAccountService
             SystemAccountKey::SalesReturns => 'I001-02',
             SystemAccountKey::DiscountApplied => 'I001-03',
             SystemAccountKey::CoinDiscountApplied => 'I001-04',
+            SystemAccountKey::SubscriptionIncome => 'I001-05',
             SystemAccountKey::OtherIncome => 'I002',
             SystemAccountKey::StockAdjustmentGain => 'I002-01',
             SystemAccountKey::Expenses => 'X001',
@@ -404,6 +467,7 @@ class SystemAccountService
             SystemAccountKey::SalaryExpense => 'X001-05',
             SystemAccountKey::UtilitiesExpense => 'X001-06',
             SystemAccountKey::StockAdjustmentLoss => 'X001-07',
+            SystemAccountKey::SubscriptionExpense => 'X001-08',
         };
     }
 

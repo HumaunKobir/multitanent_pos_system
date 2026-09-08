@@ -46,6 +46,9 @@ enum SystemAccountKey: string
     case DiscountApplied = 'discount_applied';
     case CoinDiscountApplied = 'coin_discount_applied';
     case TaxesPaid = 'taxes_paid';
+    case SubscriptionPayable = 'subscription_payable';
+    case SubscriptionExpense = 'subscription_expense';
+    case SubscriptionIncome = 'subscription_income';
 
     public function accountNumber(): string
     {
@@ -70,6 +73,7 @@ enum SystemAccountKey: string
             self::AccountsPayable => 'Accounts Payable',
             self::SupplierPayables => 'Supplier Payables',
             self::IntercompanyPayable => 'Intercompany Payable',
+            self::SubscriptionPayable => 'Subscription Payable',
             self::LoansPayable => 'Loans Payable',
             self::AdvanceFromCustomer => 'Advance from Customer',
             self::CustomerCoinPayable => 'Customer Coin Payable',
@@ -84,6 +88,7 @@ enum SystemAccountKey: string
             self::SalesRevenue => 'Sales Revenue',
             self::ProductSales => 'Product Sales',
             self::SalesReturns => 'Sales Returns',
+            self::SubscriptionIncome => 'Subscription Income',
             self::OtherIncome => 'Other Income',
             self::Expenses => 'Expenses',
             self::CostOfGoodsSold => 'Cost of Goods Sold',
@@ -94,6 +99,7 @@ enum SystemAccountKey: string
             self::RentExpense => 'Rent',
             self::SalaryExpense => 'Salary',
             self::UtilitiesExpense => 'Utilities',
+            self::SubscriptionExpense => 'Subscription Expense',
             self::DiscountApplied => 'Discount Applied',
             self::CoinDiscountApplied => 'Coin Discount Applied',
             self::TaxesPaid => 'Taxes Paid',
@@ -106,15 +112,15 @@ enum SystemAccountKey: string
             self::CashAndBank, self::CashInHand, self::BankAccount, self::SslCommerz, self::Bkash, self::Nagad,
             self::Inventory, self::ProductInventory, self::BranchInventory,
             self::AccountsReceivable, self::CustomerReceivables, self::IntercompanyReceivable => AccountType::Asset,
-            self::AccountsPayable, self::SupplierPayables, self::IntercompanyPayable, self::LoansPayable,
-            self::AdvanceFromCustomer, self::CustomerCoinPayable, self::TaxesPayable, self::OutputVat,
-            self::TaxesPaid => AccountType::Liability,
+            self::AccountsPayable, self::SupplierPayables, self::IntercompanyPayable, self::SubscriptionPayable,
+            self::LoansPayable, self::AdvanceFromCustomer, self::CustomerCoinPayable, self::TaxesPayable,
+            self::OutputVat, self::TaxesPaid => AccountType::Liability,
             self::OwnersCapital, self::RetainedEarnings, self::CurrentYearEarnings, self::OwnersDrawings,
             self::OpeningBalanceEquity, self::OpeningBalanceClearing => AccountType::Equity,
-            self::SalesRevenue, self::ProductSales, self::SalesReturns, self::OtherIncome,
-            self::StockAdjustmentGain, self::DiscountApplied, self::CoinDiscountApplied => AccountType::Income,
+            self::SalesRevenue, self::ProductSales, self::SalesReturns, self::SubscriptionIncome,
+            self::OtherIncome, self::StockAdjustmentGain, self::DiscountApplied, self::CoinDiscountApplied => AccountType::Income,
             self::Expenses, self::CostOfGoodsSold, self::InventoryDamage, self::StockAdjustmentLoss, self::PurchaseReturns,
-            self::RentExpense, self::SalaryExpense, self::UtilitiesExpense => AccountType::Expenses,
+            self::RentExpense, self::SalaryExpense, self::UtilitiesExpense, self::SubscriptionExpense => AccountType::Expenses,
         };
     }
 
@@ -136,21 +142,40 @@ enum SystemAccountKey: string
             self::ProductInventory => self::Inventory,
             self::BranchInventory => self::Inventory,
             self::CustomerReceivables, self::IntercompanyReceivable => self::AccountsReceivable,
-            self::SupplierPayables, self::IntercompanyPayable => self::AccountsPayable,
+            self::SupplierPayables, self::IntercompanyPayable, self::SubscriptionPayable => self::AccountsPayable,
             self::OutputVat, self::TaxesPaid => self::TaxesPayable,
             self::OpeningBalanceClearing => self::OpeningBalanceEquity,
-            self::ProductSales, self::SalesReturns, self::DiscountApplied, self::CoinDiscountApplied => self::SalesRevenue,
+            self::ProductSales, self::SalesReturns, self::SubscriptionIncome, self::DiscountApplied, self::CoinDiscountApplied => self::SalesRevenue,
             self::StockAdjustmentGain => self::OtherIncome,
             self::CostOfGoodsSold, self::InventoryDamage, self::StockAdjustmentLoss, self::PurchaseReturns,
-            self::RentExpense, self::SalaryExpense, self::UtilitiesExpense => self::Expenses,
+            self::RentExpense, self::SalaryExpense, self::UtilitiesExpense, self::SubscriptionExpense => self::Expenses,
             default => null,
         };
     }
 
-    public function isDefaultSeeded(): bool
+    public function isDefaultSeeded(?int $branchId = null): bool
     {
+        if (in_array($this, [self::BankAccount, self::BranchInventory, self::PurchaseReturns], true)) {
+            return false;
+        }
+
+        // SuperAdmin global panel (branchId === null): only platform & billing accounts
+        if ($branchId === null) {
+            return match ($this) {
+                self::Inventory, self::ProductInventory, self::BranchInventory,
+                self::AccountsReceivable, self::CustomerReceivables, self::IntercompanyReceivable,
+                self::AccountsPayable, self::SupplierPayables, self::IntercompanyPayable, self::SubscriptionPayable,
+                self::AdvanceFromCustomer, self::CustomerCoinPayable,
+                self::ProductSales, self::SalesReturns, self::DiscountApplied, self::CoinDiscountApplied,
+                self::CostOfGoodsSold, self::InventoryDamage, self::StockAdjustmentGain, self::StockAdjustmentLoss,
+                self::SubscriptionExpense => false,
+                default => true,
+            };
+        }
+
+        // Branch retail POS panel (branchId !== null): full retail store tree + subscription payable/expense
         return match ($this) {
-            self::BankAccount, self::BranchInventory, self::PurchaseReturns => false,
+            self::SubscriptionIncome => false, // only SuperAdmin receives subscription income
             default => true,
         };
     }
@@ -158,11 +183,11 @@ enum SystemAccountKey: string
     /**
      * @return list<SystemAccountKey>
      */
-    public static function defaultSeededCases(): array
+    public static function defaultSeededCases(?int $branchId = null): array
     {
         return array_values(array_filter(
             self::cases(),
-            fn (self $key) => $key->isDefaultSeeded(),
+            fn (self $key) => $key->isDefaultSeeded($branchId),
         ));
     }
 }

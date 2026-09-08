@@ -11,7 +11,10 @@ beforeEach(function () {
 
 function businessSetupSuperAdmin(): User
 {
-    $user = User::factory()->create(['branch_id' => null]);
+    $user = User::factory()->create([
+        'branch_id' => null,
+        'email' => 'bizadmin_'.uniqid().'@test.com',
+    ]);
     $user->givePermissionTo(['business-setup.view', 'business-setup.update']);
 
     return $user;

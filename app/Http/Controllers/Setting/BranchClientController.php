@@ -190,10 +190,22 @@ class BranchClientController extends Controller
             $validated['custom_cycle_days'] = $customCycleDays ?: 30;
         }
 
+        $effectiveStart = ! empty($validated['subscription_starts_at'])
+            ? Carbon::parse($validated['subscription_starts_at'])->startOfDay()
+            : ($branch->subscription_starts_at ? Carbon::parse($branch->subscription_starts_at)->startOfDay() : Carbon::today());
+
+        $validated['subscription_starts_at'] = $effectiveStart->toDateString();
+
         if ($cycle === 'lifetime' || $validated['subscription_status'] === 'lifetime') {
             $validated['subscription_expires_at'] = null;
-        } elseif (! empty($validated['subscription_starts_at']) && $cycleDays !== null) {
-            $validated['subscription_expires_at'] = Carbon::parse($validated['subscription_starts_at'])->addDays($cycleDays)->toDateString();
+        } elseif (! empty($validated['subscription_expires_at'])) {
+            $validated['subscription_expires_at'] = Carbon::parse($validated['subscription_expires_at'])->toDateString();
+        } elseif ($branch->subscription_expires_at !== null) {
+            // Strictly retain existing expiration date so overdue dues and active validity are preserved!
+            unset($validated['subscription_expires_at']);
+        } elseif ($cycleDays !== null) {
+            // Only calculate initial expiry for a brand new branch that has no expiry date yet
+            $validated['subscription_expires_at'] = $effectiveStart->copy()->addDays($cycleDays)->toDateString();
         }
 
         $branch->update($validated);

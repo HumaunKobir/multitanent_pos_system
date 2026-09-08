@@ -65,8 +65,8 @@ export default function EditBranchSubscriptionDialog({
                 initialCycle = 'monthly';
             }
 
-            const startsAt = sub.starts_at || new Date().toISOString().split('T')[0];
-            const expiresAt = sub.expires_at || '';
+            const todayStr = new Date().toISOString().split('T')[0];
+            const startsAt = sub.starts_at || todayStr;
 
             let initialCustomDays = '30';
             if (branch.custom_cycle_days !== null && branch.custom_cycle_days !== undefined) {
@@ -106,15 +106,10 @@ export default function EditBranchSubscriptionDialog({
         subscription_notes: formData.subscription_notes !== '' ? formData.subscription_notes : null,
     }));
 
-    // Live preview calculation of expiry date based on Start Date + Duration
+    // Live preview calculation of expiry date based on Start Date + Duration / existing expiry
     const calculatedExpiry = useMemo(() => {
         if (data.subscription_plan === 'lifetime' || data.subscription_status === 'lifetime') {
             return { text: 'Unlimited Lifetime Access (No Expiry Date)', date: null, isLifetime: true };
-        }
-
-        const start = data.subscription_starts_at ? new Date(data.subscription_starts_at) : new Date();
-        if (isNaN(start.getTime())) {
-            return { text: 'Invalid Start Date', date: null, isLifetime: false };
         }
 
         let days = 30;
@@ -125,6 +120,30 @@ export default function EditBranchSubscriptionDialog({
         else if (data.subscription_plan === 'trial') days = 14;
         else if (data.subscription_plan === 'custom_days') {
             days = parseInt(data.custom_cycle_days, 10) || 30;
+        }
+
+        if (sub.expires_at) {
+            if (sub.is_overdue) {
+                return {
+                    text: `${sub.expires_at} (${sub.overdue_days}d overdue — dues remain until renewal) • Cycle: ${days}d`,
+                    date: sub.expires_at,
+                    days,
+                    isLifetime: false,
+                    isOverdue: true,
+                };
+            }
+            return {
+                text: `${sub.expires_at} (${sub.days_remaining}d remaining) • Cycle: ${days}d`,
+                date: sub.expires_at,
+                days,
+                isLifetime: false,
+                isOverdue: false,
+            };
+        }
+
+        const start = data.subscription_starts_at ? new Date(data.subscription_starts_at) : new Date();
+        if (isNaN(start.getTime())) {
+            return { text: 'Invalid Start Date', date: null, isLifetime: false };
         }
 
         const expDate = new Date(start);
@@ -140,7 +159,7 @@ export default function EditBranchSubscriptionDialog({
             days,
             isLifetime: false,
         };
-    }, [data.subscription_plan, data.subscription_status, data.subscription_starts_at, data.custom_cycle_days]);
+    }, [data.subscription_plan, data.subscription_status, data.subscription_starts_at, data.custom_cycle_days, sub]);
 
     const handleCycleChange = (val) => {
         let updatedStatus = data.subscription_status;

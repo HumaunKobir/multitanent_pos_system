@@ -19,7 +19,10 @@ beforeEach(function () {
 
 function branchClientSuperAdmin(): User
 {
-    $user = User::factory()->create(['branch_id' => null]);
+    $user = User::factory()->create([
+        'branch_id' => null,
+        'email' => 'admin_'.uniqid().'@test.com',
+    ]);
     $user->givePermissionTo(['branch.view', 'branch.update']);
 
     return $user;
@@ -196,4 +199,41 @@ test('custom days cycle duration remains strictly unchanged when renewing multip
     $summaryAfter = app(\App\Services\BranchSubscriptionService::class)->getSubscriptionSummary($branch);
     expect($summaryAfter['cycle_days'])->toBe(2);
     expect($summaryAfter['plan_label'])->toBe('Custom (2 Days)');
+});
+
+test('updating branch subscription configuration strictly preserves overdue expiration date and pending dues', function () {
+    $admin = branchClientSuperAdmin();
+    $branch = Branch::factory()->create([
+        'name' => 'Overdue Branch',
+        'subscription_plan' => 'monthly',
+        'subscription_fee' => 1000,
+        'subscription_starts_at' => '2026-08-01',
+        'subscription_expires_at' => '2026-09-01',
+        'subscription_status' => 'active',
+    ]);
+
+    // Update branch config to 2 days custom cycle, new fee, new notes
+    $response = $this->actingAs($admin)
+        ->put(route('branch-clients.update', $branch->id), [
+            'subscription_plan' => 'custom_days',
+            'subscription_status' => 'active',
+            'custom_cycle_days' => 2,
+            'subscription_fee' => 800,
+            'subscription_starts_at' => '2026-08-01',
+            'subscription_notes' => 'Updated policy for client',
+        ]);
+
+    $response->assertRedirect(route('branch-clients.index'))
+        ->assertSessionHas('success');
+
+    $branch->refresh();
+    // Expiration date MUST stay 2026-09-01 (not wiped or set to future!)
+    expect($branch->subscription_expires_at?->format('Y-m-d'))->toBe('2026-09-01');
+    expect($branch->custom_cycle_days)->toBe(2);
+    expect((float) $branch->subscription_fee)->toBe(800.0);
+
+    // Summary reflects overdue status based on preserved 2026-09-01 expiry
+    $summary = app(\App\Services\BranchSubscriptionService::class)->getSubscriptionSummary($branch);
+    expect($summary['is_overdue'])->toBeTrue();
+    expect($summary['expires_at'])->toBe('2026-09-01');
 });

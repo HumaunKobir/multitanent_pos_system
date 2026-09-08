@@ -5,8 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { route } from '@/lib/route';
-import { Head, useForm, usePage } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import {
+    ArrowRight,
     Building2,
     CreditCard,
     FileText,
@@ -16,6 +17,7 @@ import {
     Search,
     Settings,
     Sliders,
+    UsersRound,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import {
@@ -360,10 +362,30 @@ export default function BusinessSetupIndex({ settings = {}, branches = [], billi
 
                         {/* TAB 2: Branch Clients & Subscriptions */}
                         <TabsContent value="branches" className="space-y-4 mt-0">
+                            {/* Quick Link Banner to Dedicated Branch Clients Hub */}
+                            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3.5 rounded-lg border border-blue-200 dark:border-blue-900 bg-blue-50/80 dark:bg-blue-950/40 text-blue-900 dark:text-blue-200">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="flex size-8 items-center justify-center rounded-md bg-blue-600 text-white shrink-0">
+                                        <UsersRound className="size-4" />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-xs font-bold text-foreground">Dedicated Branch Clients Main Menu</h4>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            A full dedicated hub with analytics, status filters, payment receipt uploads, and transaction logs is now available.
+                                        </p>
+                                    </div>
+                                </div>
+                                <Button asChild size="sm" className="h-7 text-xs bg-blue-600 hover:bg-blue-700 text-white font-semibold shrink-0">
+                                    <Link href={route('branch-clients.index')} className="flex items-center gap-1">
+                                        Open Branch Clients <ArrowRight className="size-3" />
+                                    </Link>
+                                </Button>
+                            </div>
+
                             <div className="rounded-lg border bg-card p-4">
                                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                                     <div>
-                                        <h3 className="text-sm font-bold text-foreground">Branch Clients Subscription Manager</h3>
+                                        <h3 className="text-sm font-bold text-foreground">Quick Branch Subscription List</h3>
                                         <p className="text-xs text-muted-foreground">
                                             Track client subscription status, due dates, renew subscriptions, and record payments.
                                         </p>

@@ -331,6 +331,13 @@ class BranchSubscriptionService
         $transactionReference = $data['transaction_reference'] ?? null;
         $notes = $data['notes'] ?? null;
         $paidAt = $data['paid_at'] ?? now()->toDateString();
+        $attachmentPath = null;
+
+        if (isset($data['attachment']) && $data['attachment'] instanceof \Illuminate\Http\UploadedFile) {
+            $attachmentPath = $data['attachment']->store('subscription-receipts', 'public');
+        } elseif (isset($data['attachment_path']) && is_string($data['attachment_path'])) {
+            $attachmentPath = $data['attachment_path'];
+        }
 
         // Continuous extension from current expiration date so unpaid overdue cycles are strictly preserved
         $baseDate = $branch->subscription_expires_at
@@ -356,6 +363,7 @@ class BranchSubscriptionService
             'paid_at' => $paidAt,
             'recorded_by_user_id' => $recordedBy?->id,
             'notes' => $notes,
+            'attachment_path' => $attachmentPath,
         ]);
     }
 

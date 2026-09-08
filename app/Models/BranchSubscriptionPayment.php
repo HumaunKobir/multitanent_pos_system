@@ -20,6 +20,11 @@ class BranchSubscriptionPayment extends Model
         'paid_at',
         'recorded_by_user_id',
         'notes',
+        'attachment_path',
+    ];
+
+    protected $appends = [
+        'attachment_url',
     ];
 
     protected function casts(): array
@@ -30,6 +35,11 @@ class BranchSubscriptionPayment extends Model
             'billing_period_ends_at' => 'date',
             'paid_at' => 'date',
         ];
+    }
+
+    public function getAttachmentUrlAttribute(): ?string
+    {
+        return $this->attachment_path ? \Illuminate\Support\Facades\Storage::disk('public')->url($this->attachment_path) : null;
     }
 
     public function branch(): BelongsTo

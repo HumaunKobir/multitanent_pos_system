@@ -28,6 +28,7 @@ export default function EditBranchSubscriptionDialog({
     branch,
     billingCycles = [],
     overdueActions = [],
+    submitUrl = null,
 }) {
     if (!branch) return null;
 
@@ -158,7 +159,8 @@ export default function EditBranchSubscriptionDialog({
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        put(route('setting.business-setup.branch.update', branch.id), {
+        const targetUrl = submitUrl || route('setting.business-setup.branch.update', branch.id);
+        put(targetUrl, {
             onSuccess: () => {
                 reset();
                 onOpenChange(false);

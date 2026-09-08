@@ -1,10 +1,28 @@
+import { useState, useMemo } from 'react';
 import { Head, Link, usePage } from '@inertiajs/react';
-import { AlertOctagon, CreditCard, Lock, LogOut, Mail, Phone, RefreshCw, ShieldAlert } from 'lucide-react';
+import {
+    AlertOctagon,
+    Building2,
+    Check,
+    Copy,
+    CreditCard,
+    Info,
+    Lock,
+    LogOut,
+    Mail,
+    Phone,
+    RefreshCw,
+    ShieldAlert,
+    Wallet,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { route } from '@/lib/route';
+import { parsePaymentInstructions } from './subscription/index';
 
 export default function SubscriptionSuspended({ subscription }) {
     const { auth } = usePage().props;
+    const [copiedId, setCopiedId] = useState(null);
 
     const {
         branch_name,
@@ -16,6 +34,19 @@ export default function SubscriptionSuspended({ subscription }) {
         superadmin_contact,
         warning_message,
     } = subscription || {};
+
+    const parsedInstructions = useMemo(() => {
+        return parsePaymentInstructions(payment_instructions);
+    }, [payment_instructions]);
+
+    const handleCopy = (textToCopy, idKey) => {
+        if (!textToCopy) return;
+        navigator.clipboard.writeText(textToCopy);
+        setCopiedId(idKey);
+        setTimeout(() => {
+            setCopiedId((prev) => (prev === idKey ? null : prev));
+        }, 2200);
+    };
 
     return (
         <>
@@ -59,13 +90,100 @@ export default function SubscriptionSuspended({ subscription }) {
                             <div>
                                 <span className="text-muted-foreground">Renewal Amount:</span>
                                 <p className="font-bold text-foreground text-sm text-primary">
-                                    {fee ? Number(fee).toFixed(2) : '0.00'}
+                                    ৳{fee ? Number(fee).toFixed(2) : '0.00'}
                                 </p>
                             </div>
                         </div>
 
-                        {/* Payment Instructions */}
-                        {payment_instructions && (
+                        {/* Official Payment Accounts */}
+                        {parsedInstructions.accounts.length > 0 ? (
+                            <div className="mt-5 space-y-3">
+                                <h3 className="flex items-center gap-2 text-xs font-bold text-foreground">
+                                    <Wallet className="size-4 text-primary" />
+                                    Official Payment Accounts (Copy Number Directly)
+                                </h3>
+                                <div className="space-y-2.5">
+                                    {parsedInstructions.accounts.map((acc) => {
+                                        const isBank = acc.method === 'bank';
+                                        const isBkash = acc.method === 'bkash';
+                                        const isNagad = acc.method === 'nagad';
+                                        const isRocket = acc.method === 'rocket';
+                                        const numCopied = copiedId === `${acc.id}-num`;
+                                        const routingCopied = copiedId === `${acc.id}-routing`;
+
+                                        return (
+                                            <div
+                                                key={acc.id}
+                                                className={`rounded-xl border p-3 text-left transition-all ${
+                                                    isBkash
+                                                        ? 'bg-[#e2136e]/5 border-[#e2136e]/30'
+                                                        : isNagad
+                                                        ? 'bg-[#f7941d]/5 border-[#f7941d]/30'
+                                                        : isRocket
+                                                        ? 'bg-[#8c3494]/5 border-[#8c3494]/30'
+                                                        : 'bg-blue-500/5 border-blue-500/30'
+                                                }`}
+                                            >
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        {isBank ? (
+                                                            <Building2 className="size-4 text-blue-600" />
+                                                        ) : (
+                                                            <div className={`size-5 rounded-full flex items-center justify-center font-bold text-[10px] text-white ${
+                                                                isBkash ? 'bg-[#e2136e]' : isNagad ? 'bg-[#f7941d]' : isRocket ? 'bg-[#8c3494]' : 'bg-slate-700'
+                                                            }`}>
+                                                                {acc.title.charAt(0)}
+                                                            </div>
+                                                        )}
+                                                        <span className="text-xs font-bold text-foreground">{acc.title}</span>
+                                                        <span className="text-[10px] text-muted-foreground">({acc.type})</span>
+                                                    </div>
+                                                </div>
+
+                                                {acc.number && (
+                                                    <div className="mt-2 flex items-center justify-between rounded-lg bg-background p-2 border">
+                                                        <span className="font-mono text-xs font-bold text-foreground select-all">
+                                                            {acc.number}
+                                                        </span>
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            onClick={() => handleCopy(acc.number, `${acc.id}-num`)}
+                                                            className="h-6 px-2 text-[10px] font-bold"
+                                                        >
+                                                            {numCopied ? (
+                                                                <>
+                                                                    <Check className="size-3 mr-1 text-emerald-400" /> Copied
+                                                                </>
+                                                            ) : (
+                                                                <>
+                                                                    <Copy className="size-3 mr-1" /> Copy
+                                                                </>
+                                                            )}
+                                                        </Button>
+                                                    </div>
+                                                )}
+
+                                                {isBank && acc.routingNumber && (
+                                                    <div className="mt-1.5 flex items-center justify-between rounded-lg bg-background/70 px-2 py-1 border text-[11px]">
+                                                        <span className="text-muted-foreground text-[10px]">Routing: <strong className="font-mono text-foreground">{acc.routingNumber}</strong></span>
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            variant="ghost"
+                                                            onClick={() => handleCopy(acc.routingNumber, `${acc.id}-routing`)}
+                                                            className="h-5 px-1.5 text-[9px]"
+                                                        >
+                                                            {routingCopied ? <Check className="size-2.5 text-emerald-500" /> : <Copy className="size-2.5" />}
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ) : payment_instructions ? (
                             <div className="mt-4 rounded-xl border border-border bg-card p-4">
                                 <h3 className="flex items-center gap-2 text-xs font-semibold text-foreground mb-2">
                                     <CreditCard className="size-4 text-blue-500" />
@@ -75,7 +193,7 @@ export default function SubscriptionSuspended({ subscription }) {
                                     {payment_instructions}
                                 </pre>
                             </div>
-                        )}
+                        ) : null}
 
                         {/* SuperAdmin Contact Info */}
                         {superadmin_contact && (

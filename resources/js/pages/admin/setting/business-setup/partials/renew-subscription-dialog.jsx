@@ -1,6 +1,22 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useForm } from '@inertiajs/react';
-import { AlertCircle, AlertTriangle, ArrowRight, Calendar, CheckCircle2, CreditCard, DollarSign, Layers, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react';
+import {
+    AlertCircle,
+    AlertTriangle,
+    ArrowRight,
+    Calendar,
+    CheckCircle2,
+    CreditCard,
+    DollarSign,
+    FileText,
+    Image as ImageIcon,
+    Layers,
+    RefreshCw,
+    ShieldCheck,
+    Sparkles,
+    UploadCloud,
+    X,
+} from 'lucide-react';
 import { route } from '@/lib/route';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,7 +38,13 @@ import {
     SelectValue,
 } from '@/components/ui/select';
 
-export default function RenewSubscriptionDialog({ open, onOpenChange, branch, paymentMethods = [] }) {
+export default function RenewSubscriptionDialog({
+    open,
+    onOpenChange,
+    branch,
+    paymentMethods = [],
+    submitUrl = null,
+}) {
     if (!branch) return null;
 
     const sub = branch.subscription || {};
@@ -34,6 +56,8 @@ export default function RenewSubscriptionDialog({ open, onOpenChange, branch, pa
     const totalOverdueAmount = pendingBillsCount * feePerCycle;
 
     const [selectedCycles, setSelectedCycles] = useState(1);
+    const [previewUrl, setPreviewUrl] = useState(null);
+    const fileInputRef = useRef(null);
 
     const { data, setData, post, processing, errors, reset } = useForm({
         duration_days: String(cycleDays),
@@ -42,12 +66,14 @@ export default function RenewSubscriptionDialog({ open, onOpenChange, branch, pa
         transaction_reference: '',
         paid_at: new Date().toISOString().split('T')[0],
         notes: '',
+        attachment: null,
     });
 
     useEffect(() => {
         if (open && branch) {
             const initialCycles = 1;
             setSelectedCycles(initialCycles);
+            setPreviewUrl(null);
             setData({
                 duration_days: String(initialCycles * cycleDays),
                 amount: String(initialCycles * feePerCycle),
@@ -55,6 +81,7 @@ export default function RenewSubscriptionDialog({ open, onOpenChange, branch, pa
                 transaction_reference: '',
                 paid_at: new Date().toISOString().split('T')[0],
                 notes: '',
+                attachment: null,
             });
         }
     }, [open, branch, cycleDays, feePerCycle]);
@@ -109,11 +136,38 @@ export default function RenewSubscriptionDialog({ open, onOpenChange, branch, pa
         });
     };
 
+    const handleFileChange = (e) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            setData('attachment', file);
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    setPreviewUrl(event.target.result);
+                };
+                reader.readAsDataURL(file);
+            } else {
+                setPreviewUrl(null);
+            }
+        }
+    };
+
+    const handleRemoveFile = () => {
+        setData('attachment', null);
+        setPreviewUrl(null);
+        if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+        }
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
-        post(route('setting.business-setup.branch.renew', branch.id), {
+        const targetUrl = submitUrl || route('setting.business-setup.branch.renew', branch.id);
+        post(targetUrl, {
+            forceFormData: true,
             onSuccess: () => {
                 reset();
+                setPreviewUrl(null);
                 onOpenChange(false);
             },
         });
@@ -166,45 +220,67 @@ export default function RenewSubscriptionDialog({ open, onOpenChange, branch, pa
                     </div>
 
                     {/* Cycle Selection Presets */}
-                    <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 p-3 space-y-2">
-                        <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                    <div className="space-y-2">
+                        <label className="text-xs font-bold text-foreground flex items-center justify-between">
                             <span className="flex items-center gap-1.5">
                                 <Calendar className="size-3.5 text-primary" />
                                 Number of Billing Cycles / Bills to Pay
                             </span>
+                            <span className="text-[11px] text-muted-foreground font-normal">
+                                {cycleDays} Days / Cycle
+                            </span>
                         </label>
 
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             {[1, 2, 3, 4].map((cycles) => {
                                 const days = cycles * cycleDays;
                                 const cost = cycles * feePerCycle;
                                 const isSelected = selectedCycles === cycles;
+                                const isOverdueMatch = isOverdue && pendingBillsCount === cycles;
+
                                 return (
-                                    <Button
+                                    <button
                                         key={cycles}
                                         type="button"
-                                        size="sm"
-                                        variant={isSelected ? 'default' : 'outline'}
-                                        className={`h-auto py-1.5 px-2 flex flex-col items-center justify-center text-[0.7rem] ${
-                                            isSelected
-                                                ? 'bg-primary text-primary-foreground shadow-xs font-bold'
-                                                : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 text-foreground hover:bg-slate-100'
-                                        }`}
                                         onClick={() => handleCyclesChange(cycles)}
+                                        className={`relative flex flex-col items-start justify-between rounded-xl p-2.5 text-left transition-all border ${
+                                            isSelected
+                                                ? 'border-primary bg-primary/5 ring-2 ring-primary/20 shadow-xs'
+                                                : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30 hover:border-slate-300 dark:hover:border-slate-700'
+                                        }`}
                                     >
-                                        <span>{cycles} Bill{cycles > 1 ? 's' : ''} ({days}d)</span>
-                                        <span className="text-[0.65rem] opacity-90">৳{cost}</span>
-                                    </Button>
+                                        <div className="flex items-center justify-between w-full">
+                                            <span className="text-xs font-bold text-foreground">
+                                                {cycles} Bill{cycles > 1 ? 's' : ''}
+                                            </span>
+                                            {isSelected && (
+                                                <span className="flex size-3.5 items-center justify-center rounded-full bg-primary text-primary-foreground text-[10px]">
+                                                    ✓
+                                                </span>
+                                            )}
+                                        </div>
+                                        <span className="text-[10px] text-muted-foreground mt-0.5">
+                                            +{days} Days
+                                        </span>
+                                        <div className="mt-1.5 text-xs font-extrabold text-foreground tabular-nums">
+                                            ৳{cost.toLocaleString()}
+                                        </div>
+                                        {isOverdueMatch && (
+                                            <span className="mt-1 inline-block rounded-full bg-rose-500/10 text-rose-600 dark:text-rose-400 px-1 py-0.2 text-[8px] font-bold">
+                                                Clears Overdue
+                                            </span>
+                                        )}
+                                    </button>
                                 );
                             })}
                         </div>
 
-                        {pendingBillsCount > 0 && pendingBillsCount > 4 && (
+                        {pendingBillsCount > 4 && (
                             <Button
                                 type="button"
                                 size="sm"
-                                variant={selectedCycles === pendingBillsCount ? 'default' : 'outline'}
-                                className="w-full mt-1.5 h-7 text-xs font-semibold border-rose-300 text-rose-700 dark:text-rose-300 hover:bg-rose-50"
+                                variant="outline"
+                                className="w-full mt-1.5 h-8 text-xs font-bold border-rose-300 text-rose-600 dark:border-rose-900 dark:text-rose-400"
                                 onClick={() => handleCyclesChange(pendingBillsCount)}
                             >
                                 Pay All {pendingBillsCount} Pending Overdue Bills ({pendingBillsCount * cycleDays}d — ৳{totalOverdueAmount.toFixed(2)})
@@ -331,6 +407,73 @@ export default function RenewSubscriptionDialog({ open, onOpenChange, branch, pa
                             className="border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
                         />
                     </FormField>
+
+                    {/* Screenshot / Receipt Upload */}
+                    <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-foreground flex items-center justify-between">
+                            <span className="flex items-center gap-1.5">
+                                <ImageIcon className="size-3.5 text-primary" />
+                                Payment Receipt / Screenshot (Optional)
+                            </span>
+                            {data.attachment && (
+                                <button
+                                    type="button"
+                                    onClick={handleRemoveFile}
+                                    className="text-[11px] text-rose-600 hover:underline flex items-center gap-0.5"
+                                >
+                                    <X className="size-3" /> Remove File
+                                </button>
+                            )}
+                        </label>
+
+                        {!data.attachment ? (
+                            <div
+                                onClick={() => fileInputRef.current?.click()}
+                                className="cursor-pointer rounded-lg border border-dashed border-slate-300 dark:border-slate-700 p-4 text-center hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors bg-white/50 dark:bg-slate-950/40"
+                            >
+                                <UploadCloud className="size-6 text-muted-foreground mx-auto mb-1.5" />
+                                <p className="text-xs font-medium text-foreground">
+                                    Click or drag & drop payment screenshot / receipt
+                                </p>
+                                <p className="text-[10px] text-muted-foreground mt-0.5">
+                                    Supports PNG, JPG, JPEG, WEBP or PDF (Max 10MB)
+                                </p>
+                            </div>
+                        ) : (
+                            <div className="rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/40 p-2.5 flex items-center gap-3">
+                                {previewUrl ? (
+                                    <img
+                                        src={previewUrl}
+                                        alt="Receipt Preview"
+                                        className="size-14 rounded-md object-cover border border-slate-300 dark:border-slate-700 shrink-0"
+                                    />
+                                ) : (
+                                    <div className="size-14 rounded-md bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400 flex items-center justify-center shrink-0">
+                                        <FileText className="size-6" />
+                                    </div>
+                                )}
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-semibold text-foreground truncate">
+                                        {data.attachment.name}
+                                    </p>
+                                    <p className="text-[10px] text-muted-foreground">
+                                        {(data.attachment.size / 1024).toFixed(1)} KB • Ready for upload
+                                    </p>
+                                </div>
+                            </div>
+                        )}
+
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/jpeg,image/png,image/jpg,image/webp,application/pdf"
+                            onChange={handleFileChange}
+                            className="hidden"
+                        />
+                        {errors.attachment && (
+                            <p className="text-[11px] text-rose-500 font-medium">{errors.attachment}</p>
+                        )}
+                    </div>
 
                     <FormField label="Notes / Memo (Optional)" name="notes" error={errors.notes}>
                         <Textarea

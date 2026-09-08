@@ -93,6 +93,15 @@ return [
             'permission' => 'branch.view',
         ],
         [
+            'title' => 'Branch Clients',
+            'icon' => 'users-round',
+            'href' => '/branch-clients',
+            'single' => true,
+            'central_admin' => true,
+            'admin_only' => true,
+            'permission' => 'branch.view',
+        ],
+        [
             'title' => 'Business Setup',
             'icon' => 'settings',
             'href' => '/setting/business-setup',
@@ -195,6 +204,14 @@ return [
                 ['title' => 'Sales Profit Trend', 'href' => '/report/sales-profit-trend', 'permission' => 'report.sales-profit-trend.view'],
                 ['title' => 'Purchase Report', 'href' => '/report/purchase-report', 'permission' => 'report.purchase-report.view'],
             ],
+        ],
+        [
+            'title' => 'Subscription & Bills',
+            'icon' => 'wallet',
+            'href' => '/branch-panel/subscription',
+            'single' => true,
+            'branch_only' => true,
+            'permission' => null,
         ],
         [
             'title' => 'Admin Profile',

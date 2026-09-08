@@ -37,8 +37,10 @@ use App\Http\Controllers\Reports\OpeningStockController;
 use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\Reports\StockAgingController;
 use App\Http\Controllers\Reports\StockValuationController;
+use App\Http\Controllers\BranchPanel\BranchPanelSubscriptionController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Setting\AdminProfileController;
+use App\Http\Controllers\Setting\BranchClientController;
 use App\Http\Controllers\Setting\BranchProfileController;
 use App\Http\Controllers\Setting\BrandController;
 use App\Http\Controllers\Setting\BusinessSetupController;
@@ -75,6 +77,10 @@ Route::middleware(['auth', 'verified'])->get('panel-guide', PanelGuideController
 
 Route::middleware(['auth', 'verified', 'superadmin'])->group(function () {
     Route::resource('branch', BranchController::class)->except(['create', 'edit', 'show']);
+    Route::get('branch-clients', [BranchClientController::class, 'index'])->name('branch-clients.index');
+    Route::put('branch-clients/{branch}', [BranchClientController::class, 'update'])->name('branch-clients.update');
+    Route::post('branch-clients/{branch}/renew', [BranchClientController::class, 'renew'])->name('branch-clients.renew');
+    Route::get('branch-clients/{branch}/payments', [BranchClientController::class, 'payments'])->name('branch-clients.payments');
     Route::resource('user', UserController::class)->except(['create', 'edit', 'show']);
     Route::resource('role', RoleController::class)->except(['show']);
     Route::get('role/{role}/permissions', [RoleController::class, 'editPermissions'])->name('role.permissions');
@@ -310,4 +316,9 @@ Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->gr
     Route::put('business-setup/branch/{branch}', [BusinessSetupController::class, 'updateBranchSubscription'])->name('business-setup.branch.update');
     Route::post('business-setup/branch/{branch}/renew', [BusinessSetupController::class, 'renewBranchSubscription'])->name('business-setup.branch.renew');
     Route::get('business-setup/branch/{branch}/payments', [BusinessSetupController::class, 'branchPaymentHistory'])->name('business-setup.branch.payments');
+});
+
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::get('branch-panel/subscription', [BranchPanelSubscriptionController::class, 'index'])->name('branch-panel.subscription.index');
+    Route::post('branch-panel/subscription/pay', [BranchPanelSubscriptionController::class, 'submitPayment'])->name('branch-panel.subscription.pay');
 });

@@ -62,7 +62,8 @@ test('cycle reached accrues subscription expense and subscription payable on bra
     SystemAccountService::seed($branch->id);
 
     $accountingService = app(BranchSubscriptionAccountingService::class);
-    $transaction = $accountingService->recordCycleAccrual($branch, '2026-09-01', '2026-10-01', 2000);
+    $accrual = $accountingService->recordCycleAccrual($branch, '2026-09-01', '2026-10-01', 2000);
+    $transaction = $accrual['branch_accrual'];
 
     expect($transaction)->not->toBeNull();
     expect((float) $transaction->amount)->toBe(2000.0);
@@ -77,7 +78,7 @@ test('cycle reached accrues subscription expense and subscription payable on bra
 
     // Calling again does not duplicate accrual
     $duplicate = $accountingService->recordCycleAccrual($branch, '2026-09-01', '2026-10-01', 2000);
-    expect($duplicate->id)->toBe($transaction->id);
+    expect($duplicate['branch_accrual']->id)->toBe($transaction->id);
     expect((float) $payable->fresh()->current_balance)->toBe(2000.0);
 });
 
@@ -94,18 +95,28 @@ test('superadmin approving payment settles branch payable and records superadmin
     SystemAccountService::seed(null);
     SystemAccountService::seed($branch->id);
 
+    $superadminReceivable = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
+    $superadminIncome = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+    $superadminBkash = SystemAccountService::resolve(SystemAccountKey::Bkash, null);
+
+    $initialSuperadminReceivable = (float) $superadminReceivable->fresh()->current_balance;
+    $initialSuperadminIncome = (float) $superadminIncome->fresh()->current_balance;
+    $initialSuperadminCash = (float) $superadminBkash->fresh()->current_balance;
+
     // 1. Accrue cycle bill
     $subscriptionService = app(BranchSubscriptionService::class);
     $subscriptionService->syncCycleAccrual($branch);
 
     $branchPayable = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
     $branchBkash = SystemAccountService::resolve(SystemAccountKey::Bkash, $branch->id);
-    $superadminIncome = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
-    $superadminBkash = SystemAccountService::resolve(SystemAccountKey::Bkash, null);
 
+    // After cycle accrual:
+    // Branch payable = 1500
+    // SuperAdmin receivable increased by 1500
+    // SuperAdmin income increased by 1500
     expect((float) $branchPayable->fresh()->current_balance)->toBe(1500.0);
-    $initialSuperadminIncome = (float) $superadminIncome->fresh()->current_balance;
-    $initialSuperadminCash = (float) $superadminBkash->fresh()->current_balance;
+    expect((float) $superadminReceivable->fresh()->current_balance)->toBe($initialSuperadminReceivable + 1500.0);
+    expect((float) $superadminIncome->fresh()->current_balance)->toBe($initialSuperadminIncome + 1500.0);
 
     // 2. Client submits payment
     $clientUser = User::factory()->create(['branch_id' => $branch->id]);
@@ -148,7 +159,11 @@ test('superadmin approving payment settles branch payable and records superadmin
     expect((float) $branchPayable->fresh()->current_balance)->toBe(0.0);
     expect((float) $branchBkash->fresh()->current_balance)->toBe(-1500.0);
 
-    // 5. Verify SuperAdmin Ledger: Subscription Income increased by 1500 & bKash asset increased by 1500
+    // 5. Verify SuperAdmin Ledger:
+    // Receivable Asset decreased back by 1500 to initial (cleared)
+    // Cash Asset (bKash) increased by 1500
+    // Income recognized at cycle accrual remains initial + 1500
+    expect((float) $superadminReceivable->fresh()->current_balance)->toBe($initialSuperadminReceivable);
     expect((float) $superadminIncome->fresh()->current_balance)->toBe($initialSuperadminIncome + 1500.0);
     expect((float) $superadminBkash->fresh()->current_balance)->toBe($initialSuperadminCash + 1500.0);
 
@@ -165,7 +180,7 @@ test('superadmin approving payment settles branch payable and records superadmin
     $superadminSettlementTx = Transaction::query()
         ->where('source_type', BranchSubscriptionPayment::class)
         ->where('source_id', $pendingPayment->id)
-        ->where('credit_account_id', $superadminIncome->id)
+        ->where('credit_account_id', $superadminReceivable->id)
         ->first();
 
     expect($superadminSettlementTx)->not->toBeNull();
@@ -188,6 +203,7 @@ test('superadmin direct renewal posts expense, decreases asset, clears payable, 
 
     $initialSuperadminIncome = (float) SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null)->fresh()->current_balance;
     $initialSuperadminNagad = (float) SystemAccountService::resolve(SystemAccountKey::Nagad, null)->fresh()->current_balance;
+    $initialSuperadminReceivable = (float) SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null)->fresh()->current_balance;
 
     // Direct renewal by SuperAdmin
     $this->actingAs($admin)->post(route('branch-clients.renew', $branch->id), [
@@ -202,6 +218,7 @@ test('superadmin direct renewal posts expense, decreases asset, clears payable, 
     $branchExpense = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
     $branchPayable = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
     $branchNagad = SystemAccountService::resolve(SystemAccountKey::Nagad, $branch->id);
+    $superadminReceivable = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
     $superadminIncome = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
     $superadminNagad = SystemAccountService::resolve(SystemAccountKey::Nagad, null);
 
@@ -219,4 +236,7 @@ test('superadmin direct renewal posts expense, decreases asset, clears payable, 
 
     // 5. SuperAdmin Asset increased by 2500
     expect((float) $superadminNagad->fresh()->current_balance)->toBe($initialSuperadminNagad + 2500.0);
+
+    // 6. SuperAdmin Client Subscription Receivables settled (net initial)
+    expect((float) $superadminReceivable->fresh()->current_balance)->toBe($initialSuperadminReceivable);
 });

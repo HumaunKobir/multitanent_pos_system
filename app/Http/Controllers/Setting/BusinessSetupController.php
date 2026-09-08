@@ -147,6 +147,7 @@ class BusinessSetupController extends Controller
         $this->authorize('business-setup.update');
 
         $validated = $request->validate([
+            'pending_payment_id' => ['nullable', 'integer'],
             'duration_days' => ['required', 'integer', 'min:1', 'max:3650'],
             'amount' => ['required', 'numeric', 'min:0'],
             'payment_method' => ['required', 'string', 'max:50'],

@@ -31,7 +31,7 @@ class BranchPanelSubscriptionController extends Controller
 
         $payments = $branch->subscriptionPayments()
             ->with('recordedBy:id,name')
-            ->latest('paid_at')
+            ->orderByDesc('id')
             ->get()
             ->map(fn ($p) => [
                 'id' => $p->id,

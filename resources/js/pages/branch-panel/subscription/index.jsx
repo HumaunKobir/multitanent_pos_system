@@ -274,6 +274,7 @@ export default function BranchSubscriptionIndex({
     const totalOverdueAmount = pendingBillsCount * feePerCycle;
 
     const [selectedCycles, setSelectedCycles] = useState(isOverdue && pendingBillsCount > 0 ? pendingBillsCount : 1);
+    const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [previewUrl, setPreviewUrl] = useState(null);
     const [previewAttachment, setPreviewAttachment] = useState(null);
     const [copiedId, setCopiedId] = useState(null);
@@ -382,6 +383,7 @@ export default function BranchSubscriptionIndex({
             onSuccess: () => {
                 reset();
                 setPreviewUrl(null);
+                setIsPaymentModalOpen(false);
             },
         });
     };
@@ -412,7 +414,7 @@ export default function BranchSubscriptionIndex({
                         </p>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-wrap items-center gap-3">
                         <div className="text-right sm:block hidden">
                             <p className="text-[11px] text-blue-200/70 uppercase tracking-wider font-semibold">Current Plan</p>
                             <p className="text-sm font-bold text-white">{subscription.plan_label || 'Standard'}</p>
@@ -424,6 +426,14 @@ export default function BranchSubscriptionIndex({
                                 {subscription.computed_status?.replace('_', ' ') || 'Active'}
                             </p>
                         </div>
+                        <Button
+                            type="button"
+                            onClick={() => setIsPaymentModalOpen(true)}
+                            className="bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs sm:text-sm px-4 h-10 rounded-xl shadow-lg flex items-center gap-2 ml-1"
+                        >
+                            <CreditCard className="size-4" />
+                            Submit Subscription Payment
+                        </Button>
                     </div>
                 </div>
             </div>
@@ -451,16 +461,26 @@ export default function BranchSubscriptionIndex({
                             </div>
                         </div>
 
-                        <div className="flex flex-col sm:items-end justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 shrink-0">
-                            <span className="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400 tracking-wider">
-                                Submitted Deposit
-                            </span>
-                            <span className="text-xl font-extrabold text-amber-600 dark:text-amber-400 tabular-nums">
-                                ৳{Number(subscription.pending_payment.amount).toFixed(2)}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">
-                                {subscription.pending_payment.created_at || 'Recently submitted'}
-                            </span>
+                        <div className="flex items-center gap-3">
+                            <div className="flex flex-col sm:items-end justify-center rounded-xl bg-amber-500/10 border border-amber-500/20 px-4 py-2.5 shrink-0">
+                                <span className="text-[10px] uppercase font-bold text-amber-600 dark:text-amber-400 tracking-wider">
+                                    Submitted Deposit
+                                </span>
+                                <span className="text-xl font-extrabold text-amber-600 dark:text-amber-400 tabular-nums">
+                                    ৳{Number(subscription.pending_payment.amount).toFixed(2)}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                    {subscription.pending_payment.created_at || 'Recently submitted'}
+                                </span>
+                            </div>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setIsPaymentModalOpen(true)}
+                                className="border-amber-500/50 text-amber-700 dark:text-amber-300 text-xs font-bold hover:bg-amber-500/10 shrink-0 h-10 px-3"
+                            >
+                                <RefreshCw className="size-3.5 mr-1" /> Submit Another
+                            </Button>
                         </div>
                     </div>
                 </div>
@@ -489,16 +509,28 @@ export default function BranchSubscriptionIndex({
                             </div>
                         </div>
 
-                        <div className="flex flex-col sm:items-end justify-center rounded-xl bg-rose-500/10 dark:bg-rose-950/40 border border-rose-500/20 px-4 py-2.5 shrink-0">
-                            <span className="text-[10px] uppercase font-bold text-rose-600 dark:text-rose-400 tracking-wider">
-                                Total Outstanding Due
-                            </span>
-                            <span className="text-xl font-extrabold text-rose-600 dark:text-rose-400 tabular-nums">
-                                ৳{totalOverdueAmount.toFixed(2)}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">
-                                {pendingBillsCount} cycle{pendingBillsCount > 1 ? 's' : ''} × ৳{feePerCycle.toFixed(2)}
-                            </span>
+                        <div className="flex items-center gap-3">
+                            <div className="flex flex-col sm:items-end justify-center rounded-xl bg-rose-500/10 dark:bg-rose-950/40 border border-rose-500/20 px-4 py-2.5 shrink-0">
+                                <span className="text-[10px] uppercase font-bold text-rose-600 dark:text-rose-400 tracking-wider">
+                                    Total Outstanding Due
+                                </span>
+                                <span className="text-xl font-extrabold text-rose-600 dark:text-rose-400 tabular-nums">
+                                    ৳{totalOverdueAmount.toFixed(2)}
+                                </span>
+                                <span className="text-[10px] text-muted-foreground">
+                                    {pendingBillsCount} cycle{pendingBillsCount > 1 ? 's' : ''} × ৳{feePerCycle.toFixed(2)}
+                                </span>
+                            </div>
+                            <Button
+                                type="button"
+                                onClick={() => {
+                                    handleCyclesChange(pendingBillsCount > 0 ? pendingBillsCount : 1);
+                                    setIsPaymentModalOpen(true);
+                                }}
+                                className="bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs shadow-md px-4 h-10 rounded-xl flex items-center gap-2 shrink-0"
+                            >
+                                <CreditCard className="size-4" /> Pay Overdue Bills Now
+                            </Button>
                         </div>
                     </div>
                 </div>
@@ -507,18 +539,27 @@ export default function BranchSubscriptionIndex({
             {/* Expiring Soon Notice */}
             {!isOverdue && subscription.is_expiring_soon && (
                 <div className="rounded-2xl border border-amber-500/40 bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent p-5 text-foreground shadow-md">
-                    <div className="flex items-center gap-3.5">
-                        <div className="flex size-10 items-center justify-center rounded-xl bg-amber-500 text-white shadow-sm shrink-0">
-                            <Clock className="size-5" />
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-3.5">
+                            <div className="flex size-10 items-center justify-center rounded-xl bg-amber-500 text-white shadow-sm shrink-0">
+                                <Clock className="size-5" />
+                            </div>
+                            <div className="space-y-0.5">
+                                <h3 className="text-sm font-bold text-amber-600 dark:text-amber-400">
+                                    Subscription Expiring in {subscription.days_remaining} Day(s)
+                                </h3>
+                                <p className="text-xs text-muted-foreground">
+                                    Your validity ends on <strong>{subscription.expires_at}</strong>. Renew early to maintain uninterrupted POS sales & inventory access.
+                                </p>
+                            </div>
                         </div>
-                        <div className="space-y-0.5">
-                            <h3 className="text-sm font-bold text-amber-600 dark:text-amber-400">
-                                Subscription Expiring in {subscription.days_remaining} Day(s)
-                            </h3>
-                            <p className="text-xs text-muted-foreground">
-                                Your validity ends on <strong>{subscription.expires_at}</strong>. Renew early to maintain uninterrupted POS sales & inventory access.
-                            </p>
-                        </div>
+                        <Button
+                            type="button"
+                            onClick={() => setIsPaymentModalOpen(true)}
+                            className="bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md px-4 h-9 rounded-xl flex items-center gap-2 shrink-0"
+                        >
+                            <CreditCard className="size-4" /> Renew Early Now
+                        </Button>
                     </div>
                 </div>
             )}
@@ -607,26 +648,313 @@ export default function BranchSubscriptionIndex({
 
             {/* Main Interactive Workspace (2 Columns) */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-                {/* Left: Renewal & Payment Submission Form (7 Cols) */}
-                <div className="lg:col-span-7 rounded-2xl border border-slate-200 dark:border-slate-800 bg-card shadow-sm overflow-hidden">
-                    <div className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 px-6 py-4 flex items-center justify-between">
-                        <div className="flex items-center gap-2.5">
-                            <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-xs">
-                                <CreditCard className="size-4" />
+                {/* Left: Quick Payment Action Card & Support Contact (5 Cols) */}
+                <div className="lg:col-span-5 space-y-4">
+                    {/* Quick Pay CTA Card */}
+                    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-gradient-to-br from-card to-emerald-500/5 p-6 shadow-sm space-y-5">
+                        <div className="flex items-center gap-3">
+                            <div className="flex size-10 items-center justify-center rounded-xl bg-emerald-600 text-white shadow-md">
+                                <CreditCard className="size-5" />
                             </div>
                             <div>
-                                <h2 className="text-sm font-bold text-foreground">Submit Subscription Payment</h2>
-                                <p className="text-[11px] text-muted-foreground">
-                                    Submit deposit details & receipt for SuperAdmin verification and renewal
+                                <h2 className="text-base font-bold text-foreground">Renew & Submit Payment</h2>
+                                <p className="text-xs text-muted-foreground">
+                                    Send payment deposit to official accounts & submit verification proof
                                 </p>
                             </div>
                         </div>
-                        <Badge variant="outline" className="border-amber-500/30 text-amber-600 dark:text-amber-400 text-[11px] font-semibold">
-                            Admin Approval Required
-                        </Badge>
+
+                        <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 p-3.5 space-y-2 text-xs">
+                            <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground font-medium">Standard Billing Rate:</span>
+                                <span className="font-bold text-foreground">৳{feePerCycle.toFixed(2)} / {cycleDays} Days</span>
+                            </div>
+                            <div className="flex items-center justify-between">
+                                <span className="text-muted-foreground font-medium">Current Expiry:</span>
+                                <span className="font-bold text-foreground">{subscription.expires_at || 'Unlimited'}</span>
+                            </div>
+                            {isOverdue && (
+                                <div className="flex items-center justify-between text-rose-600 dark:text-rose-400 font-bold pt-1 border-t border-rose-200/50 dark:border-rose-900/40">
+                                    <span>Outstanding Dues:</span>
+                                    <span>৳{totalOverdueAmount.toFixed(2)} ({pendingBillsCount} Bills)</span>
+                                </div>
+                            )}
+                        </div>
+
+                        <Button
+                            type="button"
+                            onClick={() => setIsPaymentModalOpen(true)}
+                            className="w-full h-12 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition-all rounded-xl flex items-center justify-center gap-2"
+                        >
+                            <CreditCard className="size-4" />
+                            Submit Subscription Payment
+                        </Button>
                     </div>
 
-                    <form onSubmit={handleSubmit} className="p-6 space-y-5">
+                    {/* Support Contact Card */}
+                    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-card shadow-sm p-5 space-y-3">
+                        <div className="flex items-center gap-2 pb-2 border-b border-slate-200 dark:border-slate-800">
+                            <div className="flex size-7 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-400">
+                                <HelpCircle className="size-4" />
+                            </div>
+                            <h3 className="text-sm font-bold text-foreground">Billing Support Helpline</h3>
+                        </div>
+
+                        <div className="space-y-2.5 text-xs">
+                            {subscription.superadmin_contact?.name && (
+                                <div className="flex items-center justify-between">
+                                    <span className="text-muted-foreground">Admin Officer:</span>
+                                    <span className="font-bold text-foreground">{subscription.superadmin_contact.name}</span>
+                                </div>
+                            )}
+                            {subscription.superadmin_contact?.phone && (
+                                <div className="flex items-center justify-between">
+                                    <span className="text-muted-foreground flex items-center gap-1.5">
+                                        <Phone className="size-3.5 text-primary" /> Hotline / WhatsApp:
+                                    </span>
+                                    <a
+                                        href={`tel:${subscription.superadmin_contact.phone}`}
+                                        className="font-extrabold text-primary hover:underline"
+                                    >
+                                        {subscription.superadmin_contact.phone}
+                                    </a>
+                                </div>
+                            )}
+                            {subscription.superadmin_contact?.email && (
+                                <div className="flex items-center justify-between">
+                                    <span className="text-muted-foreground flex items-center gap-1.5">
+                                        <Mail className="size-3.5 text-primary" /> Email:
+                                    </span>
+                                    <a
+                                        href={`mailto:${subscription.superadmin_contact.email}`}
+                                        className="font-medium text-primary hover:underline truncate max-w-[180px]"
+                                    >
+                                        {subscription.superadmin_contact.email}
+                                    </a>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right: Official Payment Instructions & Accounts (7 Cols) */}
+                <div className="lg:col-span-7 space-y-4">
+                    {/* Official Payment Instructions & Accounts */}
+                    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-card shadow-sm p-6 space-y-4">
+                        <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+                            <div className="flex items-center gap-2.5">
+                                <div className="flex size-8 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400">
+                                    <Wallet className="size-4" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-foreground">Official Payment Accounts</h3>
+                                    <p className="text-[11px] text-muted-foreground">Click Copy to copy account/phone numbers directly</p>
+                                </div>
+                            </div>
+                            {parsedInstructions.accounts.length > 0 && (
+                                <Badge variant="outline" className="text-xs text-muted-foreground border-slate-300 dark:border-slate-700">
+                                    {parsedInstructions.accounts.length} Account{parsedInstructions.accounts.length === 1 ? '' : 's'}
+                                </Badge>
+                            )}
+                        </div>
+
+                        {/* List of Parsed Payment Account Cards */}
+                        {parsedInstructions.accounts.length > 0 ? (
+                            <div className="space-y-3">
+                                {parsedInstructions.accounts.map((acc) => {
+                                    const isBank = acc.method === 'bank';
+                                    const isBkash = acc.method === 'bkash';
+                                    const isNagad = acc.method === 'nagad';
+                                    const isRocket = acc.method === 'rocket';
+
+                                    const numberCopied = copiedId === `${acc.id}-num`;
+                                    const routingCopied = copiedId === `${acc.id}-routing`;
+
+                                    return (
+                                        <div
+                                            key={acc.id}
+                                            className={`group relative rounded-xl border p-3.5 transition-all shadow-xs ${
+                                                isBkash
+                                                    ? 'bg-gradient-to-br from-[#e2136e]/10 via-[#e2136e]/5 to-transparent border-[#e2136e]/30 hover:border-[#e2136e]/60'
+                                                    : isNagad
+                                                    ? 'bg-gradient-to-br from-[#f7941d]/10 via-[#f7941d]/5 to-transparent border-[#f7941d]/30 hover:border-[#f7941d]/60'
+                                                    : isRocket
+                                                    ? 'bg-gradient-to-br from-[#8c3494]/10 via-[#8c3494]/5 to-transparent border-[#8c3494]/30 hover:border-[#8c3494]/60'
+                                                    : 'bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent border-blue-500/30 hover:border-blue-500/60'
+                                            }`}
+                                        >
+                                            {/* Top: Account Title & Quick Select */}
+                                            <div className="flex items-center justify-between gap-2 mb-2">
+                                                <div className="flex items-center gap-2">
+                                                    {isBank ? (
+                                                        <div className="flex size-7 items-center justify-center rounded-lg bg-blue-600 text-white shadow-2xs">
+                                                            <Building2 className="size-4" />
+                                                        </div>
+                                                    ) : (
+                                                        <div className={`flex size-7 items-center justify-center rounded-lg font-black text-xs text-white shadow-2xs ${
+                                                            isBkash ? 'bg-[#e2136e]' : isNagad ? 'bg-[#f7941d]' : isRocket ? 'bg-[#8c3494]' : 'bg-slate-700'
+                                                        }`}>
+                                                            {acc.title.charAt(0)}
+                                                        </div>
+                                                    )}
+                                                    <div>
+                                                        <h4 className="text-xs font-bold text-foreground leading-none">{acc.title}</h4>
+                                                        <span className="text-[10px] text-muted-foreground font-medium">{acc.type}</span>
+                                                    </div>
+                                                </div>
+
+                                                {PAYMENT_METHOD_CONFIG[acc.method] && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setData('payment_method', acc.method);
+                                                            setIsPaymentModalOpen(true);
+                                                        }}
+                                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-md transition-all border ${
+                                                            data.payment_method === acc.method
+                                                                ? 'bg-primary text-primary-foreground border-primary shadow-2xs'
+                                                                : 'bg-background/80 text-muted-foreground border-border hover:text-foreground'
+                                                        }`}
+                                                    >
+                                                        Pay via {PAYMENT_METHOD_CONFIG[acc.method].label}
+                                                    </button>
+                                                )}
+                                            </div>
+
+                                            {/* Account / Phone Number Box with Dedicated Copy Button */}
+                                            {acc.number ? (
+                                                <div className="flex items-center justify-between gap-2 rounded-lg bg-background/90 dark:bg-slate-950/80 p-2 border border-border/70 mt-2">
+                                                    <div className="min-w-0 flex-1">
+                                                        <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-bold block">
+                                                            {isBank ? 'Account Number' : 'Account / Phone Number'}
+                                                        </span>
+                                                        <span className="font-mono text-sm font-black text-foreground tracking-wide select-all">
+                                                            {acc.number}
+                                                        </span>
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        onClick={() => handleCopy(acc.number, isBank ? 'Account number' : `${acc.title} number`, `${acc.id}-num`)}
+                                                        className={`h-7 px-2.5 text-[11px] font-bold rounded-md transition-all shrink-0 ${
+                                                            numberCopied
+                                                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                                                                : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xs'
+                                                        }`}
+                                                    >
+                                                        {numberCopied ? (
+                                                            <>
+                                                                <Check className="size-3 mr-1" /> Copied!
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Copy className="size-3 mr-1" /> Copy Number
+                                                            </>
+                                                        )}
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-muted-foreground font-mono mt-1">{acc.fullText}</p>
+                                            )}
+
+                                            {/* Bank Account Details Breakdown */}
+                                            {isBank && (acc.accountName || acc.branchName || acc.routingNumber) && (
+                                                <div className="mt-2.5 grid grid-cols-1 gap-1.5 pt-2 border-t border-border/50 text-[11px]">
+                                                    {acc.accountName && (
+                                                        <div className="flex items-center justify-between text-muted-foreground">
+                                                            <span>A/C Holder Name:</span>
+                                                            <span className="font-semibold text-foreground">{acc.accountName}</span>
+                                                        </div>
+                                                    )}
+                                                    {acc.branchName && (
+                                                        <div className="flex items-center justify-between text-muted-foreground">
+                                                            <span>Branch:</span>
+                                                            <span className="font-semibold text-foreground">{acc.branchName}</span>
+                                                        </div>
+                                                    )}
+                                                    {acc.routingNumber && (
+                                                        <div className="flex items-center justify-between rounded-md bg-background/60 p-1.5 border border-border/50 mt-1">
+                                                            <div>
+                                                                <span className="text-[9px] uppercase text-muted-foreground font-bold block">Routing Number</span>
+                                                                <span className="font-mono font-bold text-foreground text-xs">{acc.routingNumber}</span>
+                                                            </div>
+                                                            <Button
+                                                                type="button"
+                                                                size="sm"
+                                                                variant="outline"
+                                                                onClick={() => handleCopy(acc.routingNumber, 'Routing number', `${acc.id}-routing`)}
+                                                                className={`h-6 px-2 text-[10px] font-semibold ${
+                                                                    routingCopied ? 'border-emerald-500 text-emerald-600' : ''
+                                                                }`}
+                                                            >
+                                                                {routingCopied ? (
+                                                                    <>
+                                                                        <Check className="size-2.5 mr-1" /> Copied
+                                                                    </>
+                                                                ) : (
+                                                                    <>
+                                                                        <Copy className="size-2.5 mr-1" /> Copy Routing
+                                                                    </>
+                                                                )}
+                                                            </Button>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ) : subscription.payment_instructions ? (
+                            <div className="whitespace-pre-line text-foreground/90 bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 font-mono text-xs leading-relaxed">
+                                {subscription.payment_instructions}
+                            </div>
+                        ) : (
+                            <div className="text-muted-foreground text-xs p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
+                                Send subscription payment to the SuperAdmin accounts and upload screenshot receipt above.
+                            </div>
+                        )}
+
+                        {/* General Notes */}
+                        {parsedInstructions.generalNotes.length > 0 && (
+                            <div className="rounded-xl bg-slate-100/70 dark:bg-slate-900/60 p-3 border border-slate-200 dark:border-slate-800 text-xs space-y-1">
+                                <span className="text-[10px] uppercase font-bold text-muted-foreground block">Additional Payment Notes:</span>
+                                {parsedInstructions.generalNotes.map((note, nIdx) => (
+                                    <p key={nIdx} className="text-muted-foreground text-[11px] leading-relaxed">
+                                        {note}
+                                    </p>
+                                ))}
+                            </div>
+                        )}
+
+                        <div className="rounded-xl bg-blue-50/60 dark:bg-blue-950/30 p-3 border border-blue-200/60 dark:border-blue-900/40 text-[11px] text-blue-900 dark:text-blue-200 space-y-1">
+                            <p className="font-semibold flex items-center gap-1.5">
+                                <ShieldCheck className="size-3.5 text-blue-600 dark:text-blue-400" /> Fast Verification
+                            </p>
+                            <p className="text-muted-foreground leading-tight">
+                                Enter the exact Transaction ID (TrxID) and upload a receipt screenshot so the admin can reconcile payments immediately.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Modal Dialog: Submit Subscription Payment */}
+            <Dialog open={isPaymentModalOpen} onOpenChange={setIsPaymentModalOpen}>
+                <DialogContent className="max-w-2xl p-6 border-slate-300 dark:border-slate-700 shadow-2xl max-h-[92vh] overflow-y-auto">
+                    <DialogHeader className="pb-3 border-b border-slate-200 dark:border-slate-800">
+                        <DialogTitle className="flex items-center gap-2.5 text-base font-bold text-foreground">
+                            <div className="flex size-8 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-xs">
+                                <CreditCard className="size-4" />
+                            </div>
+                            Submit Subscription Payment — {branch.name}
+                        </DialogTitle>
+                        <DialogDescription className="text-xs text-muted-foreground">
+                            Select billing cycles, provide your payment transaction details, and upload receipt screenshot for SuperAdmin verification.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <form onSubmit={handleSubmit} className="space-y-4 pt-2">
                         {/* Interactive Cycle Selector */}
                         <div className="space-y-2">
                             <label className="text-xs font-bold text-foreground flex items-center justify-between">
@@ -752,7 +1080,6 @@ export default function BranchSubscriptionIndex({
                             </label>
                             <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
                                 {paymentMethods.map((pm) => {
-                                    const cfg = PAYMENT_METHOD_CONFIG[pm.value] || { label: pm.label, color: 'bg-slate-700', border: 'border-slate-400' };
                                     const isSelected = data.payment_method === pm.value;
                                     return (
                                         <button
@@ -892,260 +1219,28 @@ export default function BranchSubscriptionIndex({
                             />
                         </FormField>
 
-                        <Button
-                            type="submit"
-                            disabled={processing}
-                            className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition-all rounded-xl"
-                        >
-                            <RefreshCw className={`size-4 mr-2 ${processing ? 'animate-spin' : ''}`} />
-                            {processing ? 'Submitting Payment...' : 'Submit Payment for Admin Approval'}
-                        </Button>
+                        <DialogFooter className="pt-2 gap-2">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setIsPaymentModalOpen(false)}
+                                disabled={processing}
+                                className="border-slate-300 dark:border-slate-700"
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="submit"
+                                disabled={processing}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md transition-all px-5"
+                            >
+                                <RefreshCw className={`size-4 mr-2 ${processing ? 'animate-spin' : ''}`} />
+                                {processing ? 'Submitting Payment...' : 'Submit Payment for Admin Approval'}
+                            </Button>
+                        </DialogFooter>
                     </form>
-                </div>
-
-                {/* Right: Payment Instructions & Support (5 Cols) */}
-                <div className="lg:col-span-5 space-y-4">
-                    {/* Official Payment Instructions & Accounts */}
-                    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-card shadow-sm p-5 space-y-4">
-                        <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
-                            <div className="flex items-center gap-2">
-                                <div className="flex size-7 items-center justify-center rounded-lg bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400">
-                                    <Wallet className="size-4" />
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-bold text-foreground">Official Payment Accounts</h3>
-                                    <p className="text-[10px] text-muted-foreground">Click Copy to copy account/phone numbers directly</p>
-                                </div>
-                            </div>
-                            {parsedInstructions.accounts.length > 0 && (
-                                <Badge variant="outline" className="text-[10px] text-muted-foreground border-slate-300 dark:border-slate-700">
-                                    {parsedInstructions.accounts.length} Account{parsedInstructions.accounts.length === 1 ? '' : 's'}
-                                </Badge>
-                            )}
-                        </div>
-
-                        {/* List of Parsed Payment Account Cards */}
-                        {parsedInstructions.accounts.length > 0 ? (
-                            <div className="space-y-3">
-                                {parsedInstructions.accounts.map((acc) => {
-                                    const isBank = acc.method === 'bank';
-                                    const isBkash = acc.method === 'bkash';
-                                    const isNagad = acc.method === 'nagad';
-                                    const isRocket = acc.method === 'rocket';
-
-                                    const numberCopied = copiedId === `${acc.id}-num`;
-                                    const routingCopied = copiedId === `${acc.id}-routing`;
-
-                                    return (
-                                        <div
-                                            key={acc.id}
-                                            className={`group relative rounded-xl border p-3.5 transition-all shadow-xs ${
-                                                isBkash
-                                                    ? 'bg-gradient-to-br from-[#e2136e]/10 via-[#e2136e]/5 to-transparent border-[#e2136e]/30 hover:border-[#e2136e]/60'
-                                                    : isNagad
-                                                    ? 'bg-gradient-to-br from-[#f7941d]/10 via-[#f7941d]/5 to-transparent border-[#f7941d]/30 hover:border-[#f7941d]/60'
-                                                    : isRocket
-                                                    ? 'bg-gradient-to-br from-[#8c3494]/10 via-[#8c3494]/5 to-transparent border-[#8c3494]/30 hover:border-[#8c3494]/60'
-                                                    : 'bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent border-blue-500/30 hover:border-blue-500/60'
-                                            }`}
-                                        >
-                                            {/* Top: Account Title & Quick Select */}
-                                            <div className="flex items-center justify-between gap-2 mb-2">
-                                                <div className="flex items-center gap-2">
-                                                    {isBank ? (
-                                                        <div className="flex size-7 items-center justify-center rounded-lg bg-blue-600 text-white shadow-2xs">
-                                                            <Building2 className="size-4" />
-                                                        </div>
-                                                    ) : (
-                                                        <div className={`flex size-7 items-center justify-center rounded-lg font-black text-xs text-white shadow-2xs ${
-                                                            isBkash ? 'bg-[#e2136e]' : isNagad ? 'bg-[#f7941d]' : isRocket ? 'bg-[#8c3494]' : 'bg-slate-700'
-                                                        }`}>
-                                                            {acc.title.charAt(0)}
-                                                        </div>
-                                                    )}
-                                                    <div>
-                                                        <h4 className="text-xs font-bold text-foreground leading-none">{acc.title}</h4>
-                                                        <span className="text-[10px] text-muted-foreground font-medium">{acc.type}</span>
-                                                    </div>
-                                                </div>
-
-                                                {PAYMENT_METHOD_CONFIG[acc.method] && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => setData('payment_method', acc.method)}
-                                                        className={`text-[10px] font-bold px-2 py-0.5 rounded-md transition-all border ${
-                                                            data.payment_method === acc.method
-                                                                ? 'bg-primary text-primary-foreground border-primary shadow-2xs'
-                                                                : 'bg-background/80 text-muted-foreground border-border hover:text-foreground'
-                                                        }`}
-                                                    >
-                                                        {data.payment_method === acc.method ? 'Selected' : 'Use Method'}
-                                                    </button>
-                                                )}
-                                            </div>
-
-                                            {/* Account / Phone Number Box with Dedicated Copy Button */}
-                                            {acc.number ? (
-                                                <div className="flex items-center justify-between gap-2 rounded-lg bg-background/90 dark:bg-slate-950/80 p-2 border border-border/70 mt-2">
-                                                    <div className="min-w-0 flex-1">
-                                                        <span className="text-[9px] uppercase tracking-wider text-muted-foreground font-bold block">
-                                                            {isBank ? 'Account Number' : 'Account / Phone Number'}
-                                                        </span>
-                                                        <span className="font-mono text-sm font-black text-foreground tracking-wide select-all">
-                                                            {acc.number}
-                                                        </span>
-                                                    </div>
-                                                    <Button
-                                                        type="button"
-                                                        size="sm"
-                                                        onClick={() => handleCopy(acc.number, isBank ? 'Account number' : `${acc.title} number`, `${acc.id}-num`)}
-                                                        className={`h-7 px-2.5 text-[11px] font-bold rounded-md transition-all shrink-0 ${
-                                                            numberCopied
-                                                                ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
-                                                                : 'bg-primary hover:bg-primary/90 text-primary-foreground shadow-2xs'
-                                                        }`}
-                                                    >
-                                                        {numberCopied ? (
-                                                            <>
-                                                                <Check className="size-3 mr-1" /> Copied!
-                                                            </>
-                                                        ) : (
-                                                            <>
-                                                                <Copy className="size-3 mr-1" /> Copy Number
-                                                            </>
-                                                        )}
-                                                    </Button>
-                                                </div>
-                                            ) : (
-                                                <p className="text-xs text-muted-foreground font-mono mt-1">{acc.fullText}</p>
-                                            )}
-
-                                            {/* Bank Account Details Breakdown */}
-                                            {isBank && (acc.accountName || acc.branchName || acc.routingNumber) && (
-                                                <div className="mt-2.5 grid grid-cols-1 gap-1.5 pt-2 border-t border-border/50 text-[11px]">
-                                                    {acc.accountName && (
-                                                        <div className="flex items-center justify-between text-muted-foreground">
-                                                            <span>A/C Holder Name:</span>
-                                                            <span className="font-semibold text-foreground">{acc.accountName}</span>
-                                                        </div>
-                                                    )}
-                                                    {acc.branchName && (
-                                                        <div className="flex items-center justify-between text-muted-foreground">
-                                                            <span>Branch:</span>
-                                                            <span className="font-semibold text-foreground">{acc.branchName}</span>
-                                                        </div>
-                                                    )}
-                                                    {acc.routingNumber && (
-                                                        <div className="flex items-center justify-between rounded-md bg-background/60 p-1.5 border border-border/50 mt-1">
-                                                            <div>
-                                                                <span className="text-[9px] uppercase text-muted-foreground font-bold block">Routing Number</span>
-                                                                <span className="font-mono font-bold text-foreground text-xs">{acc.routingNumber}</span>
-                                                            </div>
-                                                            <Button
-                                                                type="button"
-                                                                size="sm"
-                                                                variant="outline"
-                                                                onClick={() => handleCopy(acc.routingNumber, 'Routing number', `${acc.id}-routing`)}
-                                                                className={`h-6 px-2 text-[10px] font-semibold ${
-                                                                    routingCopied ? 'border-emerald-500 text-emerald-600' : ''
-                                                                }`}
-                                                            >
-                                                                {routingCopied ? (
-                                                                    <>
-                                                                        <Check className="size-2.5 mr-1" /> Copied
-                                                                    </>
-                                                                ) : (
-                                                                    <>
-                                                                        <Copy className="size-2.5 mr-1" /> Copy Routing
-                                                                    </>
-                                                                )}
-                                                            </Button>
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        ) : subscription.payment_instructions ? (
-                            <div className="whitespace-pre-line text-foreground/90 bg-slate-50 dark:bg-slate-900/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 font-mono text-xs leading-relaxed">
-                                {subscription.payment_instructions}
-                            </div>
-                        ) : (
-                            <div className="text-muted-foreground text-xs p-4 rounded-xl border border-dashed border-slate-300 dark:border-slate-700">
-                                Send subscription payment to the SuperAdmin accounts and upload screenshot receipt above.
-                            </div>
-                        )}
-
-                        {/* General Notes */}
-                        {parsedInstructions.generalNotes.length > 0 && (
-                            <div className="rounded-xl bg-slate-100/70 dark:bg-slate-900/60 p-3 border border-slate-200 dark:border-slate-800 text-xs space-y-1">
-                                <span className="text-[10px] uppercase font-bold text-muted-foreground block">Additional Payment Notes:</span>
-                                {parsedInstructions.generalNotes.map((note, nIdx) => (
-                                    <p key={nIdx} className="text-muted-foreground text-[11px] leading-relaxed">
-                                        {note}
-                                    </p>
-                                ))}
-                            </div>
-                        )}
-
-                        <div className="rounded-xl bg-blue-50/60 dark:bg-blue-950/30 p-3 border border-blue-200/60 dark:border-blue-900/40 text-[11px] text-blue-900 dark:text-blue-200 space-y-1">
-                            <p className="font-semibold flex items-center gap-1.5">
-                                <ShieldCheck className="size-3.5 text-blue-600 dark:text-blue-400" /> Fast Verification
-                            </p>
-                            <p className="text-muted-foreground leading-tight">
-                                Enter the exact Transaction ID (TrxID) and upload a receipt screenshot so the admin can reconcile payments immediately.
-                            </p>
-                        </div>
-                    </div>
-
-                    {/* Support Contact Card */}
-                    <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-card shadow-sm p-5 space-y-3">
-                        <div className="flex items-center gap-2 pb-2 border-b border-slate-200 dark:border-slate-800">
-                            <div className="flex size-7 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-400">
-                                <HelpCircle className="size-4" />
-                            </div>
-                            <h3 className="text-sm font-bold text-foreground">Billing Support Helpline</h3>
-                        </div>
-
-                        <div className="space-y-2.5 text-xs">
-                            {subscription.superadmin_contact?.name && (
-                                <div className="flex items-center justify-between">
-                                    <span className="text-muted-foreground">Admin Officer:</span>
-                                    <span className="font-bold text-foreground">{subscription.superadmin_contact.name}</span>
-                                </div>
-                            )}
-                            {subscription.superadmin_contact?.phone && (
-                                <div className="flex items-center justify-between">
-                                    <span className="text-muted-foreground flex items-center gap-1.5">
-                                        <Phone className="size-3.5 text-primary" /> Hotline / WhatsApp:
-                                    </span>
-                                    <a
-                                        href={`tel:${subscription.superadmin_contact.phone}`}
-                                        className="font-extrabold text-primary hover:underline"
-                                    >
-                                        {subscription.superadmin_contact.phone}
-                                    </a>
-                                </div>
-                            )}
-                            {subscription.superadmin_contact?.email && (
-                                <div className="flex items-center justify-between">
-                                    <span className="text-muted-foreground flex items-center gap-1.5">
-                                        <Mail className="size-3.5 text-primary" /> Email:
-                                    </span>
-                                    <a
-                                        href={`mailto:${subscription.superadmin_contact.email}`}
-                                        className="font-medium text-primary hover:underline truncate max-w-[180px]"
-                                    >
-                                        {subscription.superadmin_contact.email}
-                                    </a>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                </div>
-            </div>
+                </DialogContent>
+            </Dialog>
 
             {/* Complete Payment & Transaction History Table */}
             <div className="rounded-2xl border border-slate-200 dark:border-slate-800 bg-card shadow-sm overflow-hidden">

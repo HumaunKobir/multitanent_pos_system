@@ -24,6 +24,26 @@ test('branch panel user can view subscription and billing page', function () {
         'subscription_expires_at' => '2026-09-25',
     ]);
 
+    $p1 = BranchSubscriptionPayment::create([
+        'branch_id' => $branch->id,
+        'duration_days' => 30,
+        'amount' => 1800,
+        'payment_method' => 'bkash',
+        'transaction_reference' => 'TRX-1',
+        'status' => 'approved',
+        'paid_at' => '2026-08-01',
+    ]);
+
+    $p2 = BranchSubscriptionPayment::create([
+        'branch_id' => $branch->id,
+        'duration_days' => 30,
+        'amount' => 1800,
+        'payment_method' => 'nagad',
+        'transaction_reference' => 'TRX-2',
+        'status' => 'pending',
+        'paid_at' => '2026-09-01',
+    ]);
+
     $user = User::factory()->create(['branch_id' => $branch->id]);
 
     $response = $this->actingAs($user)
@@ -34,7 +54,9 @@ test('branch panel user can view subscription and billing page', function () {
             ->component('branch-panel/subscription/index')
             ->has('branch')
             ->has('subscription')
-            ->has('payments')
+            ->has('payments', 2)
+            ->where('payments.0.id', $p2->id)
+            ->where('payments.1.id', $p1->id)
             ->has('paymentMethods')
         );
 });

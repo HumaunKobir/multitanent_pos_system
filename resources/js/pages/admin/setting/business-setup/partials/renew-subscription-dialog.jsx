@@ -63,7 +63,9 @@ export default function RenewSubscriptionDialog({
     const pendingBillsCount = isOverdue && cycleDays > 0 ? Math.max(1, Math.ceil(overdueDays / cycleDays)) : 0;
     const totalOverdueAmount = pendingBillsCount * feePerCycle;
 
-    const latestPayment = branch.latest_payment || null;
+    const pendingPayment = (sub.has_pending_payment && sub.pending_payment)
+        ? sub.pending_payment
+        : (branch.latest_payment?.status === 'pending' ? branch.latest_payment : null);
 
     const [selectedCycles, setSelectedCycles] = useState(1);
     const [previewUrl, setPreviewUrl] = useState(null);
@@ -72,7 +74,7 @@ export default function RenewSubscriptionDialog({
     const fileInputRef = useRef(null);
 
     const { data, setData, post, processing, errors, reset } = useForm({
-        pending_payment_id: latestPayment?.id || null,
+        pending_payment_id: pendingPayment?.id || null,
         duration_days: String(cycleDays),
         amount: String(feePerCycle),
         payment_method: 'cash',
@@ -89,26 +91,40 @@ export default function RenewSubscriptionDialog({
             setSelectedCycles(initialCycles);
             setPreviewUrl(null);
 
-            const initialAmount = latestPayment?.amount ? String(latestPayment.amount) : String(initialCycles * feePerCycle);
-            const initialMethod = latestPayment?.payment_method || 'cash';
-            const initialTrx = latestPayment?.transaction_reference || '';
-            const initialPaidAt = latestPayment?.paid_at || new Date().toISOString().split('T')[0];
-            const initialNotes = latestPayment?.notes || '';
-            const existingPath = latestPayment?.attachment_path || '';
+            if (pendingPayment) {
+                const initialAmount = pendingPayment.amount ? String(pendingPayment.amount) : String(initialCycles * feePerCycle);
+                const initialMethod = pendingPayment.payment_method || 'bkash';
+                const initialTrx = pendingPayment.transaction_reference || '';
+                const initialPaidAt = pendingPayment.paid_at || new Date().toISOString().split('T')[0];
+                const initialNotes = pendingPayment.notes || '';
+                const existingPath = pendingPayment.attachment_path || '';
 
-            setData({
-                pending_payment_id: latestPayment?.id || null,
-                duration_days: String(initialCycles * cycleDays),
-                amount: initialAmount,
-                payment_method: initialMethod,
-                transaction_reference: initialTrx,
-                paid_at: initialPaidAt,
-                notes: initialNotes,
-                attachment: null,
-                existing_attachment_path: existingPath,
-            });
+                setData({
+                    pending_payment_id: pendingPayment.id,
+                    duration_days: String(initialCycles * cycleDays),
+                    amount: initialAmount,
+                    payment_method: initialMethod,
+                    transaction_reference: initialTrx,
+                    paid_at: initialPaidAt,
+                    notes: initialNotes,
+                    attachment: null,
+                    existing_attachment_path: existingPath,
+                });
+            } else {
+                setData({
+                    pending_payment_id: null,
+                    duration_days: String(initialCycles * cycleDays),
+                    amount: String(initialCycles * feePerCycle),
+                    payment_method: 'cash',
+                    transaction_reference: '',
+                    paid_at: new Date().toISOString().split('T')[0],
+                    notes: '',
+                    attachment: null,
+                    existing_attachment_path: '',
+                });
+            }
         }
-    }, [open, branch, cycleDays, feePerCycle, latestPayment]);
+    }, [open, branch, cycleDays, feePerCycle, pendingPayment?.id]);
 
     // Live preview calculation of new extended expiry date
     const extensionPreview = useMemo(() => {
@@ -214,35 +230,29 @@ export default function RenewSubscriptionDialog({
                 </DialogHeader>
 
                 <form onSubmit={handleSubmit} className="space-y-4 pt-2">
-                    {/* Client Submitted Payment Details & Screenshot (If available) */}
-                    {latestPayment && (latestPayment.attachment_url || latestPayment.transaction_reference || latestPayment.notes || latestPayment.status === 'pending') && (
-                        <div className={`rounded-xl border p-3.5 space-y-3 shadow-2xs ${
-                            latestPayment.status === 'pending'
-                                ? 'border-amber-300 dark:border-amber-700/60 bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent'
-                                : 'border-blue-200 dark:border-blue-900/60 bg-blue-50/70 dark:bg-blue-950/30'
-                        }`}>
+                    {/* Client Submitted Payment Details & Screenshot (ONLY shown if there is a pending payment awaiting approval) */}
+                    {pendingPayment && (
+                        <div className="rounded-xl border border-amber-300 dark:border-amber-700/60 bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-transparent p-3.5 space-y-3 shadow-2xs">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-1.5 font-bold text-xs text-foreground">
-                                    <Receipt className="size-4 text-primary" />
+                                    <Receipt className="size-4 text-amber-600 dark:text-amber-400" />
                                     <span>Client Submitted Payment Receipt</span>
-                                    {latestPayment.status === 'pending' && (
-                                        <Badge className="bg-amber-500 text-white font-bold text-[10px] px-2 py-0 animate-pulse">
-                                            Needs Approval
-                                        </Badge>
-                                    )}
+                                    <Badge className="bg-amber-500 text-white font-bold text-[10px] px-2 py-0 animate-pulse">
+                                        Needs Approval
+                                    </Badge>
                                 </div>
                                 <Badge className="bg-primary text-primary-foreground text-[10px] px-2 py-0 font-bold uppercase">
-                                    {latestPayment.payment_method}
+                                    {pendingPayment.payment_method}
                                 </Badge>
                             </div>
 
                             <div className="flex items-start gap-3">
-                                {latestPayment.attachment_url ? (
+                                {pendingPayment.attachment_url ? (
                                     <div className="relative group shrink-0">
                                         <img
-                                            src={latestPayment.attachment_url}
+                                            src={pendingPayment.attachment_url}
                                             alt="Submitted Receipt"
-                                            className="size-16 rounded-lg object-cover border border-blue-200 dark:border-blue-800 shadow-xs cursor-pointer hover:opacity-90 transition-opacity"
+                                            className="size-16 rounded-lg object-cover border border-amber-200 dark:border-amber-800 shadow-xs cursor-pointer hover:opacity-90 transition-opacity bg-white dark:bg-slate-900"
                                             onClick={() => setShowReceiptViewer(true)}
                                         />
                                         <button
@@ -254,21 +264,21 @@ export default function RenewSubscriptionDialog({
                                         </button>
                                     </div>
                                 ) : (
-                                    <div className="size-16 rounded-lg bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 flex items-center justify-center shrink-0">
+                                    <div className="size-16 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 flex items-center justify-center shrink-0">
                                         <FileText className="size-7" />
                                     </div>
                                 )}
 
                                 <div className="flex-1 min-w-0 space-y-1 text-xs">
-                                    {latestPayment.transaction_reference && (
+                                    {pendingPayment.transaction_reference && (
                                         <div className="flex items-center justify-between">
                                             <span className="text-muted-foreground text-[11px]">Trx / Ref ID:</span>
                                             <div className="flex items-center gap-1">
-                                                <span className="font-mono font-extrabold text-foreground text-xs">{latestPayment.transaction_reference}</span>
+                                                <span className="font-mono font-extrabold text-foreground text-xs">{pendingPayment.transaction_reference}</span>
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        navigator.clipboard.writeText(latestPayment.transaction_reference);
+                                                        navigator.clipboard.writeText(pendingPayment.transaction_reference);
                                                         setCopiedTrx(true);
                                                         setTimeout(() => setCopiedTrx(false), 2000);
                                                     }}
@@ -284,27 +294,27 @@ export default function RenewSubscriptionDialog({
                                     <div className="flex items-center justify-between text-[11px]">
                                         <span className="text-muted-foreground">Submitted Amount:</span>
                                         <span className="font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                                            ৳{Number(latestPayment.amount).toFixed(2)}
+                                            ৳{Number(pendingPayment.amount).toFixed(2)}
                                         </span>
                                     </div>
 
-                                    {latestPayment.paid_at && (
+                                    {pendingPayment.paid_at && (
                                         <div className="flex items-center justify-between text-[11px]">
                                             <span className="text-muted-foreground">Paid Date:</span>
-                                            <span className="font-medium text-foreground">{latestPayment.paid_at}</span>
+                                            <span className="font-medium text-foreground">{pendingPayment.paid_at}</span>
                                         </div>
                                     )}
 
-                                    {latestPayment.notes && (
-                                        <div className="text-[11px] text-muted-foreground pt-0.5 border-t border-blue-200/50 dark:border-blue-900/40">
-                                            <span className="font-semibold text-foreground">Memo:</span> {latestPayment.notes}
+                                    {pendingPayment.notes && (
+                                        <div className="text-[11px] text-muted-foreground pt-0.5 border-t border-amber-200/50 dark:border-amber-900/40">
+                                            <span className="font-semibold text-foreground">Memo:</span> {pendingPayment.notes}
                                         </div>
                                     )}
                                 </div>
                             </div>
 
-                            {latestPayment.attachment_url && (
-                                <div className="flex items-center justify-between pt-1 border-t border-blue-200/50 dark:border-blue-900/40 text-[11px]">
+                            {pendingPayment.attachment_url && (
+                                <div className="flex items-center justify-between pt-1 border-t border-amber-200/50 dark:border-amber-900/40 text-[11px]">
                                     <button
                                         type="button"
                                         onClick={() => setShowReceiptViewer(true)}
@@ -313,7 +323,7 @@ export default function RenewSubscriptionDialog({
                                         <Eye className="size-3.5" /> Open / Inspect Receipt Screenshot
                                     </button>
                                     <span className="text-[10px] text-muted-foreground">
-                                        Recorded by: {latestPayment.recorded_by} ({latestPayment.created_at || 'Recent'})
+                                        Recorded: {pendingPayment.created_at || 'Recent'}
                                     </span>
                                 </div>
                             )}
@@ -631,7 +641,7 @@ export default function RenewSubscriptionDialog({
                             disabled={processing}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold px-5 shadow-xs"
                         >
-                            {processing ? 'Processing...' : latestPayment?.status === 'pending' ? 'Approve & Confirm Renewal' : 'Confirm & Renew'}
+                            {processing ? 'Processing...' : pendingPayment ? 'Approve & Confirm Renewal' : 'Confirm & Renew'}
                         </Button>
                     </DialogFooter>
                 </form>
@@ -639,33 +649,33 @@ export default function RenewSubscriptionDialog({
         </Dialog>
 
         {/* Full Resolution Receipt Viewer Modal */}
-        {latestPayment?.attachment_url && (
+        {pendingPayment?.attachment_url && (
             <Dialog open={showReceiptViewer} onOpenChange={setShowReceiptViewer}>
-                <DialogContent className="max-w-2xl p-4 border-slate-300 dark:border-slate-700 shadow-2xl">
+                <DialogContent className="max-w-2xl p-4 border-slate-300 dark:border-slate-700 shadow-2xl z-[100]">
                     <DialogHeader className="pb-2 border-b">
                         <DialogTitle className="flex items-center gap-2 text-sm font-bold">
                             <ImageIcon className="size-4 text-primary" />
                             Submitted Receipt / Deposit Slip — {branch.name}
                         </DialogTitle>
                         <DialogDescription className="text-xs text-muted-foreground">
-                            TrxID: <span className="font-mono font-bold text-foreground">{latestPayment.transaction_reference || 'N/A'}</span> • Method: <span className="font-bold uppercase text-foreground">{latestPayment.payment_method}</span> • Amount: <span className="font-extrabold text-emerald-600">৳{Number(latestPayment.amount).toFixed(2)}</span>
+                            TrxID: <span className="font-mono font-bold text-foreground">{pendingPayment.transaction_reference || 'N/A'}</span> • Method: <span className="font-bold uppercase text-foreground">{pendingPayment.payment_method}</span> • Amount: <span className="font-extrabold text-emerald-600">৳{Number(pendingPayment.amount).toFixed(2)}</span>
                         </DialogDescription>
                     </DialogHeader>
 
                     <div className="py-2 max-h-[70vh] overflow-auto flex items-center justify-center bg-slate-950/5 rounded-lg p-2">
-                        {latestPayment.attachment_url.toLowerCase().endsWith('.pdf') ? (
+                        {pendingPayment.attachment_url.toLowerCase().endsWith('.pdf') ? (
                             <div className="text-center p-8 space-y-3">
                                 <FileText className="size-16 text-rose-500 mx-auto" />
                                 <p className="text-xs font-semibold">PDF Receipt Document Attached</p>
                                 <Button asChild size="sm">
-                                    <a href={latestPayment.attachment_url} target="_blank" rel="noreferrer">
+                                    <a href={pendingPayment.attachment_url} target="_blank" rel="noreferrer">
                                         Open PDF in New Window <ExternalLink className="size-3.5 ml-1" />
                                     </a>
                                 </Button>
                             </div>
                         ) : (
                             <img
-                                src={latestPayment.attachment_url}
+                                src={pendingPayment.attachment_url}
                                 alt="Payment Receipt"
                                 className="max-h-[65vh] w-auto rounded-md object-contain border shadow-sm"
                             />
@@ -682,7 +692,7 @@ export default function RenewSubscriptionDialog({
                             Close Viewer
                         </Button>
                         <Button asChild size="sm" variant="secondary">
-                            <a href={latestPayment.attachment_url} target="_blank" rel="noreferrer">
+                            <a href={pendingPayment.attachment_url} target="_blank" rel="noreferrer">
                                 Open Original <ExternalLink className="size-3.5 ml-1" />
                             </a>
                         </Button>

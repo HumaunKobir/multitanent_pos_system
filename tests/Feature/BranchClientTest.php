@@ -237,3 +237,65 @@ test('updating branch subscription configuration strictly preserves overdue expi
     expect($summary['is_overdue'])->toBeTrue();
     expect($summary['expires_at'])->toBe('2026-09-01');
 });
+
+test('approving pending payment clears pending receipt and new client submission shows up', function () {
+    $admin = branchClientSuperAdmin();
+    $branch = Branch::factory()->create([
+        'name' => 'Outlet Approval Flow',
+        'subscription_fee' => 2500,
+        'subscription_expires_at' => '2026-09-09',
+    ]);
+
+    // 1. Client submits a pending payment with receipt image
+    $pendingPayment = BranchSubscriptionPayment::create([
+        'branch_id' => $branch->id,
+        'amount' => 7500,
+        'payment_method' => 'bkash',
+        'status' => 'pending',
+        'transaction_reference' => 'BKASH-PENDING-99',
+        'paid_at' => '2026-09-08',
+        'attachment_path' => 'subscription-receipts/sample.png',
+    ]);
+
+    expect($pendingPayment->attachment_url)->toBe('/storage/subscription-receipts/sample.png');
+
+    $summaryWithPending = app(\App\Services\BranchSubscriptionService::class)->getSubscriptionSummary($branch);
+    expect($summaryWithPending['has_pending_payment'])->toBeTrue();
+    expect($summaryWithPending['pending_payment'])->not->toBeNull();
+    expect($summaryWithPending['pending_payment']['transaction_reference'])->toBe('BKASH-PENDING-99');
+
+    // 2. Admin approves and confirms renewal
+    $this->actingAs($admin)
+        ->post(route('branch-clients.renew', $branch->id), [
+            'pending_payment_id' => $pendingPayment->id,
+            'duration_days' => 6,
+            'amount' => 7500,
+            'payment_method' => 'bkash',
+            'transaction_reference' => 'BKASH-PENDING-99',
+            'paid_at' => '2026-09-08',
+        ]);
+
+    $pendingPayment->refresh();
+    expect($pendingPayment->status)->toBe('approved');
+
+    // 3. After confirmation, pending payment is cleared
+    $summaryAfterApproval = app(\App\Services\BranchSubscriptionService::class)->getSubscriptionSummary($branch);
+    expect($summaryAfterApproval['has_pending_payment'])->toBeFalse();
+    expect($summaryAfterApproval['pending_payment'])->toBeNull();
+
+    // 4. Client submits another new payment later
+    $newPayment = BranchSubscriptionPayment::create([
+        'branch_id' => $branch->id,
+        'amount' => 2500,
+        'payment_method' => 'nagad',
+        'status' => 'pending',
+        'transaction_reference' => 'NAGAD-NEW-1122',
+        'paid_at' => '2026-09-15',
+        'attachment_path' => 'subscription-receipts/new_receipt.png',
+    ]);
+
+    $summaryWithNew = app(\App\Services\BranchSubscriptionService::class)->getSubscriptionSummary($branch);
+    expect($summaryWithNew['has_pending_payment'])->toBeTrue();
+    expect($summaryWithNew['pending_payment']['transaction_reference'])->toBe('NAGAD-NEW-1122');
+    expect($summaryWithNew['pending_payment']['payment_method'])->toBe('nagad');
+});

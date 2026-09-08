@@ -40,7 +40,7 @@ class BranchSubscriptionPayment extends Model
 
     public function getAttachmentUrlAttribute(): ?string
     {
-        return $this->attachment_path ? \Illuminate\Support\Facades\Storage::disk('public')->url($this->attachment_path) : null;
+        return $this->attachment_path ? \App\Support\StorageUrl::public($this->attachment_path) : null;
     }
 
     public function branch(): BelongsTo

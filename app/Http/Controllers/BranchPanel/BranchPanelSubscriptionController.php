@@ -4,8 +4,8 @@ namespace App\Http\Controllers\BranchPanel;
 
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
+use App\Services\BranchPaymentAccountService;
 use App\Services\BranchSubscriptionService;
-use App\Support\BusinessSettings;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -49,7 +49,7 @@ class BranchPanelSubscriptionController extends Controller
                 'created_at' => $p->created_at?->format('Y-m-d H:i'),
             ]);
 
-        $paymentMethods = \App\Services\BranchPaymentAccountService::listForBranch($branchId)
+        $paymentMethods = BranchPaymentAccountService::listForBranch($branchId)
             ->map(fn ($acc) => [
                 'id' => $acc->id,
                 'code' => $acc->code,
@@ -96,11 +96,27 @@ class BranchPanelSubscriptionController extends Controller
             'duration_days' => ['required', 'integer', 'min:1', 'max:3650'],
             'amount' => ['required', 'numeric', 'min:0'],
             'payment_method' => ['required', 'string', 'max:50'],
+            'payment_account_id' => ['nullable', 'integer'],
             'transaction_reference' => ['nullable', 'string', 'max:191'],
             'paid_at' => ['required', 'date'],
             'notes' => ['nullable', 'string', 'max:2000'],
             'attachment' => ['nullable', 'file', 'mimes:jpeg,png,jpg,webp,pdf', 'max:10240'],
         ]);
+
+        if (! empty($validated['payment_account_id'])) {
+            abort_unless(
+                BranchPaymentAccountService::isValid((int) $validated['payment_account_id'], $branchId),
+                422,
+                'Invalid payment channel account for this branch.',
+            );
+        } else {
+            $matched = BranchPaymentAccountService::listForBranch($branchId)
+                ->first(fn ($acc) => $acc->name === $validated['payment_method'] || $acc->code === $validated['payment_method']);
+
+            if ($matched !== null) {
+                $validated['payment_account_id'] = $matched->id;
+            }
+        }
 
         $this->subscriptionService->submitPayment($branch, $validated, $user);
 

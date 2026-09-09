@@ -6,12 +6,13 @@ use App\Models\Branch;
 use App\Models\BranchSubscriptionPayment;
 use App\Models\User;
 use App\Support\BusinessSettings;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Carbon;
 
 class BranchSubscriptionService
 {
     public function __construct(
-        protected BranchSubscriptionAccountingService $accounting = new BranchSubscriptionAccountingService(),
+        protected BranchSubscriptionAccountingService $accounting,
     ) {}
 
     /**
@@ -354,7 +355,7 @@ class BranchSubscriptionService
         $paidAt = $data['paid_at'] ?? now()->toDateString();
         $attachmentPath = null;
 
-        if (isset($data['attachment']) && $data['attachment'] instanceof \Illuminate\Http\UploadedFile) {
+        if (isset($data['attachment']) && $data['attachment'] instanceof UploadedFile) {
             $attachmentPath = $data['attachment']->store('subscription-receipts', 'public');
         } elseif (isset($data['attachment_path']) && is_string($data['attachment_path'])) {
             $attachmentPath = $data['attachment_path'];
@@ -371,6 +372,7 @@ class BranchSubscriptionService
             'branch_id' => $branch->id,
             'amount' => $amount,
             'payment_method' => $paymentMethod,
+            'payment_account_id' => isset($data['payment_account_id']) ? (int) $data['payment_account_id'] : null,
             'status' => 'pending',
             'transaction_reference' => $transactionReference,
             'billing_period_starts_at' => $periodStartsAt,
@@ -392,12 +394,13 @@ class BranchSubscriptionService
         $durationDays = (int) ($data['duration_days'] ?? 30);
         $amount = (float) ($data['amount'] ?? ($branch->subscription_fee ?? BusinessSettings::getFloat('subscription_default_fee', 1500)));
         $paymentMethod = $data['payment_method'] ?? 'cash';
+        $paymentAccountId = isset($data['payment_account_id']) ? (int) $data['payment_account_id'] : null;
         $transactionReference = $data['transaction_reference'] ?? null;
         $notes = $data['notes'] ?? null;
         $paidAt = $data['paid_at'] ?? now()->toDateString();
         $attachmentPath = null;
 
-        if (isset($data['attachment']) && $data['attachment'] instanceof \Illuminate\Http\UploadedFile) {
+        if (isset($data['attachment']) && $data['attachment'] instanceof UploadedFile) {
             $attachmentPath = $data['attachment']->store('subscription-receipts', 'public');
         } elseif (! empty($data['existing_attachment_path']) && is_string($data['existing_attachment_path'])) {
             $attachmentPath = $data['existing_attachment_path'];
@@ -435,7 +438,8 @@ class BranchSubscriptionService
         if ($pendingPayment) {
             $pendingPayment->update([
                 'amount' => $amount,
-                'payment_method' => $paymentMethod,
+                'payment_method' => $paymentMethod ?: $pendingPayment->payment_method,
+                'payment_account_id' => $paymentAccountId ?: $pendingPayment->payment_account_id,
                 'status' => 'approved',
                 'transaction_reference' => $transactionReference ?: $pendingPayment->transaction_reference,
                 'billing_period_starts_at' => $periodStartsAt,
@@ -446,7 +450,7 @@ class BranchSubscriptionService
                 'attachment_path' => $attachmentPath ?: $pendingPayment->attachment_path,
             ]);
 
-            $this->accounting->recordPaymentSettlement($pendingPayment, $recordedBy);
+            $this->accounting->recordPaymentSettlement($pendingPayment->fresh(), $recordedBy);
 
             return $pendingPayment;
         }
@@ -455,6 +459,7 @@ class BranchSubscriptionService
             'branch_id' => $branch->id,
             'amount' => $amount,
             'payment_method' => $paymentMethod,
+            'payment_account_id' => $paymentAccountId,
             'status' => 'approved',
             'transaction_reference' => $transactionReference,
             'billing_period_starts_at' => $periodStartsAt,
@@ -515,4 +520,3 @@ class BranchSubscriptionService
         };
     }
 }
-

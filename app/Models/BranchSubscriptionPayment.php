@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\StorageUrl;
 use App\Traits\UsesCentralConnection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -14,6 +15,7 @@ class BranchSubscriptionPayment extends Model
         'branch_id',
         'amount',
         'payment_method',
+        'payment_account_id',
         'status',
         'transaction_reference',
         'billing_period_starts_at',
@@ -40,7 +42,7 @@ class BranchSubscriptionPayment extends Model
 
     public function getAttachmentUrlAttribute(): ?string
     {
-        return $this->attachment_path ? \App\Support\StorageUrl::public($this->attachment_path) : null;
+        return $this->attachment_path ? StorageUrl::public($this->attachment_path) : null;
     }
 
     public function branch(): BelongsTo

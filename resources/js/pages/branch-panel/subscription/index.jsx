@@ -341,6 +341,7 @@ export default function BranchSubscriptionIndex({
         duration_days: String((isOverdue && pendingBillsCount > 0 ? pendingBillsCount : 1) * cycleDays),
         amount: String((isOverdue && pendingBillsCount > 0 ? pendingBillsCount : 1) * feePerCycle),
         payment_method: defaultPaymentMethod,
+        payment_account_id: paymentMethods[0]?.id ? String(paymentMethods[0].id) : '',
         transaction_reference: '',
         paid_at: new Date().toISOString().split('T')[0],
         notes: '',
@@ -348,8 +349,16 @@ export default function BranchSubscriptionIndex({
     });
 
     useEffect(() => {
-        if (!data.payment_method && paymentMethods.length > 0) {
+        if (paymentMethods.length === 0) {
+            return;
+        }
+
+        if (!data.payment_method) {
             setData('payment_method', paymentMethods[0].value);
+        }
+
+        if (!data.payment_account_id && paymentMethods[0]?.id) {
+            setData('payment_account_id', String(paymentMethods[0].id));
         }
     }, [paymentMethods]);
 
@@ -1145,14 +1154,19 @@ export default function BranchSubscriptionIndex({
                             </label>
                             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                                 {paymentMethods.map((pm) => {
-                                    const isSelected = data.payment_method === pm.value || data.payment_method === pm.label;
+                                    const isSelected = pm.id
+                                        ? String(data.payment_account_id) === String(pm.id)
+                                        : data.payment_method === pm.value || data.payment_method === pm.label;
                                     const style = getChannelStyle(pm.value || pm.label);
 
                                     return (
                                         <button
-                                            key={pm.value || pm.id}
+                                            key={pm.id || pm.value}
                                             type="button"
-                                            onClick={() => setData('payment_method', pm.value)}
+                                            onClick={() => {
+                                                setData('payment_method', pm.value);
+                                                setData('payment_account_id', pm.id ? String(pm.id) : '');
+                                            }}
                                             className={`relative flex items-center gap-2 rounded-xl p-2 text-left transition-all border ${
                                                 isSelected
                                                     ? 'border-primary bg-primary/10 ring-2 ring-primary/20 shadow-xs dark:bg-primary/15'
@@ -1183,6 +1197,9 @@ export default function BranchSubscriptionIndex({
                             </div>
                             {errors.payment_method && (
                                 <p className="text-[11px] text-rose-500">{errors.payment_method}</p>
+                            )}
+                            {errors.payment_account_id && (
+                                <p className="text-[11px] text-rose-500">{errors.payment_account_id}</p>
                             )}
                         </div>
 

@@ -1,20 +1,33 @@
 <?php
 
+use App\Enums\AccountType;
 use App\Enums\SystemAccountKey;
 use App\Models\Branch;
 use App\Models\BranchSubscriptionPayment;
-use App\Models\ChartOfAccount;
 use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\BranchSubscriptionAccountingService;
 use App\Services\BranchSubscriptionService;
 use App\Services\SystemAccountService;
+use App\Services\TenantDatabaseManager;
+use App\Services\TenantProvisioner;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 
 beforeEach(function () {
     test()->artisan('permissions:sync');
+
+    if (
+        Schema::hasTable('branch_subscription_payments')
+        && ! Schema::hasColumn('branch_subscription_payments', 'payment_account_id')
+    ) {
+        Schema::table('branch_subscription_payments', function ($table) {
+            $table->unsignedBigInteger('payment_account_id')->nullable();
+        });
+    }
 
     Branch::firstOrCreate(['id' => Branch::MAIN_BRANCH_ID], [
         'name' => Branch::MAIN_BRANCH_NAME,
@@ -34,19 +47,19 @@ test('system accounts for subscription exist on branch and superadmin charts', f
     $branchExpense = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
 
     expect($branchPayable)->not->toBeNull();
-    expect($branchPayable->type->value)->toBe(\App\Enums\AccountType::Liability->value);
+    expect($branchPayable->type->value)->toBe(AccountType::Liability->value);
     expect($branchPayable->source_type)->toBe(Branch::class);
     expect((int) $branchPayable->source_id)->toBe($branch->id);
 
     expect($branchExpense)->not->toBeNull();
-    expect($branchExpense->type->value)->toBe(\App\Enums\AccountType::Expenses->value);
+    expect($branchExpense->type->value)->toBe(AccountType::Expenses->value);
     expect($branchExpense->source_type)->toBe(Branch::class);
     expect((int) $branchExpense->source_id)->toBe($branch->id);
 
     // SuperAdmin global panel has subscription income
     $superadminIncome = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
     expect($superadminIncome)->not->toBeNull();
-    expect($superadminIncome->type->value)->toBe(\App\Enums\AccountType::Income->value);
+    expect($superadminIncome->type->value)->toBe(AccountType::Income->value);
     expect($superadminIncome->source_type)->toBeNull();
     expect($superadminIncome->source_id)->toBeNull();
 });
@@ -125,7 +138,8 @@ test('superadmin approving payment settles branch payable and records superadmin
     $this->actingAs($clientUser)->post(route('branch-panel.subscription.pay'), [
         'duration_days' => 30,
         'amount' => 1500,
-        'payment_method' => 'bkash',
+        'payment_method' => 'bKash',
+        'payment_account_id' => $branchBkash->id,
         'transaction_reference' => 'BKASH-ACC-TRX-1234',
         'paid_at' => '2026-09-09',
         'notes' => 'Subscription monthly renewal',
@@ -133,7 +147,8 @@ test('superadmin approving payment settles branch payable and records superadmin
     ]);
 
     $pendingPayment = BranchSubscriptionPayment::where('branch_id', $branch->id)->latest('id')->first();
-    expect($pendingPayment->status)->toBe('pending');
+    expect($pendingPayment->status)->toBe('pending')
+        ->and((int) $pendingPayment->payment_account_id)->toBe($branchBkash->id);
 
     // 3. SuperAdmin approves payment
     $admin = User::factory()->create(['branch_id' => null]);
@@ -239,4 +254,152 @@ test('superadmin direct renewal posts expense, decreases asset, clears payable, 
 
     // 6. SuperAdmin Client Subscription Receivables settled (net initial)
     expect((float) $superadminReceivable->fresh()->current_balance)->toBe($initialSuperadminReceivable);
+});
+
+test('payment account key maps rocket and bank to bank account', function () {
+    $service = app(BranchSubscriptionAccountingService::class);
+
+    expect($service->resolvePaymentAccountKey('Rocket')->value)->toBe(SystemAccountKey::BankAccount->value)
+        ->and($service->resolvePaymentAccountKey('Bank Transfer')->value)->toBe(SystemAccountKey::BankAccount->value)
+        ->and($service->resolvePaymentAccountKey('bkash')->value)->toBe(SystemAccountKey::Bkash->value);
+});
+
+test('settlement credits the selected payment_account_id on the client branch', function () {
+    $branch = Branch::factory()->create([
+        'name' => 'Branch Channel Pick',
+        'subscription_fee' => 1000,
+        'subscription_starts_at' => '2026-09-01',
+        'subscription_expires_at' => '2026-10-01',
+    ]);
+
+    SystemAccountService::seed(null);
+    SystemAccountService::seed($branch->id);
+
+    $cash = SystemAccountService::resolve(SystemAccountKey::CashInHand, $branch->id);
+    $nagad = SystemAccountService::resolve(SystemAccountKey::Nagad, $branch->id);
+
+    app(BranchSubscriptionService::class)->syncCycleAccrual($branch);
+
+    $payment = BranchSubscriptionPayment::create([
+        'branch_id' => $branch->id,
+        'amount' => 1000,
+        'payment_method' => 'Cash in Hand',
+        'payment_account_id' => $cash->id,
+        'status' => 'approved',
+        'transaction_reference' => 'CASH-SEL-1',
+        'billing_period_starts_at' => '2026-10-01',
+        'billing_period_ends_at' => '2026-10-31',
+        'paid_at' => '2026-09-09',
+    ]);
+
+    app(BranchSubscriptionAccountingService::class)->recordPaymentSettlement($payment);
+
+    expect((float) $cash->fresh()->current_balance)->toBe(-1000.0)
+        ->and((float) $nagad->fresh()->current_balance)->toBe(0.0)
+        ->and((float) SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id)->fresh()->current_balance)->toBe(0.0)
+        ->and((float) SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id)->fresh()->current_balance)->toBe(1000.0);
+});
+
+test('tenant aware settlement posts client transactions on the branch tenant database', function () {
+    try {
+        if (! in_array(config('database.connections.'.config('database.default').'.driver'), ['mysql', 'mariadb'], true)) {
+            $this->markTestSkipped('MySQL is required for tenant subscription posting.');
+        }
+        DB::connection()->getPdo();
+    } catch (Throwable) {
+        $this->markTestSkipped('MySQL is required for tenant subscription posting.');
+    }
+
+    if (! Schema::hasColumn('branches', 'database_name')) {
+        Schema::table('branches', function ($table) {
+            $table->string('database_name', 64)->nullable()->unique();
+        });
+    }
+
+    config([
+        'tenancy.enabled' => true,
+        'tenancy.central_connection' => config('database.default'),
+        'tenancy.tenant_connection' => 'tenant',
+        'tenancy.database_prefix' => 'tenant_sub_',
+    ]);
+
+    $provisioner = app(TenantProvisioner::class);
+    $manager = app(TenantDatabaseManager::class);
+
+    $main = Branch::query()->firstOrCreate(
+        ['name' => Branch::MAIN_BRANCH_NAME],
+        Branch::factory()->make(['name' => Branch::MAIN_BRANCH_NAME, 'subscription_status' => 'lifetime'])->toArray(),
+    );
+    $branch = Branch::factory()->create([
+        'name' => 'Sub Tenant '.fake()->unique()->numerify('####'),
+        'subscription_fee' => 800,
+        'subscription_starts_at' => '2026-09-01',
+        'subscription_expires_at' => '2026-10-01',
+    ]);
+
+    try {
+        $provisioner->provision($main);
+        $provisioner->provision($branch);
+        $main->refresh();
+        $branch->refresh();
+
+        $provisioner->usingBranch($main, fn () => SystemAccountService::seed(null));
+        $cashId = $provisioner->usingBranch($branch, function () use ($branch) {
+            SystemAccountService::seed($branch->id);
+
+            return SystemAccountService::resolve(SystemAccountKey::CashInHand, $branch->id)->id;
+        });
+
+        $payment = BranchSubscriptionPayment::create([
+            'branch_id' => $branch->id,
+            'amount' => 800,
+            'payment_method' => 'Cash in Hand',
+            'payment_account_id' => $cashId,
+            'status' => 'approved',
+            'transaction_reference' => 'TENANT-SUB-800',
+            'billing_period_starts_at' => '2026-10-01',
+            'billing_period_ends_at' => '2026-10-31',
+            'paid_at' => '2026-09-09',
+        ]);
+
+        app(BranchSubscriptionAccountingService::class)->recordPaymentSettlement($payment);
+
+        $clientPosted = $provisioner->usingBranch($branch, function () use ($payment, $branch) {
+            $expense = (float) SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id)->fresh()->current_balance;
+            $payable = (float) SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id)->fresh()->current_balance;
+            $cash = (float) SystemAccountService::resolve(SystemAccountKey::CashInHand, $branch->id)->fresh()->current_balance;
+            $settlementExists = Transaction::query()
+                ->where('source_type', BranchSubscriptionPayment::class)
+                ->where('source_id', $payment->id)
+                ->exists();
+
+            return compact('expense', 'payable', 'cash', 'settlementExists');
+        });
+
+        expect($clientPosted['settlementExists'])->toBeTrue()
+            ->and($clientPosted['expense'])->toBe(800.0)
+            ->and($clientPosted['payable'])->toBe(0.0)
+            ->and($clientPosted['cash'])->toBe(-800.0);
+    } finally {
+        foreach ([$branch, $main] as $item) {
+            if ($item->name === Branch::MAIN_BRANCH_NAME) {
+                $item->forceFill(['database_name' => null])->save();
+
+                continue;
+            }
+
+            if (filled($item->database_name)) {
+                try {
+                    $manager->dropDatabase($item->database_name);
+                } catch (Throwable) {
+                    //
+                }
+            }
+
+            $item->delete();
+        }
+
+        config(['tenancy.enabled' => false]);
+        DB::purge('tenant');
+    }
 });

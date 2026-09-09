@@ -106,14 +106,14 @@ export default function EditBranchSubscriptionDialog({
         subscription_notes: formData.subscription_notes !== '' ? formData.subscription_notes : null,
     }));
 
-    // Live preview calculation of expiry date based on Start Date + Duration / existing expiry
+    // Live preview calculation of expiry date based on Subscription Start Date + Duration
     const calculatedExpiry = useMemo(() => {
         if (data.subscription_plan === 'lifetime' || data.subscription_status === 'lifetime') {
             return { text: 'Unlimited Lifetime Access (No Expiry Date)', date: null, isLifetime: true };
         }
 
         let days = 30;
-        if (data.subscription_plan === 'monthly') days = 30;
+        if (data.subscription_plan === 'monthly' || ['basic', 'standard', 'premium', 'enterprise'].includes(data.subscription_plan)) days = 30;
         else if (data.subscription_plan === 'quarterly') days = 90;
         else if (data.subscription_plan === 'half_yearly') days = 180;
         else if (data.subscription_plan === 'yearly') days = 365;
@@ -122,26 +122,19 @@ export default function EditBranchSubscriptionDialog({
             days = parseInt(data.custom_cycle_days, 10) || 30;
         }
 
-        if (sub.expires_at) {
-            if (sub.is_overdue) {
-                return {
-                    text: `${sub.expires_at} (${sub.overdue_days}d overdue — dues remain until renewal) • Cycle: ${days}d`,
-                    date: sub.expires_at,
-                    days,
-                    isLifetime: false,
-                    isOverdue: true,
-                };
+        let start;
+        if (data.subscription_starts_at) {
+            const parts = data.subscription_starts_at.split('-');
+            if (parts.length === 3) {
+                start = new Date(parseInt(parts[0], 10), parseInt(parts[1], 10) - 1, parseInt(parts[2], 10));
+            } else {
+                start = new Date(data.subscription_starts_at);
             }
-            return {
-                text: `${sub.expires_at} (${sub.days_remaining}d remaining) • Cycle: ${days}d`,
-                date: sub.expires_at,
-                days,
-                isLifetime: false,
-                isOverdue: false,
-            };
+        } else {
+            start = new Date();
+            start.setHours(0, 0, 0, 0);
         }
 
-        const start = data.subscription_starts_at ? new Date(data.subscription_starts_at) : new Date();
         if (isNaN(start.getTime())) {
             return { text: 'Invalid Start Date', date: null, isLifetime: false };
         }
@@ -153,13 +146,32 @@ export default function EditBranchSubscriptionDialog({
         const dd = String(expDate.getDate()).padStart(2, '0');
         const formattedDate = `${yyyy}-${mm}-${dd}`;
 
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const expTime = new Date(expDate);
+        expTime.setHours(0, 0, 0, 0);
+        const diffDays = Math.round((expTime - today) / (1000 * 60 * 60 * 24));
+
+        if (diffDays < 0) {
+            const overdueDays = Math.abs(diffDays);
+            const billsCount = days > 0 ? Math.max(1, Math.ceil(overdueDays / days)) : 1;
+            return {
+                text: `${formattedDate} (${overdueDays}d overdue • ${billsCount} bill(s) pending) • Cycle: ${days}d`,
+                date: formattedDate,
+                days,
+                isLifetime: false,
+                isOverdue: true,
+            };
+        }
+
         return {
-            text: `${formattedDate} (${days} Days Total Validity)`,
+            text: `${formattedDate} (${diffDays}d remaining) • Cycle: ${days}d`,
             date: formattedDate,
             days,
             isLifetime: false,
+            isOverdue: false,
         };
-    }, [data.subscription_plan, data.subscription_status, data.subscription_starts_at, data.custom_cycle_days, sub]);
+    }, [data.subscription_plan, data.subscription_status, data.subscription_starts_at, data.custom_cycle_days]);
 
     const handleCycleChange = (val) => {
         let updatedStatus = data.subscription_status;

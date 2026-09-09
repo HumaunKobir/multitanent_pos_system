@@ -299,3 +299,61 @@ test('approving pending payment clears pending receipt and new client submission
     expect($summaryWithNew['pending_payment']['transaction_reference'])->toBe('NAGAD-NEW-1122');
     expect($summaryWithNew['pending_payment']['payment_method'])->toBe('nagad');
 });
+
+test('all billing cycles calculate expiry and due properly based on subscription starts at', function () {
+    $admin = branchClientSuperAdmin();
+    $branch = Branch::factory()->create([
+        'name' => 'Multi-Cycle Branch',
+        'subscription_fee' => 1500,
+    ]);
+
+    // Test Monthly (30 days) from 2026-08-01 -> Expiry 2026-08-31 (Overdue by 9 days as of 2026-09-09)
+    $this->actingAs($admin)
+        ->put(route('branch-clients.update', $branch->id), [
+            'subscription_plan' => 'monthly',
+            'subscription_status' => 'active',
+            'subscription_fee' => 1500,
+            'subscription_starts_at' => '2026-08-01',
+        ]);
+
+    $branch->refresh();
+    expect($branch->subscription_expires_at?->format('Y-m-d'))->toBe('2026-08-31');
+    $summary = app(\App\Services\BranchSubscriptionService::class)->getSubscriptionSummary($branch);
+    expect($summary['cycle_days'])->toBe(30);
+    expect($summary['is_overdue'])->toBeTrue();
+    expect($summary['pending_bills_count'])->toBe(1);
+    expect((float) $summary['total_overdue_fee'])->toBe(1500.0);
+
+    // Test Trial (14 days) from 2026-08-01 -> Expiry 2026-08-15 (Overdue by 25 days -> 2 pending bills)
+    $this->actingAs($admin)
+        ->put(route('branch-clients.update', $branch->id), [
+            'subscription_plan' => 'trial',
+            'subscription_status' => 'active',
+            'subscription_fee' => 1500,
+            'subscription_starts_at' => '2026-08-01',
+        ]);
+
+    $branch->refresh();
+    expect($branch->subscription_expires_at?->format('Y-m-d'))->toBe('2026-08-15');
+    $summaryTrial = app(\App\Services\BranchSubscriptionService::class)->getSubscriptionSummary($branch);
+    expect($summaryTrial['cycle_days'])->toBe(14);
+    expect($summaryTrial['is_overdue'])->toBeTrue();
+    expect($summaryTrial['pending_bills_count'])->toBe(2);
+    expect((float) $summaryTrial['total_overdue_fee'])->toBe(3000.0);
+
+    // Test Quarterly (90 days) from 2026-08-01 -> Expiry 2026-10-30 (Not overdue yet)
+    $this->actingAs($admin)
+        ->put(route('branch-clients.update', $branch->id), [
+            'subscription_plan' => 'quarterly',
+            'subscription_status' => 'active',
+            'subscription_fee' => 4500,
+            'subscription_starts_at' => '2026-08-01',
+        ]);
+
+    $branch->refresh();
+    expect($branch->subscription_expires_at?->format('Y-m-d'))->toBe('2026-10-30');
+    $summaryQuarterly = app(\App\Services\BranchSubscriptionService::class)->getSubscriptionSummary($branch);
+    expect($summaryQuarterly['cycle_days'])->toBe(90);
+    expect($summaryQuarterly['is_overdue'])->toBeFalse();
+    expect($summaryQuarterly['pending_bills_count'])->toBe(0);
+});

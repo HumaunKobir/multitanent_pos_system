@@ -144,11 +144,13 @@ class BranchSubscriptionService
 
         // Calculate based on expiry date
         $today = Carbon::today();
+        $cycleDays = $this->resolveCycleDays($branch);
+
         $expiryDate = $branch->subscription_expires_at ? Carbon::parse($branch->subscription_expires_at)->startOfDay() : null;
 
         if ($expiryDate === null) {
-            // Default 30 days active if not initialized
-            $expiryDate = $today->copy()->addDays(30);
+            $startDate = $branch->subscription_starts_at ? Carbon::parse($branch->subscription_starts_at)->startOfDay() : $today;
+            $expiryDate = $startDate->copy()->addDays($cycleDays ?: 30);
             $expiresAt = $expiryDate->format('Y-m-d');
         }
 
@@ -217,27 +219,15 @@ class BranchSubscriptionService
             }
         }
 
-        $cycle = $plan;
-        $cycleDays = match ($cycle) {
-            'monthly' => 30,
-            'quarterly' => 90,
-            'half_yearly' => 180,
-            'yearly' => 365,
-            'trial' => 14,
-            'lifetime' => null,
-            'custom_days' => $branch->custom_cycle_days !== null && $branch->custom_cycle_days > 0 ? (int) $branch->custom_cycle_days : 30,
-            default => BusinessSettings::getInt('subscription_billing_cycle_days', 30),
-        };
-
         $isSalesRestricted = $isSuspended || (! $isInGracePeriod && $isOverdue && in_array($overdueAction, ['restrict_sales', 'read_only', 'suspend_branch'], true));
         $isReadOnly = $isSuspended || (! $isInGracePeriod && $isOverdue && in_array($overdueAction, ['read_only', 'suspend_branch'], true));
 
-        $pendingBillsCount = ($isOverdue && $cycleDays > 0) ? (int) max(1, (int) ceil($overdueDays / $cycleDays)) : 0;
+        $pendingBillsCount = ($isOverdue && $cycleDays && $cycleDays > 0) ? (int) max(1, (int) ceil($overdueDays / $cycleDays)) : 0;
         $totalOverdueFee = $isOverdue ? ($pendingBillsCount * $fee) : 0.0;
 
         $planLabel = match ($plan) {
             'custom_days' => $cycleDays ? "Custom ({$cycleDays} Days)" : 'Custom Days',
-            'monthly' => 'Monthly (30 Days)',
+            'monthly', 'standard', 'basic', 'premium', 'enterprise' => 'Monthly (30 Days)',
             'quarterly' => 'Quarterly (90 Days)',
             'half_yearly' => 'Half-Yearly (180 Days)',
             'yearly' => 'Yearly (365 Days)',
@@ -326,14 +316,15 @@ class BranchSubscriptionService
 
         $cycleDays = BusinessSettings::getInt('subscription_billing_cycle_days', 30);
         $defaultFee = BusinessSettings::getFloat('subscription_default_fee', 1500);
+        $startDate = $branch->subscription_starts_at ? Carbon::parse($branch->subscription_starts_at) : now();
 
         $branch->update([
             'subscription_plan' => $branch->subscription_plan ?: 'standard',
             'subscription_status' => $branch->subscription_status ?: 'active',
             'subscription_fee' => $branch->subscription_fee !== null ? $branch->subscription_fee : $defaultFee,
-            'subscription_starts_at' => $branch->subscription_starts_at ?? now()->toDateString(),
-            'subscription_expires_at' => now()->addDays($cycleDays)->toDateString(),
-            'subscription_last_paid_at' => $branch->subscription_last_paid_at ?? now()->toDateString(),
+            'subscription_starts_at' => $startDate->toDateString(),
+            'subscription_expires_at' => $startDate->copy()->addDays($cycleDays)->toDateString(),
+            'subscription_last_paid_at' => $branch->subscription_last_paid_at ?? $startDate->toDateString(),
         ]);
 
         $this->syncCycleAccrual($branch);
@@ -555,12 +546,12 @@ class BranchSubscriptionService
         return true;
     }
 
-    protected function resolveCycleDays(Branch $branch): ?int
+    public function resolveCycleDays(Branch $branch): ?int
     {
         $plan = $branch->subscription_plan ?: 'standard';
 
         return match ($plan) {
-            'monthly' => 30,
+            'monthly', 'standard', 'basic', 'premium', 'enterprise' => 30,
             'quarterly' => 90,
             'half_yearly' => 180,
             'yearly' => 365,

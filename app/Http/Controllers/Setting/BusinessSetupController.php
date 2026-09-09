@@ -105,7 +105,7 @@ class BusinessSetupController extends Controller
         $cycle = $validated['subscription_plan'] ?? 'monthly';
         $customCycleDays = ! empty($validated['custom_cycle_days']) ? (int) $validated['custom_cycle_days'] : null;
         $cycleDays = match ($cycle) {
-            'monthly' => 30,
+            'monthly', 'standard', 'basic', 'premium', 'enterprise' => 30,
             'quarterly' => 90,
             'half_yearly' => 180,
             'yearly' => 365,
@@ -117,6 +117,8 @@ class BusinessSetupController extends Controller
 
         if ($cycle === 'custom_days') {
             $validated['custom_cycle_days'] = $customCycleDays ?: 30;
+        } else {
+            $validated['custom_cycle_days'] = null;
         }
 
         $effectiveStart = ! empty($validated['subscription_starts_at'])
@@ -125,18 +127,23 @@ class BusinessSetupController extends Controller
 
         $validated['subscription_starts_at'] = $effectiveStart->toDateString();
 
+        $latestApprovedPayment = $branch->subscriptionPayments()
+            ->where('status', 'approved')
+            ->latest('billing_period_ends_at')
+            ->first();
+
         if ($cycle === 'lifetime' || $validated['subscription_status'] === 'lifetime') {
             $validated['subscription_expires_at'] = null;
         } elseif (! empty($validated['subscription_expires_at'])) {
             $validated['subscription_expires_at'] = \Carbon\Carbon::parse($validated['subscription_expires_at'])->toDateString();
-        } elseif ($branch->subscription_expires_at !== null) {
-            // Strictly retain existing expiration date so overdue dues and active validity are preserved!
-            unset($validated['subscription_expires_at']);
+        } elseif ($latestApprovedPayment && $latestApprovedPayment->billing_period_ends_at) {
+            $validated['subscription_expires_at'] = \Carbon\Carbon::parse($latestApprovedPayment->billing_period_ends_at)->toDateString();
         } elseif ($cycleDays !== null) {
             $validated['subscription_expires_at'] = $effectiveStart->copy()->addDays($cycleDays)->toDateString();
         }
 
         $branch->update($validated);
+        $this->subscriptionService->syncOverdueLiability($branch->fresh());
 
         return redirect()->route('setting.business-setup.edit')
             ->with('success', "Subscription for {$branch->name} updated successfully.");

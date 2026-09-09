@@ -195,6 +195,7 @@ test('superadmin and main branch users have profit loss and balance sheet in nav
     $mainBranchUser->givePermissionTo([
         'report.profit-loss.view',
         'report.balance-sheet.view',
+        'report.subscription-billing.view',
     ]);
 
     $superNav = app(AdminNavigation::class)->build($superAdmin);
@@ -204,7 +205,7 @@ test('superadmin and main branch users have profit loss and balance sheet in nav
     $mainReports = collect($mainNav)->firstWhere('title', 'Reports');
 
     expect($superReports)->not->toBeNull();
-    expect(collect($superReports['children'])->pluck('title')->all())->toContain('Profit & Loss', 'Balance Sheet')
+    expect(collect($superReports['children'])->pluck('title')->all())->toContain('Profit & Loss', 'Balance Sheet', 'Subscription Billing')
         ->and(collect($superReports['children'])->pluck('title')->all())->not->toContain(
             'Customer Ledger',
             'Date Wise Stock',
@@ -221,9 +222,10 @@ test('superadmin and main branch users have profit loss and balance sheet in nav
         );
     expect(collect($superReports['children'])->firstWhere('title', 'Profit & Loss')['href'])->toBe('/report/profit-loss');
     expect(collect($superReports['children'])->firstWhere('title', 'Balance Sheet')['href'])->toBe('/report/balance-sheet');
+    expect(collect($superReports['children'])->firstWhere('title', 'Subscription Billing')['href'])->toBe('/report/subscription-billing');
 
     expect($mainReports)->not->toBeNull();
-    expect(collect($mainReports['children'])->pluck('title')->all())->toContain('Profit & Loss', 'Balance Sheet')
+    expect(collect($mainReports['children'])->pluck('title')->all())->toContain('Profit & Loss', 'Balance Sheet', 'Subscription Billing')
         ->and(collect($mainReports['children'])->pluck('title')->all())->not->toContain(
             'Customer Ledger',
             'Date Wise Stock',
@@ -240,4 +242,5 @@ test('superadmin and main branch users have profit loss and balance sheet in nav
         );
     expect(collect($mainReports['children'])->firstWhere('title', 'Profit & Loss')['href'])->toBe('/report/profit-loss');
     expect(collect($mainReports['children'])->firstWhere('title', 'Balance Sheet')['href'])->toBe('/report/balance-sheet');
+    expect(collect($mainReports['children'])->firstWhere('title', 'Subscription Billing')['href'])->toBe('/report/subscription-billing');
 });

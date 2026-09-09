@@ -669,5 +669,13 @@ return [
             ],
         ],
 
+        'report.subscription-billing' => [
+            'label' => 'Subscription Billing',
+            'group' => 'Reports',
+            'permissions' => [
+                'report.subscription-billing.view' => 'View Subscription Billing Report',
+            ],
+        ],
+
     ],
 ];

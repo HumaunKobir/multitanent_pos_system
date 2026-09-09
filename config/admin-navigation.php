@@ -191,6 +191,7 @@ return [
                 ['title' => 'Cash Flow', 'href' => '/report/cash-flow', 'permission' => 'report.cash-flow.view'],
                 ['title' => 'Cash Flow Summary', 'href' => '/report/cash-flow-summary', 'permission' => 'report.cash-flow-summary.view'],
                 ['title' => 'Daily Transactions', 'href' => '/report/daily-transactions', 'permission' => 'report.daily-transactions.view'],
+                ['title' => 'Subscription Billing', 'href' => '/report/subscription-billing', 'permission' => 'report.subscription-billing.view'],
             ],
         ],
         [

@@ -37,6 +37,7 @@ use App\Http\Controllers\Reports\OpeningStockController;
 use App\Http\Controllers\Reports\ReportController;
 use App\Http\Controllers\Reports\StockAgingController;
 use App\Http\Controllers\Reports\StockValuationController;
+use App\Http\Controllers\Reports\SubscriptionBillingReportController;
 use App\Http\Controllers\BranchPanel\BranchPanelSubscriptionController;
 use App\Http\Controllers\RoleController;
 use App\Http\Controllers\Setting\AdminProfileController;
@@ -264,6 +265,11 @@ Route::middleware(['auth', 'verified'])->prefix('report')->name('report.')->grou
     Route::get('sales-report', [ReportController::class, 'salesReport'])->name('sales-report');
     Route::get('sales-profit-trend', [ReportController::class, 'salesProfitTrend'])->name('sales-profit-trend');
     Route::get('purchase-report', [ReportController::class, 'purchaseReport'])->name('purchase-report');
+    Route::get('subscription-billing/export/excel', [SubscriptionBillingReportController::class, 'exportExcel'])->name('subscription-billing.export-excel');
+    Route::get('subscription-billing/export/csv', [SubscriptionBillingReportController::class, 'exportCsv'])->name('subscription-billing.export-csv');
+    Route::get('subscription-billing/export/pdf', [SubscriptionBillingReportController::class, 'exportPdf'])->name('subscription-billing.export-pdf');
+    Route::get('subscription-billing/export/print', [SubscriptionBillingReportController::class, 'exportPrint'])->name('subscription-billing.export-print');
+    Route::get('subscription-billing', [SubscriptionBillingReportController::class, 'index'])->name('subscription-billing');
 });
 
 Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->group(function () {

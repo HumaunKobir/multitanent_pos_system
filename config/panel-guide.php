@@ -535,6 +535,17 @@ return [
             ],
         ],
 
+        'report.subscription-billing.view' => [
+            'title' => 'Subscription Billing',
+            'summary' => 'View subscription payments, billing periods, approval status, and invoices.',
+            'steps' => [
+                'Go to Reports → Subscription Billing.',
+                'Filter by date range, branch (for superadmin), status, and payment method.',
+                'Review paid amounts, billing cycles, invoice slips, and deposit receipts.',
+                'Export report to Excel, CSV, or Print as needed.',
+            ],
+        ],
+
         'report.sales-profit-trend.view' => [
             'title' => 'Sales Profit Trend',
             'summary' => 'See sales and profit trends with product, brand, and category charts.',

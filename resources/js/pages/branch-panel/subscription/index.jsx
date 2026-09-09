@@ -47,6 +47,8 @@ import {
     DialogHeader,
     DialogTitle,
 } from '@/components/ui/dialog';
+import InvoicesHistoryDialog from '@/pages/admin/setting/business-setup/partials/invoices-history-dialog';
+import SecurityDepositDialog from '@/pages/admin/setting/business-setup/partials/security-deposit-dialog';
 
 const PAYMENT_METHOD_CONFIG = {
     bkash: {
@@ -326,6 +328,8 @@ export default function BranchSubscriptionIndex({
 
     const [selectedCycles, setSelectedCycles] = useState(isOverdue && pendingBillsCount > 0 ? pendingBillsCount : 1);
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [isInvoicesModalOpen, setIsInvoicesModalOpen] = useState(false);
+    const [isSecurityModalOpen, setIsSecurityModalOpen] = useState(false);
     const [previewUrl, setPreviewUrl] = useState(null);
     const [previewAttachment, setPreviewAttachment] = useState(null);
     const [copiedId, setCopiedId] = useState(null);
@@ -494,6 +498,24 @@ export default function BranchSubscriptionIndex({
                                 {subscription.computed_status?.replace('_', ' ') || 'Active'}
                             </p>
                         </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setIsInvoicesModalOpen(true)}
+                            className="bg-white/10 hover:bg-white/20 text-white border-white/20 font-bold text-xs h-10 px-3 rounded-xl backdrop-blur-md flex items-center gap-1.5"
+                        >
+                            <FileText className="size-4" />
+                            Invoices & Advance
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setIsSecurityModalOpen(true)}
+                            className="bg-white/10 hover:bg-white/20 text-white border-white/20 font-bold text-xs h-10 px-3 rounded-xl backdrop-blur-md flex items-center gap-1.5"
+                        >
+                            <Shield className="size-4" />
+                            Security Deposit
+                        </Button>
                         <Button
                             type="button"
                             onClick={() => setIsPaymentModalOpen(true)}
@@ -1501,6 +1523,23 @@ export default function BranchSubscriptionIndex({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            {/* Invoices & Advance History Dialog */}
+            <InvoicesHistoryDialog
+                open={isInvoicesModalOpen}
+                onOpenChange={setIsInvoicesModalOpen}
+                branch={branch}
+                fetchUrl={route('branch-panel.subscription.invoices')}
+            />
+
+            {/* Security Deposit History Dialog */}
+            <SecurityDepositDialog
+                open={isSecurityModalOpen}
+                onOpenChange={setIsSecurityModalOpen}
+                branch={branch}
+                paymentMethods={paymentMethods}
+                fetchUrl={route('branch-panel.subscription.security-deposits')}
+            />
         </div>
     );
 }

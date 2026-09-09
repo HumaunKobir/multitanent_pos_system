@@ -50,6 +50,10 @@ enum SystemAccountKey: string
     case SubscriptionExpense = 'subscription_expense';
     case SubscriptionIncome = 'subscription_income';
     case SubscriptionReceivable = 'subscription_receivable';
+    case AdvanceFromClient = 'advance_from_client';
+    case ClientSecurityDeposit = 'client_security_deposit';
+    case SecurityDepositPaid = 'security_deposit_paid';
+    case PrepaidSubscription = 'prepaid_subscription';
 
     public function accountNumber(): string
     {
@@ -78,6 +82,8 @@ enum SystemAccountKey: string
             self::SubscriptionPayable => 'Subscription Payable',
             self::LoansPayable => 'Loans Payable',
             self::AdvanceFromCustomer => 'Advance from Customer',
+            self::AdvanceFromClient => 'Advance from Client',
+            self::ClientSecurityDeposit => 'Client Security Deposit',
             self::CustomerCoinPayable => 'Customer Coin Payable',
             self::TaxesPayable => 'Taxes Payable',
             self::OutputVat => 'VAT Payable',
@@ -102,6 +108,8 @@ enum SystemAccountKey: string
             self::SalaryExpense => 'Salary',
             self::UtilitiesExpense => 'Utilities',
             self::SubscriptionExpense => 'Subscription Expense',
+            self::SecurityDepositPaid => 'Security Deposit Paid',
+            self::PrepaidSubscription => 'Prepaid Subscription',
             self::DiscountApplied => 'Discount Applied',
             self::CoinDiscountApplied => 'Coin Discount Applied',
             self::TaxesPaid => 'Taxes Paid',
@@ -114,9 +122,10 @@ enum SystemAccountKey: string
             self::CashAndBank, self::CashInHand, self::BankAccount, self::SslCommerz, self::Bkash, self::Nagad,
             self::Inventory, self::ProductInventory, self::BranchInventory,
             self::AccountsReceivable, self::CustomerReceivables, self::IntercompanyReceivable,
-            self::SubscriptionReceivable => AccountType::Asset,
+            self::SubscriptionReceivable, self::PrepaidSubscription, self::SecurityDepositPaid => AccountType::Asset,
             self::AccountsPayable, self::SupplierPayables, self::IntercompanyPayable, self::SubscriptionPayable,
-            self::LoansPayable, self::AdvanceFromCustomer, self::CustomerCoinPayable, self::TaxesPayable,
+            self::LoansPayable, self::AdvanceFromCustomer, self::AdvanceFromClient, self::ClientSecurityDeposit,
+            self::CustomerCoinPayable, self::TaxesPayable,
             self::OutputVat, self::TaxesPaid => AccountType::Liability,
             self::OwnersCapital, self::RetainedEarnings, self::CurrentYearEarnings, self::OwnersDrawings,
             self::OpeningBalanceEquity, self::OpeningBalanceClearing => AccountType::Equity,
@@ -144,7 +153,7 @@ enum SystemAccountKey: string
             self::BankAccount => self::CashAndBank,
             self::ProductInventory => self::Inventory,
             self::BranchInventory => self::Inventory,
-            self::CustomerReceivables, self::IntercompanyReceivable, self::SubscriptionReceivable => self::AccountsReceivable,
+            self::CustomerReceivables, self::IntercompanyReceivable, self::SubscriptionReceivable, self::PrepaidSubscription, self::SecurityDepositPaid => self::AccountsReceivable,
             self::SupplierPayables, self::IntercompanyPayable, self::SubscriptionPayable => self::AccountsPayable,
             self::OutputVat, self::TaxesPaid => self::TaxesPayable,
             self::OpeningBalanceClearing => self::OpeningBalanceEquity,
@@ -173,14 +182,14 @@ enum SystemAccountKey: string
                 self::AdvanceFromCustomer, self::CustomerCoinPayable,
                 self::ProductSales, self::SalesReturns, self::DiscountApplied, self::CoinDiscountApplied,
                 self::CostOfGoodsSold, self::InventoryDamage, self::StockAdjustmentGain, self::StockAdjustmentLoss,
-                self::SubscriptionExpense => false,
+                self::SubscriptionExpense, self::SecurityDepositPaid, self::PrepaidSubscription => false,
                 default => true,
             };
         }
 
         // Branch retail POS panel (regular branches): full retail store tree + subscription payable/expense
         return match ($this) {
-            self::SubscriptionIncome, self::SubscriptionReceivable => false, // only SuperAdmin handles client subscription income/receivables
+            self::SubscriptionIncome, self::SubscriptionReceivable, self::AdvanceFromClient, self::ClientSecurityDeposit => false,
             default => true,
         };
     }

@@ -37,6 +37,9 @@ import { Badge } from '@/components/ui/badge';
 import RenewSubscriptionDialog from '@/pages/admin/setting/business-setup/partials/renew-subscription-dialog';
 import EditBranchSubscriptionDialog from '@/pages/admin/setting/business-setup/partials/edit-branch-subscription-dialog';
 import PaymentHistoryDialog from '@/pages/admin/setting/business-setup/partials/payment-history-dialog';
+import InvoicesHistoryDialog from '@/pages/admin/setting/business-setup/partials/invoices-history-dialog';
+import SecurityDepositDialog from '@/pages/admin/setting/business-setup/partials/security-deposit-dialog';
+import { FileText } from 'lucide-react';
 
 export default function BranchClientIndex({
     branches = [],
@@ -55,6 +58,8 @@ export default function BranchClientIndex({
     const [renewModalOpen, setRenewModalOpen] = useState(false);
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [historyModalOpen, setHistoryModalOpen] = useState(false);
+    const [invoicesModalOpen, setInvoicesModalOpen] = useState(false);
+    const [securityModalOpen, setSecurityModalOpen] = useState(false);
 
     useEffect(() => {
         if (flash?.success) toast.success(flash.success);
@@ -102,6 +107,16 @@ export default function BranchClientIndex({
     const openHistory = (branch) => {
         setSelectedBranch(branch);
         setHistoryModalOpen(true);
+    };
+
+    const openInvoices = (branch) => {
+        setSelectedBranch(branch);
+        setInvoicesModalOpen(true);
+    };
+
+    const openSecurity = (branch) => {
+        setSelectedBranch(branch);
+        setSecurityModalOpen(true);
     };
 
     return (
@@ -467,6 +482,28 @@ export default function BranchClientIndex({
                                                             type="button"
                                                             size="sm"
                                                             variant="outline"
+                                                            className="h-7 px-2 text-xs border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg"
+                                                            onClick={() => openInvoices(branch)}
+                                                            title="Billing Invoices & Advance History"
+                                                        >
+                                                            <FileText className="size-3 mr-1" /> Invoices
+                                                        </Button>
+
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            variant="outline"
+                                                            className="h-7 px-2 text-xs border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg"
+                                                            onClick={() => openSecurity(branch)}
+                                                            title="Project Security Money Management"
+                                                        >
+                                                            <Shield className="size-3 mr-1" /> Security
+                                                        </Button>
+
+                                                        <Button
+                                                            type="button"
+                                                            size="sm"
+                                                            variant="outline"
                                                             className="h-7 px-2 text-xs border-slate-300 dark:border-slate-700 text-muted-foreground hover:text-foreground rounded-lg"
                                                             onClick={() => openHistory(branch)}
                                                             title="Payment & Receipt History"
@@ -512,6 +549,22 @@ export default function BranchClientIndex({
                         onOpenChange={setHistoryModalOpen}
                         branch={selectedBranch}
                         fetchUrl={route('branch-clients.payments', selectedBranch.id)}
+                    />
+
+                    <InvoicesHistoryDialog
+                        open={invoicesModalOpen}
+                        onOpenChange={setInvoicesModalOpen}
+                        branch={selectedBranch}
+                        fetchUrl={route('branch-clients.invoices', selectedBranch.id)}
+                    />
+
+                    <SecurityDepositDialog
+                        open={securityModalOpen}
+                        onOpenChange={setSecurityModalOpen}
+                        branch={selectedBranch}
+                        paymentMethods={paymentMethods}
+                        fetchUrl={route('branch-clients.security-deposits', selectedBranch.id)}
+                        submitUrl={route('branch-clients.security-deposit', selectedBranch.id)}
                     />
                 </>
             )}

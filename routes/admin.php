@@ -82,6 +82,9 @@ Route::middleware(['auth', 'verified', 'superadmin'])->group(function () {
     Route::put('branch-clients/{branch}', [BranchClientController::class, 'update'])->name('branch-clients.update');
     Route::post('branch-clients/{branch}/renew', [BranchClientController::class, 'renew'])->name('branch-clients.renew');
     Route::get('branch-clients/{branch}/payments', [BranchClientController::class, 'payments'])->name('branch-clients.payments');
+    Route::get('branch-clients/{branch}/invoices', [BranchClientController::class, 'invoices'])->name('branch-clients.invoices');
+    Route::post('branch-clients/{branch}/security-deposit', [BranchClientController::class, 'recordSecurityDeposit'])->name('branch-clients.security-deposit');
+    Route::get('branch-clients/{branch}/security-deposits', [BranchClientController::class, 'securityDeposits'])->name('branch-clients.security-deposits');
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {
@@ -330,4 +333,6 @@ Route::middleware(['auth', 'verified'])->prefix('setting')->name('setting.')->gr
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('branch-panel/subscription', [BranchPanelSubscriptionController::class, 'index'])->name('branch-panel.subscription.index');
     Route::post('branch-panel/subscription/pay', [BranchPanelSubscriptionController::class, 'submitPayment'])->name('branch-panel.subscription.pay');
+    Route::get('branch-panel/subscription/invoices', [BranchPanelSubscriptionController::class, 'invoices'])->name('branch-panel.subscription.invoices');
+    Route::get('branch-panel/subscription/security-deposits', [BranchPanelSubscriptionController::class, 'securityDeposits'])->name('branch-panel.subscription.security-deposits');
 });

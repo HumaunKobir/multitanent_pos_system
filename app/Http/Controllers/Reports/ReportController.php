@@ -388,16 +388,7 @@ class ReportController extends Controller
 
     private function syncOverdueSubscriptions(Request $request): void
     {
-        try {
-            $user = $request->user();
-            if ($user !== null && $user->usesBranchPanel() && $user->branch !== null) {
-                $this->subscriptions->syncDueLiabilityOnBranchAccess($user->branch);
-            } elseif ($user !== null && ! $user->usesBranchPanel()) {
-                $this->subscriptions->syncAllOverdueLiabilities();
-            }
-        } catch (\Throwable $e) {
-            report($e);
-        }
+        // Unapproved subscription dues are not posted to GL per approval requirement
     }
 
     public function balanceSheet(Request $request): Response

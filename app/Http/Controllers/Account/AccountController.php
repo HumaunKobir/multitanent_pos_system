@@ -35,19 +35,6 @@ class AccountController extends Controller
         $user = $request->user();
         $branchId = $user?->branch_id;
 
-        // Automatically synchronize overdue subscription dues into Chart of Accounts:
-        // - On SuperAdmin: posts client subscription dues to Client Subscription Receivables (Asset) & Income (Revenue)
-        // - On Branch: posts branch subscription due to Subscription Payable (Liability) & Expense
-        try {
-            if ($user !== null && $user->usesBranchPanel() && $user->branch !== null) {
-                $this->subscriptions->syncDueLiabilityOnBranchAccess($user->branch);
-            } elseif ($user !== null && ! $user->usesBranchPanel()) {
-                $this->subscriptions->syncAllOverdueLiabilities();
-            }
-        } catch (\Throwable $e) {
-            report($e);
-        }
-
         SystemAccountService::ensureConfigured($branchId);
 
         $allAccounts = ChartOfAccount::query()

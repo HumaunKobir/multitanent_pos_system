@@ -174,6 +174,16 @@ class Branch extends Model
         return $this->hasMany(BranchSubscriptionPayment::class)->latest('paid_at');
     }
 
+    public function subscriptionInvoices(): HasMany
+    {
+        return $this->hasMany(SubscriptionInvoice::class)->orderByDesc('id');
+    }
+
+    public function securityDeposits(): HasMany
+    {
+        return $this->hasMany(BranchSecurityDeposit::class)->latest('paid_at');
+    }
+
     /**
      * @return array<string, mixed>
      */

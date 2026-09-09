@@ -174,6 +174,8 @@ class SystemAccountService
                 SystemAccountKey::AccountsReceivable,
                 SystemAccountKey::SubscriptionReceivable,
                 SystemAccountKey::LoansPayable,
+                SystemAccountKey::AdvanceFromClient,
+                SystemAccountKey::ClientSecurityDeposit,
                 SystemAccountKey::TaxesPayable,
                 SystemAccountKey::OutputVat,
                 SystemAccountKey::TaxesPaid,
@@ -205,6 +207,7 @@ class SystemAccountService
             SystemAccountKey::AccountsReceivable,
             SystemAccountKey::CustomerReceivables,
             SystemAccountKey::IntercompanyReceivable,
+            SystemAccountKey::PrepaidSubscription,
             SystemAccountKey::AccountsPayable,
             SystemAccountKey::SupplierPayables,
             SystemAccountKey::IntercompanyPayable,
@@ -236,6 +239,7 @@ class SystemAccountService
             SystemAccountKey::SalaryExpense,
             SystemAccountKey::UtilitiesExpense,
             SystemAccountKey::SubscriptionExpense,
+            SystemAccountKey::SecurityDepositPaid,
         ];
     }
 
@@ -447,6 +451,7 @@ class SystemAccountService
                 SystemAccountKey::SubscriptionIncome->accountNumber(),
                 SystemAccountKey::SubscriptionReceivable->accountNumber(),
                 'SYS:unearned_subscription_revenue',
+                'SYS:project_security_expense',
             ]);
         }
 
@@ -471,12 +476,15 @@ class SystemAccountService
             SystemAccountKey::CustomerReceivables => 'A003-01',
             SystemAccountKey::IntercompanyReceivable => 'A003-02',
             SystemAccountKey::SubscriptionReceivable => 'A003-03',
+            SystemAccountKey::PrepaidSubscription => 'A004',
             SystemAccountKey::AccountsPayable => 'L001',
             SystemAccountKey::SupplierPayables => 'L001-01',
             SystemAccountKey::IntercompanyPayable => 'L001-02',
             SystemAccountKey::SubscriptionPayable => 'L001-03',
             SystemAccountKey::LoansPayable => 'L002',
             SystemAccountKey::AdvanceFromCustomer => 'L003',
+            SystemAccountKey::AdvanceFromClient => 'L003-01',
+            SystemAccountKey::ClientSecurityDeposit => 'L006',
             SystemAccountKey::CustomerCoinPayable => 'L005',
             SystemAccountKey::TaxesPayable => 'L004',
             SystemAccountKey::OutputVat => 'L004-01',
@@ -504,6 +512,7 @@ class SystemAccountService
             SystemAccountKey::UtilitiesExpense => 'X001-06',
             SystemAccountKey::StockAdjustmentLoss => 'X001-07',
             SystemAccountKey::SubscriptionExpense => 'X001-08',
+            SystemAccountKey::SecurityDepositPaid => 'A005',
         };
     }
 

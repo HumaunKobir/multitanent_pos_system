@@ -278,4 +278,94 @@ class BranchClientController extends Controller
             'payments' => $payments,
         ]);
     }
+
+    public function invoices(Branch $branch): JsonResponse
+    {
+        $this->authorize('branch.view');
+
+        $invoices = $branch->subscriptionInvoices()
+            ->with('paymentAllocations.payment')
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn ($inv) => [
+                'id' => $inv->id,
+                'invoice_number' => $inv->invoice_number,
+                'billing_period_starts_at' => $inv->billing_period_starts_at?->format('Y-m-d'),
+                'billing_period_ends_at' => $inv->billing_period_ends_at?->format('Y-m-d'),
+                'due_date' => $inv->due_date?->format('Y-m-d'),
+                'total_amount' => (float) $inv->total_amount,
+                'paid_amount' => (float) $inv->paid_amount,
+                'due_amount' => (float) $inv->due_amount,
+                'status' => $inv->status,
+                'notes' => $inv->notes,
+                'created_at' => $inv->created_at?->format('Y-m-d H:i'),
+                'allocations' => $inv->paymentAllocations->map(fn ($alloc) => [
+                    'id' => $alloc->id,
+                    'amount' => (float) $alloc->amount,
+                    'payment_id' => $alloc->branch_subscription_payment_id,
+                    'payment_method' => $alloc->payment?->payment_method,
+                    'paid_at' => $alloc->payment?->paid_at?->format('Y-m-d'),
+                ]),
+            ]);
+
+        return response()->json([
+            'branch' => [
+                'id' => $branch->id,
+                'name' => $branch->name,
+            ],
+            'invoices' => $invoices,
+        ]);
+    }
+
+    public function recordSecurityDeposit(Request $request, Branch $branch): RedirectResponse
+    {
+        $this->authorize('branch.update');
+
+        $validated = $request->validate([
+            'amount' => ['required', 'numeric', 'min:1'],
+            'payment_method' => ['required', 'string', 'max:50'],
+            'transaction_reference' => ['nullable', 'string', 'max:191'],
+            'paid_at' => ['required', 'date'],
+            'notes' => ['nullable', 'string', 'max:2000'],
+            'attachment' => ['nullable', 'file', 'mimes:jpeg,png,jpg,webp,pdf', 'max:10240'],
+            'existing_attachment_path' => ['nullable', 'string', 'max:500'],
+        ]);
+
+        app(\App\Services\BranchSecurityDepositService::class)->recordDeposit($branch, $validated, $request->user());
+
+        return redirect()->route('branch-clients.index')
+            ->with('success', "Security deposit of ৳{$validated['amount']} for {$branch->name} recorded successfully.");
+    }
+
+    public function securityDeposits(Branch $branch): JsonResponse
+    {
+        $this->authorize('branch.view');
+
+        $deposits = $branch->securityDeposits()
+            ->with('recordedBy:id,name')
+            ->orderByDesc('id')
+            ->get()
+            ->map(fn ($d) => [
+                'id' => $d->id,
+                'amount' => (float) $d->amount,
+                'payment_method' => $d->payment_method,
+                'transaction_reference' => $d->transaction_reference,
+                'paid_at' => $d->paid_at?->format('Y-m-d'),
+                'status' => $d->status,
+                'notes' => $d->notes,
+                'recorded_by' => $d->recordedBy?->name ?? 'SuperAdmin',
+                'attachment_path' => $d->attachment_path,
+                'attachment_url' => $d->attachment_url,
+                'created_at' => $d->created_at?->format('Y-m-d H:i'),
+            ]);
+
+        return response()->json([
+            'branch' => [
+                'id' => $branch->id,
+                'name' => $branch->name,
+            ],
+            'security_deposits' => $deposits,
+            'total_security_deposit' => (float) $deposits->where('status', 'approved')->sum('amount'),
+        ]);
+    }
 }

@@ -13,6 +13,7 @@ class BranchSubscriptionService
 {
     public function __construct(
         protected BranchSubscriptionAccountingService $accounting,
+        protected SubscriptionInvoiceService $invoices,
     ) {}
 
     /**
@@ -441,7 +442,7 @@ class BranchSubscriptionService
                 'attachment_path' => $attachmentPath ?: $pendingPayment->attachment_path,
             ]);
 
-            $this->accounting->recordPaymentSettlement($pendingPayment->fresh(), $recordedBy);
+            $this->invoices->allocatePayment($pendingPayment->fresh(), $recordedBy);
 
             return $pendingPayment;
         }
@@ -461,7 +462,7 @@ class BranchSubscriptionService
             'attachment_path' => $attachmentPath,
         ]);
 
-        $this->accounting->recordPaymentSettlement($payment, $recordedBy);
+        $this->invoices->allocatePayment($payment, $recordedBy);
 
         return $payment;
     }

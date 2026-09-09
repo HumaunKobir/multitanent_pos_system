@@ -44,9 +44,13 @@ class SystemAccountService
         self::$configuredBranches[$cacheKey] = true;
     }
 
-    public static function seed(?int $branchId = null): void
+    public static function seed(int|null|false $branchId = false): void
     {
-        self::$seedBranchId = $branchId ?? Auth::user()?->branch_id;
+        if ($branchId === false) {
+            self::$seedBranchId = Auth::user()?->branch_id;
+        } else {
+            self::$seedBranchId = $branchId;
+        }
 
         ChartOfAccount::$skipCodeGeneration = true;
 
@@ -100,9 +104,19 @@ class SystemAccountService
         }
     }
 
-    public static function resolve(SystemAccountKey $key, ?int $branchId = null): ChartOfAccount
+    /**
+     * Resolve a system account for a panel.
+     *
+     * - Omit $branchId (default): use the authenticated user's branch (or global if none).
+     * - Pass null: SuperAdmin / global panel accounts.
+     * - Pass int: that branch's panel accounts.
+     */
+    public static function resolve(SystemAccountKey $key, int|null|false $branchId = false): ChartOfAccount
     {
-        $branchId ??= Auth::user()?->branch_id;
+        if ($branchId === false) {
+            $branchId = Auth::user()?->branch_id;
+        }
+
         $cacheKey = self::cacheKey($branchId, $key);
 
         if (isset(self::$resolved[$cacheKey])) {
@@ -129,7 +143,7 @@ class SystemAccountService
         return $account;
     }
 
-    public static function id(SystemAccountKey $key, ?int $branchId = null): int
+    public static function id(SystemAccountKey $key, int|null|false $branchId = false): int
     {
         return self::resolve($key, $branchId)->id;
     }
@@ -236,9 +250,11 @@ class SystemAccountService
         $query->where('source_type', Branch::class)->where('source_id', $branchId);
     }
 
-    private static function findByKey(SystemAccountKey $key, ?int $branchId = null): ?ChartOfAccount
+    private static function findByKey(SystemAccountKey $key, int|null|false $branchId = false): ?ChartOfAccount
     {
-        $branchId ??= self::branchId();
+        if ($branchId === false) {
+            $branchId = self::branchId();
+        }
 
         $query = ChartOfAccount::query()
             ->where('account_number', $key->accountNumber())

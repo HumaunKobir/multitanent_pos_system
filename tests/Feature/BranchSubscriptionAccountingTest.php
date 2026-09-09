@@ -256,6 +256,79 @@ test('superadmin direct renewal posts expense, decreases asset, clears payable, 
     expect((float) $superadminReceivable->fresh()->current_balance)->toBe($initialSuperadminReceivable);
 });
 
+test('overdue multi-bill due is reflected on subscription payable in chart of accounts', function () {
+    $this->travelTo('2026-09-09');
+
+    $branch = Branch::factory()->create([
+        'name' => 'Branch Overdue Payable',
+        'subscription_plan' => 'custom_days',
+        'custom_cycle_days' => 2,
+        'subscription_fee' => 1500,
+        'subscription_status' => 'active',
+        'subscription_starts_at' => '2026-09-01',
+        'subscription_expires_at' => '2026-09-03',
+        'custom_overdue_action' => 'none',
+        'custom_grace_period_days' => 0,
+    ]);
+
+    SystemAccountService::seed(null);
+    SystemAccountService::seed($branch->id);
+
+    $summary = app(BranchSubscriptionService::class)->getSubscriptionSummary($branch);
+
+    expect($summary['is_overdue'])->toBeTrue()
+        ->and($summary['pending_bills_count'])->toBe(3)
+        ->and((float) $summary['total_overdue_fee'])->toBe(4500.0);
+
+    // Summary alone does not post GL — Accounts page does.
+    $payable = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
+    expect((float) $payable->fresh()->current_balance)->toBe(0.0);
+
+    app(BranchSubscriptionService::class)->syncDueLiabilityOnBranchAccess($branch);
+
+    $expense = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
+
+    expect((float) $payable->fresh()->current_balance)->toBe(4500.0)
+        ->and((float) $expense->fresh()->current_balance)->toBe(4500.0);
+
+    // Idempotent: syncing again does not increase the liability further.
+    app(BranchSubscriptionService::class)->syncDueLiabilityOnBranchAccess($branch);
+
+    expect((float) $payable->fresh()->current_balance)->toBe(4500.0);
+});
+
+test('branch accounts page posts overdue subscription due to subscription payable', function () {
+    $this->travelTo('2026-09-09');
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create([
+        'name' => 'Branch Accounts Accrual',
+        'subscription_plan' => 'custom_days',
+        'custom_cycle_days' => 2,
+        'subscription_fee' => 1500,
+        'subscription_status' => 'active',
+        'subscription_starts_at' => '2026-09-01',
+        'subscription_expires_at' => '2026-09-03',
+        'custom_overdue_action' => 'none',
+        'custom_grace_period_days' => 0,
+    ]);
+
+    SystemAccountService::seed(null);
+    SystemAccountService::seed($branch->id);
+
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    $user->givePermissionTo('accounts.view');
+
+    $payable = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
+    expect((float) $payable->fresh()->current_balance)->toBe(0.0);
+
+    $this->actingAs($user)
+        ->get(route('accounts.index'))
+        ->assertOk();
+
+    expect((float) $payable->fresh()->current_balance)->toBe(4500.0);
+});
+
 test('payment account key maps rocket and bank to bank account', function () {
     $service = app(BranchSubscriptionAccountingService::class);
 

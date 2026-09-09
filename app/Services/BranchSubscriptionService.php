@@ -55,8 +55,8 @@ class BranchSubscriptionService
             ];
         }
 
-        $plan = $branch->subscription_plan ?: 'standard';
         $rawStatus = $branch->subscription_status ?: 'active';
+        $plan = $branch->subscription_plan ?: 'standard';
         $defaultFee = BusinessSettings::getFloat('subscription_default_fee', 1500);
         $fee = $branch->subscription_fee !== null ? (float) $branch->subscription_fee : $defaultFee;
 
@@ -481,15 +481,96 @@ class BranchSubscriptionService
             return;
         }
 
+        if (($branch->subscription_status ?: 'active') === 'lifetime') {
+            return;
+        }
+
         $fee = (float) ($branch->subscription_fee ?? BusinessSettings::getFloat('subscription_default_fee', 1500));
         if ($fee <= 0) {
             return;
         }
 
-        $startsAt = $branch->subscription_starts_at ? Carbon::parse($branch->subscription_starts_at)->toDateString() : now()->toDateString();
-        $expiresAt = $branch->subscription_expires_at ? Carbon::parse($branch->subscription_expires_at)->toDateString() : now()->toDateString();
+        if ($this->syncDueLiabilityOnBranchAccess($branch)) {
+            return;
+        }
+
+        $startsAt = $branch->subscription_starts_at
+            ? Carbon::parse($branch->subscription_starts_at)->toDateString()
+            : now()->toDateString();
+        $expiresAt = $branch->subscription_expires_at
+            ? Carbon::parse($branch->subscription_expires_at)->toDateString()
+            : now()->toDateString();
 
         $this->accounting->recordCycleAccrual($branch, $startsAt, $expiresAt, $fee);
+    }
+
+    /**
+     * Post outstanding subscription due into Chart of Accounts when a billing cycle is due.
+     * Called when the branch client opens the Accounts (Chart of Accounts) page.
+     */
+    public function syncDueLiabilityOnBranchAccess(Branch $branch): bool
+    {
+        return $this->syncOverdueLiability($branch);
+    }
+
+    /**
+     * When the branch is overdue, raise Subscription Payable to match outstanding due.
+     * Returns true when an overdue sync was applied (or overdue with nothing to post).
+     */
+    public function syncOverdueLiability(Branch $branch): bool
+    {
+        if (Branch::isMainBranch($branch->id)) {
+            return false;
+        }
+
+        if (($branch->subscription_status ?: 'active') === 'lifetime') {
+            return false;
+        }
+
+        $fee = (float) ($branch->subscription_fee ?? BusinessSettings::getFloat('subscription_default_fee', 1500));
+        if ($fee <= 0) {
+            return false;
+        }
+
+        $cycleDays = $this->resolveCycleDays($branch);
+        $expiresAt = $branch->subscription_expires_at
+            ? Carbon::parse($branch->subscription_expires_at)->startOfDay()
+            : null;
+
+        if ($expiresAt === null) {
+            return false;
+        }
+
+        $today = Carbon::today();
+        if ($today->lte($expiresAt) || $cycleDays === null || $cycleDays <= 0) {
+            return false;
+        }
+
+        $overdueDays = (int) $expiresAt->diffInDays($today);
+        $pendingBillsCount = (int) max(1, (int) ceil($overdueDays / $cycleDays));
+        $totalOverdueFee = round($pendingBillsCount * $fee, 2);
+
+        $this->accounting->syncOutstandingDue($branch, $totalOverdueFee, $today->toDateString());
+
+        return true;
+    }
+
+    protected function resolveCycleDays(Branch $branch): ?int
+    {
+        $plan = $branch->subscription_plan ?: 'standard';
+
+        return match ($plan) {
+            'monthly' => 30,
+            'quarterly' => 90,
+            'half_yearly' => 180,
+            'yearly' => 365,
+            'trial' => 14,
+            'lifetime' => null,
+            'custom_days' => $branch->custom_cycle_days !== null && $branch->custom_cycle_days > 0
+                ? (int) $branch->custom_cycle_days
+                : 30,
+            default => BusinessSettings::getInt('subscription_billing_cycle_days', 30),
+        };
     }
 
     protected function formatWarningTemplate(

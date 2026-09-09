@@ -8,6 +8,7 @@ use App\Enums\SystemAccountKey;
 use App\Http\Controllers\Controller;
 use App\Models\Branch;
 use App\Models\ChartOfAccount;
+use App\Services\BranchSubscriptionService;
 use App\Services\InventoryAccountingService;
 use App\Services\ReportService;
 use App\Services\SystemAccountService;
@@ -24,13 +25,24 @@ class AccountController extends Controller
     public function __construct(
         private InventoryAccountingService $accounting,
         private ReportService $reports,
+        private BranchSubscriptionService $subscriptions,
     ) {}
 
     public function index(Request $request): Response
     {
         $this->authorize('accounts.view');
 
-        $branchId = $request->user()?->branch_id;
+        $user = $request->user();
+        $branchId = $user?->branch_id;
+
+        // When a branch client opens Accounts, post overdue subscription due into Subscription Payable.
+        if ($user !== null && $user->usesBranchPanel() && $user->branch !== null) {
+            try {
+                $this->subscriptions->syncDueLiabilityOnBranchAccess($user->branch);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
 
         SystemAccountService::ensureConfigured($branchId);
 

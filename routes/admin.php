@@ -82,6 +82,9 @@ Route::middleware(['auth', 'verified', 'superadmin'])->group(function () {
     Route::put('branch-clients/{branch}', [BranchClientController::class, 'update'])->name('branch-clients.update');
     Route::post('branch-clients/{branch}/renew', [BranchClientController::class, 'renew'])->name('branch-clients.renew');
     Route::get('branch-clients/{branch}/payments', [BranchClientController::class, 'payments'])->name('branch-clients.payments');
+});
+
+Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('user', UserController::class)->except(['create', 'edit', 'show']);
     Route::resource('role', RoleController::class)->except(['show']);
     Route::get('role/{role}/permissions', [RoleController::class, 'editPermissions'])->name('role.permissions');

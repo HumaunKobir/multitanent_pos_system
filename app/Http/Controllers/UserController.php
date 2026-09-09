@@ -21,8 +21,11 @@ class UserController extends Controller
     {
         $this->authorize('user.view');
 
+        $currentUser = $request->user();
+        $isBranchScoped = $currentUser !== null && $currentUser->usesBranchPanel();
+
         $search = $request->input('search');
-        $branchId = $request->input('branch_id');
+        $branchId = $isBranchScoped ? $currentUser->branch_id : $request->input('branch_id');
         $roleId = $request->input('role_id');
         $status = $request->input('status');
 
@@ -38,6 +41,9 @@ class UserController extends Controller
             })
             ->when(filled($branchId), function ($query) use ($branchId) {
                 $query->where('branch_id', $branchId);
+            })
+            ->when($isBranchScoped, function ($query) use ($currentUser) {
+                $query->where('id', '!=', $currentUser->id);
             })
             ->when(filled($roleId), function ($query) use ($roleId) {
                 $query->whereHas('roles', function ($q) use ($roleId) {
@@ -62,6 +68,16 @@ class UserController extends Controller
                 'role_name' => $user->roles->first()?->name,
             ]);
 
+        $branchesQuery = Branch::query()->availableForUserAssignment();
+        if ($isBranchScoped) {
+            $branchesQuery->where('id', $currentUser->branch_id);
+        }
+
+        $rolesQuery = Role::query()->orderBy('name');
+        if ($isBranchScoped) {
+            $rolesQuery->where('branch_id', $currentUser->branch_id);
+        }
+
         return Inertia::render('admin/user/index', [
             'users' => $users,
             'filters' => [
@@ -70,11 +86,8 @@ class UserController extends Controller
                 'role_id' => $roleId ? (string) $roleId : '',
                 'status' => $status !== null ? (string) $status : '',
             ],
-            'branches' => Branch::query()
-                ->availableForUserAssignment()
-                ->orderBy('name')
-                ->pluck('name', 'id'),
-            'roles' => Role::orderBy('name')->pluck('name', 'id'),
+            'branches' => $branchesQuery->orderBy('name')->pluck('name', 'id'),
+            'roles' => $rolesQuery->pluck('name', 'id'),
         ]);
     }
 
@@ -82,9 +95,16 @@ class UserController extends Controller
     {
         $this->authorize('user.create');
 
+        $currentUser = $request->user();
+        $isBranchScoped = $currentUser !== null && $currentUser->usesBranchPanel();
+
+        $roleRule = $isBranchScoped
+            ? Rule::exists('roles', 'id')->where('branch_id', $currentUser->branch_id)
+            : Rule::exists('roles', 'id');
+
         $data = $request->validate([
             'branch_id' => [
-                'required',
+                $isBranchScoped ? 'nullable' : 'required',
                 'integer',
                 $this->assignableBranchExistsRule(),
             ],
@@ -93,11 +113,14 @@ class UserController extends Controller
             'phone' => ['required', 'string', 'max:20', 'unique:users,phone'],
             'password' => ['required', 'confirmed', Password::min(8)],
             'status' => ['required', 'in:0,1'],
-            'role_id' => ['nullable', 'integer', Rule::exists('roles', 'id')],
+            'role_id' => ['nullable', 'integer', $roleRule],
         ]);
 
+        $targetBranchId = $isBranchScoped ? (int) $currentUser->branch_id : (int) $data['branch_id'];
+
         $user = User::create([
-            'branch_id' => (int) $data['branch_id'],
+            'branch_id' => $targetBranchId,
+            'created_by_id' => $currentUser?->id,
             'name' => $data['name'],
             'email' => $data['email'],
             'phone' => $data['phone'],
@@ -105,7 +128,7 @@ class UserController extends Controller
             'status' => (int) $data['status'],
         ]);
 
-        SystemAccountService::seed((int) $data['branch_id']);
+        SystemAccountService::seed($targetBranchId);
 
         if (! empty($data['role_id'])) {
             $user->syncRoles([$data['role_id']]);
@@ -119,19 +142,30 @@ class UserController extends Controller
     {
         $this->authorize('user.update');
 
+        $currentUser = $request->user();
+        $isBranchScoped = $currentUser !== null && $currentUser->usesBranchPanel();
+
         if ($user->id === User::SUPER_ADMIN_ID) {
+            abort(403);
+        }
+
+        if ($isBranchScoped && $user->branch_id !== $currentUser->branch_id) {
             abort(403);
         }
 
         abort_unless($this->userIsManagedViaUserList($user), 403);
 
-        $branchRules = $user->isSuperAdmin()
+        $branchRules = $user->isSuperAdmin() || $isBranchScoped
             ? ['nullable', 'integer', Rule::exists('branches', 'id')]
             : [
                 'required',
                 'integer',
                 $this->assignableBranchExistsRule(),
             ];
+
+        $roleRule = $isBranchScoped
+            ? Rule::exists('roles', 'id')->where('branch_id', $currentUser->branch_id)
+            : Rule::exists('roles', 'id');
 
         $data = $request->validate([
             'branch_id' => $branchRules,
@@ -140,10 +174,12 @@ class UserController extends Controller
             'phone' => ['required', 'string', 'max:20', Rule::unique('users', 'phone')->ignore($user->id)],
             'password' => ['nullable', 'confirmed', Password::min(8)],
             'status' => ['required', 'in:0,1'],
-            'role_id' => ['nullable', 'integer', Rule::exists('roles', 'id')],
+            'role_id' => ['nullable', 'integer', $roleRule],
         ]);
 
-        $branchId = isset($data['branch_id']) ? (int) $data['branch_id'] : null;
+        $branchId = $isBranchScoped
+            ? (int) $currentUser->branch_id
+            : (isset($data['branch_id']) ? (int) $data['branch_id'] : null);
 
         $payload = [
             'branch_id' => $branchId,
@@ -168,13 +204,25 @@ class UserController extends Controller
             ->with('success', 'User updated successfully.');
     }
 
-    public function destroy(User $user): RedirectResponse
+    public function destroy(Request $request, User $user): RedirectResponse
     {
         $this->authorize('user.delete');
+
+        $currentUser = $request->user();
+        $isBranchScoped = $currentUser !== null && $currentUser->usesBranchPanel();
 
         if ($user->id === User::SUPER_ADMIN_ID) {
             return redirect()->route('user.index')
                 ->with('error', 'Superadmin user cannot be deleted.');
+        }
+
+        if ($isBranchScoped && $user->branch_id !== $currentUser->branch_id) {
+            abort(403);
+        }
+
+        if ($currentUser !== null && $user->id === $currentUser->id) {
+            return redirect()->route('user.index')
+                ->with('error', 'You cannot delete your own account.');
         }
 
         abort_unless($this->userIsManagedViaUserList($user), 403);

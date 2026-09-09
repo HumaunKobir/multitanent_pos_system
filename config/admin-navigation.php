@@ -116,7 +116,6 @@ return [
             'href' => '/user',
             'single' => true,
             'central_admin' => true,
-            'admin_only' => true,
             'permission' => 'user.view',
         ],
         [
@@ -125,7 +124,6 @@ return [
             'href' => '/role',
             'single' => true,
             'central_admin' => true,
-            'admin_only' => true,
             'permission' => 'role.view',
         ],
         [

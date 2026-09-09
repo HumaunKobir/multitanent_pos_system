@@ -52,20 +52,26 @@ export default function RoleIndex({ roles }) {
             align: 'right',
             render: (row) => (
                 <div className="flex justify-end gap-2">
-                    <Button size="sm" variant="outline" asChild>
-                        <Link href={route('role.permissions', { role: row.id })}>
-                            <KeyRound className="size-3.5" />
-                            Permissions
-                        </Link>
-                    </Button>
-                    <Button size="sm" variant="outline" asChild>
-                        <Link href={route('role.edit', { role: row.id })}>
-                            <Pencil className="size-3.5" />
-                        </Link>
-                    </Button>
-                    <Button size="sm" variant="destructive" onClick={() => setDeleting(row)}>
-                        <Trash2 className="size-3.5" />
-                    </Button>
+                    {can('role.update') && (
+                        <Button size="sm" variant="outline" asChild>
+                            <Link href={route('role.permissions', { role: row.id })}>
+                                <KeyRound className="size-3.5" />
+                                Permissions
+                            </Link>
+                        </Button>
+                    )}
+                    {can('role.update') && (
+                        <Button size="sm" variant="outline" asChild>
+                            <Link href={route('role.edit', { role: row.id })}>
+                                <Pencil className="size-3.5" />
+                            </Link>
+                        </Button>
+                    )}
+                    {can('role.delete') && (
+                        <Button size="sm" variant="destructive" onClick={() => setDeleting(row)}>
+                            <Trash2 className="size-3.5" />
+                        </Button>
+                    )}
                 </div>
             ),
         },

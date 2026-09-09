@@ -59,6 +59,7 @@ class ReportController extends Controller
         private SalesReportService $salesReports,
         private SalesProfitTrendService $salesProfitTrends,
         private PurchaseReportService $purchaseReports,
+        private \App\Services\BranchSubscriptionService $subscriptions,
     ) {}
 
     public function customerLedger(Request $request): Response
@@ -385,9 +386,24 @@ class ReportController extends Controller
         );
     }
 
+    private function syncOverdueSubscriptions(Request $request): void
+    {
+        try {
+            $user = $request->user();
+            if ($user !== null && $user->usesBranchPanel() && $user->branch !== null) {
+                $this->subscriptions->syncDueLiabilityOnBranchAccess($user->branch);
+            } elseif ($user !== null && ! $user->usesBranchPanel()) {
+                $this->subscriptions->syncAllOverdueLiabilities();
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
     public function balanceSheet(Request $request): Response
     {
         $this->authorize(self::PERMISSION_BALANCE_SHEET);
+        $this->syncOverdueSubscriptions($request);
 
         $filters = $request->validate([
             'as_of' => ['nullable', 'date'],
@@ -404,6 +420,7 @@ class ReportController extends Controller
     public function trialBalance(Request $request): Response
     {
         $this->authorize(self::PERMISSION_TRIAL_BALANCE);
+        $this->syncOverdueSubscriptions($request);
 
         $filters = $request->validate([
             'as_of' => ['nullable', 'date'],
@@ -428,6 +445,7 @@ class ReportController extends Controller
     public function profitLoss(Request $request): Response
     {
         $this->authorize(self::PERMISSION_PROFIT_LOSS);
+        $this->syncOverdueSubscriptions($request);
 
         $filters = $request->validate([
             'date_from' => ['nullable', 'date'],

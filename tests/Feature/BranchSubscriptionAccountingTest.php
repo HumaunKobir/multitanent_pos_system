@@ -476,3 +476,36 @@ test('tenant aware settlement posts client transactions on the branch tenant dat
         DB::purge('tenant');
     }
 });
+
+test('superadmin accounts page and sync posts overdue subscription dues to client subscription receivables', function () {
+    $this->travelTo('2026-09-09');
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create([
+        'name' => 'Branch Receivables Check',
+        'subscription_plan' => 'monthly',
+        'subscription_fee' => 1500,
+        'subscription_status' => 'active',
+        'subscription_starts_at' => '2026-08-01',
+        'subscription_expires_at' => '2026-08-31',
+    ]);
+
+    SystemAccountService::seed(null);
+    SystemAccountService::seed($branch->id);
+
+    $superadminReceivable = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
+    $superadminIncome = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+
+    $initialReceivable = (float) $superadminReceivable->fresh()->current_balance;
+    $initialIncome = (float) $superadminIncome->fresh()->current_balance;
+
+    $adminUser = User::factory()->create(['branch_id' => null]);
+    $adminUser->givePermissionTo('accounts.view');
+
+    $this->actingAs($adminUser)
+        ->get(route('accounts.index'))
+        ->assertOk();
+
+    expect((float) $superadminReceivable->fresh()->current_balance)->toBe($initialReceivable + 1500.0);
+    expect((float) $superadminIncome->fresh()->current_balance)->toBe($initialIncome + 1500.0);
+});

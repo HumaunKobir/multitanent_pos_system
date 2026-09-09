@@ -203,12 +203,17 @@ class BranchClientController extends Controller
             ->latest('billing_period_ends_at')
             ->first();
 
+        $startDateChanged = $branch->subscription_starts_at?->format('Y-m-d') !== $validated['subscription_starts_at'];
+        $planChanged = ($branch->subscription_plan ?: 'standard') !== $cycle;
+
         if ($cycle === 'lifetime' || $validated['subscription_status'] === 'lifetime') {
             $validated['subscription_expires_at'] = null;
         } elseif (! empty($validated['subscription_expires_at'])) {
             $validated['subscription_expires_at'] = Carbon::parse($validated['subscription_expires_at'])->toDateString();
         } elseif ($latestApprovedPayment && $latestApprovedPayment->billing_period_ends_at) {
             $validated['subscription_expires_at'] = Carbon::parse($latestApprovedPayment->billing_period_ends_at)->toDateString();
+        } elseif (! $startDateChanged && (! $planChanged || $cycle === 'custom_days') && $branch->subscription_expires_at) {
+            $validated['subscription_expires_at'] = Carbon::parse($branch->subscription_expires_at)->toDateString();
         } elseif ($cycleDays !== null) {
             $validated['subscription_expires_at'] = $effectiveStart->copy()->addDays($cycleDays)->toDateString();
         }

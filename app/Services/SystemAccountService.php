@@ -439,12 +439,14 @@ class SystemAccountService
                 SystemAccountKey::StockAdjustmentGain->accountNumber(),
                 SystemAccountKey::StockAdjustmentLoss->accountNumber(),
                 SystemAccountKey::SubscriptionExpense->accountNumber(),
+                'SYS:unearned_subscription_revenue',
             ]);
         } else {
             // Branch panel does not use SuperAdmin subscription income and subscription receivable
             $retiredAccountNumbers = array_merge($retiredAccountNumbers, [
                 SystemAccountKey::SubscriptionIncome->accountNumber(),
                 SystemAccountKey::SubscriptionReceivable->accountNumber(),
+                'SYS:unearned_subscription_revenue',
             ]);
         }
 

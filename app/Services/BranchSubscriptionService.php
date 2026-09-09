@@ -505,6 +505,27 @@ class BranchSubscriptionService
     }
 
     /**
+     * Synchronize overdue dues into Chart of Accounts for all client branches:
+     * - On SuperAdmin panel: posts to Client Subscription Receivables (Asset) & Subscription Income (Revenue)
+     * - On Client Branch panel: posts to Subscription Expense & Subscription Payable (Liability)
+     */
+    public function syncAllOverdueLiabilities(): void
+    {
+        $mainBranchId = Branch::resolveMainBranchId();
+        $branches = Branch::query()
+            ->where('id', '!=', $mainBranchId)
+            ->where(function ($q) {
+                $q->whereNull('subscription_status')
+                    ->orWhere('subscription_status', '!=', 'lifetime');
+            })
+            ->get();
+
+        foreach ($branches as $branch) {
+            $this->syncOverdueLiability($branch);
+        }
+    }
+
+    /**
      * When the branch is overdue, raise Subscription Payable to match outstanding due.
      * Returns true when an overdue sync was applied (or overdue with nothing to post).
      */

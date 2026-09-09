@@ -300,7 +300,48 @@ class BranchSubscriptionAccountingService
                 ->first() ?? SystemAccountService::resolve($paymentAccountKey, null);
 
             $receivableAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
+            $incomeAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
 
+            $receivableBalance = max(0.0, (float) $receivableAccount->fresh()->current_balance);
+            $offsetAmount = min($amount, $receivableBalance);
+
+            if ($offsetAmount > 0.005) {
+                // Debit SuperAdmin Cash/Channel Account (increases asset), Credit Client Subscription Receivables (decreases asset)
+                $tx = TransactionService::recordTransaction([
+                    'source_type' => BranchSubscriptionPayment::class,
+                    'source_id' => $payment->id,
+                    'performed_by_type' => $actor ? User::class : null,
+                    'performed_by_id' => $actor?->id,
+                    'date' => $paymentDate,
+                    'amount' => $offsetAmount,
+                    'debit_account_id' => $superadminPaymentAccount->id,
+                    'credit_account_id' => $receivableAccount->id,
+                    'debit_decrease' => false,
+                    'credit_decrease' => true,
+                    'description' => $superadminDescription,
+                ], validateBalance: false);
+
+                $remainingDirectAmount = round($amount - $offsetAmount, 2);
+                if ($remainingDirectAmount > 0.005) {
+                    TransactionService::recordTransaction([
+                        'source_type' => BranchSubscriptionPayment::class,
+                        'source_id' => $payment->id,
+                        'performed_by_type' => $actor ? User::class : null,
+                        'performed_by_id' => $actor?->id,
+                        'date' => $paymentDate,
+                        'amount' => $remainingDirectAmount,
+                        'debit_account_id' => $superadminPaymentAccount->id,
+                        'credit_account_id' => $incomeAccount->id,
+                        'debit_decrease' => false,
+                        'credit_decrease' => false,
+                        'description' => $superadminDescription.' (Direct Income)',
+                    ], validateBalance: false);
+                }
+
+                return $tx;
+            }
+
+            // Direct payment without prior receivable: Debit SuperAdmin Cash/Channel, Credit SubscriptionIncome
             return TransactionService::recordTransaction([
                 'source_type' => BranchSubscriptionPayment::class,
                 'source_id' => $payment->id,
@@ -309,9 +350,9 @@ class BranchSubscriptionAccountingService
                 'date' => $paymentDate,
                 'amount' => $amount,
                 'debit_account_id' => $superadminPaymentAccount->id,
-                'credit_account_id' => $receivableAccount->id,
+                'credit_account_id' => $incomeAccount->id,
                 'debit_decrease' => false,
-                'credit_decrease' => true,
+                'credit_decrease' => false,
                 'description' => $superadminDescription,
             ], validateBalance: false);
         });

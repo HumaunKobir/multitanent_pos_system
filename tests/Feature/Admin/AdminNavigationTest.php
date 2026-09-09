@@ -28,14 +28,21 @@ test('authenticated users see the central admin navigation tree', function () {
         'Roles',
         'Website Manage',
         'Accounts',
+        'Reports',
     )->and($titles)->not->toContain(
         'Sales',
         'Purchases',
         'Suppliers',
         'Customers',
         'Settings',
-        'Reports',
     );
+
+    $reports = collect($navigation)->firstWhere('title', 'Reports');
+    expect($reports)->not->toBeNull()
+        ->and(collect($reports['children'])->pluck('title')->all())->toContain(
+            'Profit & Loss',
+            'Balance Sheet',
+        );
 });
 
 test('settings section is available to branch panel users', function () {
@@ -175,6 +182,62 @@ test('authenticated admin dashboard shares central navigation', function () {
             ->has('adminNavigation')
             ->where('adminNavigation.0.title', 'Dashboard')
             ->where('adminNavigation', fn ($navigation) => collect($navigation)->pluck('title')->doesntContain('Settings')
-                && collect($navigation)->pluck('title')->doesntContain('Reports')
+                && collect($navigation)->pluck('title')->contains('Reports')
                 && collect($navigation)->pluck('title')->contains('Branch')));
+});
+
+test('superadmin and main branch users have profit loss and balance sheet in navigation', function () {
+    $superAdmin = User::factory()->create(['branch_id' => null]);
+    $mainBranch = Branch::query()->find(Branch::MAIN_BRANCH_ID) ?? Branch::factory()->create(['id' => Branch::MAIN_BRANCH_ID]);
+    $mainBranchUser = User::factory()->create(['branch_id' => $mainBranch->id]);
+
+    $this->artisan('permissions:sync');
+    $mainBranchUser->givePermissionTo([
+        'report.profit-loss.view',
+        'report.balance-sheet.view',
+    ]);
+
+    $superNav = app(AdminNavigation::class)->build($superAdmin);
+    $mainNav = app(AdminNavigation::class)->build($mainBranchUser);
+
+    $superReports = collect($superNav)->firstWhere('title', 'Reports');
+    $mainReports = collect($mainNav)->firstWhere('title', 'Reports');
+
+    expect($superReports)->not->toBeNull();
+    expect(collect($superReports['children'])->pluck('title')->all())->toContain('Profit & Loss', 'Balance Sheet')
+        ->and(collect($superReports['children'])->pluck('title')->all())->not->toContain(
+            'Customer Ledger',
+            'Date Wise Stock',
+            'Stock Ledger',
+            'Inventory Stock',
+            'Opening Stock',
+            'Stock Valuation',
+            'Stock Aging',
+            'Daily Summary',
+            'Sales Summary',
+            'Sales Report',
+            'Sales Profit Trend',
+            'Purchase Report',
+        );
+    expect(collect($superReports['children'])->firstWhere('title', 'Profit & Loss')['href'])->toBe('/report/profit-loss');
+    expect(collect($superReports['children'])->firstWhere('title', 'Balance Sheet')['href'])->toBe('/report/balance-sheet');
+
+    expect($mainReports)->not->toBeNull();
+    expect(collect($mainReports['children'])->pluck('title')->all())->toContain('Profit & Loss', 'Balance Sheet')
+        ->and(collect($mainReports['children'])->pluck('title')->all())->not->toContain(
+            'Customer Ledger',
+            'Date Wise Stock',
+            'Stock Ledger',
+            'Inventory Stock',
+            'Opening Stock',
+            'Stock Valuation',
+            'Stock Aging',
+            'Daily Summary',
+            'Sales Summary',
+            'Sales Report',
+            'Sales Profit Trend',
+            'Purchase Report',
+        );
+    expect(collect($mainReports['children'])->firstWhere('title', 'Profit & Loss')['href'])->toBe('/report/profit-loss');
+    expect(collect($mainReports['children'])->firstWhere('title', 'Balance Sheet')['href'])->toBe('/report/balance-sheet');
 });

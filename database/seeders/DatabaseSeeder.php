@@ -29,16 +29,16 @@ class DatabaseSeeder extends Seeder
         ]);
 
 
-        $ecommerceBranch = Branch::query()->create([
-            'name' => Branch::ECOMMERCE_BRANCH_NAME,
-            'phone' => '01700000001',
-            'address' => 'ঢাকা, বাংলাদেশ',
-            'status' => CommonStatus::Active,
-        ]);
+        // $ecommerceBranch = Branch::query()->create([
+        //     'name' => Branch::ECOMMERCE_BRANCH_NAME,
+        //     'phone' => '01700000001',
+        //     'address' => 'ঢাকা, বাংলাদেশ',
+        //     'status' => CommonStatus::Active,
+        // ]);
 
         if (config('tenancy.enabled')) {
             app(TenantProvisioner::class)->provision($mainBranch);
-            app(TenantProvisioner::class)->provision($ecommerceBranch);
+            // app(TenantProvisioner::class)->provision($ecommerceBranch);
         } else {
             $this->call([
                 ChartOfAccountsSeeder::class,

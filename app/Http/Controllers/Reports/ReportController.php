@@ -460,7 +460,6 @@ class ReportController extends Controller
         $filters = $request->validate([
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
-            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
         ]);
 
         if (! isset($filters['date_from']) && ! isset($filters['date_to'])) {
@@ -468,21 +467,18 @@ class ReportController extends Controller
             $filters['date_to'] = now()->format('Y-m-d');
         }
 
-        $canFilterByBranch = $this->reports->canFilterByBranch();
-        $filterBranchId = $canFilterByBranch && isset($filters['branch_id']) ? (int) $filters['branch_id'] : null;
+        $isSaasPanel = $this->reports->canFilterByBranch();
 
         return Inertia::render('admin/reports/profit-loss', [
             'filters' => [
                 'date_from' => $filters['date_from'] ?? null,
                 'date_to' => $filters['date_to'] ?? null,
-                'branch_id' => $filters['branch_id'] ?? null,
             ],
-            'branches' => $canFilterByBranch ? $this->reports->branchOptions() : [],
-            'isBranchScoped' => ! $canFilterByBranch,
+            'panelVariant' => $isSaasPanel ? 'saas' : 'branch',
+            'isBranchScoped' => ! $isSaasPanel,
             'report' => $this->reports->profitAndLoss(
                 $filters['date_from'] ?? null,
                 $filters['date_to'] ?? null,
-                $filterBranchId,
             ),
         ]);
     }

@@ -195,7 +195,8 @@ class SubscriptionInvoiceService
 
         $allocatedTotal = round($paymentAmount - $remainingToAllocate, 2);
 
-        // Post financial settlement in GL for the portion applied to existing invoices (if any)
+        // Settle both charts for the invoice-applied portion (idempotent if already posted):
+        // Client: Dr Payable / Cr Cash — Admin: Dr Cash / Cr Receivable.
         if ($allocatedTotal > 0.005) {
             $this->accounting->recordPaymentSettlement($payment, $actor, $allocatedTotal);
         }

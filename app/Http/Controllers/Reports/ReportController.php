@@ -404,7 +404,7 @@ class ReportController extends Controller
 
             if ($user->usesAdminPanel() || $user->bypassesPermissionChecks()) {
                 $this->subscriptions->syncAllOverdueLiabilities();
-                $this->subscriptions->syncMissingSuperAdminSettlements($user);
+                $this->subscriptions->syncMissingPaymentSettlements($user);
             }
         } catch (\Throwable $e) {
             report($e);

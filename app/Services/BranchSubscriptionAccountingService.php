@@ -348,21 +348,38 @@ class BranchSubscriptionAccountingService
     }
 
     /**
-     * Replay SuperAdmin settlement legs for approved payments that never hit the
-     * central SaaS chart (e.g. tenant connection leaked to a client DB).
+     * Ensure approved payments are reflected on both charts (client + SuperAdmin).
+     * Skips a panel when that settlement leg already exists.
+     *
+     * @return array{checked: int, posted: int}
      */
-    public function syncMissingSuperAdminSettlements(?User $actor = null): int
+    public function syncMissingPaymentSettlements(?User $actor = null, ?int $onlyBranchId = null): array
     {
         $payments = BranchSubscriptionPayment::query()
             ->where('status', 'approved')
             ->where('amount', '>', 0)
+            ->when($onlyBranchId !== null, fn ($q) => $q->where('branch_id', $onlyBranchId))
             ->orderBy('id')
             ->get();
 
         $posted = 0;
 
         foreach ($payments as $payment) {
-            $needsPost = $this->onMainPanel(function () use ($payment): bool {
+            $branch = $payment->branch ?? Branch::query()->find($payment->branch_id);
+
+            if ($branch === null || Branch::isMainBranch($branch->id)) {
+                continue;
+            }
+
+            $missingOnClient = $this->onClientBranch($branch, function () use ($payment): bool {
+                return ! Transaction::query()
+                    ->where('source_type', BranchSubscriptionPayment::class)
+                    ->where('source_id', $payment->id)
+                    ->where('description', 'like', 'Subscription payment settled%')
+                    ->exists();
+            });
+
+            $missingOnAdmin = $this->onMainPanel(function () use ($payment): bool {
                 return ! Transaction::query()
                     ->where('source_type', BranchSubscriptionPayment::class)
                     ->where('source_id', $payment->id)
@@ -370,17 +387,29 @@ class BranchSubscriptionAccountingService
                     ->exists();
             });
 
-            if (! $needsPost) {
+            if (! $missingOnClient && ! $missingOnAdmin) {
                 continue;
             }
 
             $result = $this->recordPaymentSettlement($payment, $actor);
-            if ($result['superadmin_transaction'] !== null) {
+
+            if ($result['branch_transaction'] !== null || $result['superadmin_transaction'] !== null) {
                 $posted++;
             }
         }
 
-        return $posted;
+        return [
+            'checked' => $payments->count(),
+            'posted' => $posted,
+        ];
+    }
+
+    /**
+     * @deprecated Use syncMissingPaymentSettlements() — kept for callers expecting the old name.
+     */
+    public function syncMissingSuperAdminSettlements(?User $actor = null): int
+    {
+        return $this->syncMissingPaymentSettlements($actor)['posted'];
     }
 
     public function resolvePaymentAccountKey(?string $method): SystemAccountKey

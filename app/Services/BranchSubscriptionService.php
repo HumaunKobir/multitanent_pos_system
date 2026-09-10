@@ -584,11 +584,22 @@ class BranchSubscriptionService
     }
 
     /**
-     * Post any approved subscription payments missing from the SuperAdmin SaaS chart.
+     * Post any approved subscription payments missing from client and/or SuperAdmin charts.
+     * Idempotent — already-posted legs are skipped.
+     *
+     * @return array{checked: int, posted: int}
+     */
+    public function syncMissingPaymentSettlements(?User $actor = null, ?int $onlyBranchId = null): array
+    {
+        return $this->accounting->syncMissingPaymentSettlements($actor, $onlyBranchId);
+    }
+
+    /**
+     * @deprecated Use syncMissingPaymentSettlements()
      */
     public function syncMissingSuperAdminSettlements(?User $actor = null): int
     {
-        return $this->accounting->syncMissingSuperAdminSettlements($actor);
+        return $this->syncMissingPaymentSettlements($actor)['posted'];
     }
 
     public function resolveCycleDays(Branch $branch): ?int

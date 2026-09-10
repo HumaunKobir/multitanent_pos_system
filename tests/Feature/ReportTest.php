@@ -424,7 +424,7 @@ test('reports navigation only shows items the user may view', function () {
         ->and(collect($reports['children'])->pluck('title')->all())->not->toContain('Cash Flow', 'Customer Ledger');
 });
 
-test('reports navigation is hidden on the central admin panel', function () {
+test('reports navigation is available on the central admin panel when permitted', function () {
     $this->artisan('permissions:sync');
 
     $admin = User::factory()->create(['branch_id' => null]);
@@ -433,8 +433,43 @@ test('reports navigation is hidden on the central admin panel', function () {
     $navigation = app(AdminNavigation::class)->build($admin);
     $reports = collect($navigation)->firstWhere('title', 'Reports');
 
-    expect($reports)->toBeNull()
-        ->and(collect($navigation)->pluck('title'))->toContain('Dashboard', 'Branch', 'Accounts');
+    expect($reports)->not->toBeNull()
+        ->and(collect($reports['children'])->pluck('title'))->toContain(
+            'Balance Sheet',
+            'Profit & Loss',
+            'Sales Report',
+            'Stock Valuation',
+            'Subscription Billing',
+        )
+        ->and(collect($navigation)->pluck('title'))->toContain('Dashboard', 'Branch', 'Accounts', 'Reports');
+});
+
+test('branch reports navigation includes sales and stock reports when permitted', function () {
+    $this->artisan('permissions:sync');
+
+    $user = User::factory()->create([
+        'branch_id' => Branch::factory()->create()->id,
+    ]);
+    $role = Role::create(['name' => 'branch-reports-'.uniqid(), 'guard_name' => 'web']);
+    $role->givePermissionTo([
+        ReportController::PERMISSION_SALES_REPORT,
+        ReportController::PERMISSION_PURCHASE_REPORT,
+        ReportController::PERMISSION_CUSTOMER_LEDGER,
+        \App\Http\Controllers\Reports\StockValuationController::PERMISSION_VIEW,
+    ]);
+    $user->assignRole($role);
+
+    $navigation = app(AdminNavigation::class)->build($user);
+    $reports = collect($navigation)->firstWhere('title', 'Reports');
+
+    expect($reports)->not->toBeNull()
+        ->and(collect($reports['children'])->pluck('title')->all())->toContain(
+            'Customer Ledger',
+            'Sales Report',
+            'Purchase Report',
+            'Stock Valuation',
+        )
+        ->and(collect($reports['children'])->pluck('title')->all())->not->toContain('Balance Sheet');
 });
 
 test('trial balance and profit loss are branch wise and keep debit credit totals balanced', function () {

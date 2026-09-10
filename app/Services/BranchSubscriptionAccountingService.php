@@ -143,7 +143,11 @@ class BranchSubscriptionAccountingService
                 ->first();
 
             if ($existingBranchTx !== null) {
-                return $existingBranchTx;
+                if (abs((float) $existingBranchTx->amount - $fee) > 0.005) {
+                    TransactionService::reverseTransaction($existingBranchTx);
+                } else {
+                    return $existingBranchTx;
+                }
             }
 
             $expenseAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
@@ -170,7 +174,11 @@ class BranchSubscriptionAccountingService
                 ->first();
 
             if ($existingSuperadminTx !== null) {
-                return $existingSuperadminTx;
+                if (abs((float) $existingSuperadminTx->amount - $fee) > 0.005) {
+                    TransactionService::reverseTransaction($existingSuperadminTx);
+                } else {
+                    return $existingSuperadminTx;
+                }
             }
 
             $receivableAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);

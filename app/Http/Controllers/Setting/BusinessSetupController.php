@@ -90,6 +90,9 @@ class BusinessSetupController extends Controller
         // Apply tenancy preference for subsequent requests (env remains bootstrap fallback).
         config(['tenancy.enabled' => (bool) $validated['multi_tenant_enabled']]);
 
+        // Synchronize branch subscription liabilities and invoices if default fee / cycles were modified
+        $this->subscriptionService->syncAllOverdueLiabilities();
+
         return redirect()->route('setting.business-setup.edit')
             ->with('success', 'Business setup and policies updated successfully.');
     }

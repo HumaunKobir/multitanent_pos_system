@@ -316,3 +316,133 @@ test('scheduled command processes overdue branches and generates missing invoice
     $invoices = SubscriptionInvoice::where('branch_id', $branch->id)->get();
     expect($invoices->count())->toBeGreaterThanOrEqual(3);
 });
+
+test('changing branch subscription fee updates open invoice and reverses and updates COA ledger balances', function () {
+    $branch = Branch::factory()->create([
+        'name' => 'Branch Fee Adjustment Coa Test',
+        'subscription_fee' => 1500,
+        'subscription_plan' => 'custom_days',
+        'custom_cycle_days' => 30,
+        'subscription_starts_at' => '2026-09-01',
+        'subscription_expires_at' => '2026-10-01',
+        'subscription_status' => 'active',
+    ]);
+
+    SystemAccountService::seed(null);
+    SystemAccountService::seed($branch->id);
+
+    $superadminIncome = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+    $superadminReceivable = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
+    $branchExpense = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
+    $branchPayable = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
+
+    $initialIncome = (float) $superadminIncome->fresh()->current_balance;
+    $initialReceivable = (float) $superadminReceivable->fresh()->current_balance;
+
+    $invoiceService = app(SubscriptionInvoiceService::class);
+    $subscriptionService = app(BranchSubscriptionService::class);
+
+    // 1. Generate initial invoice with fee = 1500
+    $invoice = $invoiceService->generateInvoice($branch, '2026-09-01', '2026-10-01', 1500);
+
+    expect($invoice->status)->toBe('unpaid')
+        ->and((float) $invoice->total_amount)->toBe(1500.0)
+        ->and((float) $invoice->due_amount)->toBe(1500.0)
+        ->and((float) $superadminIncome->fresh()->current_balance)->toBe($initialIncome + 1500.0)
+        ->and((float) $superadminReceivable->fresh()->current_balance)->toBe($initialReceivable + 1500.0)
+        ->and((float) $branchExpense->fresh()->current_balance)->toBe(1500.0)
+        ->and((float) $branchPayable->fresh()->current_balance)->toBe(1500.0);
+
+    // 2. Admin updates the branch subscription fee to 1000
+    $branch->update(['subscription_fee' => 1000]);
+    $subscriptionService->syncBranchSubscriptionFee($branch->fresh(), 1000);
+
+    $invoice->refresh();
+
+    // Verify invoice reflects new amount 1000
+    expect((float) $invoice->total_amount)->toBe(1000.0)
+        ->and((float) $invoice->due_amount)->toBe(1000.0)
+        ->and($invoice->status)->toBe('unpaid');
+
+    // Verify COA ledgers adjusted to 1000 without orphan duplicates
+    expect((float) $superadminIncome->fresh()->current_balance)->toBe($initialIncome + 1000.0)
+        ->and((float) $superadminReceivable->fresh()->current_balance)->toBe($initialReceivable + 1000.0)
+        ->and((float) $branchExpense->fresh()->current_balance)->toBe(1000.0)
+        ->and((float) $branchPayable->fresh()->current_balance)->toBe(1000.0);
+});
+
+test('changing subscription fee on partially paid invoice adjusts remaining due and COA balances', function () {
+    $branch = Branch::factory()->create([
+        'name' => 'Branch Fee Adjustment Partial Test',
+        'subscription_fee' => 1500,
+        'subscription_plan' => 'custom_days',
+        'custom_cycle_days' => 30,
+        'subscription_starts_at' => '2026-09-01',
+        'subscription_expires_at' => '2026-10-01',
+        'subscription_status' => 'active',
+    ]);
+
+    SystemAccountService::seed(null);
+    SystemAccountService::seed($branch->id);
+
+    $superadminBkash = SystemAccountService::resolve(SystemAccountKey::Bkash, null);
+    $superadminIncome = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+    $superadminReceivable = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
+    $branchExpense = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
+    $branchPayable = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
+    $branchBkash = SystemAccountService::resolve(SystemAccountKey::Bkash, $branch->id);
+
+    $initialIncome = (float) $superadminIncome->fresh()->current_balance;
+    $initialReceivable = (float) $superadminReceivable->fresh()->current_balance;
+    $initialSuperadminBkash = (float) $superadminBkash->fresh()->current_balance;
+    $initialBranchBkash = (float) $branchBkash->fresh()->current_balance;
+
+    $invoiceService = app(SubscriptionInvoiceService::class);
+    $subscriptionService = app(BranchSubscriptionService::class);
+
+    // 1. Accrue 1500
+    $invoice = $invoiceService->generateInvoice($branch, '2026-09-01', '2026-10-01', 1500);
+
+    // 2. Branch pays 600 partially
+    $admin = User::factory()->create(['branch_id' => null]);
+    $subscriptionService->renew($branch, [
+        'duration_days' => 30,
+        'amount' => 600,
+        'payment_method' => 'bKash',
+        'transaction_reference' => 'BKASH-PART-600',
+        'paid_at' => '2026-09-05',
+    ], $admin);
+
+    $invoice->refresh();
+    expect($invoice->status)->toBe('partial')
+        ->and((float) $invoice->paid_amount)->toBe(600.0)
+        ->and((float) $invoice->due_amount)->toBe(900.0)
+        ->and((float) $branchPayable->fresh()->current_balance)->toBe(900.0)
+        ->and((float) $superadminReceivable->fresh()->current_balance)->toBe($initialReceivable + 900.0);
+
+    // 3. Admin updates subscription fee to 1000
+    $branch->update(['subscription_fee' => 1000]);
+    $subscriptionService->syncBranchSubscriptionFee($branch->fresh(), 1000);
+
+    $invoice->refresh();
+
+    // Total becomes 1000, paid remains 600, due becomes 400
+    expect((float) $invoice->total_amount)->toBe(1000.0)
+        ->and((float) $invoice->paid_amount)->toBe(600.0)
+        ->and((float) $invoice->due_amount)->toBe(400.0)
+        ->and($invoice->status)->toBe('partial');
+
+    // Chart of accounts should reflect:
+    // Income = 1000
+    // Cash = +600
+    // SuperAdmin Receivable = 1000 - 600 = 400
+    // Branch Expense = 1000
+    // Branch Payable = 1000 - 600 = 400
+    expect((float) $superadminIncome->fresh()->current_balance)->toBe($initialIncome + 1000.0)
+        ->and((float) $superadminReceivable->fresh()->current_balance)->toBe($initialReceivable + 400.0)
+        ->and((float) $superadminBkash->fresh()->current_balance)->toBe($initialSuperadminBkash + 600.0)
+        ->and((float) $branchExpense->fresh()->current_balance)->toBe(1000.0)
+        ->and((float) $branchPayable->fresh()->current_balance)->toBe(400.0)
+        ->and((float) $branchBkash->fresh()->current_balance)->toBe($initialBranchBkash - 600.0);
+});
+

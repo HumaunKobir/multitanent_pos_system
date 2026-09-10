@@ -558,6 +558,20 @@ class BranchSubscriptionService
     }
 
     /**
+     * Synchronize open invoices and GL entries when a branch's subscription fee is updated.
+     */
+    public function syncBranchSubscriptionFee(Branch $branch, ?float $newFee = null): void
+    {
+        if (Branch::isMainBranch($branch->id) || ($branch->subscription_status ?: 'active') === 'lifetime') {
+            return;
+        }
+
+        $fee = $newFee !== null ? $newFee : (float) ($branch->subscription_fee ?? BusinessSettings::getFloat('subscription_default_fee', 1500));
+        $this->invoices->syncBranchInvoicesForFee($branch, $fee);
+        $this->catchUpBranchBilling($branch);
+    }
+
+    /**
      * Generate missing cycle invoices (with accrual GL) and top up payable/receivable
      * to match unpaid invoice dues. Safe to call from Accounts page and reports.
      */
@@ -571,6 +585,8 @@ class BranchSubscriptionService
             return;
         }
 
+        $fee = (float) ($branch->subscription_fee ?? BusinessSettings::getFloat('subscription_default_fee', 1500));
+        $this->invoices->syncBranchInvoicesForFee($branch, $fee);
         $this->invoices->generateMissingInvoicesThroughToday($branch, $this);
 
         $unpaidDue = (float) SubscriptionInvoice::query()

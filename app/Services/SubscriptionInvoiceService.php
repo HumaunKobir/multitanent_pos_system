@@ -40,10 +40,26 @@ class SubscriptionInvoiceService
             ->first();
 
         if ($existing) {
-            // Catch up GL for invoices created before accrual posting was enabled.
-            $this->postInvoiceAccounting($existing);
+            $currentSubtotal = (float) $existing->subtotal;
+            if (abs($currentSubtotal - $fee) > 0.005) {
+                $paid = (float) $existing->paid_amount;
+                $discount = (float) $existing->discount;
+                $newTotal = max(0.0, round($fee - $discount, 2));
+                $newDue = max(0.0, round($newTotal - $paid, 2));
+                $newStatus = $newDue <= 0.005 ? 'paid' : ($paid > 0 ? 'partial' : 'unpaid');
 
-            return $existing;
+                $existing->update([
+                    'subtotal' => $fee,
+                    'total_amount' => $newTotal,
+                    'due_amount' => $newDue,
+                    'status' => $newStatus,
+                ]);
+            }
+
+            // Catch up / sync GL for invoice
+            $this->postInvoiceAccounting($existing->fresh());
+
+            return $existing->fresh(['paymentAllocations']);
         }
 
         $invoice = SubscriptionInvoice::create([
@@ -67,6 +83,41 @@ class SubscriptionInvoiceService
         $this->applyAvailableAdvanceToInvoice($invoice->fresh());
 
         return $invoice->fresh(['paymentAllocations']);
+    }
+
+    /**
+     * Synchronize open / unpaid / partial billing cycle invoices for a branch to match the updated subscription fee.
+     * Also updates journal entries / GL accruals on both SuperAdmin and Client Branch charts.
+     */
+    public function syncBranchInvoicesForFee(Branch $branch, ?float $newFee = null): void
+    {
+        if (Branch::isMainBranch($branch->id) || ($branch->subscription_status ?: 'active') === 'lifetime') {
+            return;
+        }
+
+        $fee = $newFee !== null ? $newFee : (float) ($branch->subscription_fee ?? BusinessSettings::getFloat('subscription_default_fee', 1500));
+
+        $openInvoices = SubscriptionInvoice::where('branch_id', $branch->id)
+            ->whereIn('status', ['unpaid', 'partial', 'overdue'])
+            ->get();
+
+        foreach ($openInvoices as $invoice) {
+            $paid = (float) $invoice->paid_amount;
+            $discount = (float) $invoice->discount;
+            $newTotal = max(0.0, round($fee - $discount, 2));
+            $newDue = max(0.0, round($newTotal - $paid, 2));
+            $newStatus = $newDue <= 0.005 ? 'paid' : ($paid > 0 ? 'partial' : 'unpaid');
+
+            $invoice->update([
+                'subtotal' => $fee,
+                'total_amount' => $newTotal,
+                'due_amount' => $newDue,
+                'status' => $newStatus,
+            ]);
+
+            $this->postInvoiceAccounting($invoice->fresh());
+            $this->applyAvailableAdvanceToInvoice($invoice->fresh());
+        }
     }
 
     /**

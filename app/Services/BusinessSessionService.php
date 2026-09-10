@@ -278,8 +278,21 @@ class BusinessSessionService
      */
     public function scopeForUser(Builder $query, User $user): Builder
     {
-        if ($user->hasUnrestrictedPermissions() || $user->isSuperAdmin()) {
+        if (config('tenancy.enabled') && $user->usesBranchPanel()) {
             return $query;
+        }
+
+        if ($user->usesBranchPanel()) {
+            return $query->where('branch_id', $user->branch_id);
+        }
+
+        if ($user->usesAdminPanel() || $user->isSuperAdmin()) {
+            $mainBranchId = Branch::resolveMainBranchId();
+
+            return $query->where(function (Builder $q) use ($mainBranchId) {
+                $q->whereNull('branch_id')
+                    ->orWhere('branch_id', $mainBranchId);
+            });
         }
 
         if ($user->branch_id !== null) {

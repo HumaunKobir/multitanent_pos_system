@@ -7,6 +7,7 @@ use App\Models\Branch;
 use App\Models\BusinessSetting;
 use App\Services\BranchSubscriptionService;
 use App\Support\BusinessSettings;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -25,6 +26,7 @@ class BusinessSetupController extends Controller
 
         return Inertia::render('admin/setting/business-setup/index', [
             'settings' => $settings,
+            'tenancyEnabled' => (bool) config('tenancy.enabled'),
             'billingCycles' => [
                 ['value' => 'monthly', 'label' => 'Monthly (30 Days)', 'days' => 30],
                 ['value' => 'quarterly', 'label' => 'Quarterly (90 Days)', 'days' => 90],
@@ -56,6 +58,10 @@ class BusinessSetupController extends Controller
         $this->authorize('business-setup.update');
 
         $validated = $request->validate([
+            // Platform
+            'system_name' => ['required', 'string', 'max:120'],
+            'multi_tenant_enabled' => ['required', 'boolean'],
+
             // Subscription & Billing
             'subscription_billing_cycle' => ['required', 'string', 'in:monthly,quarterly,half_yearly,yearly,trial,lifetime,custom_days'],
             'subscription_billing_cycle_days' => ['required', 'integer', 'min:1', 'max:3650'],
@@ -80,6 +86,9 @@ class BusinessSetupController extends Controller
         }
 
         BusinessSetting::setMany($payload);
+
+        // Apply tenancy preference for subsequent requests (env remains bootstrap fallback).
+        config(['tenancy.enabled' => (bool) $validated['multi_tenant_enabled']]);
 
         return redirect()->route('setting.business-setup.edit')
             ->with('success', 'Business setup and policies updated successfully.');
@@ -122,8 +131,8 @@ class BusinessSetupController extends Controller
         }
 
         $effectiveStart = ! empty($validated['subscription_starts_at'])
-            ? \Carbon\Carbon::parse($validated['subscription_starts_at'])->startOfDay()
-            : ($branch->subscription_starts_at ? \Carbon\Carbon::parse($branch->subscription_starts_at)->startOfDay() : \Carbon\Carbon::today());
+            ? Carbon::parse($validated['subscription_starts_at'])->startOfDay()
+            : ($branch->subscription_starts_at ? Carbon::parse($branch->subscription_starts_at)->startOfDay() : Carbon::today());
 
         $validated['subscription_starts_at'] = $effectiveStart->toDateString();
 
@@ -138,11 +147,11 @@ class BusinessSetupController extends Controller
         if ($cycle === 'lifetime' || $validated['subscription_status'] === 'lifetime') {
             $validated['subscription_expires_at'] = null;
         } elseif (! empty($validated['subscription_expires_at'])) {
-            $validated['subscription_expires_at'] = \Carbon\Carbon::parse($validated['subscription_expires_at'])->toDateString();
+            $validated['subscription_expires_at'] = Carbon::parse($validated['subscription_expires_at'])->toDateString();
         } elseif ($latestApprovedPayment && $latestApprovedPayment->billing_period_ends_at) {
-            $validated['subscription_expires_at'] = \Carbon\Carbon::parse($latestApprovedPayment->billing_period_ends_at)->toDateString();
+            $validated['subscription_expires_at'] = Carbon::parse($latestApprovedPayment->billing_period_ends_at)->toDateString();
         } elseif (! $startDateChanged && (! $planChanged || $cycle === 'custom_days') && $branch->subscription_expires_at) {
-            $validated['subscription_expires_at'] = \Carbon\Carbon::parse($branch->subscription_expires_at)->toDateString();
+            $validated['subscription_expires_at'] = Carbon::parse($branch->subscription_expires_at)->toDateString();
         } elseif ($cycleDays !== null) {
             $validated['subscription_expires_at'] = $effectiveStart->copy()->addDays($cycleDays)->toDateString();
         }

@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Enums\DashboardSalesPeriod;
 use App\Enums\VoucherType;
 use App\Models\Branch;
+use App\Models\BranchSubscriptionPayment;
 use App\Models\ConfigDictionary;
 use App\Models\Customer;
 use App\Models\CustomerPayment;
@@ -14,6 +15,7 @@ use App\Models\Sell;
 use App\Models\SupplierPayment;
 use App\Models\User;
 use App\Models\Voucher;
+use App\Support\BusinessSettings;
 use App\Support\StorageUrl;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
@@ -94,47 +96,116 @@ class DashboardService
      */
     public function adminOverview(): array
     {
+        return $this->saasOverview();
+    }
+
+    /**
+     * SuperAdmin SaaS platform overview (subscription clients & billing).
+     *
+     * @return array<string, mixed>
+     */
+    public function saasOverview(): array
+    {
         $today = Carbon::today();
         $monthStart = $today->copy()->startOfMonth();
-        $trendStart = $today->copy()->subDays(29);
 
-        $todaySales = $this->aggregateSales(
-            $this->excludeMainBranchSales(
-                Sell::query()->sale()->whereDate('date', $today),
-            ),
-        );
+        $clientBranches = Branch::query()
+            ->operating()
+            ->with(['subscriptionPayments' => fn ($q) => $q->latest('id')->limit(1)])
+            ->orderBy('name')
+            ->get();
 
-        $monthSales = $this->aggregateSales(
-            $this->excludeMainBranchSales(
-                Sell::query()->sale()->whereBetween('date', [$monthStart->toDateString(), $today->toDateString()]),
-            ),
-        );
+        $subscriptionService = app(BranchSubscriptionService::class);
+        $rows = $clientBranches->map(function (Branch $branch) use ($subscriptionService) {
+            $sub = $subscriptionService->getSubscriptionSummary($branch);
+            $latest = $branch->subscriptionPayments->first();
 
-        $todayExpenses = $this->aggregateExpenses(
-            $this->excludeMainBranch(
-                Voucher::query()->where('type', VoucherType::Expense)->whereDate('date', $today),
-            ),
-        );
+            return [
+                'branch_id' => $branch->id,
+                'branch_name' => $branch->name,
+                'subscription' => $sub,
+                'latest_payment_status' => $latest?->status,
+                'fee' => (float) ($branch->subscription_fee ?? $sub['fee'] ?? 0),
+            ];
+        });
 
-        $monthExpenses = $this->aggregateExpenses(
-            $this->excludeMainBranch(
-                Voucher::query()->where('type', VoucherType::Expense)->whereBetween('date', [$monthStart->toDateString(), $today->toDateString()]),
-            ),
-        );
+        $pendingApprovals = $rows->filter(
+            fn (array $row) => ($row['subscription']['has_pending_payment'] ?? false)
+                || ($row['latest_payment_status'] ?? '') === 'pending'
+        )->count();
+
+        $activeClients = $rows->filter(fn (array $row) => ($row['subscription']['computed_status'] ?? '') === 'active')->count();
+        $expiringSoon = $rows->filter(fn (array $row) => ($row['subscription']['computed_status'] ?? '') === 'expiring_soon')->count();
+        $overdueClients = $rows->filter(fn (array $row) => (bool) ($row['subscription']['is_overdue'] ?? false))->count();
+        $suspendedClients = $rows->filter(fn (array $row) => (bool) ($row['subscription']['is_suspended'] ?? false))->count();
+        $lifetimeClients = $rows->filter(fn (array $row) => ($row['subscription']['status'] ?? '') === 'lifetime')->count();
+        $totalOverdueDue = round($rows->sum(fn (array $row) => (float) ($row['subscription']['total_overdue_fee'] ?? 0)), 2);
+
+        $monthCollected = (float) BranchSubscriptionPayment::query()
+            ->where('status', 'approved')
+            ->whereDate('paid_at', '>=', $monthStart->toDateString())
+            ->whereDate('paid_at', '<=', $today->toDateString())
+            ->sum('amount');
+
+        $todayCollected = (float) BranchSubscriptionPayment::query()
+            ->where('status', 'approved')
+            ->whereDate('paid_at', $today->toDateString())
+            ->sum('amount');
+
+        $pendingAmount = (float) BranchSubscriptionPayment::query()
+            ->where('status', 'pending')
+            ->sum('amount');
+
+        $recentPending = BranchSubscriptionPayment::query()
+            ->with('branch:id,name')
+            ->where('status', 'pending')
+            ->latest('id')
+            ->limit(8)
+            ->get(['id', 'branch_id', 'amount', 'payment_method', 'paid_at', 'created_at'])
+            ->map(fn (BranchSubscriptionPayment $payment) => [
+                'id' => $payment->id,
+                'branch_name' => $payment->branch?->name ?? 'Branch #'.$payment->branch_id,
+                'amount' => (float) $payment->amount,
+                'payment_method' => $payment->payment_method,
+                'paid_at' => $payment->paid_at?->format('Y-m-d'),
+                'submitted' => $payment->created_at?->diffForHumans(),
+            ])
+            ->all();
+
+        $statusBreakdown = [
+            ['label' => 'Active', 'count' => $activeClients, 'tone' => 'emerald'],
+            ['label' => 'Expiring soon', 'count' => $expiringSoon, 'tone' => 'amber'],
+            ['label' => 'Overdue', 'count' => $overdueClients, 'tone' => 'rose'],
+            ['label' => 'Suspended', 'count' => $suspendedClients, 'tone' => 'slate'],
+            ['label' => 'Lifetime', 'count' => $lifetimeClients, 'tone' => 'blue'],
+            ['label' => 'Pending approval', 'count' => $pendingApprovals, 'tone' => 'violet'],
+        ];
 
         return [
             'today' => $today->format('Y-m-d'),
             'kpis' => [
-                'today_sales' => $todaySales,
-                'month_sales' => $monthSales,
-                'today_expenses' => $todayExpenses,
-                'month_expenses' => $monthExpenses,
-                'active_branches' => Branch::query()->operating()->active()->count(),
-                'total_branches' => Branch::query()->operating()->count(),
+                'total_clients' => $rows->count(),
+                'active_clients' => $activeClients,
+                'pending_approvals' => $pendingApprovals,
+                'expiring_soon' => $expiringSoon,
+                'overdue_clients' => $overdueClients,
+                'suspended_clients' => $suspendedClients,
+                'lifetime_clients' => $lifetimeClients,
+                'total_overdue_due' => $totalOverdueDue,
+                'today_collected' => round($todayCollected, 2),
+                'month_collected' => round($monthCollected, 2),
+                'pending_amount' => round($pendingAmount, 2),
+                'multi_tenant_enabled' => BusinessSettings::getBool('multi_tenant_enabled', (bool) config('tenancy.enabled')),
+                'system_name' => BusinessSettings::systemName(),
             ],
-            'branch_sales' => $this->branchSalesBreakdown($today, $monthStart),
-            'sales_trend' => $this->salesTrend($trendStart, $today),
-            'collection' => $this->collectionMetrics($monthSales),
+            'status_breakdown' => $statusBreakdown,
+            'recent_pending' => $recentPending,
+            'links' => [
+                'clients' => '/branch-clients',
+                'billing_report' => '/report/subscription-billing',
+                'profit_loss' => '/report/profit-loss',
+                'business_setup' => '/setting/business-setup',
+            ],
         ];
     }
 

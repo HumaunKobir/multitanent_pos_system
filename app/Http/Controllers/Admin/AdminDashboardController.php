@@ -2,7 +2,6 @@
 
 namespace App\Http\Controllers\Admin;
 
-use App\Enums\DashboardSalesPeriod;
 use App\Http\Controllers\Controller;
 use App\Services\DashboardService;
 use Illuminate\Http\RedirectResponse;
@@ -22,21 +21,14 @@ class AdminDashboardController extends Controller
             return Inertia::render('admin/dashboard', $this->dashboard->welcomeOverview($user));
         }
 
-        $period = DashboardSalesPeriod::tryFromInput($request->input('period'));
-        $overview = $this->dashboard->adminOverview();
+        $overview = $this->dashboard->saasOverview();
 
         return Inertia::render('admin/dashboard', [
             'today' => $overview['today'],
             'kpis' => $overview['kpis'],
-            'branchSales' => $overview['branch_sales'],
-            'salesTrend' => $overview['sales_trend'],
-            'collection' => $overview['collection'],
-            'sellReport' => $this->dashboard->sellReport(
-                $period,
-                null,
-                $request->input('date_from'),
-                $request->input('date_to'),
-            ),
+            'statusBreakdown' => $overview['status_breakdown'],
+            'recentPending' => $overview['recent_pending'],
+            'links' => $overview['links'],
         ]);
     }
 }

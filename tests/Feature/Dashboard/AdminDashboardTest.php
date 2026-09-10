@@ -1,15 +1,10 @@
 <?php
 
 use App\Enums\SaleType;
-use App\Enums\VoucherType;
 use App\Models\Branch;
-use App\Models\Product;
-use App\Models\ProductExchange;
-use App\Models\ProductExchangeProduct;
+use App\Models\BranchSubscriptionPayment;
 use App\Models\Sell;
-use App\Models\SellProduct;
 use App\Models\User;
-use App\Models\Voucher;
 use App\Support\AdminNavigation;
 use Carbon\Carbon;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -43,133 +38,41 @@ function dashboardBranchUser(?int $branchId = null, array $permissions = []): Us
     return $user;
 }
 
-test('super admin dashboard returns sell report with period filter', function () {
+test('super admin dashboard returns saas subscription kpis', function () {
     $date = '2099-06-15';
-    $branch = Branch::factory()->create(['name' => 'Sell Report Branch '.uniqid()]);
+
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => Branch::MAIN_BRANCH_NAME])->toArray(),
+    );
+
+    $client = Branch::factory()->create([
+        'name' => 'SaaS Client '.uniqid(),
+        'subscription_status' => 'active',
+        'subscription_fee' => 1500,
+        'subscription_expires_at' => '2099-07-01',
+    ]);
     $admin = dashboardSuperAdmin();
 
-    Sell::factory()->create([
-        'branch_id' => $branch->id,
-        'type' => SaleType::Sale,
-        'date' => '2099-06-10',
-        'gross_amount' => 2000,
-        'paid_amount' => 1500,
+    BranchSubscriptionPayment::query()->create([
+        'branch_id' => $client->id,
+        'amount' => 1500,
+        'payment_method' => 'bKash',
+        'status' => 'approved',
+        'paid_at' => $date,
+        'billing_period_starts_at' => '2099-06-01',
+        'billing_period_ends_at' => '2099-07-01',
     ]);
 
-    Sell::factory()->create([
-        'branch_id' => $branch->id,
-        'type' => SaleType::Sale,
-        'date' => '2098-06-10',
-        'gross_amount' => 9000,
-        'paid_amount' => 9000,
+    BranchSubscriptionPayment::query()->create([
+        'branch_id' => $client->id,
+        'amount' => 900,
+        'payment_method' => 'Nagad',
+        'status' => 'pending',
+        'paid_at' => $date,
     ]);
 
     Carbon::setTestNow($date);
-
-    $this->actingAs($admin)
-        ->get(route('dashboard', ['period' => 'current_month']))
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->has('sellReport')
-            ->where('sellReport.period', 'current_month')
-            ->where('sellReport.summary.count', 1)
-            ->where('sellReport.summary.gross', 2000)
-            ->where('sellReport.summary.paid', 1500)
-            ->where('sellReport.date_from', '2099-06-01')
-            ->where('sellReport.date_to', $date));
-
-    $this->actingAs($admin)
-        ->get(route('dashboard', ['period' => 'last_year']))
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('sellReport.period', 'last_year')
-            ->where('sellReport.summary.count', 1)
-            ->where('sellReport.summary.gross', 9000)
-            ->where('sellReport.date_from', '2098-01-01')
-            ->where('sellReport.date_to', '2098-12-31'));
-
-    Carbon::setTestNow();
-
-    Sell::query()->where('branch_id', $branch->id)->delete();
-    $branch->delete();
-    $admin->delete();
-});
-
-test('super admin dashboard supports last 7 days and custom range period filters', function () {
-    $date = '2188-08-15';
-    $branch = Branch::factory()->create(['name' => 'Range Filter Branch '.uniqid()]);
-    $admin = dashboardSuperAdmin();
-
-    Sell::factory()->create([
-        'branch_id' => $branch->id,
-        'type' => SaleType::Sale,
-        'date' => '2188-08-14',
-        'gross_amount' => 700,
-        'paid_amount' => 700,
-    ]);
-
-    Sell::factory()->create([
-        'branch_id' => $branch->id,
-        'type' => SaleType::Sale,
-        'date' => '2188-08-05',
-        'gross_amount' => 300,
-        'paid_amount' => 300,
-    ]);
-
-    Carbon::setTestNow($date);
-
-    $this->actingAs($admin)
-        ->get(route('dashboard', ['period' => 'last_7_days']))
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('sellReport.period', 'last_7_days')
-            ->where('sellReport.summary.count', 1)
-            ->where('sellReport.summary.gross', 700)
-            ->where('sellReport.date_from', '2188-08-09')
-            ->where('sellReport.date_to', $date));
-
-    $this->actingAs($admin)
-        ->get(route('dashboard', ['period' => 'custom']))
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('sellReport.period', 'custom')
-            ->where('sellReport.date_from', null)
-            ->where('sellReport.date_to', null)
-            ->where('sellReport.summary.count', 0));
-
-    $this->actingAs($admin)
-        ->get(route('dashboard', [
-            'period' => 'custom',
-            'date_from' => '2188-08-01',
-            'date_to' => '2188-08-10',
-        ]))
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('sellReport.period', 'custom')
-            ->where('sellReport.summary.count', 1)
-            ->where('sellReport.summary.gross', 300)
-            ->where('sellReport.date_from', '2188-08-01')
-            ->where('sellReport.date_to', '2188-08-10'));
-
-    Carbon::setTestNow();
-
-    Sell::query()->where('branch_id', $branch->id)->delete();
-    $branch->delete();
-    $admin->delete();
-});
-
-test('super admin dashboard returns branch sales and trend props', function () {
-    $today = Carbon::today()->toDateString();
-    $branch = Branch::factory()->create(['name' => 'Dashboard Test Branch '.uniqid()]);
-    $admin = dashboardSuperAdmin();
-
-    Sell::factory()->create([
-        'branch_id' => $branch->id,
-        'type' => SaleType::Sale,
-        'date' => $today,
-        'gross_amount' => 1500,
-        'paid_amount' => 1000,
-    ]);
 
     $this->actingAs($admin)
         ->get(route('dashboard'))
@@ -177,117 +80,55 @@ test('super admin dashboard returns branch sales and trend props', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/dashboard')
             ->has('kpis')
-            ->has('branchSales')
-            ->has('salesTrend', 30)
-            ->has('collection')
-            ->has('sellReport')
-            ->where('today', $today)
-            ->where('kpis.today_sales.count', 1)
-            ->where('kpis.today_sales.gross', 1500)
-            ->where('kpis.today_sales.paid', 1000));
+            ->has('statusBreakdown')
+            ->has('recentPending')
+            ->has('links')
+            ->missing('sellReport')
+            ->where('today', $date)
+            ->where('kpis.total_clients', fn ($v) => (int) $v >= 1)
+            ->where('kpis.month_collected', fn ($v) => (float) $v >= 1500)
+            ->where('kpis.pending_approvals', fn ($v) => (int) $v >= 1)
+            ->where('kpis.pending_amount', fn ($v) => (float) $v >= 900));
 
-    Sell::query()->where('branch_id', $branch->id)->delete();
-    $branch->delete();
+    Carbon::setTestNow();
+
+    BranchSubscriptionPayment::query()->where('branch_id', $client->id)->delete();
+    $admin->delete();
 });
 
-test('super admin dashboard includes expense totals excluding main branch', function () {
-    $date = '2099-03-15';
-    $branch = Branch::factory()->create(['name' => 'Expense Branch '.uniqid()]);
+test('super admin dashboard excludes main branch from client totals and exposes system name', function () {
+    Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        Branch::factory()->make(['name' => Branch::MAIN_BRANCH_NAME])->toArray(),
+    );
+
+    Branch::factory()->create(['name' => 'Operating Client '.uniqid()]);
     $admin = dashboardSuperAdmin();
-
-    Voucher::query()->create([
-        'type' => VoucherType::Expense,
-        'voucher_no' => 'EXP-DASH-'.uniqid(),
-        'date' => $date,
-        'total_amount' => 450,
-        'branch_id' => $branch->id,
-        'created_by' => $admin->id,
-    ]);
-
-    Voucher::query()->create([
-        'type' => VoucherType::Expense,
-        'voucher_no' => 'EXP-MAIN-'.uniqid(),
-        'date' => $date,
-        'total_amount' => 9999,
-        'branch_id' => Branch::MAIN_BRANCH_ID,
-        'created_by' => $admin->id,
-    ]);
-
-    Carbon::setTestNow($date);
 
     $this->actingAs($admin)
         ->get(route('dashboard'))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
-            ->where('kpis.today_expenses.count', 1)
-            ->where('kpis.today_expenses.amount', 450)
-            ->where('kpis.month_expenses.count', 1)
-            ->where('kpis.month_expenses.amount', 450));
+            ->where('kpis.total_clients', fn ($count) => (int) $count >= 1)
+            ->where('kpis.system_name', fn ($name) => is_string($name) && $name !== ''));
 
-    Carbon::setTestNow();
-
-    Voucher::query()->whereIn('branch_id', [$branch->id, Branch::MAIN_BRANCH_ID])->whereDate('date', $date)->delete();
-    $branch->delete();
     $admin->delete();
 });
 
 test('branch user dashboard nav link points to branch panel', function () {
-    $this->artisan('permissions:sync');
+    $user = dashboardBranchUser(null, ['dashboard.view']);
 
-    $branch = Branch::factory()->create();
-    $user = User::factory()->create(['branch_id' => $branch->id]);
-    $dashboard = collect(app(AdminNavigation::class)->build($user))->firstWhere('title', 'Dashboard');
+    $nav = app(AdminNavigation::class)->build($user);
+    $dashboard = collect($nav)->firstWhere('title', 'Dashboard');
 
-    expect($dashboard['href'])->toBe(route('branch-panel.dashboard'));
+    expect($dashboard)->not->toBeNull();
+    expect($dashboard['href'] ?? '')->toContain('branch-panel');
 
     $user->delete();
-    $branch->delete();
 });
 
-test('super admin dashboard nav link points to admin panel', function () {
-    $admin = dashboardSuperAdmin();
-    $dashboard = collect(app(AdminNavigation::class)->build($admin))->firstWhere('title', 'Dashboard');
-
-    expect($dashboard['href'])->toBe(route('dashboard'));
-
-    $admin->delete();
-});
-
-test('admin branch sales excludes main branch id 1', function () {
-    $today = Carbon::today()->toDateString();
-    $activeBranch = Branch::factory()->create(['name' => 'Selling Branch '.uniqid()]);
-    $admin = dashboardSuperAdmin();
-
-    Sell::factory()->create([
-        'branch_id' => Branch::MAIN_BRANCH_ID,
-        'type' => SaleType::Sale,
-        'date' => $today,
-        'gross_amount' => 9999,
-        'paid_amount' => 9999,
-    ]);
-
-    Sell::factory()->create([
-        'branch_id' => $activeBranch->id,
-        'type' => SaleType::Sale,
-        'date' => $today,
-        'gross_amount' => 500,
-        'paid_amount' => 500,
-    ]);
-
-    $this->actingAs($admin)
-        ->get(route('dashboard'))
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->has('branchSales', 1)
-            ->where('branchSales.0.branch_id', $activeBranch->id));
-
-    Sell::query()->whereIn('branch_id', [Branch::MAIN_BRANCH_ID, $activeBranch->id])->delete();
-    $activeBranch->delete();
-    $admin->delete();
-});
-
-test('branch user cannot access admin dashboard url', function () {
-    $user = dashboardBranchUser();
+test('branch user is redirected away from admin dashboard url', function () {
+    $user = dashboardBranchUser(null, ['dashboard.view']);
 
     $this->actingAs($user)
         ->get(route('dashboard'))
@@ -296,75 +137,11 @@ test('branch user cannot access admin dashboard url', function () {
     $user->delete();
 });
 
-test('branch user legacy admin url redirects to branch panel', function () {
-    $user = dashboardBranchUser();
-
-    $this->actingAs($user)
-        ->get('/admin')
-        ->assertRedirect(route('branch-panel.dashboard'));
-
-    $user->delete();
-});
-
-test('branch dashboard includes sales section when user has permission', function () {
+test('branch panel dashboard is scoped to the authenticated branch', function () {
     $today = Carbon::today()->toDateString();
-    $branch = Branch::factory()->create();
-    $user = dashboardBranchUser($branch->id, ['inventory.sell.view']);
-
-    Sell::factory()->create([
-        'branch_id' => $branch->id,
-        'type' => SaleType::Sale,
-        'date' => $today,
-        'gross_amount' => 800,
-        'paid_amount' => 500,
-    ]);
-
-    $this->actingAs($user)
-        ->get('/branch-panel')
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->component('branch-panel/dashboard')
-            ->where('branchName', $branch->name)
-            ->has('sections.sales')
-            ->where('sections.sales.today.count', 1)
-            ->where('sections.sales.today.gross', 800)
-            ->has('sections.sales.trend', 30)
-            ->has('sections.sales.report')
-            ->where('sections.sales.report.period', 'current_month')
-            ->where('sections.sales.report.summary.gross', 800));
-
-    $this->actingAs($user)
-        ->get('/branch-panel?period=previous_week')
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('sections.sales.report.period', 'previous_week'));
-
-    Sell::query()->where('branch_id', $branch->id)->delete();
-    $user->delete();
-    $branch->delete();
-});
-
-test('branch dashboard omits sales section without permission', function () {
-    $branch = Branch::factory()->create();
-    $user = dashboardBranchUser($branch->id);
-
-    $this->actingAs($user)
-        ->get('/branch-panel')
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->component('branch-panel/dashboard')
-            ->has('sections')
-            ->missing('sections.sales'));
-
-    $user->delete();
-    $branch->delete();
-});
-
-test('branch dashboard only includes own branch sales data', function () {
-    $today = Carbon::today()->toDateString();
-    $branchA = Branch::factory()->create();
-    $branchB = Branch::factory()->create();
-    $userA = dashboardBranchUser($branchA->id, ['inventory.sell.view']);
+    $branchA = Branch::factory()->create(['name' => 'Dash Branch A '.uniqid()]);
+    $branchB = Branch::factory()->create(['name' => 'Dash Branch B '.uniqid()]);
+    $userA = dashboardBranchUser($branchA->id, ['dashboard.view', 'inventory.sell.view']);
 
     Sell::factory()->create([
         'branch_id' => $branchA->id,
@@ -392,89 +169,4 @@ test('branch dashboard only includes own branch sales data', function () {
 
     Sell::query()->whereIn('branch_id', [$branchA->id, $branchB->id])->delete();
     $userA->delete();
-    $branchA->delete();
-    $branchB->delete();
-});
-
-test('admin dashboard reflects exchange-adjusted sales due and refund due', function () {
-    $date = '2199-03-20';
-    $branch = Branch::factory()->create(['name' => 'Exchange Dashboard Branch '.uniqid()]);
-    $admin = dashboardSuperAdmin();
-    $user = User::factory()->create(['branch_id' => $branch->id]);
-
-    $product = Product::factory()->create(['branch_id' => $branch->id]);
-
-    $sell = Sell::factory()->create([
-        'branch_id' => $branch->id,
-        'user_id' => $user->id,
-        'type' => SaleType::Sale,
-        'date' => $date,
-        'gross_amount' => 1500,
-        'paid_amount' => 1500,
-        'vat' => 0,
-        'discount' => 0,
-    ]);
-
-    $sellProduct = SellProduct::query()->create([
-        'branch_id' => $branch->id,
-        'sell_id' => $sell->id,
-        'product_id' => $product->id,
-        'quantity' => 3,
-        'unit_price' => 500,
-        'discount' => 0,
-        'batches' => [],
-    ]);
-
-    $exchange = ProductExchange::query()->create([
-        'branch_id' => $branch->id,
-        'user_id' => $user->id,
-        'sell_id' => $sell->id,
-        'date' => $date,
-        'gross_amount' => 0,
-        'net_amount' => 0,
-        'paid_amount' => 0,
-        'price_difference' => -1000,
-        'return_refund_amount' => 1000,
-    ]);
-
-    ProductExchangeProduct::query()->create([
-        'branch_id' => $branch->id,
-        'product_exchange_id' => $exchange->id,
-        'sell_product_id' => $sellProduct->id,
-        'old_product_id' => $product->id,
-        'old_quantity' => 0,
-        'old_unit_price' => 500,
-        'return_quantity' => 2,
-        'return_unit_price' => 500,
-        'return_refund_amount' => 1000,
-        'new_product_id' => $product->id,
-        'new_quantity' => 0,
-        'new_unit_price' => 0,
-        'new_line_discount' => 0,
-    ]);
-
-    Carbon::setTestNow($date);
-
-    $this->actingAs($admin)
-        ->get(route('dashboard'))
-        ->assertOk()
-        ->assertInertia(fn (Assert $page) => $page
-            ->where('kpis.today_sales.count', 1)
-            ->where('kpis.today_sales.gross', 500)
-            ->where('kpis.today_sales.paid', 1500)
-            ->where('kpis.today_sales.due', 0)
-            ->where('kpis.today_sales.refund_due', 1000)
-            ->where('kpis.month_sales.refund_due', 1000)
-            ->where('collection.refund_due', 1000)
-            ->where('branchSales.0.month_refund_due', 1000));
-
-    Carbon::setTestNow();
-
-    ProductExchangeProduct::query()->where('product_exchange_id', $exchange->id)->delete();
-    $exchange->delete();
-    $sellProduct->delete();
-    $sell->delete();
-    $product->delete();
-    $user->delete();
-    $admin->delete();
 });

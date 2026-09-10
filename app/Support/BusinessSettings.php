@@ -12,6 +12,10 @@ final class BusinessSettings
     public static function defaults(): array
     {
         return [
+            // Platform identity & tenancy
+            'system_name' => 'Coolness Point',
+            'multi_tenant_enabled' => env('TENANCY_ENABLED', false) ? '1' : '0',
+
             // Subscription & Billing Settings
             'subscription_billing_cycle' => 'monthly',
             'subscription_billing_cycle_days' => '30',
@@ -45,6 +49,13 @@ final class BusinessSettings
             'feature_damage_tracking_enabled' => '1',
             'feature_special_discounts_enabled' => '1',
         ];
+    }
+
+    public static function systemName(): string
+    {
+        $name = trim((string) self::get('system_name', 'Coolness Point'));
+
+        return $name !== '' ? $name : 'Coolness Point';
     }
 
     /**

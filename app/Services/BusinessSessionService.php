@@ -65,11 +65,18 @@ class BusinessSessionService
             ];
         }
 
+        $canPerform = fn (string $permission, string ...$fallbacks): bool =>
+            $user->hasUnrestrictedPermissions()
+            || $user->isSuperAdmin()
+            || $user->usesBranchPanel()
+            || $user->can($permission)
+            || collect($fallbacks)->contains(fn (string $f) => $user->can($f));
+
         $session = $this->activeSessionForUser($user);
-        $canStart = $user->can('business-session.start') && $session === null;
+        $canStart = $canPerform('business-session.start', 'accounts.create', 'accounts.view') && $session === null;
         $isClosingPending = $session?->status === BusinessSessionStatus::ClosingPending;
-        $canClose = $user->can('business-session.close') && $session !== null && ! $isClosingPending;
-        $canResumeClose = $user->can('business-session.close') && $isClosingPending;
+        $canClose = $canPerform('business-session.close', 'business-session.view', 'accounts.view') && $session !== null && ! $isClosingPending;
+        $canResumeClose = $canPerform('business-session.close', 'business-session.view', 'accounts.view') && $isClosingPending;
 
         if ($session === null) {
             return [
@@ -229,7 +236,7 @@ class BusinessSessionService
 
     public function reopen(BusinessSession $session, User $user): BusinessSession
     {
-        if (! $user->can('business-session.reopen')) {
+        if (! $user->hasUnrestrictedPermissions() && ! $user->isSuperAdmin() && ! $user->can('business-session.reopen') && ! $user->can('business-session.view') && ! $user->can('accounts.view')) {
             abort(403);
         }
 
@@ -271,23 +278,83 @@ class BusinessSessionService
      */
     public function scopeForUser(Builder $query, User $user): Builder
     {
+        if (config('tenancy.enabled') && $user->usesBranchPanel()) {
+            return $query;
+        }
+
+        if ($user->usesBranchPanel()) {
+            return $query->where('branch_id', $user->branch_id);
+        }
+
+        if ($user->usesAdminPanel() || $user->isSuperAdmin()) {
+            $mainBranchId = Branch::resolveMainBranchId();
+
+            return $query->where(function (Builder $q) use ($mainBranchId) {
+                $q->whereNull('branch_id')
+                    ->orWhere('branch_id', $mainBranchId);
+            });
+        }
+
+        if ($user->branch_id !== null) {
+            return $query->where('branch_id', $user->branch_id);
+        }
+
         return $query->where('started_by_user_id', $user->id);
     }
 
     private function authorizeStart(User $user): void
     {
-        if (! $user->can('business-session.start')) {
-            abort(403);
+        if ($user->hasUnrestrictedPermissions() || $user->isSuperAdmin() || $user->usesBranchPanel()) {
+            return;
         }
+
+        if ($user->can('business-session.start') || $user->can('accounts.create') || $user->can('accounts.view')) {
+            return;
+        }
+
+        abort(403);
     }
 
     private function authorizeClose(User $user, BusinessSession $session): void
     {
-        if (! $user->can('business-session.close')) {
+        if ($user->hasUnrestrictedPermissions() || $user->isSuperAdmin()) {
+            return;
+        }
+
+        if ($user->usesBranchPanel()) {
+            if (config('tenancy.enabled')) {
+                return;
+            }
+
+            $userBranchId = $user->branch_id;
+            $sessionBranchId = $session->branch_id;
+
+            if ($sessionBranchId !== null && $userBranchId !== null && (int) $sessionBranchId !== (int) $userBranchId) {
+                abort(403);
+            }
+
+            return;
+        }
+
+        if (! $user->can('business-session.close') && ! $user->can('business-session.view') && ! $user->can('accounts.view') && ! $user->can('accounts.create')) {
             abort(403);
         }
 
-        if ($session->started_by_user_id !== $user->id) {
+        if ((int) $session->started_by_user_id === (int) $user->id) {
+            return;
+        }
+
+        $userBranchId = $user->branch_id;
+        $sessionBranchId = $session->branch_id;
+
+        if ($userBranchId === null || Branch::isMainBranch($userBranchId)) {
+            if ($sessionBranchId !== null && ! Branch::isMainBranch($sessionBranchId)) {
+                abort(403);
+            }
+            return;
+        }
+
+        if ($sessionBranchId !== null && (int) $sessionBranchId !== (int) $userBranchId) {
             abort(403);
         }
     }

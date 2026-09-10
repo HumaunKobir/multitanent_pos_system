@@ -45,13 +45,16 @@ function SettingsSection({ title, description, children, className = '' }) {
     );
 }
 
-export default function BusinessSetupIndex({ settings = {}, billingCycles = [], overdueActions = [], paymentMethods = [] }) {
+export default function BusinessSetupIndex({ settings = {}, billingCycles = [], overdueActions = [], paymentMethods = [], tenancyEnabled = false }) {
     const { flash } = usePage().props;
     const toast = useAppToast();
 
-    const [activeTab, setActiveTab] = useState('subscription');
+    const [activeTab, setActiveTab] = useState('system');
 
     const { data, setData, put, processing, errors } = useForm({
+        system_name: settings.system_name ?? 'Coolness Point',
+        multi_tenant_enabled: settings.multi_tenant_enabled === '1' || settings.multi_tenant_enabled === true || settings.multi_tenant_enabled === 'true',
+
         // Subscription & Billing Policies
         subscription_billing_cycle: settings.subscription_billing_cycle ?? 'monthly',
         subscription_billing_cycle_days: settings.subscription_billing_cycle_days ?? '30',
@@ -148,7 +151,11 @@ export default function BusinessSetupIndex({ settings = {}, billingCycles = [], 
 
             {/* Tabs */}
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                <TabsList className="grid w-full grid-cols-1 sm:grid-cols-3 h-auto p-1 bg-muted/70 border rounded-xl">
+                <TabsList className="grid w-full grid-cols-1 sm:grid-cols-4 h-auto p-1 bg-muted/70 border rounded-xl">
+                    <TabsTrigger value="system" className="text-xs py-2.5 gap-2 rounded-lg font-semibold">
+                        <Sliders className="size-4 text-slate-600" />
+                        System
+                    </TabsTrigger>
                     <TabsTrigger value="subscription" className="text-xs py-2.5 gap-2 rounded-lg font-semibold">
                         <CreditCard className="size-4 text-primary" />
                         Billing & Overdue Policies
@@ -164,6 +171,51 @@ export default function BusinessSetupIndex({ settings = {}, billingCycles = [], 
                 </TabsList>
 
                 <form id="business-setup-form" onSubmit={submit} className="space-y-4">
+                    <TabsContent value="system" className="space-y-4 mt-0">
+                        <SettingsSection
+                            title="Platform Identity"
+                            description="System name shown in the admin and branch sidebars."
+                        >
+                            <FormField label="System Name" name="system_name" required error={errors.system_name} className="sm:col-span-2">
+                                <Input
+                                    value={data.system_name}
+                                    onChange={(e) => setData('system_name', e.target.value)}
+                                    placeholder="Coolness Point"
+                                    className="border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 font-bold"
+                                    required
+                                />
+                            </FormField>
+                        </SettingsSection>
+
+                        <SettingsSection
+                            title="Multi-Tenant Mode"
+                            description="When enabled, each client branch can use an isolated tenant database. Changing this affects new requests immediately; keep .env TENANCY_ENABLED aligned for deploys and artisan."
+                        >
+                            <FormField label="Multi-Tenant Enabled" name="multi_tenant_enabled" error={errors.multi_tenant_enabled}>
+                                <Select
+                                    value={data.multi_tenant_enabled ? '1' : '0'}
+                                    onValueChange={(val) => setData('multi_tenant_enabled', val === '1')}
+                                >
+                                    <SelectTrigger className="border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950">
+                                        <SelectValue placeholder="Select" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="1">True — tenant databases per branch</SelectItem>
+                                        <SelectItem value="0">False — shared central database</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </FormField>
+                            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100 sm:col-span-1">
+                                <Info className="mt-0.5 size-3.5 shrink-0" />
+                                <p>
+                                    Runtime flag is currently{' '}
+                                    <span className="font-bold">{tenancyEnabled || data.multi_tenant_enabled ? 'ON' : 'OFF'}</span>
+                                    . After saving, refresh other open tabs so middleware picks up the change.
+                                </p>
+                            </div>
+                        </SettingsSection>
+                    </TabsContent>
+
                     {/* TAB 1: Subscription & Billing Policy */}
                     <TabsContent value="subscription" className="space-y-4 mt-0">
                         <SettingsSection

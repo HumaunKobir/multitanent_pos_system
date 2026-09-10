@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Branch;
+use App\Models\BusinessSetting;
 use App\Models\User;
 use App\Support\BusinessSettings;
 use Inertia\Testing\AssertableInertia as Assert;
@@ -31,6 +32,9 @@ test('superadmin can access business setup page', function () {
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/setting/business-setup/index')
             ->has('settings')
+            ->has('settings.system_name')
+            ->has('settings.multi_tenant_enabled')
+            ->has('tenancyEnabled')
             ->has('billingCycles')
             ->has('overdueActions')
         );
@@ -54,6 +58,8 @@ test('superadmin can update business settings and policies', function () {
             'superadmin_contact_name' => 'Main Support',
             'superadmin_contact_phone' => '+8801800000000',
             'superadmin_contact_email' => 'support@coolness.com',
+            'system_name' => 'Acme SaaS Platform',
+            'multi_tenant_enabled' => true,
         ]);
 
     $response->assertRedirect(route('setting.business-setup.edit'))
@@ -63,12 +69,14 @@ test('superadmin can update business settings and policies', function () {
     expect(BusinessSettings::getInt('subscription_warning_days'))->toBe(7);
     expect(BusinessSettings::getInt('subscription_grace_period_days'))->toBe(14);
     expect(BusinessSettings::getFloat('subscription_default_fee'))->toBe(2500.0);
+    expect(BusinessSettings::systemName())->toBe('Acme SaaS Platform');
+    expect(BusinessSettings::getBool('multi_tenant_enabled'))->toBeTrue();
 });
 
 test('superadmin can update branch subscription config', function () {
     $admin = businessSetupSuperAdmin();
     $branch = Branch::factory()->create();
-    \App\Models\BusinessSetting::set('subscription_billing_cycle_days', '30');
+    BusinessSetting::set('subscription_billing_cycle_days', '30');
 
     $response = $this->actingAs($admin)
         ->put(route('setting.business-setup.branch.update', $branch->id), [

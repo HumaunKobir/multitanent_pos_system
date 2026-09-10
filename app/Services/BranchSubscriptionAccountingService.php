@@ -22,14 +22,100 @@ class BranchSubscriptionAccountingService
      */
     public function syncOutstandingDue(Branch $branch, float $targetAmount, string $asOfDate): array
     {
-        // Without approval, do not post as expense and income
-        return ['branch_accrual' => null, 'superadmin_accrual' => null];
+        $targetAmount = round(max(0.0, $targetAmount), 2);
+
+        if (Branch::isMainBranch($branch->id) || $targetAmount <= 0) {
+            return ['branch_accrual' => null, 'superadmin_accrual' => null];
+        }
+
+        $branchName = $branch->name ?: "Branch #{$branch->id}";
+
+        $shortfall = $this->onClientBranch($branch, function () use ($branch, $targetAmount): float {
+            $payableAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
+            $currentBalance = max(0.0, (float) $payableAccount->fresh()->current_balance);
+
+            return round($targetAmount - $currentBalance, 2);
+        });
+
+        if ($shortfall <= 0.005) {
+            return ['branch_accrual' => null, 'superadmin_accrual' => null];
+        }
+
+        $branchDescription = sprintf(
+            'Subscription outstanding due sync as of %s (+%s)',
+            $asOfDate,
+            number_format($shortfall, 2, '.', ''),
+        );
+        $superadminDescription = sprintf(
+            'Subscription outstanding due sync for %s as of %s (+%s)',
+            $branchName,
+            $asOfDate,
+            number_format($shortfall, 2, '.', ''),
+        );
+
+        $branchAccrualTx = $this->onClientBranch($branch, function () use ($branch, $asOfDate, $shortfall, $branchDescription): ?Transaction {
+            $existingBranchTx = Transaction::query()
+                ->where('source_type', Branch::class)
+                ->where('source_id', $branch->id)
+                ->where('description', $branchDescription)
+                ->first();
+
+            if ($existingBranchTx !== null) {
+                return $existingBranchTx;
+            }
+
+            $expenseAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
+            $payableAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
+
+            return TransactionService::recordTransaction([
+                'source_type' => Branch::class,
+                'source_id' => $branch->id,
+                'date' => $asOfDate,
+                'amount' => $shortfall,
+                'debit_account_id' => $expenseAccount->id,
+                'credit_account_id' => $payableAccount->id,
+                'debit_decrease' => false,
+                'credit_decrease' => false,
+                'description' => $branchDescription,
+            ], validateBalance: false);
+        });
+
+        $superadminAccrualTx = $this->onMainPanel(function () use ($branch, $asOfDate, $shortfall, $superadminDescription): ?Transaction {
+            $existingSuperadminTx = Transaction::query()
+                ->where('source_type', Branch::class)
+                ->where('source_id', $branch->id)
+                ->where('description', $superadminDescription)
+                ->first();
+
+            if ($existingSuperadminTx !== null) {
+                return $existingSuperadminTx;
+            }
+
+            $receivableAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
+            $incomeAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+
+            return TransactionService::recordTransaction([
+                'source_type' => Branch::class,
+                'source_id' => $branch->id,
+                'date' => $asOfDate,
+                'amount' => $shortfall,
+                'debit_account_id' => $receivableAccount->id,
+                'credit_account_id' => $incomeAccount->id,
+                'debit_decrease' => false,
+                'credit_decrease' => false,
+                'description' => $superadminDescription,
+            ], validateBalance: false);
+        });
+
+        return [
+            'branch_accrual' => $branchAccrualTx,
+            'superadmin_accrual' => $superadminAccrualTx,
+        ];
     }
 
     public function recordCumulativeLiabilityShortfall(Branch $branch, string $asOfDate, float $expectedCumulativeDue): array
     {
-        // Without approval, do not post as expense and income
-        return ['branch_accrual' => null, 'superadmin_accrual' => null];
+        return $this->syncOutstandingDue($branch, $expectedCumulativeDue, $asOfDate);
     }
 
     /**
@@ -41,14 +127,77 @@ class BranchSubscriptionAccountingService
      */
     public function recordCycleAccrual(Branch $branch, string $cycleStartDate, string $cycleEndDate, float $fee): array
     {
-        // Without approval, do not post as expense and income
-        return ['branch_accrual' => null, 'superadmin_accrual' => null];
+        if (Branch::isMainBranch($branch->id) || $fee <= 0) {
+            return ['branch_accrual' => null, 'superadmin_accrual' => null];
+        }
+
+        $branchName = $branch->name ?: "Branch #{$branch->id}";
+        $branchDescription = "Subscription bill accrual: {$cycleStartDate} to {$cycleEndDate}";
+        $superadminDescription = "Subscription bill accrual for {$branchName}: {$cycleStartDate} to {$cycleEndDate}";
+
+        $branchAccrualTx = $this->onClientBranch($branch, function () use ($branch, $cycleStartDate, $fee, $branchDescription): ?Transaction {
+            $existingBranchTx = Transaction::query()
+                ->where('source_type', Branch::class)
+                ->where('source_id', $branch->id)
+                ->where('description', $branchDescription)
+                ->first();
+
+            if ($existingBranchTx !== null) {
+                return $existingBranchTx;
+            }
+
+            $expenseAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
+            $payableAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
+
+            return TransactionService::recordTransaction([
+                'source_type' => Branch::class,
+                'source_id' => $branch->id,
+                'date' => $cycleStartDate,
+                'amount' => $fee,
+                'debit_account_id' => $expenseAccount->id,
+                'credit_account_id' => $payableAccount->id,
+                'debit_decrease' => false,
+                'credit_decrease' => false,
+                'description' => $branchDescription,
+            ], validateBalance: false);
+        });
+
+        $superadminAccrualTx = $this->onMainPanel(function () use ($branch, $cycleStartDate, $fee, $superadminDescription): ?Transaction {
+            $existingSuperadminTx = Transaction::query()
+                ->where('source_type', Branch::class)
+                ->where('source_id', $branch->id)
+                ->where('description', $superadminDescription)
+                ->first();
+
+            if ($existingSuperadminTx !== null) {
+                return $existingSuperadminTx;
+            }
+
+            $receivableAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
+            $incomeAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+
+            return TransactionService::recordTransaction([
+                'source_type' => Branch::class,
+                'source_id' => $branch->id,
+                'date' => $cycleStartDate,
+                'amount' => $fee,
+                'debit_account_id' => $receivableAccount->id,
+                'credit_account_id' => $incomeAccount->id,
+                'debit_decrease' => false,
+                'credit_decrease' => false,
+                'description' => $superadminDescription,
+            ], validateBalance: false);
+        });
+
+        return [
+            'branch_accrual' => $branchAccrualTx,
+            'superadmin_accrual' => $superadminAccrualTx,
+        ];
     }
 
     /**
-     * Record accounting settlement when SuperAdmin confirms and approves a subscription payment:
-     * 1. On Client Branch: Debit Subscription Expense (Expense increases), Credit Cash/Bank (Asset decreases).
-     * 2. On SuperAdmin: Debit Cash/Bank (Asset increases), Credit Subscription Income (Income increases).
+     * Settle an approved payment against accrued payable/receivable and move the payment channel.
+     * Does not re-recognize Expense or Income.
      *
      * @return array{branch_transaction: ?Transaction, superadmin_transaction: ?Transaction}
      */
@@ -68,12 +217,40 @@ class BranchSubscriptionAccountingService
         $branch = $payment->branch ?? Branch::query()->find($payment->branch_id);
         $branchName = $branch?->name ?? "Branch #{$payment->branch_id}";
 
-        $branchDescription = "Subscription expense for {$branchName} (Ref: {$payment->transaction_reference})";
-        $superadminDescription = "Subscription income from {$branchName} (Ref: {$payment->transaction_reference})";
+        if ($branch && ! Branch::isMainBranch($payment->branch_id)) {
+            $this->onClientBranch($branch, function () use ($branch, $payment, $amount, $paymentDate): void {
+                $alreadySettledOnBranch = Transaction::query()
+                    ->where('source_type', BranchSubscriptionPayment::class)
+                    ->where('source_id', $payment->id)
+                    ->exists();
+
+                // Do not invent a new billing accrual when replaying settlement for an
+                // already-posted payment (payable may already be cleared).
+                if ($alreadySettledOnBranch) {
+                    return;
+                }
+
+                $payableAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $payment->branch_id);
+                $payableBalance = max(0.0, (float) $payableAccount->fresh()->current_balance);
+                $unaccruedAmount = round($amount - $payableBalance, 2);
+
+                if ($unaccruedAmount > 0.005) {
+                    $startsAt = $payment->billing_period_starts_at
+                        ? $payment->billing_period_starts_at->format('Y-m-d')
+                        : $paymentDate;
+                    $endsAt = $payment->billing_period_ends_at
+                        ? $payment->billing_period_ends_at->format('Y-m-d')
+                        : $paymentDate;
+                    $this->recordCycleAccrual($branch, $startsAt, $endsAt, $unaccruedAmount);
+                }
+            });
+        }
+
+        $branchDescription = "Subscription payment settled for {$branchName} (Ref: {$payment->transaction_reference})";
+        $superadminDescription = "Subscription payment received from {$branchName} (Ref: {$payment->transaction_reference})";
 
         $branchTransaction = null;
 
-        // 1. Client Branch: Debit Subscription Expense (Expense increases), Credit Payment Account (Asset decreases)
         if ($branch && ! Branch::isMainBranch($payment->branch_id)) {
             $branchTransaction = $this->onClientBranch($branch, function () use (
                 $payment,
@@ -93,7 +270,7 @@ class BranchSubscriptionAccountingService
                     return $existingBranchTx;
                 }
 
-                $expenseAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $payment->branch_id);
+                $payableAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $payment->branch_id);
                 $branchPaymentAccount = $this->resolveBranchPaymentAccount($payment, $paymentAccountKey);
 
                 return TransactionService::recordTransaction([
@@ -103,16 +280,15 @@ class BranchSubscriptionAccountingService
                     'performed_by_id' => $actor?->id,
                     'date' => $paymentDate,
                     'amount' => $amount,
-                    'debit_account_id' => $expenseAccount->id,
+                    'debit_account_id' => $payableAccount->id,
                     'credit_account_id' => $branchPaymentAccount->id,
-                    'debit_decrease' => false,
+                    'debit_decrease' => true,
                     'credit_decrease' => true,
                     'description' => $branchDescription,
                 ], validateBalance: false);
             });
         }
 
-        // 2. SuperAdmin: Debit Payment Account (Asset increases), Credit Subscription Income (Revenue increases)
         $superadminTransaction = $this->onMainPanel(function () use (
             $payment,
             $actor,
@@ -131,7 +307,13 @@ class BranchSubscriptionAccountingService
                 return $existingSuperadminTx;
             }
 
-            $superadminPaymentAccount = ($payment->payment_account_id ? ChartOfAccount::query()->find($payment->payment_account_id) : null)
+            $superadminPaymentAccount = ($payment->payment_account_id
+                ? ChartOfAccount::query()
+                    ->whereNull('source_type')
+                    ->whereNull('source_id')
+                    ->whereKey($payment->payment_account_id)
+                    ->first()
+                : null)
                 ?? ChartOfAccount::query()
                     ->whereNull('source_type')
                     ->whereNull('source_id')
@@ -142,7 +324,7 @@ class BranchSubscriptionAccountingService
                     })
                     ->first() ?? SystemAccountService::resolve($paymentAccountKey, null);
 
-            $incomeAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+            $receivableAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
 
             return TransactionService::recordTransaction([
                 'source_type' => BranchSubscriptionPayment::class,
@@ -152,9 +334,9 @@ class BranchSubscriptionAccountingService
                 'date' => $paymentDate,
                 'amount' => $amount,
                 'debit_account_id' => $superadminPaymentAccount->id,
-                'credit_account_id' => $incomeAccount->id,
+                'credit_account_id' => $receivableAccount->id,
                 'debit_decrease' => false,
-                'credit_decrease' => false,
+                'credit_decrease' => true,
                 'description' => $superadminDescription,
             ], validateBalance: false);
         });
@@ -163,6 +345,71 @@ class BranchSubscriptionAccountingService
             'branch_transaction' => $branchTransaction,
             'superadmin_transaction' => $superadminTransaction,
         ];
+    }
+
+    /**
+     * Ensure approved payments are reflected on both charts (client + SuperAdmin).
+     * Skips a panel when that settlement leg already exists.
+     *
+     * @return array{checked: int, posted: int}
+     */
+    public function syncMissingPaymentSettlements(?User $actor = null, ?int $onlyBranchId = null): array
+    {
+        $payments = BranchSubscriptionPayment::query()
+            ->where('status', 'approved')
+            ->where('amount', '>', 0)
+            ->when($onlyBranchId !== null, fn ($q) => $q->where('branch_id', $onlyBranchId))
+            ->orderBy('id')
+            ->get();
+
+        $posted = 0;
+
+        foreach ($payments as $payment) {
+            $branch = $payment->branch ?? Branch::query()->find($payment->branch_id);
+
+            if ($branch === null || Branch::isMainBranch($branch->id)) {
+                continue;
+            }
+
+            $missingOnClient = $this->onClientBranch($branch, function () use ($payment): bool {
+                return ! Transaction::query()
+                    ->where('source_type', BranchSubscriptionPayment::class)
+                    ->where('source_id', $payment->id)
+                    ->where('description', 'like', 'Subscription payment settled%')
+                    ->exists();
+            });
+
+            $missingOnAdmin = $this->onMainPanel(function () use ($payment): bool {
+                return ! Transaction::query()
+                    ->where('source_type', BranchSubscriptionPayment::class)
+                    ->where('source_id', $payment->id)
+                    ->where('description', 'like', 'Subscription payment received%')
+                    ->exists();
+            });
+
+            if (! $missingOnClient && ! $missingOnAdmin) {
+                continue;
+            }
+
+            $result = $this->recordPaymentSettlement($payment, $actor);
+
+            if ($result['branch_transaction'] !== null || $result['superadmin_transaction'] !== null) {
+                $posted++;
+            }
+        }
+
+        return [
+            'checked' => $payments->count(),
+            'posted' => $posted,
+        ];
+    }
+
+    /**
+     * @deprecated Use syncMissingPaymentSettlements() — kept for callers expecting the old name.
+     */
+    public function syncMissingSuperAdminSettlements(?User $actor = null): int
+    {
+        return $this->syncMissingPaymentSettlements($actor)['posted'];
     }
 
     public function resolvePaymentAccountKey(?string $method): SystemAccountKey

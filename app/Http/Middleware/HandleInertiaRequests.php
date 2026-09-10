@@ -55,6 +55,8 @@ class HandleInertiaRequests extends Middleware
         return [
             ...parent::share($request),
             'name' => config('app.name'),
+            'systemName' => BusinessSettings::systemName(),
+            'multiTenantEnabled' => BusinessSettings::getBool('multi_tenant_enabled', (bool) config('tenancy.enabled')),
             'auth' => [
                 'user' => $user instanceof User ? $user : null,
                 'customer' => $customer,

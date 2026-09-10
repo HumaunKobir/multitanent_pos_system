@@ -44,7 +44,7 @@ class User extends Authenticatable
 
     public function isSuperAdmin(): bool
     {
-        return $this->branch_id === null;
+        return $this->branch_id === null || Branch::isMainBranch($this->branch_id);
     }
 
     public function bypassesPermissionChecks(): bool

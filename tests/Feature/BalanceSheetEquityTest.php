@@ -16,24 +16,26 @@ use Inertia\Testing\AssertableInertia as Assert;
 
 function balanceSheetEquityUser(array $permissions = []): User
 {
-    $user = User::factory()->create(['branch_id' => Branch::MAIN_BRANCH_ID]);
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
     $user->givePermissionTo($permissions);
 
     return $user;
 }
 
 test('opening balance clearing closes into owners capital leaving clearing at zero', function () {
-    seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    $user = balanceSheetEquityUser();
+    seedAccountingAccounts(branchId: $user->branch_id);
 
-    $clearing = SystemAccountService::resolve(SystemAccountKey::OpeningBalanceClearing, Branch::MAIN_BRANCH_ID);
-    $capital = SystemAccountService::resolve(SystemAccountKey::OwnersCapital, Branch::MAIN_BRANCH_ID);
+    $clearing = SystemAccountService::resolve(SystemAccountKey::OpeningBalanceClearing, $user->branch_id);
+    $capital = SystemAccountService::resolve(SystemAccountKey::OwnersCapital, $user->branch_id);
 
     $clearingBefore = round((float) $clearing->fresh()->current_balance, 2);
     $capitalBefore = round((float) $capital->fresh()->current_balance, 2);
 
     $petty = ChartOfAccount::query()->create([
-        ...ChartOfAccount::panelSourceAttributes(Branch::MAIN_BRANCH_ID),
-        'parent_id' => SystemAccountService::id(SystemAccountKey::CashAndBank, Branch::MAIN_BRANCH_ID),
+        ...ChartOfAccount::panelSourceAttributes($user->branch_id),
+        'parent_id' => SystemAccountService::id(SystemAccountKey::CashAndBank, $user->branch_id),
         'code' => 'A'.fake()->unique()->numerify('####'),
         'account_number' => 'TEST:petty.'.fake()->unique()->numerify('######'),
         'name' => 'Petty Cash BS '.fake()->unique()->numerify('####'),
@@ -59,9 +61,9 @@ test('balance sheet includes current year earnings and stays balanced after prof
     $this->withoutVite();
 
     $user = balanceSheetEquityUser([ReportController::PERMISSION_BALANCE_SHEET]);
-    seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    seedAccountingAccounts(branchId: $user->branch_id);
 
-    $cye = SystemAccountService::resolve(SystemAccountKey::CurrentYearEarnings, Branch::MAIN_BRANCH_ID);
+    $cye = SystemAccountService::resolve(SystemAccountKey::CurrentYearEarnings, $user->branch_id);
     expect($cye->code)->toBe('E002-01')
         ->and($cye->name)->toBe('Current Year Earnings');
 
@@ -70,10 +72,10 @@ test('balance sheet includes current year earnings and stays balanced after prof
     $date = now()->format('Y-m-d');
     $earningsBefore = app(ReportService::class)->currentYearEarningsAsOf($date);
 
-    $cash = SystemAccountService::resolve(SystemAccountKey::CashInHand, Branch::MAIN_BRANCH_ID);
-    $sales = SystemAccountService::resolve(SystemAccountKey::ProductSales, Branch::MAIN_BRANCH_ID);
-    $cogs = SystemAccountService::resolve(SystemAccountKey::CostOfGoodsSold, Branch::MAIN_BRANCH_ID);
-    $inventory = SystemAccountService::resolve(SystemAccountKey::ProductInventory, Branch::MAIN_BRANCH_ID);
+    $cash = SystemAccountService::resolve(SystemAccountKey::CashInHand, $user->branch_id);
+    $sales = SystemAccountService::resolve(SystemAccountKey::ProductSales, $user->branch_id);
+    $cogs = SystemAccountService::resolve(SystemAccountKey::CostOfGoodsSold, $user->branch_id);
+    $inventory = SystemAccountService::resolve(SystemAccountKey::ProductInventory, $user->branch_id);
 
     // Revenue 500, COGS 200 → net profit +300
     TransactionService::recordJournalEntry(
@@ -152,10 +154,11 @@ test('balance sheet includes current year earnings and stays balanced after prof
 });
 
 test('accounting close opening balance clearing command zeros residual clearing', function () {
-    seedAccountingAccounts(branchId: Branch::MAIN_BRANCH_ID);
+    $user = balanceSheetEquityUser();
+    seedAccountingAccounts(branchId: $user->branch_id);
 
-    $clearing = SystemAccountService::resolve(SystemAccountKey::OpeningBalanceClearing, Branch::MAIN_BRANCH_ID);
-    $capital = SystemAccountService::resolve(SystemAccountKey::OwnersCapital, Branch::MAIN_BRANCH_ID);
+    $clearing = SystemAccountService::resolve(SystemAccountKey::OpeningBalanceClearing, $user->branch_id);
+    $capital = SystemAccountService::resolve(SystemAccountKey::OwnersCapital, $user->branch_id);
 
     // Simulate legacy residual stuck in clearing (pre-fix data).
     TransactionService::recordJournalEntry(
@@ -167,7 +170,7 @@ test('accounting close opening balance clearing command zeros residual clearing'
         ],
         [
             [
-                'account_id' => SystemAccountService::id(SystemAccountKey::CashInHand, Branch::MAIN_BRANCH_ID),
+                'account_id' => SystemAccountService::id(SystemAccountKey::CashInHand, $user->branch_id),
                 'debit' => 5760,
                 'credit' => 0,
                 'decrease' => false,

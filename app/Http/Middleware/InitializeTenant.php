@@ -5,7 +5,6 @@ namespace App\Http\Middleware;
 use App\Models\Branch;
 use App\Services\EcommerceBranchService;
 use App\Services\TenantProvisioner;
-use App\Support\TenantContext;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -22,12 +21,10 @@ class InitializeTenant
 
         $branch = $this->resolveBranch($request);
 
-        if ($branch !== null && filled($branch->database_name)) {
+        if ($branch !== null) {
             $this->provisioner->initialize($branch);
-        } elseif ($branch !== null) {
-            TenantContext::set($branch);
         } else {
-            TenantContext::clear();
+            $this->provisioner->initializeCentral();
         }
 
         return $next($request);

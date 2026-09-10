@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Reports;
 
 use App\Concerns\ExportsFilteredList;
 use App\Http\Controllers\Controller;
+use App\Services\BranchSubscriptionService;
 use App\Services\PurchaseReportService;
 use App\Services\ReportService;
 use App\Services\SalesProfitTrendService;
@@ -59,7 +60,7 @@ class ReportController extends Controller
         private SalesReportService $salesReports,
         private SalesProfitTrendService $salesProfitTrends,
         private PurchaseReportService $purchaseReports,
-        private \App\Services\BranchSubscriptionService $subscriptions,
+        private BranchSubscriptionService $subscriptions,
     ) {}
 
     public function customerLedger(Request $request): Response
@@ -388,7 +389,26 @@ class ReportController extends Controller
 
     private function syncOverdueSubscriptions(Request $request): void
     {
-        // Unapproved subscription dues are not posted to GL per approval requirement
+        $user = $request->user();
+
+        if ($user === null) {
+            return;
+        }
+
+        try {
+            if ($user->usesBranchPanel() && $user->branch !== null) {
+                $this->subscriptions->catchUpBranchBilling($user->branch);
+
+                return;
+            }
+
+            if ($user->usesAdminPanel() || $user->bypassesPermissionChecks()) {
+                $this->subscriptions->syncAllOverdueLiabilities();
+                $this->subscriptions->syncMissingPaymentSettlements($user);
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     public function balanceSheet(Request $request): Response
@@ -441,7 +461,6 @@ class ReportController extends Controller
         $filters = $request->validate([
             'date_from' => ['nullable', 'date'],
             'date_to' => ['nullable', 'date'],
-            'branch_id' => ['nullable', 'integer', 'exists:branches,id'],
         ]);
 
         if (! isset($filters['date_from']) && ! isset($filters['date_to'])) {
@@ -449,21 +468,18 @@ class ReportController extends Controller
             $filters['date_to'] = now()->format('Y-m-d');
         }
 
-        $canFilterByBranch = $this->reports->canFilterByBranch();
-        $filterBranchId = $canFilterByBranch && isset($filters['branch_id']) ? (int) $filters['branch_id'] : null;
+        $isSaasPanel = $this->reports->canFilterByBranch();
 
         return Inertia::render('admin/reports/profit-loss', [
             'filters' => [
                 'date_from' => $filters['date_from'] ?? null,
                 'date_to' => $filters['date_to'] ?? null,
-                'branch_id' => $filters['branch_id'] ?? null,
             ],
-            'branches' => $canFilterByBranch ? $this->reports->branchOptions() : [],
-            'isBranchScoped' => ! $canFilterByBranch,
+            'panelVariant' => $isSaasPanel ? 'saas' : 'branch',
+            'isBranchScoped' => ! $isSaasPanel,
             'report' => $this->reports->profitAndLoss(
                 $filters['date_from'] ?? null,
                 $filters['date_to'] ?? null,
-                $filterBranchId,
             ),
         ]);
     }

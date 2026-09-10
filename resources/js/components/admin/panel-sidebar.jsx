@@ -183,8 +183,9 @@ function filterNavigationByPermission(sections, can) {
         .filter(Boolean);
 }
 
-function SidebarContent({ adminNavigation, panelType, currentUrl, isCurrentUrl, expanded, toggle, collapsed }) {
+function SidebarContent({ adminNavigation, panelType, currentUrl, isCurrentUrl, expanded, toggle, collapsed, systemName }) {
     const panelTitle = panelType === 'branch' ? 'Branch Panel' : 'Admin Panel';
+    const brandName = systemName || 'Coolness Point';
 
     return (
         <>
@@ -203,7 +204,7 @@ function SidebarContent({ adminNavigation, panelType, currentUrl, isCurrentUrl, 
                 ) : (
                     <>
                         <p className="font-mono text-[0.65rem] font-medium uppercase tracking-[0.28em] text-muted-foreground">
-                            Coolness Point
+                            {brandName}
                         </p>
                         <p className="mt-1 font-semibold tracking-tight text-foreground">{panelTitle}</p>
                         <div className="mt-3">
@@ -394,7 +395,7 @@ function SidebarContent({ adminNavigation, panelType, currentUrl, isCurrentUrl, 
 }
 
 export function PanelSidebar() {
-    const { adminNavigation = [], panelType = 'admin' } = usePage().props;
+    const { adminNavigation = [], panelType = 'admin', systemName = 'Coolness Point' } = usePage().props;
     const { can } = useCan();
     const { currentUrl, isCurrentUrl } = useCurrentUrl();
     const { collapsed, mobileOpen, closeMobile, isMobile } = usePanelSidebar();
@@ -446,6 +447,7 @@ export function PanelSidebar() {
                             expanded={expanded}
                             toggle={toggle}
                             collapsed={false}
+                            systemName={systemName}
                         />
                     </aside>
                 </SheetContent>
@@ -469,6 +471,7 @@ export function PanelSidebar() {
                 expanded={expanded}
                 toggle={toggle}
                 collapsed={collapsed}
+                systemName={systemName}
             />
         </aside>
     );

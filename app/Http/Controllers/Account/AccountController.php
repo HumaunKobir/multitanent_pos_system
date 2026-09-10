@@ -35,6 +35,25 @@ class AccountController extends Controller
         $user = $request->user();
         $branchId = $user?->branch_id;
 
+        // Catch up billing accrual and ensure approved payments hit both charts
+        // (client payable/cash + SuperAdmin receivable/cash). Skips legs already posted.
+        if ($user !== null && $user->usesBranchPanel() && $user->branch !== null) {
+            try {
+                $this->subscriptions->catchUpBranchBilling($user->branch);
+                $this->subscriptions->syncMissingPaymentSettlements($user, $user->branch_id);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
+        if ($user !== null && $user->usesAdminPanel()) {
+            try {
+                $this->subscriptions->syncMissingPaymentSettlements($user);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
         SystemAccountService::ensureConfigured($branchId);
 
         $allAccounts = ChartOfAccount::query()

@@ -2472,7 +2472,18 @@ class ReportService
      */
     public function profitAndLoss(?string $dateFrom, ?string $dateTo, ?int $filterBranchId = null): array
     {
-        $effectiveBranchId = $this->resolveReportBranchFilter($filterBranchId);
+        // Admin / Main with no client filter: SaaS (global) chart only.
+        // Explicit non-main branch_id (branch panel or service callers): that branch's retail chart.
+        if ($filterBranchId !== null && ! Branch::isMainBranch($filterBranchId)) {
+            $effectiveBranchId = $filterBranchId;
+            $variant = 'branch';
+        } elseif ($this->canFilterByBranch()) {
+            $effectiveBranchId = null;
+            $variant = 'saas';
+        } else {
+            $effectiveBranchId = $this->resolveReportBranchFilter($filterBranchId);
+            $variant = 'branch';
+        }
         $resolvedDateFrom = $dateFrom ?? now()->startOfMonth()->format('Y-m-d');
         $resolvedDateTo = $dateTo ?? now()->format('Y-m-d');
         $beforeStartDate = Carbon::parse($resolvedDateFrom)->subDay()->format('Y-m-d');
@@ -2482,6 +2493,8 @@ class ReportService
             ->get(['id', 'code', 'name', 'type', 'account_number']);
 
         $buckets = [
+            'subscription_income' => [],
+            'subscription_expense' => [],
             'sales_revenue' => [],
             'sales_returns' => [],
             'sales_discounts' => [],
@@ -2501,7 +2514,7 @@ class ReportService
             }
 
             $bucket = $this->profitAndLossBucket($account);
-            $displayAmount = in_array($bucket, ['sales_returns', 'sales_discounts', 'cogs', 'operating_expenses'], true)
+            $displayAmount = in_array($bucket, ['sales_returns', 'sales_discounts', 'cogs', 'operating_expenses', 'subscription_expense'], true)
                 ? round(abs($amount), 2)
                 : $amount;
 
@@ -2524,53 +2537,57 @@ class ReportService
             ];
         }
 
-        foreach ($this->profitAndLossVatAccounts($effectiveBranchId) as $vatAccount) {
-            [$periodDebit, $periodCredit] = $this->accountPeriodSidesForBranch(
-                $vatAccount->id,
-                $resolvedDateFrom,
-                $resolvedDateTo,
-                $effectiveBranchId,
-            );
+        if ($variant === 'branch') {
+            foreach ($this->profitAndLossVatAccounts($effectiveBranchId) as $vatAccount) {
+                [$periodDebit, $periodCredit] = $this->accountPeriodSidesForBranch(
+                    $vatAccount->id,
+                    $resolvedDateFrom,
+                    $resolvedDateTo,
+                    $effectiveBranchId,
+                );
 
-            $isTaxesPaid = $vatAccount->account_number === SystemAccountKey::TaxesPaid->accountNumber()
-                || str_contains(strtolower((string) $vatAccount->name), 'tax paid')
-                || str_contains(strtolower((string) $vatAccount->name), 'taxes paid');
+                $isTaxesPaid = $vatAccount->account_number === SystemAccountKey::TaxesPaid->accountNumber()
+                    || str_contains(strtolower((string) $vatAccount->name), 'tax paid')
+                    || str_contains(strtolower((string) $vatAccount->name), 'taxes paid');
 
-            if ($isTaxesPaid) {
-                // Remittance posts to Taxes Paid (debit). Do not treat Output VAT
-                // return reversals as tax paid.
-                $paidAmount = round($periodDebit - $periodCredit, 2);
+                if ($isTaxesPaid) {
+                    // Remittance posts to Taxes Paid (debit). Do not treat Output VAT
+                    // return reversals as tax paid.
+                    $paidAmount = round($periodDebit - $periodCredit, 2);
 
-                if ($paidAmount >= 0.005) {
-                    $buckets['vat_paid'][] = [
-                        'code' => $vatAccount->code,
-                        'name' => $vatAccount->name,
-                        'amount' => $paidAmount,
-                    ];
+                    if ($paidAmount >= 0.005) {
+                        $buckets['vat_paid'][] = [
+                            'code' => $vatAccount->code,
+                            'name' => $vatAccount->name,
+                            'amount' => $paidAmount,
+                        ];
+                    }
+
+                    continue;
                 }
 
-                continue;
-            }
+                // VAT Payable: net collected in period (sales credits − return debits).
+                $collectedAmount = round($periodCredit - $periodDebit, 2);
 
-            // VAT Payable: net collected in period (sales credits − return debits).
-            $collectedAmount = round($periodCredit - $periodDebit, 2);
-
-            if ($collectedAmount >= 0.005) {
-                $buckets['vat_collected'][] = [
-                    'code' => $vatAccount->code,
-                    'name' => $vatAccount->name,
-                    'amount' => $collectedAmount,
-                ];
-            } elseif ($collectedAmount <= -0.005) {
-                // Net return / reversal exceeds collections in the period.
-                $buckets['vat_paid'][] = [
-                    'code' => $vatAccount->code,
-                    'name' => '(−) VAT Reversed',
-                    'amount' => round(abs($collectedAmount), 2),
-                ];
+                if ($collectedAmount >= 0.005) {
+                    $buckets['vat_collected'][] = [
+                        'code' => $vatAccount->code,
+                        'name' => $vatAccount->name,
+                        'amount' => $collectedAmount,
+                    ];
+                } elseif ($collectedAmount <= -0.005) {
+                    // Net return / reversal exceeds collections in the period.
+                    $buckets['vat_paid'][] = [
+                        'code' => $vatAccount->code,
+                        'name' => '(−) VAT Reversed',
+                        'amount' => round(abs($collectedAmount), 2),
+                    ];
+                }
             }
         }
 
+        $subscriptionIncome = round(collect($buckets['subscription_income'])->sum('amount'), 2);
+        $subscriptionExpense = round(collect($buckets['subscription_expense'])->sum('amount'), 2);
         $salesRevenue = round(collect($buckets['sales_revenue'])->sum('amount'), 2);
         $salesReturns = round(collect($buckets['sales_returns'])->sum('amount'), 2);
         $salesDiscounts = round(collect($buckets['sales_discounts'])->sum('amount'), 2);
@@ -2581,7 +2598,12 @@ class ReportService
         $cogs = round(collect($buckets['cogs'])->sum('amount'), 2);
         $grossProfit = round($netSales - $cogs, 2);
         $operatingExpenses = round(collect($buckets['operating_expenses'])->sum('amount'), 2);
-        $net = round($grossProfit - $operatingExpenses, 2);
+        $totalIncome = $variant === 'saas'
+            ? $subscriptionIncome
+            : round($salesRevenue, 2);
+        $net = $variant === 'saas'
+            ? round($subscriptionIncome - $operatingExpenses, 2)
+            : round($grossProfit - $operatingExpenses - $subscriptionExpense, 2);
 
         $vatPayableCode = collect($buckets['vat_collected'])->pluck('code')->first()
             ?? $this->systemAccountCode(SystemAccountKey::OutputVat, $effectiveBranchId);
@@ -2611,49 +2633,73 @@ class ReportService
             ];
         }
 
-        $sections = [
-            [
-                'type' => 'Sales Revenue',
-                'slug' => 'sales_revenue',
-                'lines' => $buckets['sales_revenue'],
-                'total' => $salesRevenue,
-            ],
-            [
-                'type' => 'Sales Returns',
-                'slug' => 'sales_returns',
-                'lines' => $buckets['sales_returns'],
-                'total' => $salesReturns,
-            ],
-            [
-                'type' => 'Discount Applied',
-                'slug' => 'sales_discounts',
-                'lines' => $buckets['sales_discounts'],
-                'total' => $salesDiscounts,
-            ],
-            [
-                'type' => 'Taxes Payable',
-                'slug' => 'vat_payable',
-                'lines' => $vatPayableLines,
-                'total' => $netVatPayable,
-            ],
-            [
-                'type' => 'Cost of Goods Sold (COGS)',
-                'slug' => 'cogs',
-                'lines' => $buckets['cogs'],
-                'total' => $cogs,
-            ],
-            [
-                'type' => 'Operating Expenses',
-                'slug' => 'operating_expenses',
-                'lines' => $buckets['operating_expenses'],
-                'total' => $operatingExpenses,
-            ],
-        ];
+        $sections = $variant === 'saas'
+            ? [
+                [
+                    'type' => 'Subscription Income',
+                    'slug' => 'subscription_income',
+                    'lines' => $buckets['subscription_income'],
+                    'total' => $subscriptionIncome,
+                ],
+                [
+                    'type' => 'Operating Expenses',
+                    'slug' => 'operating_expenses',
+                    'lines' => $buckets['operating_expenses'],
+                    'total' => $operatingExpenses,
+                ],
+            ]
+            : [
+                [
+                    'type' => 'Sales Revenue',
+                    'slug' => 'sales_revenue',
+                    'lines' => $buckets['sales_revenue'],
+                    'total' => $salesRevenue,
+                ],
+                [
+                    'type' => 'Sales Returns',
+                    'slug' => 'sales_returns',
+                    'lines' => $buckets['sales_returns'],
+                    'total' => $salesReturns,
+                ],
+                [
+                    'type' => 'Discount Applied',
+                    'slug' => 'sales_discounts',
+                    'lines' => $buckets['sales_discounts'],
+                    'total' => $salesDiscounts,
+                ],
+                [
+                    'type' => 'Taxes Payable',
+                    'slug' => 'vat_payable',
+                    'lines' => $vatPayableLines,
+                    'total' => $netVatPayable,
+                ],
+                [
+                    'type' => 'Cost of Goods Sold (COGS)',
+                    'slug' => 'cogs',
+                    'lines' => $buckets['cogs'],
+                    'total' => $cogs,
+                ],
+                [
+                    'type' => 'Subscription Expense',
+                    'slug' => 'subscription_expense',
+                    'lines' => $buckets['subscription_expense'],
+                    'total' => $subscriptionExpense,
+                ],
+                [
+                    'type' => 'Operating Expenses',
+                    'slug' => 'operating_expenses',
+                    'lines' => $buckets['operating_expenses'],
+                    'total' => $operatingExpenses,
+                ],
+            ];
 
         return [
+            'variant' => $variant,
             'date_from' => $resolvedDateFrom,
             'date_to' => $resolvedDateTo,
             'sections' => $sections,
+            'subscription_income' => $variant === 'saas' ? $subscriptionIncome : 0.0,
+            'subscription_expense' => $variant === 'branch' ? $subscriptionExpense : 0.0,
             'sales_revenue' => $salesRevenue,
             'sales_returns' => $salesReturns,
             'sales_discounts' => $salesDiscounts,
@@ -2666,8 +2712,10 @@ class ReportService
             'cogs' => $cogs,
             'gross_profit' => $grossProfit,
             'operating_expenses' => $operatingExpenses,
-            'total_income' => $salesRevenue,
-            'total_expenses' => round($salesDiscounts + $cogs + $operatingExpenses, 2),
+            'total_income' => $totalIncome,
+            'total_expenses' => $variant === 'saas'
+                ? $operatingExpenses
+                : round($salesDiscounts + $cogs + $operatingExpenses + $subscriptionExpense, 2),
             'net_result' => $net,
             'result_label' => $net >= 0 ? 'Net Profit' : 'Net Loss',
         ];
@@ -2751,11 +2799,23 @@ class ReportService
         }
 
         if ($account->type === AccountType::Income) {
+            if ($accountNumber === SystemAccountKey::SubscriptionIncome->accountNumber()
+                || str_contains($name, 'subscription income')) {
+                return 'subscription_income';
+            }
+
             if ($accountNumber === SystemAccountKey::StockAdjustmentGain->accountNumber()) {
                 return 'other_income';
             }
 
             return 'sales_revenue';
+        }
+
+        if (
+            $accountNumber === SystemAccountKey::SubscriptionExpense->accountNumber()
+            || str_contains($name, 'subscription expense')
+        ) {
+            return 'subscription_expense';
         }
 
         if (
@@ -2839,26 +2899,51 @@ class ReportService
 
     private function accountBalanceAsOf(int $accountId, string $asOfDate): float
     {
-        $ledger = $this->scopeLedgerForBranch(Ledger::query())
-            ->where('account_id', $accountId)
-            ->whereDate('date', '<=', $asOfDate)
-            ->orderByDesc('date')
-            ->orderByDesc('id')
-            ->first();
-
-        return $ledger ? (float) $ledger->closing_balance : 0.0;
+        return $this->accountBalanceAsOfForBranch($accountId, $asOfDate, $this->panelLedgerBranchId());
     }
 
     private function accountBalanceAsOfForBranch(int $accountId, string $asOfDate, ?int $branchId): float
     {
-        $ledger = $this->transactionScope->scopeLedgerForBranch(Ledger::query(), $branchId)
+        $account = ChartOfAccount::query()->find($accountId);
+
+        if ($account === null) {
+            return 0.0;
+        }
+
+        // Sum movements by transaction date so backdated accruals (e.g. cycle start)
+        // are included correctly — do not trust closing_balance ordered by date when
+        // later posts can carry earlier calendar dates.
+        $query = $branchId === null || Branch::isMainBranch($branchId)
+            ? Ledger::query()
+            : $this->transactionScope->scopeLedgerForBranch(Ledger::query(), $branchId);
+
+        $row = $query
             ->where('account_id', $accountId)
             ->whereDate('date', '<=', $asOfDate)
-            ->orderByDesc('date')
-            ->orderByDesc('id')
+            ->selectRaw('COALESCE(SUM(debit), 0) as period_debit, COALESCE(SUM(credit), 0) as period_credit')
             ->first();
 
-        return $ledger ? (float) $ledger->closing_balance : 0.0;
+        $debit = (float) ($row->period_debit ?? 0);
+        $credit = (float) ($row->period_credit ?? 0);
+
+        return match ($account->type) {
+            AccountType::Asset, AccountType::Expenses => round($debit - $credit, 2),
+            AccountType::Liability, AccountType::Equity, AccountType::Income => round($credit - $debit, 2),
+        };
+    }
+
+    /**
+     * Ledger scope branch for panel reports: Main / SuperAdmin = unscoped SaaS chart.
+     */
+    private function panelLedgerBranchId(): ?int
+    {
+        $branchId = $this->branchId();
+
+        if ($branchId === null || Branch::isMainBranch($branchId)) {
+            return null;
+        }
+
+        return $branchId;
     }
 
     /**
@@ -2873,6 +2958,12 @@ class ReportService
             ->when($effectiveBranchId !== null, function (Builder $query) use ($effectiveBranchId) {
                 $query->where('source_type', Branch::class)
                     ->where('source_id', $effectiveBranchId);
+            }, function (Builder $query) {
+                // SuperAdmin / Main with no branch filter: global SaaS panel only
+                // (do not mix every client branch retail chart into platform P&L).
+                if ($this->canFilterByBranch()) {
+                    $query->whereNull('source_type')->whereNull('source_id');
+                }
             });
     }
 
@@ -3122,11 +3213,18 @@ class ReportService
 
     /**
      * Branch users only see ledger rows tied to their branch vouchers or inventory documents.
-     * Super admins (no branch) see all branches.
+     * SuperAdmin / Main panel uses the global SaaS chart — do not restrict by retail branch sources
+     * (subscription accruals are sourced from client branches / invoices / payments).
      */
     private function scopeLedgerForBranch(Builder $query): Builder
     {
-        return $this->transactionScope->scopeLedgerForBranch($query, $this->branchId());
+        $branchId = $this->branchId();
+
+        if ($branchId === null || Branch::isMainBranch($branchId)) {
+            return $query;
+        }
+
+        return $this->transactionScope->scopeLedgerForBranch($query, $branchId);
     }
 
     /**

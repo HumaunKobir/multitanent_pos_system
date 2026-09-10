@@ -36,6 +36,7 @@ class AppServiceProvider extends ServiceProvider
         Schema::defaultStringLength(191);
         $this->configureDefaults();
         $this->ensurePublicUploadDirectories();
+        $this->syncTenancyPreferenceFromSettings();
 
         if (config('tenancy.enabled')) {
             config(['database.default' => config('tenancy.central_connection')]);
@@ -48,6 +49,29 @@ class AppServiceProvider extends ServiceProvider
 
             return null;
         });
+    }
+
+    /**
+     * Prefer Business Setup multi-tenant flag when the settings table is available.
+     * Env TENANCY_ENABLED remains the bootstrap default before first save.
+     */
+    protected function syncTenancyPreferenceFromSettings(): void
+    {
+        try {
+            if (! Schema::hasTable('business_settings')) {
+                return;
+            }
+
+            $stored = DB::table('business_settings')->where('key', 'multi_tenant_enabled')->value('value');
+
+            if ($stored === null) {
+                return;
+            }
+
+            config(['tenancy.enabled' => filter_var($stored, FILTER_VALIDATE_BOOLEAN)]);
+        } catch (\Throwable) {
+            // Settings DB may be unavailable during early install / migrate.
+        }
     }
 
     /**

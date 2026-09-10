@@ -60,7 +60,7 @@ export function StoreHeader() {
                                     ) : (
                                         <div className="flex flex-col">
                                             <span className="text-lg font-bold tracking-tight text-store-primary sm:text-xl">
-                                                {siteName || 'Coolness Point'}
+                                                {siteName || 'POS SYSTEM'}
                                             </span>
                                             <span className="hidden items-center gap-1 text-[10px] font-medium uppercase tracking-widest text-store-muted sm:flex">
                                                 <Sparkles className="size-3 text-store-accent" />

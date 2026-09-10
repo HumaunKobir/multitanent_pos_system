@@ -1,6 +1,6 @@
 # Sale Return + Product Exchange — Full Plan
 
-**Project:** Coolness Point  
+**Project:** POS SYSTEM  
 **Status:** Implemented (2026-07-16) — see checklist in Section 9  
 **Date:** 2026-07-15
 

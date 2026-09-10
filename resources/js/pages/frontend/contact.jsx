@@ -65,7 +65,7 @@ function mapEmbedSrc(address) {
 
 export default function Contact() {
     const { flash, siteName, contact = {}, social = {}, topNotice } = usePage().props;
-    const brand = siteName ?? 'Coolness Point';
+    const brand = siteName ?? 'POS SYSTEM';
     const { phone, email, address } = contact;
 
     const { data, setData, post, processing, errors, reset } = useForm({

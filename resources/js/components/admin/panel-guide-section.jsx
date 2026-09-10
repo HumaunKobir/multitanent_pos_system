@@ -85,7 +85,7 @@ function GuideItem({ item, defaultOpen = false }) {
 }
 
 export function PanelGuideSection({ className, embedded = false, guide: guideProp }) {
-    const { panelGuide: pageGuide, panelType: sharedPanelType, auth } = usePage().props;
+    const { panelGuide: pageGuide, panelType: sharedPanelType, auth, branchSubscription } = usePage().props;
     const panelGuide = guideProp ?? pageGuide;
     const sections = panelGuide?.sections ?? [];
     const panelType = panelGuide?.panelType ?? sharedPanelType;
@@ -94,7 +94,8 @@ export function PanelGuideSection({ className, embedded = false, guide: guidePro
         return null;
     }
 
-    const panelLabel = panelType === 'branch' ? 'Branch Panel' : 'Admin Panel';
+    const branchName = auth?.user?.branch?.name || branchSubscription?.branch_name || '';
+    const panelLabel = panelType === 'branch' ? (branchName || 'Branch') : 'Admin Panel';
     const userName = auth?.user?.name ?? 'User';
 
     return (

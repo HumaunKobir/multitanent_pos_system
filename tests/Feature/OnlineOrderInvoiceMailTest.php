@@ -87,7 +87,7 @@ function invoiceMailEcommerceUser(): User
 function invoiceMailWebsitePayload(array $overrides = []): array
 {
     return array_merge([
-        'website_name' => 'Coolness Point Test',
+        'website_name' => 'POS SYSTEM Test',
         'phone' => '01700000000',
         'email' => 'hello@coolness.test',
         'address' => 'Dhaka, Bangladesh',
@@ -396,7 +396,7 @@ test('website settings can store smtp credentials', function () {
         'smtp_password' => 'pass123',
         'smtp_encryption' => 'tls',
         'mail_from_address' => 'noreply@coolness.test',
-        'mail_from_name' => 'Coolness Point',
+        'mail_from_name' => 'POS SYSTEM',
     ]);
 
     $this->actingAs($user)

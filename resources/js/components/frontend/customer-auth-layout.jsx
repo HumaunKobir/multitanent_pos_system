@@ -74,7 +74,7 @@ export function CustomerAuthLayout({
 }) {
     const { siteName, logo } = usePage().props;
     const panel = panelContent[variant] ?? panelContent.login;
-    const brandName = siteName || 'Coolness Point';
+    const brandName = siteName || 'POS SYSTEM';
 
     return (
         <div className="auth-body min-h-screen bg-store-surface font-[Inter,system-ui,sans-serif] text-store-primary">

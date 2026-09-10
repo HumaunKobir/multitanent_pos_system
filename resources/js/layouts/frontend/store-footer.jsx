@@ -149,7 +149,7 @@ function FooterLinkList({ links }) {
 
 export function StoreFooter() {
     const { siteName, contact = {}, social = {}, logo, topNotice, footerDescription, supportTime } = usePage().props;
-    const brandName = siteName || 'Coolness Point';
+    const brandName = siteName || 'POS SYSTEM';
 
     const highlights = [
         ...trustHighlights,

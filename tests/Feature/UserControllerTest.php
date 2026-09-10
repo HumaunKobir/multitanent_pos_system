@@ -402,7 +402,7 @@ test('branch id 1 users use admin panel even when another branch is named main b
 
     $headOffice = Branch::query()->firstOrCreate(
         ['id' => Branch::MAIN_BRANCH_ID],
-        Branch::factory()->make(['name' => 'Coolness Point'])->toArray(),
+        Branch::factory()->make(['name' => 'POS SYSTEM'])->toArray(),
     );
 
     Branch::query()->firstOrCreate(

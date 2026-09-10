@@ -1378,7 +1378,7 @@ test('updating grouped product without selecting all branches does not create ex
     );
 
     $dressShop = Branch::factory()->create(['name' => 'Dress Shop Test '.fake()->unique()->numerify('###')]);
-    $coolnessPoint = Branch::factory()->create(['name' => 'Coolness Point Test '.fake()->unique()->numerify('###')]);
+    $coolnessPoint = Branch::factory()->create(['name' => 'POS SYSTEM Test '.fake()->unique()->numerify('###')]);
     $groupId = (string) Str::uuid();
     $productName = 'Branch Scoped Edit '.fake()->unique()->numerify('######');
 

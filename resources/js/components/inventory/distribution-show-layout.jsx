@@ -117,7 +117,7 @@ export function DistributionDocument({
     selectionColumn,
 }) {
     const { logo, panelType = 'admin' } = usePage().props;
-    const displayBranch = fromBranchName || 'Coolness Point';
+    const displayBranch = fromBranchName || 'POS SYSTEM';
     const totalQuantity = items.reduce((sum, row) => sum + parseFloat(row.quantity ?? 0), 0);
     const isAdminPanel = panelType !== 'branch';
     const lineColumns = isAdminPanel

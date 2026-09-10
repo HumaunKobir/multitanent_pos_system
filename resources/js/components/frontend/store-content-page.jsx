@@ -12,7 +12,7 @@ export function StoreContentPage({
     showExtras = false,
 }) {
     const { siteName } = usePage().props;
-    const brand = siteName ?? 'Coolness Point';
+    const brand = siteName ?? 'POS SYSTEM';
 
     return (
         <FrontendLayout hideTrustStrip={!showExtras}>

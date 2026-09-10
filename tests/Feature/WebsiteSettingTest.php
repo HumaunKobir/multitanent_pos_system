@@ -40,7 +40,7 @@ function websiteSettingEcommerceUser(): User
 function websiteSettingPayload(array $overrides = []): array
 {
     return array_merge([
-        'website_name' => 'Coolness Point Test',
+        'website_name' => 'POS SYSTEM Test',
         'phone' => '01700000000',
         'email' => 'hello@coolness.test',
         'address' => 'Dhaka, Bangladesh',

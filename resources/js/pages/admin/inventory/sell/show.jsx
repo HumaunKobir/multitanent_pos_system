@@ -76,7 +76,7 @@ export default function SellShow({ sell }) {
     const handlePosPrint = useCallback(() => {
         posPrint(
             buildSellPosPrintPayload(sell, {
-                companyName: sell.branch?.name || siteName || 'Coolness Point',
+                companyName: sell.branch?.name || siteName || 'POS SYSTEM',
                 companyAddress: sell.branch?.address || contact?.address || '',
                 companyPhone: sell.branch?.phone || contact?.phone || '',
                 companyEmail: contact?.email || '',

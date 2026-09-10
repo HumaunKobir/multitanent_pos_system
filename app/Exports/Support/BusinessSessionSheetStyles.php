@@ -9,7 +9,7 @@ class BusinessSessionSheetStyles
 {
     public static function subtitle(array $session): string
     {
-        $appName = (string) config('app.name', 'Coolness Point');
+        $appName = (string) config('app.name', 'POS SYSTEM');
         $sessionNumber = (string) ($session['session_number'] ?? '—');
         $branch = (string) ($session['branch_name'] ?? '—');
 

@@ -561,7 +561,7 @@ export function buildSellPosPrintPayload(sell, options = {}) {
             showItems: options.showItems ?? true,
             showTotals: options.showTotals ?? true,
             showThankYou: options.showThankYou ?? true,
-            companyName: options.companyName || options.siteName || 'Coolness Point',
+            companyName: options.companyName || options.siteName || 'POS SYSTEM',
             companyAddress: options.companyAddress || options.contact?.address || sell.branch?.address || '',
             companyPhone: options.companyPhone || options.contact?.phone || sell.branch?.phone || '',
             companyEmail: options.companyEmail || options.contact?.email || '',

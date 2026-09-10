@@ -220,7 +220,7 @@ export function InvoiceDocument({
 }) {
     const { logo } = usePage().props;
     const displayLogo = logoUrl ?? logo;
-    const displayBranch = branchName || 'Coolness Point';
+    const displayBranch = branchName || 'POS SYSTEM';
     const gross = parseFloat(totals.gross ?? 0);
     const vat = parseFloat(totals.vat ?? 0);
     const discount = parseFloat(totals.discount ?? 0);

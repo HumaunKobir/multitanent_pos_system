@@ -79,7 +79,7 @@ class HomeController extends Controller
             'sliders' => $sliders,
             'collections' => $collections,
             'productSections' => $productSections,
-            'siteName' => ConfigDictionary::get('website_name', 'Coolness Point'),
+            'siteName' => ConfigDictionary::get('website_name', 'POS SYSTEM'),
             'topNotice' => ConfigDictionary::get('topnotice1'),
         ]);
     }

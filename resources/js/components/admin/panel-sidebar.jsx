@@ -183,9 +183,9 @@ function filterNavigationByPermission(sections, can) {
         .filter(Boolean);
 }
 
-function SidebarContent({ adminNavigation, panelType, currentUrl, isCurrentUrl, expanded, toggle, collapsed, systemName }) {
-    const panelTitle = panelType === 'branch' ? 'Branch Panel' : 'Admin Panel';
-    const brandName = systemName || 'Coolness Point';
+function SidebarContent({ adminNavigation, panelType, currentUrl, isCurrentUrl, expanded, toggle, collapsed, systemName, branchName }) {
+    const panelTitle = panelType === 'branch' ? (branchName || 'Branch') : 'Admin Panel';
+    const brandName = systemName || 'POS SYSTEM';
 
     return (
         <>
@@ -395,7 +395,8 @@ function SidebarContent({ adminNavigation, panelType, currentUrl, isCurrentUrl, 
 }
 
 export function PanelSidebar() {
-    const { adminNavigation = [], panelType = 'admin', systemName = 'Coolness Point' } = usePage().props;
+    const { adminNavigation = [], panelType = 'admin', systemName = 'POS SYSTEM', auth, branchSubscription } = usePage().props;
+    const branchName = auth?.user?.branch?.name || branchSubscription?.branch_name || '';
     const { can } = useCan();
     const { currentUrl, isCurrentUrl } = useCurrentUrl();
     const { collapsed, mobileOpen, closeMobile, isMobile } = usePanelSidebar();
@@ -448,6 +449,7 @@ export function PanelSidebar() {
                             toggle={toggle}
                             collapsed={false}
                             systemName={systemName}
+                            branchName={branchName}
                         />
                     </aside>
                 </SheetContent>
@@ -472,6 +474,7 @@ export function PanelSidebar() {
                 toggle={toggle}
                 collapsed={collapsed}
                 systemName={systemName}
+                branchName={branchName}
             />
         </aside>
     );

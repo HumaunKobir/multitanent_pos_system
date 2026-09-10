@@ -424,7 +424,7 @@ export default function WebsiteSettingsIndex({ settings, mailSettings = {} }) {
                                 id="mail_from_name"
                                 value={data.mail_from_name}
                                 onChange={(event) => setData('mail_from_name', event.target.value)}
-                                placeholder="Coolness Point"
+                                placeholder="POS SYSTEM"
                                 className="mt-1"
                             />
                         </FormField>

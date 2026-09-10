@@ -20,7 +20,7 @@ final class WebsiteSettings
     public static function textDefaults(): array
     {
         return [
-            'website_name' => config('app.name', 'Coolness Point'),
+            'website_name' => config('app.name', 'POS SYSTEM'),
             'phone' => '',
             'email' => '',
             'address' => '',

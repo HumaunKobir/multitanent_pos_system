@@ -231,7 +231,7 @@ class CustomerReportSheetStyles
 
     public static function subtitle(string $customerName, ?string $dateFrom = null, ?string $dateTo = null): string
     {
-        $appName = (string) config('app.name', 'Coolness Point');
+        $appName = (string) config('app.name', 'POS SYSTEM');
         $parts = [
             $appName,
             'Customer: '.$customerName,
@@ -248,7 +248,7 @@ class CustomerReportSheetStyles
 
     public static function bulkSubtitle(int $customerCount, ?string $dateFrom = null, ?string $dateTo = null): string
     {
-        $appName = (string) config('app.name', 'Coolness Point');
+        $appName = (string) config('app.name', 'POS SYSTEM');
         $parts = [
             $appName,
             $customerCount.' customers',

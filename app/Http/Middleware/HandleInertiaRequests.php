@@ -58,7 +58,7 @@ class HandleInertiaRequests extends Middleware
             'systemName' => BusinessSettings::systemName(),
             'multiTenantEnabled' => BusinessSettings::getBool('multi_tenant_enabled', (bool) config('tenancy.enabled')),
             'auth' => [
-                'user' => $user instanceof User ? $user : null,
+                'user' => $user instanceof User ? $user->loadMissing('branch') : null,
                 'customer' => $customer,
                 'permissions' => $user instanceof User
                     ? ($user->hasUnrestrictedPermissions()

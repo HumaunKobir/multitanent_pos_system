@@ -104,7 +104,7 @@ function subscriberListMailSettings(): void
         'smtp_password' => 'secret',
         'smtp_encryption' => 'tls',
         'mail_from_address' => 'newsletter@coolness.test',
-        'mail_from_name' => 'Coolness Point',
+        'mail_from_name' => 'POS SYSTEM',
     ]);
 }
 

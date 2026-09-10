@@ -22,7 +22,7 @@ const supportPerks = [
 
 export default function Faq({ items }) {
     const { siteName, contact = {}, supportTime } = usePage().props;
-    const brand = siteName ?? 'Coolness Point';
+    const brand = siteName ?? 'POS SYSTEM';
     const { phone, email } = contact;
 
     return (

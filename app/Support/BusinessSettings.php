@@ -13,7 +13,7 @@ final class BusinessSettings
     {
         return [
             // Platform identity & tenancy
-            'system_name' => 'Coolness Point',
+            'system_name' => 'POS SYSTEM',
             'multi_tenant_enabled' => env('TENANCY_ENABLED', false) ? '1' : '0',
 
             // Subscription & Billing Settings
@@ -53,9 +53,9 @@ final class BusinessSettings
 
     public static function systemName(): string
     {
-        $name = trim((string) self::get('system_name', 'Coolness Point'));
+        $name = trim((string) self::get('system_name', 'POS SYSTEM'));
 
-        return $name !== '' ? $name : 'Coolness Point';
+        return $name !== '' ? $name : 'POS SYSTEM';
     }
 
     /**

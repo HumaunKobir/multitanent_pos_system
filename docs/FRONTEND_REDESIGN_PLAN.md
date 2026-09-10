@@ -1,8 +1,8 @@
-# Coolness Point — Frontend Redesign Master Plan
+# POS SYSTEM — Frontend Redesign Master Plan
 
 **Stack:** Laravel · Inertia v3 · React 19 · Tailwind v4 · Framer Motion  
 **Scope:** Customer-facing storefront only (no admin Blade)  
-**Brand:** Coolness Point — modern navy/coral/purple gradient identity
+**Brand:** POS SYSTEM — modern navy/coral/purple gradient identity
 
 ---
 

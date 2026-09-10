@@ -61,7 +61,7 @@ export default function BranchDashboard({ today, branchName, branchLogoUrl, sect
             >
                 {!hasSections ? (
                     <div className="border border-border bg-card p-8 text-center shadow-none">
-                        <p className="text-sm font-medium">Welcome to your branch panel</p>
+                        <p className="text-sm font-medium">Welcome to {branchName || 'your branch'}</p>
                         <p className="mt-2 text-sm text-muted-foreground">
                             No module access assigned yet. Contact your administrator for permissions.
                         </p>

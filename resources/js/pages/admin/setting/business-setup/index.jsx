@@ -8,14 +8,18 @@ import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import {
     ArrowRight,
     Building2,
+    CheckCircle2,
     CreditCard,
+    Database,
     DollarSign,
     FileText,
     HelpCircle,
     Info,
+    Layers,
     Mail,
     Phone,
     Save,
+    Server,
     Settings,
     Shield,
     ShieldAlert,
@@ -52,7 +56,7 @@ export default function BusinessSetupIndex({ settings = {}, billingCycles = [], 
     const [activeTab, setActiveTab] = useState('system');
 
     const { data, setData, put, processing, errors } = useForm({
-        system_name: settings.system_name ?? 'Coolness Point',
+        system_name: settings.system_name ?? 'POS SYSTEM',
         multi_tenant_enabled: settings.multi_tenant_enabled === '1' || settings.multi_tenant_enabled === true || settings.multi_tenant_enabled === 'true',
 
         // Subscription & Billing Policies
@@ -180,7 +184,7 @@ export default function BusinessSetupIndex({ settings = {}, billingCycles = [], 
                                 <Input
                                     value={data.system_name}
                                     onChange={(e) => setData('system_name', e.target.value)}
-                                    placeholder="Coolness Point"
+                                    placeholder="POS SYSTEM"
                                     className="border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 font-bold"
                                     required
                                 />
@@ -188,30 +192,102 @@ export default function BusinessSetupIndex({ settings = {}, billingCycles = [], 
                         </SettingsSection>
 
                         <SettingsSection
-                            title="Multi-Tenant Mode"
-                            description="When enabled, each client branch can use an isolated tenant database. Changing this affects new requests immediately; keep .env TENANCY_ENABLED aligned for deploys and artisan."
+                            title="Multi-Tenant Architecture Mode"
+                            description="When enabled, each client branch uses an isolated tenant database. Changing this takes effect immediately for new requests."
+                            className="sm:col-span-2"
                         >
-                            <FormField label="Multi-Tenant Enabled" name="multi_tenant_enabled" error={errors.multi_tenant_enabled}>
-                                <Select
-                                    value={data.multi_tenant_enabled ? '1' : '0'}
-                                    onValueChange={(val) => setData('multi_tenant_enabled', val === '1')}
-                                >
-                                    <SelectTrigger className="border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950">
-                                        <SelectValue placeholder="Select" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="1">True — tenant databases per branch</SelectItem>
-                                        <SelectItem value="0">False — shared central database</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                            </FormField>
-                            <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100 sm:col-span-1">
-                                <Info className="mt-0.5 size-3.5 shrink-0" />
-                                <p>
-                                    Runtime flag is currently{' '}
-                                    <span className="font-bold">{tenancyEnabled || data.multi_tenant_enabled ? 'ON' : 'OFF'}</span>
-                                    . After saving, refresh other open tabs so middleware picks up the change.
-                                </p>
+                            <div className="sm:col-span-2 space-y-4">
+                                <label className="text-xs font-bold text-foreground">
+                                    Select Multi-Tenancy Architecture
+                                </label>
+
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    {/* Option 1: Multi-Tenant Enabled */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setData('multi_tenant_enabled', true)}
+                                        className={`group relative flex flex-col items-start p-4 rounded-xl border-2 text-left transition-all cursor-pointer ${
+                                            data.multi_tenant_enabled
+                                                ? 'border-emerald-600 bg-emerald-50/60 dark:bg-emerald-950/30 text-emerald-950 dark:text-emerald-100 shadow-sm ring-2 ring-emerald-500/20'
+                                                : 'border-slate-200 dark:border-slate-800 bg-card text-foreground hover:border-slate-300 dark:hover:border-slate-700'
+                                        }`}
+                                    >
+                                        <div className="flex w-full items-center justify-between gap-2 mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className={`flex size-8 items-center justify-center rounded-lg ${
+                                                    data.multi_tenant_enabled ? 'bg-emerald-600 text-white' : 'bg-muted text-muted-foreground'
+                                                }`}>
+                                                    <Database className="size-4" />
+                                                </div>
+                                                <span className="text-sm font-bold">Multi-Tenant Mode</span>
+                                            </div>
+                                            {data.multi_tenant_enabled ? (
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-xs">
+                                                    <CheckCircle2 className="size-3" /> Selected
+                                                </span>
+                                            ) : (
+                                                <span className="text-[11px] font-medium text-muted-foreground">Click to select</span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground leading-relaxed">
+                                            <strong>True:</strong> Dedicated database per branch (e.g. <code className="text-[11px] bg-muted px-1 rounded">tenant_branch_1</code>). Maximum data isolation and SaaS scalability.
+                                        </p>
+                                    </button>
+
+                                    {/* Option 2: Single / Shared Database */}
+                                    <button
+                                        type="button"
+                                        onClick={() => setData('multi_tenant_enabled', false)}
+                                        className={`group relative flex flex-col items-start p-4 rounded-xl border-2 text-left transition-all cursor-pointer ${
+                                            !data.multi_tenant_enabled
+                                                ? 'border-blue-600 bg-blue-50/60 dark:bg-blue-950/30 text-blue-950 dark:text-blue-100 shadow-sm ring-2 ring-blue-500/20'
+                                                : 'border-slate-200 dark:border-slate-800 bg-card text-foreground hover:border-slate-300 dark:hover:border-slate-700'
+                                        }`}
+                                    >
+                                        <div className="flex w-full items-center justify-between gap-2 mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <div className={`flex size-8 items-center justify-center rounded-lg ${
+                                                    !data.multi_tenant_enabled ? 'bg-blue-600 text-white' : 'bg-muted text-muted-foreground'
+                                                }`}>
+                                                    <Server className="size-4" />
+                                                </div>
+                                                <span className="text-sm font-bold">Single / Shared Database</span>
+                                            </div>
+                                            {!data.multi_tenant_enabled ? (
+                                                <span className="inline-flex items-center gap-1 rounded-full bg-blue-600 px-2 py-0.5 text-[11px] font-bold text-white shadow-xs">
+                                                    <CheckCircle2 className="size-3" /> Selected
+                                                </span>
+                                            ) : (
+                                                <span className="text-[11px] font-medium text-muted-foreground">Click to select</span>
+                                            )}
+                                        </div>
+                                        <p className="text-xs text-muted-foreground leading-relaxed">
+                                            <strong>False:</strong> All branches share the single central database. Standard single-database operation.
+                                        </p>
+                                    </button>
+                                </div>
+
+                                <FormField label="Quick Select Dropdown" name="multi_tenant_enabled" error={errors.multi_tenant_enabled}>
+                                    <Select
+                                        value={data.multi_tenant_enabled ? '1' : '0'}
+                                        onValueChange={(val) => setData('multi_tenant_enabled', val === '1')}
+                                    >
+                                        <SelectTrigger className="border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950">
+                                            <SelectValue placeholder="Select Tenancy Mode" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="1">True — Multi-tenant mode (tenant databases per branch)</SelectItem>
+                                            <SelectItem value="0">False — Single shared central database</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </FormField>
+
+                                <div className="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-100">
+                                    <Info className="mt-0.5 size-4 shrink-0 text-amber-700 dark:text-amber-400" />
+                                    <p>
+                                        Current Runtime State: <strong className="font-bold uppercase tracking-wider">{tenancyEnabled || data.multi_tenant_enabled ? 'Multi-Tenant (ON)' : 'Shared Database (OFF)'}</strong>. Keep your <code className="font-mono font-bold bg-amber-100/80 dark:bg-amber-900/50 px-1 rounded">.env TENANCY_ENABLED</code> aligned with this setting for command-line migrations.
+                                    </p>
+                                </div>
                             </div>
                         </SettingsSection>
                     </TabsContent>

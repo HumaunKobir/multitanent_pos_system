@@ -1,8 +1,12 @@
 import { PanelGuideSection } from '@/components/admin/panel-guide-section';
 import { Head } from '@inertiajs/react';
 
+import { usePage } from '@inertiajs/react';
+
 export default function PanelGuidePage({ panelGuide }) {
-    const panelLabel = panelGuide?.panelType === 'branch' ? 'Branch Panel' : 'Admin Panel';
+    const { auth, branchSubscription } = usePage().props;
+    const branchName = auth?.user?.branch?.name || branchSubscription?.branch_name || '';
+    const panelLabel = panelGuide?.panelType === 'branch' ? (branchName || 'Branch') : 'Admin Panel';
 
     return (
         <>

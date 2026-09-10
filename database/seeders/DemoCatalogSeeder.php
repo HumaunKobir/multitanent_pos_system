@@ -70,7 +70,7 @@ class DemoCatalogSeeder extends Seeder
     private function seedBrands(): void
     {
         foreach ([
-            'Coolness Studio',
+            'Studio',
             'Heritage Loom',
             'Urban Edge',
             'Classic Fit',

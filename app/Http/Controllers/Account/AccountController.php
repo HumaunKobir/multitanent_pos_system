@@ -44,6 +44,15 @@ class AccountController extends Controller
             }
         }
 
+        // SuperAdmin / Main: ensure approved subscription payments hit the SaaS chart.
+        if ($user !== null && $user->usesAdminPanel()) {
+            try {
+                $this->subscriptions->syncMissingSuperAdminSettlements($user);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
         SystemAccountService::ensureConfigured($branchId);
 
         $allAccounts = ChartOfAccount::query()

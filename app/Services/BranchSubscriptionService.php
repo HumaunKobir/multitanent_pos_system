@@ -583,6 +583,14 @@ class BranchSubscriptionService
         }
     }
 
+    /**
+     * Post any approved subscription payments missing from the SuperAdmin SaaS chart.
+     */
+    public function syncMissingSuperAdminSettlements(?User $actor = null): int
+    {
+        return $this->accounting->syncMissingSuperAdminSettlements($actor);
+    }
+
     public function resolveCycleDays(Branch $branch): ?int
     {
         $plan = $branch->subscription_plan ?: 'standard';

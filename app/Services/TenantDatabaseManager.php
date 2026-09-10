@@ -133,6 +133,36 @@ class TenantDatabaseManager
         DB::purge($tenant);
     }
 
+    /**
+     * Point the tenant connection at the central database.
+     * Used for SuperAdmin / Main panel when the main branch has no dedicated tenant DB —
+     * ChartOfAccount, Transaction, and Ledger always use the tenant connection when tenancy is on.
+     */
+    public function configureCentralTenantConnection(): void
+    {
+        $central = config('tenancy.central_connection');
+        $databaseName = (string) config("database.connections.{$central}.database");
+
+        if ($databaseName === '') {
+            throw new RuntimeException("Central connection [{$central}] has no database configured.");
+        }
+
+        $tenant = config('tenancy.tenant_connection', 'tenant');
+        $base = config("database.connections.{$central}");
+
+        if (! is_array($base)) {
+            throw new RuntimeException("Central connection [{$central}] is not configured.");
+        }
+
+        config([
+            "database.connections.{$tenant}" => array_merge($base, [
+                'database' => $databaseName,
+            ]),
+        ]);
+
+        DB::purge($tenant);
+    }
+
     public function supportsCreateDatabase(): bool
     {
         $central = config('tenancy.central_connection');

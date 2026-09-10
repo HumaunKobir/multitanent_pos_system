@@ -219,6 +219,17 @@ class BranchSubscriptionAccountingService
 
         if ($branch && ! Branch::isMainBranch($payment->branch_id)) {
             $this->onClientBranch($branch, function () use ($branch, $payment, $amount, $paymentDate): void {
+                $alreadySettledOnBranch = Transaction::query()
+                    ->where('source_type', BranchSubscriptionPayment::class)
+                    ->where('source_id', $payment->id)
+                    ->exists();
+
+                // Do not invent a new billing accrual when replaying settlement for an
+                // already-posted payment (payable may already be cleared).
+                if ($alreadySettledOnBranch) {
+                    return;
+                }
+
                 $payableAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $payment->branch_id);
                 $payableBalance = max(0.0, (float) $payableAccount->fresh()->current_balance);
                 $unaccruedAmount = round($amount - $payableBalance, 2);
@@ -334,6 +345,42 @@ class BranchSubscriptionAccountingService
             'branch_transaction' => $branchTransaction,
             'superadmin_transaction' => $superadminTransaction,
         ];
+    }
+
+    /**
+     * Replay SuperAdmin settlement legs for approved payments that never hit the
+     * central SaaS chart (e.g. tenant connection leaked to a client DB).
+     */
+    public function syncMissingSuperAdminSettlements(?User $actor = null): int
+    {
+        $payments = BranchSubscriptionPayment::query()
+            ->where('status', 'approved')
+            ->where('amount', '>', 0)
+            ->orderBy('id')
+            ->get();
+
+        $posted = 0;
+
+        foreach ($payments as $payment) {
+            $needsPost = $this->onMainPanel(function () use ($payment): bool {
+                return ! Transaction::query()
+                    ->where('source_type', BranchSubscriptionPayment::class)
+                    ->where('source_id', $payment->id)
+                    ->where('description', 'like', 'Subscription payment received%')
+                    ->exists();
+            });
+
+            if (! $needsPost) {
+                continue;
+            }
+
+            $result = $this->recordPaymentSettlement($payment, $actor);
+            if ($result['superadmin_transaction'] !== null) {
+                $posted++;
+            }
+        }
+
+        return $posted;
     }
 
     public function resolvePaymentAccountKey(?string $method): SystemAccountKey

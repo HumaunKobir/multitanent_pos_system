@@ -409,6 +409,9 @@ test('tenant aware settlement posts client transactions on the branch tenant dat
         ['name' => Branch::MAIN_BRANCH_NAME],
         Branch::factory()->make(['name' => Branch::MAIN_BRANCH_NAME, 'subscription_status' => 'lifetime'])->toArray(),
     );
+    // Production SaaS panel: Main has no dedicated tenant DB (shares central).
+    $main->forceFill(['database_name' => null])->save();
+
     $branch = Branch::factory()->create([
         'name' => 'Sub Tenant '.fake()->unique()->numerify('####'),
         'subscription_fee' => 800,
@@ -417,22 +420,29 @@ test('tenant aware settlement posts client transactions on the branch tenant dat
     ]);
 
     try {
-        $provisioner->provision($main);
         $provisioner->provision($branch);
-        $main->refresh();
         $branch->refresh();
 
-        $provisioner->usingBranch($main, fn () => SystemAccountService::seed(null));
+        $provisioner->initializeCentral();
+        SystemAccountService::seed(null);
+
+        $centralReceivableBefore = (float) SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null)->fresh()->current_balance;
+        $centralIncomeBefore = (float) SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null)->fresh()->current_balance;
+        $centralBkashBefore = (float) SystemAccountService::resolve(SystemAccountKey::Bkash, null)->fresh()->current_balance;
+
         $cashId = $provisioner->usingBranch($branch, function () use ($branch) {
             SystemAccountService::seed($branch->id);
 
             return SystemAccountService::resolve(SystemAccountKey::CashInHand, $branch->id)->id;
         });
 
+        // Accrue on both panels, then settle — mirrors approve after invoice.
+        app(BranchSubscriptionAccountingService::class)->recordCycleAccrual($branch, '2026-09-01', '2026-10-01', 800);
+
         $payment = BranchSubscriptionPayment::create([
             'branch_id' => $branch->id,
             'amount' => 800,
-            'payment_method' => 'Cash in Hand',
+            'payment_method' => 'bKash',
             'payment_account_id' => $cashId,
             'status' => 'approved',
             'transaction_reference' => 'TENANT-SUB-800',
@@ -459,6 +469,22 @@ test('tenant aware settlement posts client transactions on the branch tenant dat
             ->and($clientPosted['expense'])->toBe(800.0)
             ->and($clientPosted['payable'])->toBe(0.0)
             ->and($clientPosted['cash'])->toBe(-800.0);
+
+        // SuperAdmin / central panel must receive cash and clear receivable (not stuck on client DB).
+        $provisioner->initializeCentral();
+        $centralReceivable = (float) SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null)->fresh()->current_balance;
+        $centralIncome = (float) SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null)->fresh()->current_balance;
+        $centralBkash = (float) SystemAccountService::resolve(SystemAccountKey::Bkash, null)->fresh()->current_balance;
+        $centralSettlementExists = Transaction::query()
+            ->where('source_type', BranchSubscriptionPayment::class)
+            ->where('source_id', $payment->id)
+            ->where('description', 'like', 'Subscription payment received%')
+            ->exists();
+
+        expect($centralSettlementExists)->toBeTrue()
+            ->and($centralIncome)->toBe($centralIncomeBefore + 800.0)
+            ->and($centralReceivable)->toBe($centralReceivableBefore)
+            ->and($centralBkash)->toBe($centralBkashBefore + 800.0);
     } finally {
         foreach ([$branch, $main] as $item) {
             if ($item->name === Branch::MAIN_BRANCH_NAME) {
@@ -478,6 +504,7 @@ test('tenant aware settlement posts client transactions on the branch tenant dat
             $item->delete();
         }
 
+        app(TenantProvisioner::class)->initializeCentral();
         config(['tenancy.enabled' => false]);
         DB::purge('tenant');
     }

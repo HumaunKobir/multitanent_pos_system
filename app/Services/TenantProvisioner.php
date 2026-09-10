@@ -60,6 +60,10 @@ class TenantProvisioner
         }
 
         if (! filled($branch->database_name)) {
+            // Main / SaaS panel shares the central DB. Remap the tenant connection so
+            // UsesTenantConnection models (COA, ledgers, transactions) hit central —
+            // otherwise a prior client-branch switch leaves posts on the wrong database.
+            $this->databases->configureCentralTenantConnection();
             TenantContext::set($branch);
 
             return;
@@ -68,6 +72,19 @@ class TenantProvisioner
         $this->databases->configureTenantConnection($branch->database_name);
         TenantContext::set($branch);
         DB::setDefaultConnection(config('tenancy.central_connection'));
+    }
+
+    /**
+     * Reset tenant connection + context to the central (SuperAdmin) panel.
+     */
+    public function initializeCentral(): void
+    {
+        TenantContext::clear();
+
+        if (config('tenancy.enabled')) {
+            $this->databases->configureCentralTenantConnection();
+            DB::setDefaultConnection(config('tenancy.central_connection'));
+        }
     }
 
     /**
@@ -88,7 +105,7 @@ class TenantProvisioner
             if ($previous !== null) {
                 $this->initialize($previous);
             } else {
-                TenantContext::clear();
+                $this->initializeCentral();
             }
         }
     }

@@ -1796,16 +1796,16 @@
         },
         {
             "name": "laravel/framework",
-            "version": "v13.30.1",
+            "version": "v13.31.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/framework.git",
-                "reference": "718d17db56861e0a49f644217c8853dab1bff8ce"
+                "reference": "7c75fbf93f91fa077d3df1c820cc14f4e59a9774"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/framework/zipball/718d17db56861e0a49f644217c8853dab1bff8ce",
-                "reference": "718d17db56861e0a49f644217c8853dab1bff8ce",
+                "url": "https://api.github.com/repos/laravel/framework/zipball/7c75fbf93f91fa077d3df1c820cc14f4e59a9774",
+                "reference": "7c75fbf93f91fa077d3df1c820cc14f4e59a9774",
                 "shasum": ""
             },
             "require": {
@@ -2019,7 +2019,7 @@
                 "issues": "https://github.com/laravel/framework/issues",
                 "source": "https://github.com/laravel/framework"
             },
-            "time": "2026-09-01T21:42:30+00:00"
+            "time": "2026-09-08T14:22:55+00:00"
         },
         {
             "name": "laravel/passkeys",
@@ -3172,16 +3172,16 @@
         },
         {
             "name": "monolog/monolog",
-            "version": "3.11.0",
+            "version": "3.12.0",
             "source": {
                 "type": "git",
                 "url": "https://github.com/Seldaek/monolog.git",
-                "reference": "147f303310f06334f03f409e49d7ad1e275ff05a"
+                "reference": "72c534fc0ab181ef52d92a68382318631e301608"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Seldaek/monolog/zipball/147f303310f06334f03f409e49d7ad1e275ff05a",
-                "reference": "147f303310f06334f03f409e49d7ad1e275ff05a",
+                "url": "https://api.github.com/repos/Seldaek/monolog/zipball/72c534fc0ab181ef52d92a68382318631e301608",
+                "reference": "72c534fc0ab181ef52d92a68382318631e301608",
                 "shasum": ""
             },
             "require": {
@@ -3207,6 +3207,7 @@
                 "phpstan/phpstan-strict-rules": "^2",
                 "phpunit/phpunit": "^10.5.17 || ^11.0.7",
                 "predis/predis": "^1.1 || ^2",
+                "psr/clock": "^1.0",
                 "rollbar/rollbar": "^4.0",
                 "ruflin/elastica": "^7 || ^8",
                 "symfony/mailer": "^5.4 || ^6",
@@ -3225,6 +3226,7 @@
                 "graylog2/gelf-php": "Allow sending log messages to a GrayLog2 server",
                 "mongodb/mongodb": "Allow sending log messages to a MongoDB server (via library)",
                 "php-amqplib/php-amqplib": "Allow sending log messages to an AMQP server using php-amqplib",
+                "psr/clock": "Required to pass a clock to the Logger and control the timestamp of log records",
                 "rollbar/rollbar": "Allow sending log messages to Rollbar",
                 "ruflin/elastica": "Allow sending log messages to an Elastic Search server"
             },
@@ -3259,7 +3261,7 @@
             ],
             "support": {
                 "issues": "https://github.com/Seldaek/monolog/issues",
-                "source": "https://github.com/Seldaek/monolog/tree/3.11.0"
+                "source": "https://github.com/Seldaek/monolog/tree/3.12.0"
             },
             "funding": [
                 {
@@ -3271,7 +3273,7 @@
                     "type": "tidelift"
                 }
             ],
-            "time": "2026-09-02T12:39:56+00:00"
+            "time": "2026-09-09T08:34:20+00:00"
         },
         {
             "name": "nesbot/carbon",
@@ -5095,22 +5097,23 @@
         },
         {
             "name": "spomky-labs/cbor-php",
-            "version": "3.3.4",
+            "version": "3.3.5",
             "source": {
                 "type": "git",
                 "url": "https://github.com/Spomky-Labs/cbor-php.git",
-                "reference": "1cac24eeae4be47122d505542a170623b2a35ea3"
+                "reference": "e2208b2afb71123d95b62891f87befb14fcedc46"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Spomky-Labs/cbor-php/zipball/1cac24eeae4be47122d505542a170623b2a35ea3",
-                "reference": "1cac24eeae4be47122d505542a170623b2a35ea3",
+                "url": "https://api.github.com/repos/Spomky-Labs/cbor-php/zipball/e2208b2afb71123d95b62891f87befb14fcedc46",
+                "reference": "e2208b2afb71123d95b62891f87befb14fcedc46",
                 "shasum": ""
             },
             "require": {
                 "brick/math": "^0.9|^0.10|^0.11|^0.12|^0.13|^0.14|^0.15|^0.16|^0.17|^0.18|^0.19|^0.20",
                 "ext-mbstring": "*",
-                "php": ">=8.0"
+                "php": ">=8.0",
+                "symfony/polyfill-php81": "^1.32"
             },
             "require-dev": {
                 "ext-json": "*",
@@ -5119,8 +5122,8 @@
                 "symfony/var-dumper": "^6.4|^7.1|^8.0"
             },
             "suggest": {
-                "ext-bcmath": "GMP or BCMath extensions will drastically improve the library performance. BCMath extension needed to handle the Big Float and Decimal Fraction Tags",
-                "ext-gmp": "GMP or BCMath extensions will drastically improve the library performance"
+                "ext-bcmath": "Improves the library performance when ext-gmp is missing, and is required to handle the Big Float and Decimal Fraction Tags (4 and 5)",
+                "ext-gmp": "Strongly recommended when decoding untrusted input: without it, converting the byte string of a Big Number Tag (2 and 3) is quadratic in its length. Also improves the library performance overall"
             },
             "type": "library",
             "autoload": {
@@ -5150,7 +5153,7 @@
             ],
             "support": {
                 "issues": "https://github.com/Spomky-Labs/cbor-php/issues",
-                "source": "https://github.com/Spomky-Labs/cbor-php/tree/3.3.4"
+                "source": "https://github.com/Spomky-Labs/cbor-php/tree/3.3.5"
             },
             "funding": [
                 {
@@ -5162,20 +5165,20 @@
                     "type": "patreon"
                 }
             ],
-            "time": "2026-08-31T18:59:25+00:00"
+            "time": "2026-09-10T08:57:42+00:00"
         },
         {
             "name": "spomky-labs/pki-framework",
-            "version": "1.6.1",
+            "version": "1.6.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/Spomky-Labs/pki-framework.git",
-                "reference": "5d630ec371652229ad568337519f16e539e5f79d"
+                "reference": "8f333bebe104ea24f1a160a6fb69e2dead4f1882"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/Spomky-Labs/pki-framework/zipball/5d630ec371652229ad568337519f16e539e5f79d",
-                "reference": "5d630ec371652229ad568337519f16e539e5f79d",
+                "url": "https://api.github.com/repos/Spomky-Labs/pki-framework/zipball/8f333bebe104ea24f1a160a6fb69e2dead4f1882",
+                "reference": "8f333bebe104ea24f1a160a6fb69e2dead4f1882",
                 "shasum": ""
             },
             "require": {
@@ -5204,7 +5207,8 @@
             "suggest": {
                 "ext-bcmath": "For better performance (or GMP)",
                 "ext-gmp": "For better performance (or BCMath)",
-                "ext-openssl": "For OpenSSL based cyphering"
+                "ext-openssl": "For OpenSSL based cyphering",
+                "ext-sodium": "To verify Ed25519 signatures where the OpenSSL extension has no EdDSA"
             },
             "type": "library",
             "autoload": {
@@ -5259,7 +5263,7 @@
             ],
             "support": {
                 "issues": "https://github.com/Spomky-Labs/pki-framework/issues",
-                "source": "https://github.com/Spomky-Labs/pki-framework/tree/1.6.1"
+                "source": "https://github.com/Spomky-Labs/pki-framework/tree/1.6.2"
             },
             "funding": [
                 {
@@ -5271,7 +5275,7 @@
                     "type": "patreon"
                 }
             ],
-            "time": "2026-08-30T13:53:49+00:00"
+            "time": "2026-09-08T07:15:08+00:00"
         },
         {
             "name": "symfony/clock",
@@ -8539,16 +8543,16 @@
         },
         {
             "name": "web-auth/cose-lib",
-            "version": "4.7.1",
+            "version": "4.7.2",
             "source": {
                 "type": "git",
                 "url": "https://github.com/web-auth/cose-lib.git",
-                "reference": "e698b150049141f2f9ec03d2a4d681a2d020ab83"
+                "reference": "c790d047149cb91af4fb7bdd44568f7a636a77c9"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/web-auth/cose-lib/zipball/e698b150049141f2f9ec03d2a4d681a2d020ab83",
-                "reference": "e698b150049141f2f9ec03d2a4d681a2d020ab83",
+                "url": "https://api.github.com/repos/web-auth/cose-lib/zipball/c790d047149cb91af4fb7bdd44568f7a636a77c9",
+                "reference": "c790d047149cb91af4fb7bdd44568f7a636a77c9",
                 "shasum": ""
             },
             "require": {
@@ -8558,12 +8562,16 @@
                 "php": ">=8.1",
                 "spomky-labs/pki-framework": "^1.0"
             },
+            "replace": {
+                "symfony/polyfill-php81": "*"
+            },
             "require-dev": {
                 "spomky-labs/cbor-php": "^3.2.2"
             },
             "suggest": {
-                "ext-bcmath": "For better performance, please install either GMP (recommended) or BCMath extension",
-                "ext-gmp": "For better performance, please install either GMP (recommended) or BCMath extension",
+                "ext-bcmath": "Recommended: without GMP or BCMath, signing with RSASSA-PSS (PS256/PS384/PS512) blinds its private exponentiation in pure PHP",
+                "ext-gmp": "Recommended: without GMP or BCMath, signing with RSASSA-PSS (PS256/PS384/PS512) blinds its private exponentiation in pure PHP",
+                "ext-sodium": "Required by the EdDSA/Ed25519 signature algorithms (-8, -19, -260, -261) and to recompute an OKP public key from its private key",
                 "spomky-labs/cbor-php": "For COSE Signature support"
             },
             "type": "library",
@@ -8594,7 +8602,7 @@
             ],
             "support": {
                 "issues": "https://github.com/web-auth/cose-lib/issues",
-                "source": "https://github.com/web-auth/cose-lib/tree/4.7.1"
+                "source": "https://github.com/web-auth/cose-lib/tree/4.7.2"
             },
             "funding": [
                 {
@@ -8606,7 +8614,7 @@
                     "type": "patreon"
                 }
             ],
-            "time": "2026-08-30T13:53:57+00:00"
+            "time": "2026-09-10T16:46:32+00:00"
         },
         {
             "name": "web-auth/webauthn-lib",
@@ -9295,16 +9303,16 @@
         },
         {
             "name": "laravel/boost",
-            "version": "v2.7.1",
+            "version": "v2.8.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/boost.git",
-                "reference": "1ffcccb0f5f041c68bebea4d907cc15533d0838f"
+                "reference": "820bc93b7826c456ca591cfecca463b4dc794a72"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/boost/zipball/1ffcccb0f5f041c68bebea4d907cc15533d0838f",
-                "reference": "1ffcccb0f5f041c68bebea4d907cc15533d0838f",
+                "url": "https://api.github.com/repos/laravel/boost/zipball/820bc93b7826c456ca591cfecca463b4dc794a72",
+                "reference": "820bc93b7826c456ca591cfecca463b4dc794a72",
                 "shasum": ""
             },
             "require": {
@@ -9357,20 +9365,20 @@
                 "issues": "https://github.com/laravel/boost/issues",
                 "source": "https://github.com/laravel/boost"
             },
-            "time": "2026-09-07T04:38:53+00:00"
+            "time": "2026-09-10T15:25:39+00:00"
         },
         {
             "name": "laravel/mcp",
-            "version": "v0.9.4",
+            "version": "v0.9.5",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/mcp.git",
-                "reference": "7ca5b923630118696602d14348cd0466a5e853ec"
+                "reference": "923d8d8cd9ed46766d1a8b5269f8b4afc4c91c53"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/mcp/zipball/7ca5b923630118696602d14348cd0466a5e853ec",
-                "reference": "7ca5b923630118696602d14348cd0466a5e853ec",
+                "url": "https://api.github.com/repos/laravel/mcp/zipball/923d8d8cd9ed46766d1a8b5269f8b4afc4c91c53",
+                "reference": "923d8d8cd9ed46766d1a8b5269f8b4afc4c91c53",
                 "shasum": ""
             },
             "require": {
@@ -9431,7 +9439,7 @@
                 "issues": "https://github.com/laravel/mcp/issues",
                 "source": "https://github.com/laravel/mcp"
             },
-            "time": "2026-08-13T15:01:07+00:00"
+            "time": "2026-09-09T12:56:57+00:00"
         },
         {
             "name": "laravel/pail",
@@ -9515,16 +9523,16 @@
         },
         {
             "name": "laravel/pao",
-            "version": "v1.1.4",
+            "version": "v1.1.5",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/pao.git",
-                "reference": "5aee99c8c37565e9c457c33f4d36aa363a389dc8"
+                "reference": "620424f1ce744d96937fb6be60a94793e79b67ad"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/pao/zipball/5aee99c8c37565e9c457c33f4d36aa363a389dc8",
-                "reference": "5aee99c8c37565e9c457c33f4d36aa363a389dc8",
+                "url": "https://api.github.com/repos/laravel/pao/zipball/620424f1ce744d96937fb6be60a94793e79b67ad",
+                "reference": "620424f1ce744d96937fb6be60a94793e79b67ad",
                 "shasum": ""
             },
             "require": {
@@ -9540,13 +9548,13 @@
             "require-dev": {
                 "brianium/paratest": "^7.20.0",
                 "laravel/pint": "^1.30.5",
-                "orchestra/testbench": "^10.11.0 || ^11.1.0",
-                "pestphp/pest": "^4.7.8 || ^5.1.0",
+                "orchestra/testbench": "^10.11.0 || ^11.2.0",
+                "pestphp/pest": "^4.7.8 || ^5.1.4",
                 "pestphp/pest-plugin-type-coverage": "^4.0.4 || ^5.0.2",
-                "phpstan/phpstan": "^2.2.8",
-                "rector/rector": "^2.6.1",
-                "symfony/process": "^7.4.13 || ^8.1.0",
-                "symfony/var-dumper": "^7.4.15 || ^8.1.2"
+                "phpstan/phpstan": "^2.2.13",
+                "rector/rector": "^2.6.6",
+                "symfony/process": "^7.4.13 || ^8.1.6",
+                "symfony/var-dumper": "^7.4.15 || ^8.1.6"
             },
             "type": "library",
             "extra": {
@@ -9596,20 +9604,20 @@
                 "issues": "https://github.com/laravel/pao/issues",
                 "source": "https://github.com/laravel/pao"
             },
-            "time": "2026-08-10T23:45:44+00:00"
+            "time": "2026-09-07T14:48:06+00:00"
         },
         {
             "name": "laravel/pint",
-            "version": "v1.30.5",
+            "version": "v1.32.1",
             "source": {
                 "type": "git",
                 "url": "https://github.com/laravel/pint.git",
-                "reference": "fe4148c503a0e266353d61396b79bbf7f35122df"
+                "reference": "006bd7825eb01daf92959d060b89cd9514fe4253"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/laravel/pint/zipball/fe4148c503a0e266353d61396b79bbf7f35122df",
-                "reference": "fe4148c503a0e266353d61396b79bbf7f35122df",
+                "url": "https://api.github.com/repos/laravel/pint/zipball/006bd7825eb01daf92959d060b89cd9514fe4253",
+                "reference": "006bd7825eb01daf92959d060b89cd9514fe4253",
                 "shasum": ""
             },
             "require": {
@@ -9621,13 +9629,13 @@
             },
             "require-dev": {
                 "composer/semver": "^3.4.4",
-                "friendsofphp/php-cs-fixer": "^3.95.18",
-                "illuminate/view": "^13.24.0",
-                "larastan/larastan": "^3.10.0",
+                "friendsofphp/php-cs-fixer": "^3.95.25",
+                "illuminate/view": "^13.31.0",
+                "larastan/larastan": "^3.11.0",
                 "laravel-zero/framework": "^13.0.0",
                 "laravel/agent-detector": "^2.0.2",
-                "laravel/prompts": "^0.3.22",
-                "mockery/mockery": "^1.6.12",
+                "laravel/prompts": "^0.3.24",
+                "mockery/mockery": "^1.6.15",
                 "nunomaduro/termwind": "^2.4.0",
                 "pestphp/pest": "^4.7.8"
             },
@@ -9666,7 +9674,7 @@
                 "issues": "https://github.com/laravel/pint/issues",
                 "source": "https://github.com/laravel/pint"
             },
-            "time": "2026-08-10T15:35:50+00:00"
+            "time": "2026-09-10T10:47:55+00:00"
         },
         {
             "name": "laravel/roster",

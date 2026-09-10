@@ -186,7 +186,7 @@ test('two users in the same branch can each start their own session', function (
         ->not->toBe(app(BusinessSessionService::class)->activeSessionForUser($userB)->id);
 });
 
-test('user only sees their own sessions in history', function () {
+test('branch user sees branch sessions in history', function () {
     $branch = Branch::factory()->create();
     $userA = businessSessionUser($branch->id, [BusinessSessionController::PERMISSION_VIEW]);
     $userB = businessSessionUser($branch->id);
@@ -201,20 +201,32 @@ test('user only sees their own sessions in history', function () {
         'session_number' => 'BR-USER-B-'.fake()->unique()->numerify('######'),
     ]);
 
-    $userASessionNumber = BusinessSession::query()
-        ->where('started_by_user_id', $userA->id)
-        ->value('session_number');
-
     $this->actingAs($userA)
         ->get(route('accounts.daily-sessions.index'))
         ->assertOk()
         ->assertInertia(fn (Assert $page) => $page
             ->component('admin/accounts/daily-sessions/index')
-            ->has('sessions.data', 1)
-            ->where('sessions.data.0.session_number', $userASessionNumber));
+            ->has('sessions.data', 2));
 });
 
-test('user cannot access another users session report', function () {
+test('user cannot access another branch session report', function () {
+    $branchA = Branch::factory()->create();
+    $branchB = Branch::factory()->create();
+    $userA = businessSessionUser($branchA->id, [BusinessSessionController::PERMISSION_VIEW]);
+    $userB = businessSessionUser($branchB->id, [BusinessSessionController::PERMISSION_VIEW]);
+
+    $session = BusinessSession::factory()->forBranch($branchB)->closed()->create([
+        'started_by_user_id' => $userB->id,
+        'session_number' => 'BR-OTHER-'.fake()->unique()->numerify('######'),
+        'report_snapshot' => ['session' => ['session_number' => 'BR-OTHER-001']],
+    ]);
+
+    $this->actingAs($userA)
+        ->getJson(route('accounts.daily-sessions.report', $session))
+        ->assertForbidden();
+});
+
+test('user in same branch with permission can access session report', function () {
     $branch = Branch::factory()->create();
     $userA = businessSessionUser($branch->id, [BusinessSessionController::PERMISSION_VIEW]);
     $userB = businessSessionUser($branch->id, [BusinessSessionController::PERMISSION_VIEW]);
@@ -227,7 +239,7 @@ test('user cannot access another users session report', function () {
 
     $this->actingAs($userA)
         ->getJson(route('accounts.daily-sessions.report', $session))
-        ->assertForbidden();
+        ->assertOk();
 });
 
 test('daily sessions history page requires permission', function () {

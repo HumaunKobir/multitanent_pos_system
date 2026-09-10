@@ -34,7 +34,7 @@ class BusinessSessionController extends Controller
 
     public function index(Request $request): Response
     {
-        $this->authorize(self::PERMISSION_VIEW);
+        $this->authorizeAction($request, self::PERMISSION_VIEW, 'accounts.view');
 
         $user = $request->user();
         $sessions = BusinessSession::query()
@@ -77,7 +77,7 @@ class BusinessSessionController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $this->authorize(self::PERMISSION_START);
+        $this->authorizeAction($request, self::PERMISSION_START, 'accounts.create');
 
         $this->sessions->start(
             $request->user(),
@@ -89,6 +89,7 @@ class BusinessSessionController extends Controller
 
     public function closePreview(Request $request): JsonResponse|RedirectResponse
     {
+        $this->authorizeAction($request, self::PERMISSION_CLOSE, self::PERMISSION_VIEW, 'accounts.view');
         $session = $this->resolveActiveSession($request);
 
         $report = $this->sessions->buildClosingPreview($session, $request->user());
@@ -111,6 +112,7 @@ class BusinessSessionController extends Controller
 
     public function closeConfirm(Request $request): RedirectResponse
     {
+        $this->authorizeAction($request, self::PERMISSION_CLOSE);
         $session = $this->resolveActiveSession($request);
 
         $this->sessions->confirmClose($session, $request->user());
@@ -122,6 +124,7 @@ class BusinessSessionController extends Controller
 
     public function closeCancel(Request $request): RedirectResponse
     {
+        $this->authorizeAction($request, self::PERMISSION_CLOSE);
         $session = $this->resolveActiveSession($request);
         $this->sessions->cancelClosing($session, $request->user());
 
@@ -130,7 +133,7 @@ class BusinessSessionController extends Controller
 
     public function report(BusinessSession $dailySession, Request $request): JsonResponse
     {
-        $this->authorize(self::PERMISSION_VIEW);
+        $this->authorizeAction($request, self::PERMISSION_VIEW, 'accounts.view');
         $this->authorizeSessionAccess($request, $dailySession);
 
         $report = $this->sessions->resolveReport($dailySession);
@@ -141,13 +144,13 @@ class BusinessSessionController extends Controller
                 'session_number' => $dailySession->session_number,
             ],
             'report' => $report,
-            'can_export' => $request->user()->can(self::PERMISSION_EXPORT),
+            'can_export' => $request->user()->can(self::PERMISSION_EXPORT) || $request->user()->usesBranchPanel() || $request->user()->hasUnrestrictedPermissions() || $request->user()->isSuperAdmin(),
         ]);
     }
 
     public function exportExcel(BusinessSession $dailySession, Request $request): BinaryFileResponse
     {
-        $this->authorize(self::PERMISSION_EXPORT);
+        $this->authorizeAction($request, self::PERMISSION_EXPORT, self::PERMISSION_VIEW, 'accounts.view');
         $this->authorizeSessionAccess($request, $dailySession);
 
         $report = $this->sessions->resolveReport($dailySession);
@@ -166,7 +169,7 @@ class BusinessSessionController extends Controller
 
     public function reopen(BusinessSession $dailySession, Request $request): RedirectResponse
     {
-        $this->authorize(self::PERMISSION_REOPEN);
+        $this->authorizeAction($request, self::PERMISSION_REOPEN);
         $this->authorizeSessionAccess($request, $dailySession);
 
         $this->sessions->reopen($dailySession, $request->user());
@@ -176,8 +179,6 @@ class BusinessSessionController extends Controller
 
     private function resolveActiveSession(Request $request): BusinessSession
     {
-        $this->authorize(self::PERMISSION_CLOSE);
-
         $session = $this->sessions->activeSessionForUser($request->user());
 
         if ($session === null) {
@@ -187,9 +188,77 @@ class BusinessSessionController extends Controller
         return $session;
     }
 
+    private function authorizeAction(Request $request, string $permission, string ...$fallbacks): void
+    {
+        $user = $request->user();
+
+        if ($user === null) {
+            abort(401);
+        }
+
+        if ($user->hasUnrestrictedPermissions() || $user->isSuperAdmin()) {
+            return;
+        }
+
+        if ($user->usesBranchPanel()) {
+            return;
+        }
+
+        if ($user->can($permission)) {
+            return;
+        }
+
+        foreach ($fallbacks as $fallback) {
+            if ($user->can($fallback)) {
+                return;
+            }
+        }
+
+        abort(403);
+    }
+
     private function authorizeSessionAccess(Request $request, BusinessSession $session): void
     {
-        if ($session->started_by_user_id !== $request->user()->id) {
+        $user = $request->user();
+
+        if ($user === null) {
+            abort(401);
+        }
+
+        if ($user->hasUnrestrictedPermissions() || $user->isSuperAdmin()) {
+            return;
+        }
+
+        if ((int) $session->started_by_user_id === (int) $user->id) {
+            return;
+        }
+
+        // Branch panel users can access their branch sessions
+        if ($user->usesBranchPanel()) {
+            if (config('tenancy.enabled')) {
+                return;
+            }
+
+            if ($session->branch_id === null || (int) $session->branch_id === (int) $user->branch_id) {
+                return;
+            }
+
+            abort(403);
+        }
+
+        $userBranchId = $user->branch_id;
+        $sessionBranchId = $session->branch_id;
+
+        // Main branch / Central admin scope
+        if ($userBranchId === null || Branch::isMainBranch($userBranchId)) {
+            if ($sessionBranchId !== null && ! Branch::isMainBranch($sessionBranchId)) {
+                abort(403);
+            }
+            return;
+        }
+
+        // Branch-scoped user: forbidden only if session explicitly belongs to a different branch
+        if ($sessionBranchId !== null && (int) $sessionBranchId !== (int) $userBranchId) {
             abort(403);
         }
     }

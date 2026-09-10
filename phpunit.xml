@@ -28,7 +28,7 @@
         <env name="DB_PORT" value="3306"/>
         <env name="DB_DATABASE" value="multitanent"/>
         <env name="DB_USERNAME" value="root"/>
-        <env name="DB_PASSWORD" value=""/>
+        <env name="DB_PASSWORD" value="root"/>
         <env name="DB_URL" value=""/>
         <env name="TENANCY_ENABLED" value="false"/>
         <env name="MAIL_MAILER" value="array"/>

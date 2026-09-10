@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Reports;
 
 use App\Concerns\ExportsFilteredList;
 use App\Http\Controllers\Controller;
+use App\Services\BranchSubscriptionService;
 use App\Services\PurchaseReportService;
 use App\Services\ReportService;
 use App\Services\SalesProfitTrendService;
@@ -59,7 +60,7 @@ class ReportController extends Controller
         private SalesReportService $salesReports,
         private SalesProfitTrendService $salesProfitTrends,
         private PurchaseReportService $purchaseReports,
-        private \App\Services\BranchSubscriptionService $subscriptions,
+        private BranchSubscriptionService $subscriptions,
     ) {}
 
     public function customerLedger(Request $request): Response
@@ -388,7 +389,25 @@ class ReportController extends Controller
 
     private function syncOverdueSubscriptions(Request $request): void
     {
-        // Unapproved subscription dues are not posted to GL per approval requirement
+        $user = $request->user();
+
+        if ($user === null) {
+            return;
+        }
+
+        try {
+            if ($user->usesBranchPanel() && $user->branch !== null) {
+                $this->subscriptions->catchUpBranchBilling($user->branch);
+
+                return;
+            }
+
+            if ($user->usesAdminPanel() || $user->bypassesPermissionChecks()) {
+                $this->subscriptions->syncAllOverdueLiabilities();
+            }
+        } catch (\Throwable $e) {
+            report($e);
+        }
     }
 
     public function balanceSheet(Request $request): Response

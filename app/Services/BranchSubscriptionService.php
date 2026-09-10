@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Branch;
 use App\Models\BranchSubscriptionPayment;
+use App\Models\SubscriptionInvoice;
 use App\Models\User;
 use App\Support\BusinessSettings;
 use Illuminate\Http\UploadedFile;
@@ -427,6 +428,9 @@ class BranchSubscriptionService
             'subscription_last_paid_at' => $paidAt,
         ]);
 
+        // Ensure billing invoices (and accrual GL) exist before allocating the payment.
+        $this->invoices->generateMissingInvoicesThroughToday($branch, $this);
+
         if ($pendingPayment) {
             $pendingPayment->update([
                 'amount' => $amount,
@@ -522,13 +526,13 @@ class BranchSubscriptionService
             ->get();
 
         foreach ($branches as $branch) {
-            $this->syncOverdueLiability($branch);
+            $this->catchUpBranchBilling($branch);
         }
     }
 
     /**
-     * When the branch is overdue, raise Subscription Payable to match outstanding due.
-     * Returns true when an overdue sync was applied (or overdue with nothing to post).
+     * When the branch is overdue, ensure invoices exist and raise Subscription Payable
+     * to match outstanding unpaid invoice dues.
      */
     public function syncOverdueLiability(Branch $branch): bool
     {
@@ -540,12 +544,8 @@ class BranchSubscriptionService
             return false;
         }
 
-        $fee = (float) ($branch->subscription_fee ?? BusinessSettings::getFloat('subscription_default_fee', 1500));
-        if ($fee <= 0) {
-            return false;
-        }
+        $this->catchUpBranchBilling($branch);
 
-        $cycleDays = $this->resolveCycleDays($branch);
         $expiresAt = $branch->subscription_expires_at
             ? Carbon::parse($branch->subscription_expires_at)->startOfDay()
             : null;
@@ -554,18 +554,33 @@ class BranchSubscriptionService
             return false;
         }
 
-        $today = Carbon::today();
-        if ($today->lte($expiresAt) || $cycleDays === null || $cycleDays <= 0) {
-            return false;
+        return Carbon::today()->gt($expiresAt);
+    }
+
+    /**
+     * Generate missing cycle invoices (with accrual GL) and top up payable/receivable
+     * to match unpaid invoice dues. Safe to call from Accounts page and reports.
+     */
+    public function catchUpBranchBilling(Branch $branch): void
+    {
+        if (Branch::isMainBranch($branch->id)) {
+            return;
         }
 
-        $overdueDays = (int) $expiresAt->diffInDays($today);
-        $pendingBillsCount = (int) max(1, (int) ceil($overdueDays / $cycleDays));
-        $totalOverdueFee = round($pendingBillsCount * $fee, 2);
+        if (($branch->subscription_status ?: 'active') === 'lifetime') {
+            return;
+        }
 
-        $this->accounting->syncOutstandingDue($branch, $totalOverdueFee, $today->toDateString());
+        $this->invoices->generateMissingInvoicesThroughToday($branch, $this);
 
-        return true;
+        $unpaidDue = (float) SubscriptionInvoice::query()
+            ->where('branch_id', $branch->id)
+            ->whereIn('status', ['unpaid', 'partial', 'overdue'])
+            ->sum('due_amount');
+
+        if ($unpaidDue > 0.005) {
+            $this->accounting->syncOutstandingDue($branch, round($unpaidDue, 2), Carbon::today()->toDateString());
+        }
     }
 
     public function resolveCycleDays(Branch $branch): ?int

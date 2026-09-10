@@ -13,7 +13,6 @@ use App\Models\Transaction;
 use App\Models\User;
 use App\Support\BusinessSettings;
 use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 
 class SubscriptionInvoiceService
 {
@@ -41,6 +40,9 @@ class SubscriptionInvoiceService
             ->first();
 
         if ($existing) {
+            // Catch up GL for invoices created before accrual posting was enabled.
+            $this->postInvoiceAccounting($existing);
+
             return $existing;
         }
 
@@ -59,19 +61,86 @@ class SubscriptionInvoiceService
             'notes' => $notes,
         ]);
 
-        // Auto-apply available advance balance if any
-        $this->applyAvailableAdvanceToInvoice($invoice);
+        $this->postInvoiceAccounting($invoice);
+
+        // Auto-apply available advance balance if any (after accrual so prepaid clears payable/receivable)
+        $this->applyAvailableAdvanceToInvoice($invoice->fresh());
 
         return $invoice->fresh(['paymentAllocations']);
     }
 
     /**
-     * Post double-entry journal entries for the generated invoice.
-     * Note: Per approval requirement, unapproved invoices are not posted to GL.
+     * Post full-accrual journal entries for a generated invoice.
+     * Client: Dr Subscription Expense, Cr Subscription Payable.
+     * SuperAdmin: Dr Subscription Receivable, Cr Subscription Income.
      */
     public function postInvoiceAccounting(SubscriptionInvoice $invoice): void
     {
-        // Without approval, do not post as expense and income
+        $branch = $invoice->branch ?? Branch::query()->find($invoice->branch_id);
+
+        if ($branch === null || Branch::isMainBranch($branch->id)) {
+            return;
+        }
+
+        $startDate = $invoice->billing_period_starts_at?->format('Y-m-d')
+            ?? $invoice->due_date?->format('Y-m-d')
+            ?? now()->toDateString();
+        $endDate = $invoice->billing_period_ends_at?->format('Y-m-d') ?? $startDate;
+        $fee = round((float) $invoice->total_amount, 2);
+
+        if ($fee <= 0.005) {
+            return;
+        }
+
+        $this->accounting->recordCycleAccrual($branch, $startDate, $endDate, $fee);
+    }
+
+    /**
+     * Generate any missing billing-cycle invoices from subscription start through today.
+     *
+     * @return list<SubscriptionInvoice>
+     */
+    public function generateMissingInvoicesThroughToday(Branch $branch, ?BranchSubscriptionService $subscriptions = null): array
+    {
+        if (Branch::isMainBranch($branch->id) || ($branch->subscription_status ?: 'active') === 'lifetime') {
+            return [];
+        }
+
+        $subscriptions ??= app(BranchSubscriptionService::class);
+        $cycleDays = $subscriptions->resolveCycleDays($branch);
+
+        if ($cycleDays === null || $cycleDays <= 0) {
+            return [];
+        }
+
+        $fee = (float) ($branch->subscription_fee ?? BusinessSettings::getFloat('subscription_default_fee', 1500));
+        $startDate = $branch->subscription_starts_at
+            ? Carbon::parse($branch->subscription_starts_at)->startOfDay()
+            : Carbon::today();
+        $today = Carbon::today();
+        $created = [];
+
+        $cursorStart = $startDate->copy();
+        while ($cursorStart->lte($today)) {
+            $cursorEnd = $cursorStart->copy()->addDays($cycleDays);
+            $periodStart = $cursorStart->toDateString();
+            $periodEnd = $cursorEnd->toDateString();
+
+            $alreadyExisted = SubscriptionInvoice::where('branch_id', $branch->id)
+                ->where('billing_period_starts_at', $periodStart)
+                ->where('billing_period_ends_at', $periodEnd)
+                ->exists();
+
+            $invoice = $this->generateInvoice($branch, $periodStart, $periodEnd, $fee);
+
+            if (! $alreadyExisted) {
+                $created[] = $invoice;
+            }
+
+            $cursorStart = $cursorEnd->copy();
+        }
+
+        return $created;
     }
 
     /**
@@ -181,7 +250,7 @@ class SubscriptionInvoiceService
         });
 
         // 2. Client Branch: Debit Prepaid Subscription (Asset), Credit Channel Account
-        $this->onClientBranch($branch, function () use ($branch, $payment, $advanceAmount, $paymentDate, $paymentAccountKey, $description): void {
+        $this->onClientBranch($branch, function () use ($branch, $payment, $advanceAmount, $paymentDate, $paymentAccountKey): void {
             $prepaidAccount = SystemAccountService::resolve(SystemAccountKey::PrepaidSubscription, $branch->id);
             $branchPaymentAccount = ChartOfAccount::query()
                 ->where('source_type', Branch::class)
@@ -220,8 +289,8 @@ class SubscriptionInvoiceService
     }
 
     /**
-     * Auto-apply available advance balance against an open or partial invoice.
-     * Reduces the liability on SuperAdmin and asset on Branch.
+     * Auto-apply available advance/prepaid against an open invoice after accrual.
+     * Clears payable/receivable — does not re-recognize expense or income.
      */
     public function applyAvailableAdvanceToInvoice(SubscriptionInvoice $invoice): void
     {
@@ -230,7 +299,6 @@ class SubscriptionInvoiceService
             return;
         }
 
-        // Check available advance balance specifically for this client branch
         $advanceBalance = $this->getAdvanceBalance($branch);
 
         if ($advanceBalance <= 0.005) {
@@ -238,40 +306,65 @@ class SubscriptionInvoiceService
         }
 
         $applyAmount = min((float) $invoice->due_amount, $advanceBalance);
+        $invoiceDate = $invoice->due_date?->format('Y-m-d') ?? now()->toDateString();
 
-        // Recognize revenue on SuperAdmin: Debit AdvanceFromClient (liability decreases), Credit SubscriptionIncome (income increases)
-        $this->onMainPanel(function () use ($invoice, $applyAmount): void {
+        // SuperAdmin: Dr Advance from Client, Cr Subscription Receivable
+        $this->onMainPanel(function () use ($invoice, $applyAmount, $invoiceDate): void {
+            $description = "Advance applied to Invoice {$invoice->invoice_number}";
+
+            $existing = Transaction::query()
+                ->where('source_type', SubscriptionInvoice::class)
+                ->where('source_id', $invoice->id)
+                ->where('description', $description)
+                ->first();
+
+            if ($existing !== null) {
+                return;
+            }
+
             $advanceAccount = SystemAccountService::resolve(SystemAccountKey::AdvanceFromClient, null);
-            $incomeAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+            $receivableAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
 
             TransactionService::recordTransaction([
                 'source_type' => SubscriptionInvoice::class,
                 'source_id' => $invoice->id,
-                'date' => $invoice->due_date?->format('Y-m-d') ?? now()->toDateString(),
+                'date' => $invoiceDate,
                 'amount' => $applyAmount,
                 'debit_account_id' => $advanceAccount->id,
-                'credit_account_id' => $incomeAccount->id,
+                'credit_account_id' => $receivableAccount->id,
                 'debit_decrease' => true,
-                'credit_decrease' => false,
-                'description' => "Advance applied to Invoice {$invoice->invoice_number}",
+                'credit_decrease' => true,
+                'description' => $description,
             ], validateBalance: false);
         });
 
-        // Recognize expense on Branch: Debit SubscriptionExpense (expense increases), Credit PrepaidSubscription (asset decreases)
-        $this->onClientBranch($branch, function () use ($invoice, $branch, $applyAmount): void {
-            $expenseAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
+        // Client: Dr Subscription Payable, Cr Prepaid Subscription
+        $this->onClientBranch($branch, function () use ($invoice, $branch, $applyAmount, $invoiceDate): void {
+            $description = "Prepaid advance adjusted for Invoice {$invoice->invoice_number}";
+
+            $existing = Transaction::query()
+                ->where('source_type', SubscriptionInvoice::class)
+                ->where('source_id', $invoice->id)
+                ->where('description', $description)
+                ->first();
+
+            if ($existing !== null) {
+                return;
+            }
+
+            $payableAccount = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
             $prepaidAccount = SystemAccountService::resolve(SystemAccountKey::PrepaidSubscription, $branch->id);
 
             TransactionService::recordTransaction([
                 'source_type' => SubscriptionInvoice::class,
                 'source_id' => $invoice->id,
-                'date' => $invoice->due_date?->format('Y-m-d') ?? now()->toDateString(),
+                'date' => $invoiceDate,
                 'amount' => $applyAmount,
-                'debit_account_id' => $expenseAccount->id,
+                'debit_account_id' => $payableAccount->id,
                 'credit_account_id' => $prepaidAccount->id,
-                'debit_decrease' => false,
+                'debit_decrease' => true,
                 'credit_decrease' => true,
-                'description' => "Prepaid advance adjusted for Invoice {$invoice->invoice_number}",
+                'description' => $description,
             ], validateBalance: false);
         });
 

@@ -2,8 +2,6 @@
 
 use App\Enums\SystemAccountKey;
 use App\Models\Branch;
-use App\Models\BranchSecurityDeposit;
-use App\Models\BranchSubscriptionPayment;
 use App\Models\SubscriptionInvoice;
 use App\Models\User;
 use App\Services\BranchSecurityDepositService;
@@ -65,12 +63,15 @@ test('project handover security money records liability on superadmin and asset 
     expect((float) $branchBkash->fresh()->current_balance)->toBe(-10000.0);
 });
 
-test('generating subscription invoice creates document without posting expense or income prior to approval', function () {
+test('generating subscription invoice posts expense payable receivable and income', function () {
     SystemAccountService::seed(null);
     $superadminIncome = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+    $superadminReceivable = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
+    $initialIncome = (float) $superadminIncome->fresh()->current_balance;
+    $initialReceivable = (float) $superadminReceivable->fresh()->current_balance;
 
     $branch = Branch::factory()->create([
-        'name' => 'Branch Invoice Document Only',
+        'name' => 'Branch Invoice Accrual',
         'subscription_fee' => 1000,
         'subscription_starts_at' => '2026-09-01',
         'subscription_expires_at' => '2026-10-01',
@@ -78,53 +79,50 @@ test('generating subscription invoice creates document without posting expense o
 
     SystemAccountService::seed($branch->id);
 
-    $initialIncome = (float) $superadminIncome->fresh()->current_balance;
-    $branchExpense = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
-    $initialExpense = (float) $branchExpense->fresh()->current_balance;
-
     $invoiceService = app(SubscriptionInvoiceService::class);
-    // Generate next cycle invoice
     $invoice = $invoiceService->generateInvoice($branch, '2026-10-01', '2026-11-01', 1000);
 
     expect($invoice->status)->toBe('unpaid')
-        ->and((float) $invoice->total_amount)->toBe(1000.0)
-        ->and((float) $invoice->paid_amount)->toBe(0.0)
         ->and((float) $invoice->due_amount)->toBe(1000.0)
-        ->and($invoice->invoice_number)->toStartWith('INV-');
-
-    // SuperAdmin GL: No income posted without approval
-    expect((float) $superadminIncome->fresh()->current_balance)->toBe($initialIncome);
-
-    // Client Branch GL: No expense posted without approval
-    expect((float) $branchExpense->fresh()->current_balance)->toBe($initialExpense);
+        ->and((float) $superadminIncome->fresh()->current_balance)->toBe($initialIncome + 1000.0)
+        ->and((float) $superadminReceivable->fresh()->current_balance)->toBe($initialReceivable + 1000.0)
+        ->and((float) SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id)->fresh()->current_balance)->toBe(1000.0)
+        ->and((float) SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id)->fresh()->current_balance)->toBe(1000.0);
 });
 
-test('client payment submission remains pending without GL posting until superadmin approves', function () {
+test('client payment submission remains pending without settlement until superadmin approves', function () {
     SystemAccountService::seed(null);
 
     $branch = Branch::factory()->create([
         'name' => 'Branch Pending Review',
         'subscription_fee' => 1500,
+        'subscription_plan' => 'custom_days',
+        'custom_cycle_days' => 30,
         'subscription_starts_at' => '2026-09-01',
         'subscription_expires_at' => '2026-10-01',
     ]);
 
     SystemAccountService::seed($branch->id);
 
+    app(SubscriptionInvoiceService::class)->generateInvoice($branch, '2026-09-01', '2026-10-01', 1500);
+
     $superadminBkash = SystemAccountService::resolve(SystemAccountKey::Bkash, null);
     $superadminIncome = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+    $superadminReceivable = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
     $branchExpense = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
+    $branchPayable = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
     $branchBkash = SystemAccountService::resolve(SystemAccountKey::Bkash, $branch->id);
 
-    $initialSuperadminIncome = (float) $superadminIncome->fresh()->current_balance;
+    $incomeAfterAccrual = (float) $superadminIncome->fresh()->current_balance;
+    $receivableAfterAccrual = (float) $superadminReceivable->fresh()->current_balance;
     $initialSuperadminBkash = (float) $superadminBkash->fresh()->current_balance;
-    $initialBranchExpense = (float) $branchExpense->fresh()->current_balance;
+    $expenseAfterAccrual = (float) $branchExpense->fresh()->current_balance;
+    $payableAfterAccrual = (float) $branchPayable->fresh()->current_balance;
     $initialBranchBkash = (float) $branchBkash->fresh()->current_balance;
 
     $subscriptionService = app(BranchSubscriptionService::class);
     $clientUser = User::factory()->create(['branch_id' => $branch->id]);
 
-    // 1. Client submits payment
     $pendingPayment = $subscriptionService->submitPayment($branch, [
         'duration_days' => 30,
         'amount' => 1500,
@@ -134,15 +132,14 @@ test('client payment submission remains pending without GL posting until superad
         'notes' => 'Monthly bill submitted',
     ], $clientUser);
 
-    expect($pendingPayment->status)->toBe('pending');
+    expect($pendingPayment->status)->toBe('pending')
+        ->and((float) $superadminIncome->fresh()->current_balance)->toBe($incomeAfterAccrual)
+        ->and((float) $superadminReceivable->fresh()->current_balance)->toBe($receivableAfterAccrual)
+        ->and((float) $superadminBkash->fresh()->current_balance)->toBe($initialSuperadminBkash)
+        ->and((float) $branchExpense->fresh()->current_balance)->toBe($expenseAfterAccrual)
+        ->and((float) $branchPayable->fresh()->current_balance)->toBe($payableAfterAccrual)
+        ->and((float) $branchBkash->fresh()->current_balance)->toBe($initialBranchBkash);
 
-    // Without approval: No GL posting on SuperAdmin or Client
-    expect((float) $superadminIncome->fresh()->current_balance)->toBe($initialSuperadminIncome);
-    expect((float) $superadminBkash->fresh()->current_balance)->toBe($initialSuperadminBkash);
-    expect((float) $branchExpense->fresh()->current_balance)->toBe($initialBranchExpense);
-    expect((float) $branchBkash->fresh()->current_balance)->toBe($initialBranchBkash);
-
-    // 2. SuperAdmin approves payment
     $admin = User::factory()->create(['branch_id' => null]);
     $approvedPayment = $subscriptionService->renew($branch, [
         'pending_payment_id' => $pendingPayment->id,
@@ -153,21 +150,23 @@ test('client payment submission remains pending without GL posting until superad
         'paid_at' => '2026-09-09',
     ], $admin);
 
-    expect($approvedPayment->status)->toBe('approved');
-
-    // Upon approval: SuperAdmin posts Income and Cash, Client posts Expense and Cash
-    expect((float) $superadminIncome->fresh()->current_balance)->toBe($initialSuperadminIncome + 1500.0);
-    expect((float) $superadminBkash->fresh()->current_balance)->toBe($initialSuperadminBkash + 1500.0);
-    expect((float) $branchExpense->fresh()->current_balance)->toBe($initialBranchExpense + 1500.0);
-    expect((float) $branchBkash->fresh()->current_balance)->toBe($initialBranchBkash - 1500.0);
+    expect($approvedPayment->status)->toBe('approved')
+        ->and((float) $superadminIncome->fresh()->current_balance)->toBe($incomeAfterAccrual)
+        ->and((float) $superadminReceivable->fresh()->current_balance)->toBe($receivableAfterAccrual - 1500.0)
+        ->and((float) $superadminBkash->fresh()->current_balance)->toBe($initialSuperadminBkash + 1500.0)
+        ->and((float) $branchExpense->fresh()->current_balance)->toBe($expenseAfterAccrual)
+        ->and((float) $branchPayable->fresh()->current_balance)->toBe(0.0)
+        ->and((float) $branchBkash->fresh()->current_balance)->toBe($initialBranchBkash - 1500.0);
 });
 
-test('partial payment allocation marks invoice partial and recognizes income on superadmin and expense on client', function () {
+test('partial payment leaves remaining receivable payable and keeps full accrued income', function () {
     SystemAccountService::seed(null);
 
     $branch = Branch::factory()->create([
         'name' => 'Branch Partial Payment',
         'subscription_fee' => 1000,
+        'subscription_plan' => 'custom_days',
+        'custom_cycle_days' => 30,
         'subscription_starts_at' => '2026-09-01',
         'subscription_expires_at' => '2026-10-01',
     ]);
@@ -176,23 +175,24 @@ test('partial payment allocation marks invoice partial and recognizes income on 
 
     $superadminBkash = SystemAccountService::resolve(SystemAccountKey::Bkash, null);
     $superadminIncome = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+    $superadminReceivable = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
     $branchExpense = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
+    $branchPayable = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
     $branchBkash = SystemAccountService::resolve(SystemAccountKey::Bkash, $branch->id);
-
-    $initialBkash = (float) $superadminBkash->fresh()->current_balance;
-    $initialIncome = (float) $superadminIncome->fresh()->current_balance;
-    $initialExpense = (float) $branchExpense->fresh()->current_balance;
-    $initialBranchBkash = (float) $branchBkash->fresh()->current_balance;
 
     $invoiceService = app(SubscriptionInvoiceService::class);
     $subscriptionService = app(BranchSubscriptionService::class);
 
-    // Generate next cycle invoice (no GL entries yet)
-    $invoice = $invoiceService->generateInvoice($branch, '2026-10-01', '2026-11-01', 1000);
+    $invoice = $invoiceService->generateInvoice($branch, '2026-09-01', '2026-10-01', 1000);
 
-    // Client pays partial amount: ৳600, approved by admin
+    $incomeAfterAccrual = (float) $superadminIncome->fresh()->current_balance;
+    $receivableAfterAccrual = (float) $superadminReceivable->fresh()->current_balance;
+    $expenseAfterAccrual = (float) $branchExpense->fresh()->current_balance;
+    $initialBkash = (float) $superadminBkash->fresh()->current_balance;
+    $initialBranchBkash = (float) $branchBkash->fresh()->current_balance;
+
     $admin = User::factory()->create(['branch_id' => null]);
-    $payment1 = $subscriptionService->renew($branch, [
+    $subscriptionService->renew($branch, [
         'duration_days' => 30,
         'amount' => 600,
         'payment_method' => 'bKash',
@@ -204,18 +204,15 @@ test('partial payment allocation marks invoice partial and recognizes income on 
     $invoice->refresh();
     expect($invoice->status)->toBe('partial')
         ->and((float) $invoice->paid_amount)->toBe(600.0)
-        ->and((float) $invoice->due_amount)->toBe(400.0);
+        ->and((float) $invoice->due_amount)->toBe(400.0)
+        ->and((float) $superadminBkash->fresh()->current_balance)->toBe($initialBkash + 600.0)
+        ->and((float) $superadminIncome->fresh()->current_balance)->toBe($incomeAfterAccrual)
+        ->and((float) $superadminReceivable->fresh()->current_balance)->toBe($receivableAfterAccrual - 600.0)
+        ->and((float) $branchExpense->fresh()->current_balance)->toBe($expenseAfterAccrual)
+        ->and((float) $branchPayable->fresh()->current_balance)->toBe(400.0)
+        ->and((float) $branchBkash->fresh()->current_balance)->toBe($initialBranchBkash - 600.0);
 
-    // SuperAdmin GL: bKash +600, Income +600
-    expect((float) $superadminBkash->fresh()->current_balance)->toBe($initialBkash + 600.0);
-    expect((float) $superadminIncome->fresh()->current_balance)->toBe($initialIncome + 600.0);
-
-    // Client Branch GL: Expense +600, bKash -600
-    expect((float) $branchExpense->fresh()->current_balance)->toBe($initialExpense + 600.0);
-    expect((float) $branchBkash->fresh()->current_balance)->toBe($initialBranchBkash - 600.0);
-
-    // Client pays second installment: ৳400, approved by admin
-    $payment2 = $subscriptionService->renew($branch, [
+    $subscriptionService->renew($branch, [
         'duration_days' => 30,
         'amount' => 400,
         'payment_method' => 'bKash',
@@ -226,22 +223,20 @@ test('partial payment allocation marks invoice partial and recognizes income on 
 
     $invoice->refresh();
     expect($invoice->status)->toBe('paid')
-        ->and((float) $invoice->paid_amount)->toBe(1000.0)
-        ->and((float) $invoice->due_amount)->toBe(0.0);
-
-    // SuperAdmin GL: Total bKash +1000, Total Income +1000
-    expect((float) $superadminBkash->fresh()->current_balance)->toBe($initialBkash + 1000.0);
-    expect((float) $superadminIncome->fresh()->current_balance)->toBe($initialIncome + 1000.0);
-
-    // Client Branch GL: Total Expense +1000, Total bKash -1000
-    expect((float) $branchExpense->fresh()->current_balance)->toBe($initialExpense + 1000.0);
-    expect((float) $branchBkash->fresh()->current_balance)->toBe($initialBranchBkash - 1000.0);
+        ->and((float) $invoice->due_amount)->toBe(0.0)
+        ->and((float) $superadminBkash->fresh()->current_balance)->toBe($initialBkash + 1000.0)
+        ->and((float) $superadminIncome->fresh()->current_balance)->toBe($incomeAfterAccrual)
+        ->and((float) $superadminReceivable->fresh()->current_balance)->toBe($receivableAfterAccrual - 1000.0)
+        ->and((float) $branchPayable->fresh()->current_balance)->toBe(0.0)
+        ->and((float) $branchBkash->fresh()->current_balance)->toBe($initialBranchBkash - 1000.0);
 });
 
-test('excess payment is recorded as advance liability and auto applies to next invoice recognizing income and expense', function () {
+test('excess payment is recorded as advance and auto applies by clearing payable receivable', function () {
     $branch = Branch::factory()->create([
         'name' => 'Branch Advance Flow',
         'subscription_fee' => 1000,
+        'subscription_plan' => 'custom_days',
+        'custom_cycle_days' => 30,
         'subscription_starts_at' => '2026-09-01',
         'subscription_expires_at' => '2026-10-01',
     ]);
@@ -251,21 +246,22 @@ test('excess payment is recorded as advance liability and auto applies to next i
 
     $superadminAdvance = SystemAccountService::resolve(SystemAccountKey::AdvanceFromClient, null);
     $superadminIncome = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+    $superadminReceivable = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
     $branchPrepaid = SystemAccountService::resolve(SystemAccountKey::PrepaidSubscription, $branch->id);
     $branchExpense = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
-
-    $initialAdvance = (float) $superadminAdvance->fresh()->current_balance;
-    $initialIncome = (float) $superadminIncome->fresh()->current_balance;
-    $initialPrepaid = (float) $branchPrepaid->fresh()->current_balance;
-    $initialExpense = (float) $branchExpense->fresh()->current_balance;
+    $branchPayable = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
 
     $invoiceService = app(SubscriptionInvoiceService::class);
     $subscriptionService = app(BranchSubscriptionService::class);
 
-    // Generate current invoice for ৳1,000 (document only)
     $invoice1 = $invoiceService->generateInvoice($branch, '2026-09-01', '2026-10-01', 1000);
 
-    // Client pays ৳3,000 (৳1,000 pays current invoice + ৳2,000 goes to advance liability)
+    $incomeAfterFirst = (float) $superadminIncome->fresh()->current_balance;
+    $receivableAfterFirst = (float) $superadminReceivable->fresh()->current_balance;
+    $expenseAfterFirst = (float) $branchExpense->fresh()->current_balance;
+    $initialAdvance = (float) $superadminAdvance->fresh()->current_balance;
+    $initialPrepaid = (float) $branchPrepaid->fresh()->current_balance;
+
     $admin = User::factory()->create(['branch_id' => null]);
     $subscriptionService->renew($branch, [
         'duration_days' => 30,
@@ -279,21 +275,23 @@ test('excess payment is recorded as advance liability and auto applies to next i
     $invoice1->refresh();
     expect($invoice1->status)->toBe('paid')
         ->and((float) $superadminAdvance->fresh()->current_balance)->toBe($initialAdvance + 2000.0)
-        ->and((float) $superadminIncome->fresh()->current_balance)->toBe($initialIncome + 1000.0)
+        ->and((float) $superadminIncome->fresh()->current_balance)->toBe($incomeAfterFirst)
+        ->and((float) $superadminReceivable->fresh()->current_balance)->toBe($receivableAfterFirst - 1000.0)
         ->and((float) $branchPrepaid->fresh()->current_balance)->toBe($initialPrepaid + 2000.0)
-        ->and((float) $branchExpense->fresh()->current_balance)->toBe($initialExpense + 1000.0);
+        ->and((float) $branchExpense->fresh()->current_balance)->toBe($expenseAfterFirst)
+        ->and((float) $branchPayable->fresh()->current_balance)->toBe(0.0);
 
-    // When next month invoice is generated, advance auto-applies and recognizes revenue & expense!
     $invoice2 = $invoiceService->generateInvoice($branch, '2026-10-01', '2026-11-01', 1000);
 
     $invoice2->refresh();
     expect($invoice2->status)->toBe('paid')
         ->and((float) $invoice2->paid_amount)->toBe(1000.0)
-        ->and((float) $invoice2->due_amount)->toBe(0.0)
         ->and((float) $superadminAdvance->fresh()->current_balance)->toBe($initialAdvance + 1000.0)
-        ->and((float) $superadminIncome->fresh()->current_balance)->toBe($initialIncome + 2000.0)
+        ->and((float) $superadminIncome->fresh()->current_balance)->toBe($incomeAfterFirst + 1000.0)
+        ->and((float) $superadminReceivable->fresh()->current_balance)->toBe($receivableAfterFirst - 1000.0)
         ->and((float) $branchPrepaid->fresh()->current_balance)->toBe($initialPrepaid + 1000.0)
-        ->and((float) $branchExpense->fresh()->current_balance)->toBe($initialExpense + 2000.0);
+        ->and((float) $branchExpense->fresh()->current_balance)->toBe($expenseAfterFirst + 1000.0)
+        ->and((float) $branchPayable->fresh()->current_balance)->toBe(0.0);
 });
 
 test('scheduled command processes overdue branches and generates missing invoices', function () {

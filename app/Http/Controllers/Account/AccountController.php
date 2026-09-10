@@ -35,6 +35,15 @@ class AccountController extends Controller
         $user = $request->user();
         $branchId = $user?->branch_id;
 
+        // When a branch client opens Accounts, catch up missing invoices and accrual GL.
+        if ($user !== null && $user->usesBranchPanel() && $user->branch !== null) {
+            try {
+                $this->subscriptions->catchUpBranchBilling($user->branch);
+            } catch (\Throwable $e) {
+                report($e);
+            }
+        }
+
         SystemAccountService::ensureConfigured($branchId);
 
         $allAccounts = ChartOfAccount::query()

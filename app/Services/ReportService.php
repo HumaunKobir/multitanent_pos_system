@@ -2482,6 +2482,7 @@ class ReportService
             ->get(['id', 'code', 'name', 'type', 'account_number']);
 
         $buckets = [
+            'subscription_income' => [],
             'sales_revenue' => [],
             'sales_returns' => [],
             'sales_discounts' => [],
@@ -2571,6 +2572,7 @@ class ReportService
             }
         }
 
+        $subscriptionIncome = round(collect($buckets['subscription_income'])->sum('amount'), 2);
         $salesRevenue = round(collect($buckets['sales_revenue'])->sum('amount'), 2);
         $salesReturns = round(collect($buckets['sales_returns'])->sum('amount'), 2);
         $salesDiscounts = round(collect($buckets['sales_discounts'])->sum('amount'), 2);
@@ -2581,7 +2583,8 @@ class ReportService
         $cogs = round(collect($buckets['cogs'])->sum('amount'), 2);
         $grossProfit = round($netSales - $cogs, 2);
         $operatingExpenses = round(collect($buckets['operating_expenses'])->sum('amount'), 2);
-        $net = round($grossProfit - $operatingExpenses, 2);
+        $totalIncome = round($subscriptionIncome + $salesRevenue, 2);
+        $net = round($subscriptionIncome + $grossProfit - $operatingExpenses, 2);
 
         $vatPayableCode = collect($buckets['vat_collected'])->pluck('code')->first()
             ?? $this->systemAccountCode(SystemAccountKey::OutputVat, $effectiveBranchId);
@@ -2612,6 +2615,12 @@ class ReportService
         }
 
         $sections = [
+            [
+                'type' => 'Subscription Income',
+                'slug' => 'subscription_income',
+                'lines' => $buckets['subscription_income'],
+                'total' => $subscriptionIncome,
+            ],
             [
                 'type' => 'Sales Revenue',
                 'slug' => 'sales_revenue',
@@ -2654,6 +2663,7 @@ class ReportService
             'date_from' => $resolvedDateFrom,
             'date_to' => $resolvedDateTo,
             'sections' => $sections,
+            'subscription_income' => $subscriptionIncome,
             'sales_revenue' => $salesRevenue,
             'sales_returns' => $salesReturns,
             'sales_discounts' => $salesDiscounts,
@@ -2666,7 +2676,7 @@ class ReportService
             'cogs' => $cogs,
             'gross_profit' => $grossProfit,
             'operating_expenses' => $operatingExpenses,
-            'total_income' => $salesRevenue,
+            'total_income' => $totalIncome,
             'total_expenses' => round($salesDiscounts + $cogs + $operatingExpenses, 2),
             'net_result' => $net,
             'result_label' => $net >= 0 ? 'Net Profit' : 'Net Loss',
@@ -2751,6 +2761,11 @@ class ReportService
         }
 
         if ($account->type === AccountType::Income) {
+            if ($accountNumber === SystemAccountKey::SubscriptionIncome->accountNumber()
+                || str_contains($name, 'subscription income')) {
+                return 'subscription_income';
+            }
+
             if ($accountNumber === SystemAccountKey::StockAdjustmentGain->accountNumber()) {
                 return 'other_income';
             }
@@ -2873,6 +2888,12 @@ class ReportService
             ->when($effectiveBranchId !== null, function (Builder $query) use ($effectiveBranchId) {
                 $query->where('source_type', Branch::class)
                     ->where('source_id', $effectiveBranchId);
+            }, function (Builder $query) {
+                // SuperAdmin / Main with no branch filter: global SaaS panel only
+                // (do not mix every client branch retail chart into platform P&L).
+                if ($this->canFilterByBranch()) {
+                    $query->whereNull('source_type')->whereNull('source_id');
+                }
             });
     }
 

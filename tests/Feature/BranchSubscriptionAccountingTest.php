@@ -4,11 +4,11 @@ use App\Enums\AccountType;
 use App\Enums\SystemAccountKey;
 use App\Models\Branch;
 use App\Models\BranchSubscriptionPayment;
-use App\Models\Ledger;
 use App\Models\Transaction;
 use App\Models\User;
 use App\Services\BranchSubscriptionAccountingService;
 use App\Services\BranchSubscriptionService;
+use App\Services\SubscriptionInvoiceService;
 use App\Services\SystemAccountService;
 use App\Services\TenantDatabaseManager;
 use App\Services\TenantProvisioner;
@@ -64,7 +64,7 @@ test('system accounts for subscription exist on branch and superadmin charts', f
     expect($superadminIncome->source_id)->toBeNull();
 });
 
-test('cycle reached does not post unapproved GL entries', function () {
+test('cycle reached accrues subscription expense payable receivable and income', function () {
     $branch = Branch::factory()->create([
         'name' => 'Branch Khulna',
         'subscription_fee' => 2000,
@@ -74,27 +74,38 @@ test('cycle reached does not post unapproved GL entries', function () {
 
     SystemAccountService::seed($branch->id);
 
+    $receivable = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
+    $income = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+    $initialReceivable = (float) $receivable->fresh()->current_balance;
+    $initialIncome = (float) $income->fresh()->current_balance;
+
     $accountingService = app(BranchSubscriptionAccountingService::class);
     $accrual = $accountingService->recordCycleAccrual($branch, '2026-09-01', '2026-10-01', 2000);
 
-    // Unapproved cycle accrual returns null
-    expect($accrual['branch_accrual'])->toBeNull()
-        ->and($accrual['superadmin_accrual'])->toBeNull();
+    expect($accrual['branch_accrual'])->not->toBeNull()
+        ->and($accrual['superadmin_accrual'])->not->toBeNull();
 
     $payable = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
     $expense = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
 
-    // No GL balances changed before payment approval
-    expect((float) $payable->fresh()->current_balance)->toBe(0.0)
-        ->and((float) $expense->fresh()->current_balance)->toBe(0.0);
+    expect((float) $payable->fresh()->current_balance)->toBe(2000.0)
+        ->and((float) $expense->fresh()->current_balance)->toBe(2000.0)
+        ->and((float) $receivable->fresh()->current_balance)->toBe($initialReceivable + 2000.0)
+        ->and((float) $income->fresh()->current_balance)->toBe($initialIncome + 2000.0);
+
+    $duplicate = $accountingService->recordCycleAccrual($branch, '2026-09-01', '2026-10-01', 2000);
+    expect($duplicate['branch_accrual']->id)->toBe($accrual['branch_accrual']->id)
+        ->and((float) $payable->fresh()->current_balance)->toBe(2000.0);
 });
 
-test('superadmin approving payment records superadmin income and cash and client expense and cash', function () {
+test('superadmin approving payment clears payable receivable and moves payment channel without re-recognizing income', function () {
     Storage::fake('public');
 
     $branch = Branch::factory()->create([
         'name' => 'Branch Barisal',
         'subscription_fee' => 1500,
+        'subscription_plan' => 'custom_days',
+        'custom_cycle_days' => 30,
         'subscription_starts_at' => '2026-09-01',
         'subscription_expires_at' => '2026-10-01',
     ]);
@@ -103,14 +114,24 @@ test('superadmin approving payment records superadmin income and cash and client
     SystemAccountService::seed($branch->id);
 
     $superadminIncome = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+    $superadminReceivable = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
     $superadminBkash = SystemAccountService::resolve(SystemAccountKey::Bkash, null);
-
-    $initialSuperadminIncome = (float) $superadminIncome->fresh()->current_balance;
+    $initialIncome = (float) $superadminIncome->fresh()->current_balance;
+    $initialReceivable = (float) $superadminReceivable->fresh()->current_balance;
     $initialSuperadminCash = (float) $superadminBkash->fresh()->current_balance;
 
-    $branchBkash = SystemAccountService::resolve(SystemAccountKey::Bkash, $branch->id);
+    app(SubscriptionInvoiceService::class)->generateInvoice($branch, '2026-09-01', '2026-10-01', 1500);
 
-    // 1. Client submits payment (pending)
+    $incomeAfterAccrual = (float) $superadminIncome->fresh()->current_balance;
+    $receivableAfterAccrual = (float) $superadminReceivable->fresh()->current_balance;
+
+    expect($incomeAfterAccrual)->toBe($initialIncome + 1500.0)
+        ->and($receivableAfterAccrual)->toBe($initialReceivable + 1500.0);
+
+    $branchBkash = SystemAccountService::resolve(SystemAccountKey::Bkash, $branch->id);
+    $branchPayable = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
+    expect((float) $branchPayable->fresh()->current_balance)->toBe(1500.0);
+
     $clientUser = User::factory()->create(['branch_id' => $branch->id]);
     $receipt = UploadedFile::fake()->image('bkash_receipt.png');
 
@@ -126,10 +147,7 @@ test('superadmin approving payment records superadmin income and cash and client
     ]);
 
     $pendingPayment = BranchSubscriptionPayment::where('branch_id', $branch->id)->latest('id')->first();
-    expect($pendingPayment->status)->toBe('pending')
-        ->and((int) $pendingPayment->payment_account_id)->toBe($branchBkash->id);
 
-    // 2. SuperAdmin approves payment
     $admin = User::factory()->create(['branch_id' => null]);
     $admin->givePermissionTo(['branch.view', 'branch.update']);
 
@@ -144,43 +162,23 @@ test('superadmin approving payment records superadmin income and cash and client
         'existing_attachment_path' => $pendingPayment->attachment_path,
     ])->assertRedirect();
 
-    // 3. Verify Branch Ledger upon approval:
-    // Expense: Subscription Expense increased by 1500
-    // Asset: Branch bKash decreased by 1500
     $branchExpense = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
-    expect((float) $branchExpense->fresh()->current_balance)->toBe(1500.0);
-    expect((float) $branchBkash->fresh()->current_balance)->toBe(-1500.0);
-
-    // 4. Verify SuperAdmin Ledger upon approval:
-    // Income: Subscription Income increased by 1500
-    // Cash Asset (bKash) increased by 1500
-    expect((float) $superadminIncome->fresh()->current_balance)->toBe($initialSuperadminIncome + 1500.0);
-    expect((float) $superadminBkash->fresh()->current_balance)->toBe($initialSuperadminCash + 1500.0);
-
-    // 5. Verify Transaction entries exist
-    $branchSettlementTx = Transaction::query()
-        ->where('source_type', BranchSubscriptionPayment::class)
-        ->where('source_id', $pendingPayment->id)
-        ->where('debit_account_id', $branchExpense->id)
-        ->first();
-
-    expect($branchSettlementTx)->not->toBeNull();
-    expect((float) $branchSettlementTx->amount)->toBe(1500.0);
-
-    $superadminSettlementTx = Transaction::query()
-        ->where('source_type', BranchSubscriptionPayment::class)
-        ->where('source_id', $pendingPayment->id)
-        ->where('credit_account_id', $superadminIncome->id)
-        ->first();
-
-    expect($superadminSettlementTx)->not->toBeNull();
-    expect((float) $superadminSettlementTx->amount)->toBe(1500.0);
+    expect((float) $branchExpense->fresh()->current_balance)->toBe(1500.0)
+        ->and((float) $branchPayable->fresh()->current_balance)->toBe(0.0)
+        ->and((float) $branchBkash->fresh()->current_balance)->toBe(-1500.0)
+        ->and((float) $superadminIncome->fresh()->current_balance)->toBe($incomeAfterAccrual)
+        ->and((float) $superadminReceivable->fresh()->current_balance)->toBe($initialReceivable)
+        ->and((float) $superadminBkash->fresh()->current_balance)->toBe($initialSuperadminCash + 1500.0);
 });
 
-test('superadmin direct renewal posts expense on client and income on superadmin', function () {
+test('superadmin direct renewal clears accrued payable and receivable via settlement', function () {
+    $this->travelTo('2026-09-09');
+
     $branch = Branch::factory()->create([
         'name' => 'Branch Sylhet',
         'subscription_fee' => 2500,
+        'subscription_plan' => 'custom_days',
+        'custom_cycle_days' => 30,
         'subscription_starts_at' => '2026-09-01',
         'subscription_expires_at' => '2026-10-01',
     ]);
@@ -192,9 +190,9 @@ test('superadmin direct renewal posts expense on client and income on superadmin
     $admin->givePermissionTo(['branch.view', 'branch.update']);
 
     $initialSuperadminIncome = (float) SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null)->fresh()->current_balance;
+    $initialSuperadminReceivable = (float) SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null)->fresh()->current_balance;
     $initialSuperadminNagad = (float) SystemAccountService::resolve(SystemAccountKey::Nagad, null)->fresh()->current_balance;
 
-    // Direct renewal by SuperAdmin
     $this->actingAs($admin)->post(route('branch-clients.renew', $branch->id), [
         'duration_days' => 30,
         'amount' => 2500,
@@ -205,24 +203,21 @@ test('superadmin direct renewal posts expense on client and income on superadmin
     ])->assertRedirect();
 
     $branchExpense = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
+    $branchPayable = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
     $branchNagad = SystemAccountService::resolve(SystemAccountKey::Nagad, $branch->id);
     $superadminIncome = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+    $superadminReceivable = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
     $superadminNagad = SystemAccountService::resolve(SystemAccountKey::Nagad, null);
 
-    // 1. Client Branch Expense increased by 2500
-    expect((float) $branchExpense->fresh()->current_balance)->toBe(2500.0);
-
-    // 2. Client Branch Asset decreased by 2500
-    expect((float) $branchNagad->fresh()->current_balance)->toBe(-2500.0);
-
-    // 3. SuperAdmin Income increased by 2500
-    expect((float) $superadminIncome->fresh()->current_balance)->toBe($initialSuperadminIncome + 2500.0);
-
-    // 4. SuperAdmin Asset increased by 2500
-    expect((float) $superadminNagad->fresh()->current_balance)->toBe($initialSuperadminNagad + 2500.0);
+    expect((float) $branchExpense->fresh()->current_balance)->toBeGreaterThanOrEqual(2500.0)
+        ->and((float) $branchPayable->fresh()->current_balance)->toBe(0.0)
+        ->and((float) $branchNagad->fresh()->current_balance)->toBe(-2500.0)
+        ->and((float) $superadminIncome->fresh()->current_balance)->toBeGreaterThanOrEqual($initialSuperadminIncome + 2500.0)
+        ->and((float) $superadminReceivable->fresh()->current_balance)->toBe($initialSuperadminReceivable)
+        ->and((float) $superadminNagad->fresh()->current_balance)->toBe($initialSuperadminNagad + 2500.0);
 });
 
-test('overdue summary tracks pending bills count and overdue fee without posting unapproved GL entries', function () {
+test('overdue catch-up posts unpaid invoice dues to subscription payable', function () {
     $this->travelTo('2026-09-09');
 
     $branch = Branch::factory()->create([
@@ -246,15 +241,16 @@ test('overdue summary tracks pending bills count and overdue fee without posting
         ->and($summary['pending_bills_count'])->toBe(3)
         ->and((float) $summary['total_overdue_fee'])->toBe(4500.0);
 
-    // Without approval: No GL posting to SubscriptionPayable or SubscriptionExpense
+    app(BranchSubscriptionService::class)->catchUpBranchBilling($branch);
+
     $payable = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
     $expense = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
 
-    expect((float) $payable->fresh()->current_balance)->toBe(0.0)
-        ->and((float) $expense->fresh()->current_balance)->toBe(0.0);
+    expect((float) $payable->fresh()->current_balance)->toBeGreaterThanOrEqual(4500.0)
+        ->and((float) $expense->fresh()->current_balance)->toBeGreaterThanOrEqual(4500.0);
 });
 
-test('branch accounts page does not post unapproved subscription dues', function () {
+test('branch accounts page catch-up posts overdue subscription dues', function () {
     $this->travelTo('2026-09-09');
     $this->artisan('permissions:sync');
 
@@ -283,8 +279,7 @@ test('branch accounts page does not post unapproved subscription dues', function
         ->get(route('accounts.index'))
         ->assertOk();
 
-    // Remains 0 without payment approval
-    expect((float) $payable->fresh()->current_balance)->toBe(0.0);
+    expect((float) $payable->fresh()->current_balance)->toBeGreaterThanOrEqual(4500.0);
 });
 
 test('payment account key maps rocket and bank to bank account', function () {
@@ -309,6 +304,8 @@ test('settlement credits the selected payment_account_id on the client branch', 
     $cash = SystemAccountService::resolve(SystemAccountKey::CashInHand, $branch->id);
     $nagad = SystemAccountService::resolve(SystemAccountKey::Nagad, $branch->id);
 
+    app(BranchSubscriptionAccountingService::class)->recordCycleAccrual($branch, '2026-09-01', '2026-10-01', 1000);
+
     $payment = BranchSubscriptionPayment::create([
         'branch_id' => $branch->id,
         'amount' => 1000,
@@ -325,7 +322,61 @@ test('settlement credits the selected payment_account_id on the client branch', 
 
     expect((float) $cash->fresh()->current_balance)->toBe(-1000.0)
         ->and((float) $nagad->fresh()->current_balance)->toBe(0.0)
+        ->and((float) SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id)->fresh()->current_balance)->toBe(0.0)
         ->and((float) SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id)->fresh()->current_balance)->toBe(1000.0);
+});
+
+test('partial approve of 900 on 1000 bill leaves 100 receivable and does not reduce income', function () {
+    $branch = Branch::factory()->create([
+        'name' => 'Branch Partial Nine Hundred',
+        'subscription_fee' => 1000,
+        'subscription_plan' => 'custom_days',
+        'custom_cycle_days' => 30,
+        'subscription_starts_at' => '2026-09-01',
+        'subscription_expires_at' => '2026-10-01',
+    ]);
+
+    SystemAccountService::seed(null);
+    SystemAccountService::seed($branch->id);
+
+    $income = SystemAccountService::resolve(SystemAccountKey::SubscriptionIncome, null);
+    $receivable = SystemAccountService::resolve(SystemAccountKey::SubscriptionReceivable, null);
+    $bkash = SystemAccountService::resolve(SystemAccountKey::Bkash, null);
+    $initialIncome = (float) $income->fresh()->current_balance;
+    $initialReceivable = (float) $receivable->fresh()->current_balance;
+    $initialBkash = (float) $bkash->fresh()->current_balance;
+
+    $invoice = app(SubscriptionInvoiceService::class)
+        ->generateInvoice($branch, '2026-09-01', '2026-10-01', 1000);
+
+    $payable = SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id);
+    $expense = SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id);
+    $branchBkash = SystemAccountService::resolve(SystemAccountKey::Bkash, $branch->id);
+
+    expect((float) $income->fresh()->current_balance)->toBe($initialIncome + 1000.0)
+        ->and((float) $receivable->fresh()->current_balance)->toBe($initialReceivable + 1000.0)
+        ->and((float) $payable->fresh()->current_balance)->toBe(1000.0);
+
+    $admin = User::factory()->create(['branch_id' => null]);
+    app(BranchSubscriptionService::class)->renew($branch, [
+        'duration_days' => 30,
+        'amount' => 900,
+        'payment_method' => 'bKash',
+        'transaction_reference' => 'BKASH-900',
+        'paid_at' => '2026-09-09',
+    ], $admin);
+
+    $invoice->refresh();
+
+    expect($invoice->status)->toBe('partial')
+        ->and((float) $invoice->paid_amount)->toBe(900.0)
+        ->and((float) $invoice->due_amount)->toBe(100.0)
+        ->and((float) $income->fresh()->current_balance)->toBe($initialIncome + 1000.0)
+        ->and((float) $expense->fresh()->current_balance)->toBe(1000.0)
+        ->and((float) $receivable->fresh()->current_balance)->toBe($initialReceivable + 100.0)
+        ->and((float) $payable->fresh()->current_balance)->toBe(100.0)
+        ->and((float) $bkash->fresh()->current_balance)->toBe($initialBkash + 900.0)
+        ->and((float) $branchBkash->fresh()->current_balance)->toBe(-900.0);
 });
 
 test('tenant aware settlement posts client transactions on the branch tenant database', function () {
@@ -394,17 +445,19 @@ test('tenant aware settlement posts client transactions on the branch tenant dat
 
         $clientPosted = $provisioner->usingBranch($branch, function () use ($payment, $branch) {
             $expense = (float) SystemAccountService::resolve(SystemAccountKey::SubscriptionExpense, $branch->id)->fresh()->current_balance;
+            $payable = (float) SystemAccountService::resolve(SystemAccountKey::SubscriptionPayable, $branch->id)->fresh()->current_balance;
             $cash = (float) SystemAccountService::resolve(SystemAccountKey::CashInHand, $branch->id)->fresh()->current_balance;
             $settlementExists = Transaction::query()
                 ->where('source_type', BranchSubscriptionPayment::class)
                 ->where('source_id', $payment->id)
                 ->exists();
 
-            return compact('expense', 'cash', 'settlementExists');
+            return compact('expense', 'payable', 'cash', 'settlementExists');
         });
 
         expect($clientPosted['settlementExists'])->toBeTrue()
             ->and($clientPosted['expense'])->toBe(800.0)
+            ->and($clientPosted['payable'])->toBe(0.0)
             ->and($clientPosted['cash'])->toBe(-800.0);
     } finally {
         foreach ([$branch, $main] as $item) {

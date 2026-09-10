@@ -126,6 +126,7 @@ export default function ProfitLossReport({ filters = {}, branches = [], isBranch
     const hasActiveFilters = Boolean(dateFrom || dateTo || branchId);
     const isProfit = (report.net_result ?? 0) >= 0;
     const salesBase = Number(report.sales_revenue) || 0;
+    const subscriptionIncome = sectionBySlug(report.sections, 'subscription_income');
     const salesRevenue = sectionBySlug(report.sections, 'sales_revenue');
     const salesReturns = sectionBySlug(report.sections, 'sales_returns');
     const salesDiscounts = sectionBySlug(report.sections, 'sales_discounts');
@@ -247,6 +248,20 @@ export default function ProfitLossReport({ filters = {}, branches = [], isBranch
                     <div className="bg-linear-to-b from-slate-50/80 to-white dark:from-slate-950/20 dark:to-card">
                         <table className="w-full text-sm">
                             <tbody>
+                                <tr className="bg-teal-700/90 text-white">
+                                    <td colSpan={3} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide">
+                                        Subscription Income
+                                    </td>
+                                </tr>
+                                <StatementLines
+                                    lines={subscriptionIncome.lines}
+                                    emptyLabel="No subscription income recorded."
+                                />
+                                <TotalRow
+                                    label="Subscription Income"
+                                    value={report.subscription_income ?? subscriptionIncome.total}
+                                />
+
                                 <tr className="bg-emerald-600/90 text-white">
                                     <td colSpan={3} className="px-4 py-2 text-xs font-semibold uppercase tracking-wide">
                                         Sales Revenue

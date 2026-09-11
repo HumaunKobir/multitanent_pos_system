@@ -345,7 +345,7 @@ class SupplierPaymentController extends Controller
     {
         $branchId = Auth::user()?->branch_id;
 
-        if ($branchId !== null && $supplierPayment->branch_id !== $branchId) {
+        if ($branchId !== null && ! $supplierPayment->isAccessibleAtBranch($branchId)) {
             abort(404);
         }
     }

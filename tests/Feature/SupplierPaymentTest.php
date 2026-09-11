@@ -16,6 +16,9 @@ function supplierPaymentUser(array $permissions = []): User
     $branch = Branch::factory()->create();
     $user = User::factory()->create(['branch_id' => $branch->id]);
 
+    \App\Services\SystemAccountService::ensureConfigured(null);
+    \App\Services\SystemAccountService::ensureConfigured($branch->id);
+
     foreach ($permissions as $permission) {
         Permission::findOrCreate($permission, 'web');
         $user->givePermissionTo($permission);
@@ -26,6 +29,8 @@ function supplierPaymentUser(array $permissions = []): User
 
 function supplierDuePurchase(User $user, Supplier $supplier, float $dueAmount): Purchase
 {
+    \App\Services\SystemAccountService::ensureConfigured($user->branch_id);
+
     $product = Product::factory()->create(['branch_id' => $user->branch_id]);
 
     test()->actingAs($user)

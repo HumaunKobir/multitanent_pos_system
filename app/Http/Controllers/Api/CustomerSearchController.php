@@ -75,7 +75,7 @@ class CustomerSearchController extends Controller
 
         $branchId = auth()->user()?->branch_id;
 
-        if ($branchId !== null && $customer->branch_id !== $branchId) {
+        if ($branchId !== null && ! $customer->isAccessibleAtBranch($branchId)) {
             abort(404);
         }
 
@@ -100,7 +100,7 @@ class CustomerSearchController extends Controller
 
         $branchId = auth()->user()?->branch_id;
 
-        if ($branchId !== null && $customer->branch_id !== $branchId) {
+        if ($branchId !== null && ! $customer->isAccessibleAtBranch($branchId)) {
             abort(404);
         }
 

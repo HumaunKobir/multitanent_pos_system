@@ -19,7 +19,7 @@ class CustomerDueSalesController extends Controller
 
         $branchId = $request->user()?->branch_id;
 
-        if ($branchId !== null && (int) $customer->branch_id !== (int) $branchId) {
+        if ($branchId !== null && ! $customer->isAccessibleAtBranch($branchId)) {
             abort(404);
         }
 

@@ -19,7 +19,7 @@ class SupplierDuePurchasesController extends Controller
 
         $branchId = $request->user()?->branch_id;
 
-        if ($branchId !== null && (int) $supplier->branch_id !== (int) $branchId) {
+        if ($branchId !== null && ! $supplier->isAccessibleAtBranch($branchId)) {
             abort(404);
         }
 

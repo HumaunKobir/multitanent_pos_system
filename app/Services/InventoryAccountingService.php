@@ -47,18 +47,19 @@ class InventoryAccountingService
         $supplierName = $purchase->supplier?->name ?? 'Supplier';
         $serial = $purchase->serial ?? ('#'.$purchase->id);
 
+        $branchId = $purchase->branch_id;
         $lines = [];
 
         if ($inventoryTotal > 0) {
-            $lines[] = $this->debitLine(SystemAccountKey::ProductInventory, $inventoryTotal, "Inventory increased — Purchase {$serial}, Supplier: {$supplierName}");
+            $lines[] = $this->debitLine(SystemAccountKey::ProductInventory, $inventoryTotal, "Inventory increased — Purchase {$serial}, Supplier: {$supplierName}", $branchId);
         }
 
         if ($paidAmount > 0) {
-            $lines[] = $this->creditPaymentAccount($paymentAccountId, $paidAmount, "Cash paid — Purchase {$serial}");
+            $lines[] = $this->creditPaymentAccount($paymentAccountId, $paidAmount, "Cash paid — Purchase {$serial}", $branchId);
         }
 
         if ($dueAmount > 0) {
-            $lines[] = $this->creditLine(SystemAccountKey::SupplierPayables, $dueAmount, "Supplier payable — Purchase {$serial}, {$supplierName}");
+            $lines[] = $this->creditLine(SystemAccountKey::SupplierPayables, $dueAmount, "Supplier payable — Purchase {$serial}, {$supplierName}", $branchId);
         }
 
         if ($lines === []) {

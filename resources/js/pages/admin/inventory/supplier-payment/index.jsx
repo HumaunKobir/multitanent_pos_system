@@ -11,7 +11,7 @@ import { Can } from '@/components/can';
 import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { DataTable } from '@/components/ui/data-table';
-import { Dialog, DialogClose, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useDebouncedEffect } from '@/hooks/use-debounced-effect';
@@ -214,7 +214,7 @@ function PaymentForm({ form, suppliers, paymentAccounts = [], payment = null, on
         <form onSubmit={handleSubmit} className="space-y-1.5 px-3 py-2">
             <FormField label="Supplier" required name="supplier_id" error={form.errors.supplier_id}>
                 <Select
-                    value={form.data.supplier_id ? String(form.data.supplier_id) : undefined}
+                    value={form.data.supplier_id ? String(form.data.supplier_id) : ''}
                     onValueChange={(value) => form.setData('supplier_id', value)}
                 >
                     <SelectTrigger id="supplier_id" className="mt-1 w-full" aria-invalid={!!form.errors.supplier_id}>
@@ -303,7 +303,7 @@ function PaymentForm({ form, suppliers, paymentAccounts = [], payment = null, on
 
             <FormField label="Payment Account" required name="payment_account_id" error={form.errors.payment_account_id}>
                 <Select
-                    value={form.data.payment_account_id ? String(form.data.payment_account_id) : undefined}
+                    value={form.data.payment_account_id ? String(form.data.payment_account_id) : ''}
                     onValueChange={(value) => form.setData('payment_account_id', value)}
                 >
                     <SelectTrigger id="payment_account_id" className="mt-1 w-full" aria-invalid={!!form.errors.payment_account_id}>
@@ -562,7 +562,8 @@ export default function SupplierPaymentIndex({ payments, suppliers, filters, tod
                             <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
                                 <Banknote className="size-3.5 text-white" />
                             </div>
-                            <h2 className="text-sm font-semibold text-white">Record Supplier Payment</h2>
+                            <DialogTitle className="text-sm font-semibold text-white">Record Supplier Payment</DialogTitle>
+                            <DialogDescription className="sr-only">Record a new payment to a supplier.</DialogDescription>
                         </div>
                         <PaymentForm
                             form={createForm}
@@ -588,7 +589,8 @@ export default function SupplierPaymentIndex({ payments, suppliers, filters, tod
                             <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
                                 <Eye className="size-3.5 text-white" />
                             </div>
-                            <h2 className="text-sm font-semibold text-white">Payment Details</h2>
+                            <DialogTitle className="text-sm font-semibold text-white">Payment Details</DialogTitle>
+                            <DialogDescription className="sr-only">View supplier payment breakdown and allocation.</DialogDescription>
                         </div>
                         <PaymentSummary payment={viewing} />
                     </DialogContent>
@@ -611,7 +613,8 @@ export default function SupplierPaymentIndex({ payments, suppliers, filters, tod
                             <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
                                 <Edit className="size-3.5 text-white" />
                             </div>
-                            <h2 className="text-sm font-semibold text-white">Edit Supplier Payment</h2>
+                            <DialogTitle className="text-sm font-semibold text-white">Edit Supplier Payment</DialogTitle>
+                            <DialogDescription className="sr-only">Edit supplier payment details.</DialogDescription>
                         </div>
                         <PaymentForm
                             form={editForm}
@@ -637,7 +640,8 @@ export default function SupplierPaymentIndex({ payments, suppliers, filters, tod
                             <div className="flex size-7 items-center justify-center rounded-md bg-white/15">
                                 <Trash2 className="size-3.5 text-white" />
                             </div>
-                            <h2 className="text-sm font-semibold text-white">Delete Payment</h2>
+                            <DialogTitle className="text-sm font-semibold text-white">Delete Payment</DialogTitle>
+                            <DialogDescription className="sr-only">Confirm deletion of supplier payment.</DialogDescription>
                         </div>
                         <div className="px-5 pb-5 pt-4">
                             <p className="text-sm text-muted-foreground">

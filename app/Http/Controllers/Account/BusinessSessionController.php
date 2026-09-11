@@ -39,7 +39,17 @@ class BusinessSessionController extends Controller
         $user = $request->user();
         $sessions = BusinessSession::query()
             ->with(['branch:id,name', 'startedBy:id,name', 'closedBy:id,name'])
-            ->tap(fn ($query) => $this->sessions->scopeForUser($query, $user))
+            ->tap(function ($query) use ($user, $request) {
+                if ($request->filled('branch_id') && ! $user?->usesBranchPanel()) {
+                    if ($request->input('branch_id') !== 'all') {
+                        $query->where('branch_id', (int) $request->input('branch_id'));
+                    }
+
+                    return;
+                }
+
+                $this->sessions->scopeForUser($query, $user);
+            })
             ->when($request->filled('status'), fn ($query) => $query->where('status', (int) $request->input('status')))
             ->when($request->filled('date_from'), fn ($query) => $query->whereDate('session_date', '>=', $request->input('date_from')))
             ->when($request->filled('date_to'), fn ($query) => $query->whereDate('session_date', '<=', $request->input('date_to')))

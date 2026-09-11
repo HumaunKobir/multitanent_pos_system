@@ -278,15 +278,11 @@ class BusinessSessionService
      */
     public function scopeForUser(Builder $query, User $user): Builder
     {
-        if (config('tenancy.enabled') && $user->usesBranchPanel()) {
-            return $query;
-        }
-
         if ($user->usesBranchPanel()) {
             return $query->where('branch_id', $user->branch_id);
         }
 
-        if ($user->usesAdminPanel() || $user->isSuperAdmin()) {
+        if ($user->usesAdminPanel()) {
             $mainBranchId = Branch::resolveMainBranchId();
 
             return $query->where(function (Builder $q) use ($mainBranchId) {
@@ -299,7 +295,7 @@ class BusinessSessionService
             return $query->where('branch_id', $user->branch_id);
         }
 
-        return $query->where('started_by_user_id', $user->id);
+        return $query;
     }
 
     private function authorizeStart(User $user): void

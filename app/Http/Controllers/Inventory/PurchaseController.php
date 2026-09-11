@@ -181,6 +181,8 @@ class PurchaseController extends Controller
     {
         $this->authorize('inventory.purchase.create');
 
+        $this->sanitizeItems($request);
+
         $data = $request->validate([
             'supplier_id' => ['required', 'exists:suppliers,id'],
             'date' => ['required', 'date'],
@@ -531,6 +533,8 @@ class PurchaseController extends Controller
         if (! $this->canEditPurchase($purchase)) {
             return back()->with('error', 'This purchase cannot be edited because it is fully paid.');
         }
+
+        $this->sanitizeItems($request);
 
         $data = $request->validate([
             'supplier_id' => ['required', 'exists:suppliers,id'],
@@ -1063,5 +1067,25 @@ class PurchaseController extends Controller
             'comment' => $comment,
             'items' => $items,
         ], $branchId, $purchase->id);
+    }
+
+    private function sanitizeItems(Request $request): void
+    {
+        $items = $request->input('items');
+
+        if (! is_array($items)) {
+            return;
+        }
+
+        $sanitized = array_map(function ($item) {
+            if (is_array($item)) {
+                $vId = $item['variation_id'] ?? null;
+                $item['variation_id'] = (filled($vId) && (int) $vId > 0) ? (int) $vId : null;
+            }
+
+            return $item;
+        }, $items);
+
+        $request->merge(['items' => $sanitized]);
     }
 }

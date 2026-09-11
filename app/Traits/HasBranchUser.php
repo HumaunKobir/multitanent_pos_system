@@ -28,9 +28,7 @@ trait HasBranchUser
             return $query->whereRaw('1 = 0');
         }
 
-        return $query
-            ->where('branch_id', $user->branch_id)
-            ->where('user_id', $user->id);
+        return $query->where('branch_id', $user->branch_id);
     }
 
     public function isAccessibleByCurrentUser(): bool
@@ -45,7 +43,6 @@ trait HasBranchUser
             return false;
         }
 
-        return (int) $this->branch_id === (int) $user->branch_id
-            && (int) $this->user_id === (int) $user->id;
+        return (int) $this->branch_id === (int) $user->branch_id;
     }
 }

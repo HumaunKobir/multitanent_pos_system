@@ -25,28 +25,37 @@ class ProductSearchController extends Controller
             ->with([
                 'variations' => fn ($q) => $q
                     ->where(function ($query) use ($branchId, $mainBranchId) {
-                        if ($branchId === $mainBranchId) {
-                            $query->where('branch_id', $branchId)
-                                ->orWhereNull('branch_id');
-                        } else {
-                            $query->where('branch_id', $branchId);
-                        }
+                        $query->where('branch_id', $branchId)
+                            ->orWhere('branch_id', $mainBranchId)
+                            ->orWhereNull('branch_id');
                     })
                     ->select(['id', 'product_id', 'branch_id', 'sku', 'variation_data', 'purchase_price', 'price', 'stock']),
                 'batches' => fn ($q) => $q->atBranchWarehouse($branchId)
                     ->select(['id', 'product_id', 'branch_id', 'available']),
                 'barcodes' => fn ($q) => $q
-                    ->where('branch_id', $branchId)
+                    ->where(function ($query) use ($branchId, $mainBranchId) {
+                        $query->where('branch_id', $branchId)
+                            ->orWhere('branch_id', $mainBranchId)
+                            ->orWhereNull('branch_id');
+                    })
                     ->select(['id', 'product_id', 'product_variation_id', 'code']),
             ])
-            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s, $branchId) {
+            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s, $branchId, $mainBranchId) {
                 $q->where('name', 'like', "%{$s}%")
                     ->orWhere('code', 'like', "%{$s}%")
                     ->orWhereHas('variations', fn ($variationQuery) => $variationQuery
-                        ->where('branch_id', $branchId)
+                        ->where(function ($query) use ($branchId, $mainBranchId) {
+                            $query->where('branch_id', $branchId)
+                                ->orWhere('branch_id', $mainBranchId)
+                                ->orWhereNull('branch_id');
+                        })
                         ->where('sku', 'like', "%{$s}%"))
                     ->orWhereHas('barcodes', fn ($barcodeQuery) => $barcodeQuery
-                        ->where('branch_id', $branchId)
+                        ->where(function ($query) use ($branchId, $mainBranchId) {
+                            $query->where('branch_id', $branchId)
+                                ->orWhere('branch_id', $mainBranchId)
+                                ->orWhereNull('branch_id');
+                        })
                         ->where('code', 'like', "%{$s}%"));
             }))
             ->latest()
@@ -97,29 +106,38 @@ class ProductSearchController extends Controller
                 'category:id,name',
                 'variations' => fn ($q) => $q
                     ->where(function ($query) use ($branchId, $mainBranchId) {
-                        if ($branchId === $mainBranchId) {
-                            $query->where('branch_id', $branchId)
-                                ->orWhereNull('branch_id');
-                        } else {
-                            $query->where('branch_id', $branchId);
-                        }
+                        $query->where('branch_id', $branchId)
+                            ->orWhere('branch_id', $mainBranchId)
+                            ->orWhereNull('branch_id');
                     })
                     ->select(['id', 'product_id', 'branch_id', 'sku', 'variation_data', 'price', 'stock']),
                 'batches' => fn ($q) => $q->atBranchWarehouse($branchId)
                     ->where('available', '>', 0)
                     ->select(['id', 'product_id', 'branch_id', 'available']),
                 'barcodes' => fn ($q) => $q
-                    ->where('branch_id', $branchId)
+                    ->where(function ($query) use ($branchId, $mainBranchId) {
+                        $query->where('branch_id', $branchId)
+                            ->orWhere('branch_id', $mainBranchId)
+                            ->orWhereNull('branch_id');
+                    })
                     ->select(['id', 'product_id', 'product_variation_id', 'code']),
             ])
-            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s, $branchId) {
+            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s, $branchId, $mainBranchId) {
                 $q->where('name', 'like', "%{$s}%")
                     ->orWhere('code', 'like', "%{$s}%")
                     ->orWhereHas('variations', fn ($variationQuery) => $variationQuery
-                        ->where('branch_id', $branchId)
+                        ->where(function ($query) use ($branchId, $mainBranchId) {
+                            $query->where('branch_id', $branchId)
+                                ->orWhere('branch_id', $mainBranchId)
+                                ->orWhereNull('branch_id');
+                        })
                         ->where('sku', 'like', "%{$s}%"))
                     ->orWhereHas('barcodes', fn ($barcodeQuery) => $barcodeQuery
-                        ->where('branch_id', $branchId)
+                        ->where(function ($query) use ($branchId, $mainBranchId) {
+                            $query->where('branch_id', $branchId)
+                                ->orWhere('branch_id', $mainBranchId)
+                                ->orWhereNull('branch_id');
+                        })
                         ->where('code', 'like', "%{$s}%"));
             }))
             ->when($request->category_id, fn ($q, $id) => $q->where('category_id', $id))
@@ -250,28 +268,37 @@ class ProductSearchController extends Controller
             ->with([
                 'variations' => fn ($q) => $q
                     ->where(function ($query) use ($branchId, $mainBranchId) {
-                        if ($branchId === $mainBranchId) {
-                            $query->where('branch_id', $branchId)
-                                ->orWhereNull('branch_id');
-                        } else {
-                            $query->where('branch_id', $branchId);
-                        }
+                        $query->where('branch_id', $branchId)
+                            ->orWhere('branch_id', $mainBranchId)
+                            ->orWhereNull('branch_id');
                     })
                     ->select(['id', 'product_id', 'branch_id', 'sku', 'variation_data', 'purchase_price', 'price', 'stock']),
                 'batches' => fn ($q) => $q->atBranchWarehouse($branchId)
                     ->select(['id', 'product_id', 'branch_id', 'available']),
                 'barcodes' => fn ($q) => $q
-                    ->where('branch_id', $branchId)
+                    ->where(function ($query) use ($branchId, $mainBranchId) {
+                        $query->where('branch_id', $branchId)
+                            ->orWhere('branch_id', $mainBranchId)
+                            ->orWhereNull('branch_id');
+                    })
                     ->select(['id', 'product_id', 'product_variation_id', 'code']),
             ])
-            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s, $branchId) {
+            ->when($request->search, fn ($q, $s) => $q->where(function ($q) use ($s, $branchId, $mainBranchId) {
                 $q->where('name', 'like', "%{$s}%")
                     ->orWhere('code', 'like', "%{$s}%")
                     ->orWhereHas('variations', fn ($variationQuery) => $variationQuery
-                        ->where('branch_id', $branchId)
+                        ->where(function ($query) use ($branchId, $mainBranchId) {
+                            $query->where('branch_id', $branchId)
+                                ->orWhere('branch_id', $mainBranchId)
+                                ->orWhereNull('branch_id');
+                        })
                         ->where('sku', 'like', "%{$s}%"))
                     ->orWhereHas('barcodes', fn ($barcodeQuery) => $barcodeQuery
-                        ->where('branch_id', $branchId)
+                        ->where(function ($query) use ($branchId, $mainBranchId) {
+                            $query->where('branch_id', $branchId)
+                                ->orWhere('branch_id', $mainBranchId)
+                                ->orWhereNull('branch_id');
+                        })
                         ->where('code', 'like', "%{$s}%"));
             }))
             ->orderBy('name')

@@ -27,7 +27,7 @@ class BranchPaymentAccountService
             return $account;
         }
 
-        if ($branchId !== null && Branch::isMainBranch($branchId) && self::belongsToGlobalCashAndBank($account)) {
+        if ($branchId !== null && self::belongsToGlobalCashAndBank($account)) {
             return $account;
         }
 
@@ -53,7 +53,7 @@ class BranchPaymentAccountService
             ->orderBy('code')
             ->get(['id', 'code', 'name']);
 
-        if ($branchId !== null && Branch::isMainBranch($branchId)) {
+        if ($branchId !== null) {
             SystemAccountService::ensureConfigured(null);
 
             $globalAccounts = ChartOfAccount::query()

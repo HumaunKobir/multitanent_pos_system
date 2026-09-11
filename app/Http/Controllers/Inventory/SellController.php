@@ -588,6 +588,8 @@ class SellController extends Controller
             return $this->updateSellPaymentsOnly($request, $sell);
         }
 
+        $this->sanitizeItems($request);
+
         $data = $request->validate([
             'customer_id' => ['required', 'exists:customers,id'],
             'date' => ['required', 'date'],
@@ -1125,6 +1127,8 @@ class SellController extends Controller
      */
     private function validateSellCart(Request $request, bool $requirePayment = false): array
     {
+        $this->sanitizeItems($request);
+
         return $request->validate([
             'customer_id' => ['required', 'exists:customers,id'],
             'date' => ['required', 'date'],
@@ -1151,6 +1155,26 @@ class SellController extends Controller
             'items.*.quantity' => ['required', 'integer', 'min:1'],
             'items.*.free_quantity' => ['nullable', 'numeric', 'min:0'],
         ]);
+    }
+
+    private function sanitizeItems(Request $request): void
+    {
+        $items = $request->input('items');
+
+        if (! is_array($items)) {
+            return;
+        }
+
+        $sanitized = array_map(function ($item) {
+            if (is_array($item)) {
+                $vId = $item['variation_id'] ?? null;
+                $item['variation_id'] = (filled($vId) && (int) $vId > 0) ? (int) $vId : null;
+            }
+
+            return $item;
+        }, $items);
+
+        $request->merge(['items' => $sanitized]);
     }
 
     /** @return list<array<string, mixed>> */

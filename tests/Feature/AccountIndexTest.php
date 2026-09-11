@@ -178,3 +178,76 @@ test('accounts index shows parent display balance as sum of children without cha
 
     expect((float) $parent->fresh()->current_balance)->toBe(10.0);
 });
+
+test('main branch user can create account under top level parent account', function () {
+    $this->artisan('permissions:sync');
+
+    $mainBranch = Branch::query()->firstOrCreate(
+        ['id' => Branch::MAIN_BRANCH_ID],
+        ['name' => Branch::MAIN_BRANCH_NAME, 'status' => 1]
+    );
+
+    $user = User::factory()->create(['branch_id' => $mainBranch->id]);
+    Permission::findOrCreate('accounts.create', 'web');
+    $user->givePermissionTo('accounts.create');
+
+    SystemAccountService::seed($mainBranch->id);
+
+    $cashAndBank = SystemAccountService::resolve(SystemAccountKey::CashAndBank, $mainBranch->id);
+
+    $code = 'A9' . fake()->unique()->numerify('####');
+    $response = $this->actingAs($user)->post(route('accounts.store'), [
+        'parent_id' => $cashAndBank->id,
+        'type' => AccountType::Asset->value,
+        'name' => 'Dutch-Bangla',
+        'code' => $code,
+        'account_number' => '100101',
+        'status' => '1',
+    ]);
+
+    $response->assertSessionHasNoErrors();
+    $response->assertRedirect(route('accounts.index'));
+
+    $this->assertDatabaseHas('chart_of_accounts', [
+        'name' => 'Dutch-Bangla',
+        'parent_id' => $cashAndBank->id,
+        'source_type' => null,
+        'source_id' => null,
+    ]);
+});
+
+test('non main branch user can create account under global or branch parent account', function () {
+    $this->artisan('permissions:sync');
+
+    $branch = Branch::factory()->create();
+    $user = User::factory()->create(['branch_id' => $branch->id]);
+    Permission::findOrCreate('accounts.create', 'web');
+    $user->givePermissionTo('accounts.create');
+
+    // Seed global accounts
+    SystemAccountService::seed(null);
+
+    $globalCashAndBank = SystemAccountService::resolve(SystemAccountKey::CashAndBank, null);
+
+    $branchCode = 'A9' . fake()->unique()->numerify('####');
+    $response = $this->actingAs($user)->post(route('accounts.store'), [
+        'parent_id' => $globalCashAndBank->id,
+        'type' => AccountType::Asset->value,
+        'name' => 'Branch Dutch-Bangla',
+        'code' => $branchCode,
+        'account_number' => '100102',
+        'status' => '1',
+    ]);
+
+    $response->assertSessionHasNoErrors();
+    $response->assertRedirect(route('accounts.index'));
+
+    $this->assertDatabaseHas('chart_of_accounts', [
+        'name' => 'Branch Dutch-Bangla',
+        'parent_id' => $globalCashAndBank->id,
+        'source_type' => Branch::class,
+        'source_id' => $branch->id,
+    ]);
+});
+
+

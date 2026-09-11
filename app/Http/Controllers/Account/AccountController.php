@@ -119,7 +119,7 @@ class AccountController extends Controller
 
         $request->validate([
             'type' => ['required', Rule::enum(AccountType::class)],
-            'parent_id' => ['nullable', Rule::exists('chart_of_accounts', 'id')->where(fn ($query) => $this->applyPanelScope($query))],
+            'parent_id' => ['nullable', Rule::exists('chart_of_accounts', 'id')],
         ]);
 
         $type = AccountType::from((int) $request->type);
@@ -137,7 +137,7 @@ class AccountController extends Controller
         $branchId = $request->user()?->branch_id;
 
         $data = $request->validate([
-            'parent_id' => ['nullable', Rule::exists('chart_of_accounts', 'id')->where(fn ($query) => $this->applyPanelScope($query))],
+            'parent_id' => ['nullable', Rule::exists('chart_of_accounts', 'id')],
             'type' => ['required', Rule::enum(AccountType::class)],
             'name' => ['required', 'string', 'max:191'],
             'code' => ['nullable', 'string', 'max:50', Rule::unique('chart_of_accounts', 'code')->where(
@@ -189,7 +189,7 @@ class AccountController extends Controller
         $branchId = $request->user()?->branch_id;
 
         $data = $request->validate([
-            'parent_id' => ['nullable', Rule::notIn([$chartOfAccount->id]), Rule::exists('chart_of_accounts', 'id')->where(fn ($query) => $this->applyPanelScope($query))],
+            'parent_id' => ['nullable', Rule::notIn([$chartOfAccount->id]), Rule::exists('chart_of_accounts', 'id')],
             'type' => ['required', Rule::enum(AccountType::class)],
             'name' => ['required', 'string', 'max:191'],
             'code' => ['nullable', 'string', 'max:50', Rule::unique('chart_of_accounts', 'code')->ignore($chartOfAccount->id)->where(
@@ -239,21 +239,23 @@ class AccountController extends Controller
     private function applyPanelScope($query): void
     {
         $branchId = auth()->user()?->branch_id;
+        $mainBranchId = Branch::resolveMainBranchId();
 
-        if ($branchId === null) {
-            $query->whereNull('source_type')->whereNull('source_id');
+        $query->where(function ($q) use ($branchId, $mainBranchId) {
+            $q->whereNull('source_type')->whereNull('source_id')
+                ->orWhere(fn ($q2) => $q2->where('source_type', Branch::class)->where('source_id', $mainBranchId));
 
-            return;
-        }
-
-        $query->where('source_type', Branch::class)->where('source_id', $branchId);
+            if ($branchId !== null) {
+                $q->orWhere(fn ($q2) => $q2->where('source_type', Branch::class)->where('source_id', $branchId));
+            }
+        });
     }
 
     private function applyPanelSourceToUniqueRule($query, ?int $branchId): void
     {
         $query->whereNull('deleted_at');
 
-        if ($branchId === null) {
+        if ($branchId === null || Branch::isMainBranch($branchId)) {
             $query->whereNull('source_type')->whereNull('source_id');
 
             return;

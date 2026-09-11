@@ -606,3 +606,66 @@ test('session report lists contra vouchers in transfers and excludes them from t
         ->and($report['transfers'][0]['amount'])->toBe(250.0)
         ->and(collect($report['transactions'])->pluck('reference'))->not->toContain($voucher->voucher_no);
 });
+
+test('session report excludes transactions from other branches and other users', function () {
+    $branchA = Branch::factory()->create();
+    $branchB = Branch::factory()->create();
+
+    $userA = businessSessionUser($branchA->id, ['accounts.create', 'business-session.start', 'business-session.close']);
+    $userB = businessSessionUser($branchB->id, ['accounts.create', 'business-session.start', 'business-session.close']);
+
+    seedAccountingAccounts(branchId: $branchA->id);
+    seedAccountingAccounts(branchId: $branchB->id);
+
+    $sessionA = app(BusinessSessionService::class)->start($userA, BusinessSessionOpeningMethod::ManualFromPanel);
+
+    $incomeAccountA = ChartOfAccount::query()
+        ->where('source_type', Branch::class)
+        ->where('source_id', $branchA->id)
+        ->where('type', AccountType::Income)
+        ->whereNotNull('parent_id')
+        ->first();
+
+    $incomeAccountB = ChartOfAccount::query()
+        ->where('source_type', Branch::class)
+        ->where('source_id', $branchB->id)
+        ->where('type', AccountType::Income)
+        ->whereNotNull('parent_id')
+        ->first();
+
+    $paymentAccountA = seedAccountingAccounts(branchId: $branchA->id);
+    $paymentAccountB = seedAccountingAccounts(branchId: $branchB->id);
+
+    // User A creates voucher in Branch A during session A
+    $this->actingAs($userA);
+    $voucherA = app(VoucherService::class)->store([
+        'type' => VoucherType::Income->value,
+        'voucher_no' => 'INC-A-'.fake()->unique()->numerify('####'),
+        'date' => now()->format('Y-m-d'),
+        'payment_account_id' => $paymentAccountA->id,
+        'narration' => 'Income for Branch A User A',
+        'lines' => [
+            ['account_id' => $incomeAccountA->id, 'amount' => 1000],
+        ],
+    ], $userA);
+
+    // User B creates voucher in Branch B
+    $this->actingAs($userB);
+    $voucherB = app(VoucherService::class)->store([
+        'type' => VoucherType::Income->value,
+        'voucher_no' => 'INC-B-'.fake()->unique()->numerify('####'),
+        'date' => now()->format('Y-m-d'),
+        'payment_account_id' => $paymentAccountB->id,
+        'narration' => 'Income for Branch B User B',
+        'lines' => [
+            ['account_id' => $incomeAccountB->id, 'amount' => 2000],
+        ],
+    ], $userB);
+
+    $reportA = app(BusinessSessionReportService::class)->buildReport($sessionA);
+
+    $references = collect($reportA['transactions'])->pluck('reference')->all();
+
+    expect($references)->toContain($voucherA->voucher_no)
+        ->and($references)->not->toContain($voucherB->voucher_no);
+});

@@ -36,6 +36,8 @@ class BusinessSessionReportService
 
         $transactions = Transaction::query()
             ->where('business_session_id', $session->id)
+            ->where('performed_by_type', User::class)
+            ->where('performed_by_id', $session->started_by_user_id)
             ->tap(fn ($query) => $transactionScope->scopeForBranch($query, $session->branch_id))
             ->tap(fn ($query) => $transactionScope->scopeWithinSessionWindow($query, $session))
             ->withTrashed()

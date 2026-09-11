@@ -33,15 +33,19 @@ class BusinessSessionService
             return null;
         }
 
-        return BusinessSession::query()
+        $query = BusinessSession::query()
             ->where('started_by_user_id', $user->id)
             ->whereIn('status', [
                 BusinessSessionStatus::Open,
                 BusinessSessionStatus::Reopened,
                 BusinessSessionStatus::ClosingPending,
-            ])
-            ->latest('started_at')
-            ->first();
+            ]);
+
+        if ($user->branch_id !== null) {
+            $query->where('branch_id', $user->branch_id);
+        }
+
+        return $query->latest('started_at')->first();
     }
 
     public function activeSessionIdForUser(?User $user = null): ?int
@@ -278,24 +282,20 @@ class BusinessSessionService
      */
     public function scopeForUser(Builder $query, User $user): Builder
     {
-        if ($user->usesBranchPanel()) {
-            return $query->where('branch_id', $user->branch_id);
-        }
-
-        if ($user->usesAdminPanel()) {
-            $mainBranchId = Branch::resolveMainBranchId();
-
-            return $query->where(function (Builder $q) use ($mainBranchId) {
-                $q->whereNull('branch_id')
-                    ->orWhere('branch_id', $mainBranchId);
-            });
-        }
-
         if ($user->branch_id !== null) {
             return $query->where('branch_id', $user->branch_id);
         }
 
-        return $query;
+        if ($user->usesBranchPanel()) {
+            return $query->where('branch_id', $user->branch_id);
+        }
+
+        $mainBranchId = Branch::resolveMainBranchId();
+
+        return $query->where(function (Builder $q) use ($mainBranchId) {
+            $q->whereNull('branch_id')
+                ->orWhere('branch_id', $mainBranchId);
+        });
     }
 
     private function authorizeStart(User $user): void

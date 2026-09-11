@@ -102,68 +102,66 @@ class BusinessSessionTransactionScope
      */
     public function scopeForBranch(Builder $query, ?int $branchId): Builder
     {
+        $isMainBranch = $branchId === null || Branch::isMainBranch($branchId);
+        $mainBranchId = Branch::resolveMainBranchId();
         $branchAccountIds = $this->branchAccountIdsSubquery($branchId);
 
-        if ($branchId === null) {
-            return $query->where(function (Builder $branchQuery) use ($branchAccountIds) {
-                $branchQuery->where(function (Builder $inner) {
-                    $inner->where('source_type', Voucher::class)
-                        ->whereIn(
-                            'source_id',
-                            Voucher::query()->whereNull('branch_id')->select('id'),
-                        );
-                });
-
-                foreach ($this->branchScopedSourceMap() as $sourceType => $modelClass) {
-                    $branchQuery->orWhere(function (Builder $inner) use ($sourceType, $modelClass) {
-                        $inner->where('source_type', $sourceType)
-                            ->whereIn(
-                                'source_id',
-                                $this->headOfficeSourceIdsSubquery($modelClass),
-                            );
-                    });
-                }
-
-                $branchQuery->orWhere(function (Builder $inner) {
-                    $inner->where('source_type', StockDistribution::class)
-                        ->whereIn(
-                            'source_id',
-                            StockDistribution::query()->whereNull('from_branch_id')->select('id'),
-                        );
-                });
-
-                $this->applyAccountScope($branchQuery, $branchAccountIds);
-            });
-        }
-
-        return $query->where(function (Builder $branchQuery) use ($branchId, $branchAccountIds) {
-            $branchQuery->where(function (Builder $inner) use ($branchId) {
+        return $query->where(function (Builder $branchQuery) use ($branchId, $isMainBranch, $mainBranchId, $branchAccountIds) {
+            // Vouchers
+            $branchQuery->where(function (Builder $inner) use ($branchId, $isMainBranch, $mainBranchId) {
                 $inner->where('source_type', Voucher::class)
                     ->whereIn(
                         'source_id',
-                        Voucher::query()->where('branch_id', $branchId)->select('id'),
+                        Voucher::query()
+                            ->when(
+                                $isMainBranch,
+                                fn ($q) => $q->where(fn ($sub) => $sub->whereNull('branch_id')->orWhere('branch_id', $mainBranchId)),
+                                fn ($q) => $q->where('branch_id', $branchId),
+                            )
+                            ->select('id'),
                     );
             });
 
+            // Branch scoped sources
             foreach ($this->branchScopedSourceMap() as $sourceType => $modelClass) {
-                $branchQuery->orWhere(function (Builder $inner) use ($branchId, $sourceType, $modelClass) {
+                $branchQuery->orWhere(function (Builder $inner) use ($branchId, $isMainBranch, $sourceType, $modelClass) {
                     $inner->where('source_type', $sourceType)
                         ->whereIn(
                             'source_id',
-                            $this->branchSourceIdsSubquery($modelClass, $branchId),
+                            $isMainBranch
+                                ? $this->headOfficeSourceIdsSubquery($modelClass)
+                                : $this->branchSourceIdsSubquery($modelClass, $branchId),
                         );
                 });
             }
 
-            $branchQuery->orWhere(function (Builder $inner) use ($branchId) {
+            // Stock distribution
+            $branchQuery->orWhere(function (Builder $inner) use ($branchId, $isMainBranch, $mainBranchId) {
                 $inner->where('source_type', StockDistribution::class)
                     ->whereIn(
                         'source_id',
-                        StockDistribution::query()->where('to_branch_id', $branchId)->select('id'),
+                        StockDistribution::query()
+                            ->when(
+                                $isMainBranch,
+                                fn ($q) => $q->where(fn ($sub) => $sub->whereNull('from_branch_id')->orWhere('from_branch_id', $mainBranchId)->orWhereNull('to_branch_id')->orWhere('to_branch_id', $mainBranchId)),
+                                fn ($q) => $q->where(fn ($sub) => $sub->where('from_branch_id', $branchId)->orWhere('to_branch_id', $branchId)),
+                            )
+                            ->select('id'),
                     );
             });
 
-            $this->applyAccountScope($branchQuery, $branchAccountIds);
+            // Fallback account scope ONLY for generic/manual transactions without a defined source type
+            $branchQuery->orWhere(function (Builder $inner) use ($branchAccountIds) {
+                $knownSources = array_merge(
+                    [Voucher::class, StockDistribution::class],
+                    array_keys($this->branchScopedSourceMap())
+                );
+                $inner->whereNotIn('source_type', $knownSources)
+                    ->where(function ($q) use ($branchAccountIds) {
+                        $q->whereIn('debit_account_id', $branchAccountIds)
+                            ->orWhereIn('credit_account_id', $branchAccountIds);
+                    });
+            });
         });
     }
 
@@ -187,14 +185,25 @@ class BusinessSessionTransactionScope
      */
     private function headOfficeSourceIdsSubquery(string $modelClass): Builder
     {
+        $mainBranchId = Branch::resolveMainBranchId();
+
         if ($modelClass === ChartOfAccount::class) {
             return ChartOfAccount::query()
-                ->whereNull('source_type')
-                ->whereNull('source_id')
+                ->where(function ($q) use ($mainBranchId) {
+                    $q->where(function ($inner) {
+                        $inner->whereNull('source_type')->whereNull('source_id');
+                    })->orWhere(function ($inner) use ($mainBranchId) {
+                        $inner->where('source_type', Branch::class)->where('source_id', $mainBranchId);
+                    });
+                })
                 ->select('id');
         }
 
-        return $modelClass::query()->whereNull('branch_id')->select('id');
+        return $modelClass::query()
+            ->where(function ($q) use ($mainBranchId) {
+                $q->whereNull('branch_id')->orWhere('branch_id', $mainBranchId);
+            })
+            ->select('id');
     }
 
     /**
@@ -204,8 +213,16 @@ class BusinessSessionTransactionScope
     {
         $query = ChartOfAccount::query()->select('id');
 
-        if ($branchId === null) {
-            return $query->whereNull('source_type')->whereNull('source_id');
+        if ($branchId === null || Branch::isMainBranch($branchId)) {
+            $mainBranchId = Branch::resolveMainBranchId();
+
+            return $query->where(function ($q) use ($mainBranchId) {
+                $q->where(function ($inner) {
+                    $inner->whereNull('source_type')->whereNull('source_id');
+                })->orWhere(function ($inner) use ($mainBranchId) {
+                    $inner->where('source_type', Branch::class)->where('source_id', $mainBranchId);
+                });
+            });
         }
 
         return $query->where('source_type', Branch::class)->where('source_id', $branchId);
@@ -240,9 +257,24 @@ class BusinessSessionTransactionScope
 
     public function syncSessionTransactions(BusinessSession $session): int
     {
+        $validBranchTxIds = Transaction::query()
+            ->where('business_session_id', $session->id)
+            ->tap(fn ($q) => $this->scopeForBranch($q, $session->branch_id))
+            ->pluck('id');
+
         return Transaction::query()
             ->where('business_session_id', $session->id)
-            ->where('created_at', '<', $session->started_at)
+            ->where(function ($q) use ($session, $validBranchTxIds) {
+                $q->where('created_at', '<', $session->started_at)
+                    ->orWhere('performed_by_type', '!=', User::class)
+                    ->orWhere('performed_by_id', '!=', $session->started_by_user_id)
+                    ->orWhereNull('performed_by_id')
+                    ->orWhereNotIn('id', $validBranchTxIds);
+
+                if ($session->closed_at !== null) {
+                    $q->orWhere('created_at', '>', $session->closed_at);
+                }
+            })
             ->update(['business_session_id' => null]);
     }
 }
